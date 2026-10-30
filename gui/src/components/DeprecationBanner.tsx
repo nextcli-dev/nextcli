@@ -1,13 +1,11 @@
 import { XMarkIcon } from "@heroicons/react/24/outline";
 import { useContext, useState } from "react";
-import { vscButtonBackground, vscButtonForeground } from ".";
 import { IdeMessengerContext } from "../context/IdeMessenger";
 import { varWithFallback } from "../styles/theme";
 import { getLocalStorage, setLocalStorage } from "../util/localStorage";
 
 const EXPIRATION_DATE = new Date("2026-09-09");
-const EXPORT_URL = "https://continue.dev/export";
-const REPO_URL = "https://github.com/continuedev/continue/blob/main/README.md";
+const REPO_URL = "https://github.com/nextcli-dev/nextcli/blob/main/README.md";
 
 interface DeprecationBannerProps {
   dismissable?: boolean;
@@ -60,16 +58,6 @@ export function DeprecationBanner({
               className="border-description text-foreground flex-1 cursor-pointer rounded border-[0.5px] border-solid bg-transparent px-2 py-1 text-[11px] font-medium hover:brightness-125"
             >
               Learn more
-            </button>
-            <button
-              onClick={() => ideMessenger.post("openUrl", EXPORT_URL)}
-              className="flex-1 cursor-pointer rounded border-none px-2 py-1 text-[11px] font-medium hover:brightness-125"
-              style={{
-                backgroundColor: vscButtonBackground,
-                color: vscButtonForeground,
-              }}
-            >
-              Export cloud configs
             </button>
           </div>
         </div>

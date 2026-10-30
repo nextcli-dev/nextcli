@@ -57,7 +57,8 @@ export class ConfigYamlDocumentLinkProvider
           const resolvedPath = path.resolve(parentPath, slug);
           linkUri = vscode.Uri.file(resolvedPath);
         } else {
-          linkUri = vscode.Uri.parse(`https://continue.dev/${slug}`);
+          // Hub package slugs used to link to continue.dev. NextCLI has no hub.
+          continue;
         }
 
         const link = new vscode.DocumentLink(range, linkUri);

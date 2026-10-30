@@ -12,7 +12,8 @@
  * Do not edit the class manually.
  */
 
-export const BASE_PATH = "https://api.continue.dev".replace(/\/+$/, "");
+// No hosted API. Callers must pass basePath.
+export const BASE_PATH = "";
 
 export interface ConfigurationParameters {
   basePath?: string; // override base path

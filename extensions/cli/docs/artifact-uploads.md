@@ -207,10 +207,10 @@ results.forEach((result) => {
 The CLI requires these environment variables for artifact uploads:
 
 - `CONTINUE_API_KEY`: Bearer token for backend authentication
-- `CONTINUE_API_BASE`: API base URL (defaults to `https://api.continue.dev/`)
+- `CONTINUE_API_BASE`: API base URL. Required for uploads. NextCLI does not default this to a hosted API.
 - `AGENT_SESSION_ID`: The current agent session identifier
 
-These are automatically provided when running in Continue's devbox environment.
+Set these yourself. NextCLI does not provide a hosted devbox.
 
 ## Error Handling
 

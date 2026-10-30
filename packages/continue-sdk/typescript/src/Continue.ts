@@ -94,7 +94,12 @@ export class Continue {
   static async from(
     options: ContinueClientOptions,
   ): Promise<ContinueClientBase | ContinueClient> {
-    const baseURL = options.baseURL || "https://api.continue.dev/";
+    if (!options.baseURL) {
+      throw new Error(
+        "NextCLI does not provide a hosted API. Pass baseURL to use a compatible endpoint.",
+      );
+    }
+    const baseURL = options.baseURL;
 
     const continueClient = new DefaultApi(
       new Configuration({

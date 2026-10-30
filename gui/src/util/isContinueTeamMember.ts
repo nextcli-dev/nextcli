@@ -1,7 +1,7 @@
 /**
- * Utility to check if a user is a Continue team member
+ * Continue team privileges are disabled in NextCLI.
+ * The name is kept so existing call sites still compile.
  */
-export function isContinueTeamMember(email?: string): boolean {
-  if (!email) return false;
-  return email.includes("@continue.dev");
+export function isContinueTeamMember(_email?: string): boolean {
+  return false;
 }

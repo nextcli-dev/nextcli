@@ -26,4 +26,3 @@
   - I think autocomplete has some filter logic that doesn't display the ghost text under some conditions, which I am guessing are the following:
     - The model does not have any more completions to create.
     - The prediction at the cursor location has been cached.
-- JetBrains integration.

@@ -1,5 +1,5 @@
 ---
-title: "How to Create and Manage Rules in Continue"
+title: "How to Create and Manage Rules in NextCLI"
 description: "Rules are used to provide system message instructions to the model for Agent mode, Chat mode, and Edit mode requests"
 keywords: [rules, system, prompt, message]
 sidebarTitle: "Rules"
@@ -12,7 +12,7 @@ Rules provide instructions to the model for [Agent mode](../../ide-extensions/ag
   [apply](../model-roles/apply).
 </Info>
 
-## How Rules Work in Continue
+## How Rules Work in NextCLI
 
 You can view the current rules by clicking the pen icon above the main toolbar:
 
@@ -80,10 +80,10 @@ Rules can be simple text, written in YAML configuration files, or as Markdown (`
 name: Documentation Standards
 globs: docs/**/*.{md,mdx}
 alwaysApply: false
-description: Standards for writing and maintaining Continue Docs
+description: Standards for writing and maintaining NextCLI Docs
 ---
 
-# Continue Docs Standards
+# NextCLI Docs Standards
 
 - Follow Mintlify documentation standards
 - Include YAML frontmatter with title, description, and keywords
@@ -159,8 +159,8 @@ globs: ["**/*.ts", "**/*.tsx"]
 
 ### How to Customize Chat System Message
 
-Continue includes a simple default system message for [Agent mode](../../ide-extensions/agent/quick-start) and [Chat](../../ide-extensions/chat/quick-start) requests, to help the model provide reliable codeblock formats in its output.
+NextCLI includes a simple default system message for [Agent mode](../../ide-extensions/agent/quick-start) and [Chat](../../ide-extensions/chat/quick-start) requests, to help the model provide reliable codeblock formats in its output.
 
-This can be viewed in the rules section of the toolbar (see above), or in the source code [here](https://github.com/continuedev/continue/blob/main/core/llm/constructMessages.ts#L4).
+This can be viewed in the rules section of the toolbar (see above), or in the source code [here](https://github.com/nextcli-dev/nextcli/blob/main/core/llm/constructMessages.ts#L4).
 
 Advanced users can override this system message for a specific model if needed by using `chatOptions.baseSystemMessage`. See the [`config.yaml` reference](/reference#models).

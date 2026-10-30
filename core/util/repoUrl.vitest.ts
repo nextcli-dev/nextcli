@@ -104,8 +104,8 @@ describe("normalizeRepoUrl", () => {
     });
 
     it("should handle mixed case in shorthand format", () => {
-      expect(normalizeRepoUrl("ContinueDev/Continue")).toBe(
-        "https://github.com/continuedev/continue",
+      expect(normalizeRepoUrl("Nextcli-Dev/NextCLI")).toBe(
+        "https://github.com/nextcli-dev/nextcli",
       );
     });
   });
@@ -180,35 +180,35 @@ describe("normalizeRepoUrl", () => {
   });
 
   describe("real-world examples", () => {
-    it("should normalize Continue's repository from SSH", () => {
-      expect(normalizeRepoUrl("git@github.com:continuedev/continue.git")).toBe(
-        "https://github.com/continuedev/continue",
+    it("should normalize the repository from SSH", () => {
+      expect(normalizeRepoUrl("git@github.com:nextcli-dev/nextcli.git")).toBe(
+        "https://github.com/nextcli-dev/nextcli",
       );
     });
 
-    it("should normalize Continue's repository from shorthand", () => {
-      expect(normalizeRepoUrl("continuedev/continue")).toBe(
-        "https://github.com/continuedev/continue",
+    it("should normalize the repository from shorthand", () => {
+      expect(normalizeRepoUrl("nextcli-dev/nextcli")).toBe(
+        "https://github.com/nextcli-dev/nextcli",
       );
     });
 
-    it("should normalize Continue's repository from HTTPS", () => {
+    it("should normalize the repository from HTTPS", () => {
       expect(
-        normalizeRepoUrl("https://github.com/continuedev/continue.git"),
-      ).toBe("https://github.com/continuedev/continue");
+        normalizeRepoUrl("https://github.com/nextcli-dev/nextcli.git"),
+      ).toBe("https://github.com/nextcli-dev/nextcli");
     });
 
     it("should match repositories regardless of input format", () => {
       const formats = [
-        "git@github.com:continuedev/continue.git",
-        "continuedev/continue",
-        "https://github.com/continuedev/continue",
-        "https://github.com/continuedev/continue.git",
-        "ssh://git@github.com/continuedev/continue.git",
-        "ContinueDev/Continue",
+        "git@github.com:nextcli-dev/nextcli.git",
+        "nextcli-dev/nextcli",
+        "https://github.com/nextcli-dev/nextcli",
+        "https://github.com/nextcli-dev/nextcli.git",
+        "ssh://git@github.com/nextcli-dev/nextcli.git",
+        "Nextcli-Dev/NextCLI",
       ];
 
-      const expected = "https://github.com/continuedev/continue";
+      const expected = "https://github.com/nextcli-dev/nextcli";
       formats.forEach((format) => {
         expect(normalizeRepoUrl(format)).toBe(expected);
       });

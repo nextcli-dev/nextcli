@@ -1,63 +1,47 @@
-<h1 align="center">Continue</h1>
+<h1 align="center">NextCLI</h1>
 
-<p align="center">Pioneering open-source coding agent</p>
+<p align="center">Open-source coding agent. A community continuation of Continue.</p>
 
 <div align="center">
 
 <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" /></a>
-<a href="https://docs.continue.dev"><img src="https://img.shields.io/badge/Docs-docs.continue.dev-blue" /></a>
-<a href="https://github.com/continuedev/continue/releases"><img src="https://img.shields.io/badge/Changelog-GitHub_Releases-blue" /></a>
+<a href="https://docs.nextcli.dev"><img src="https://img.shields.io/badge/Docs-docs.nextcli.dev-blue" /></a>
+<a href="https://github.com/nextcli-dev/nextcli/releases"><img src="https://img.shields.io/badge/Changelog-GitHub_Releases-blue" /></a>
 
 </div>
 
 <p align="center">
-  <img src="media/github-readme.png" alt="Banner" />
+  <img src="media/github-readme.png" alt="NextCLI" />
 </p>
 
-## What is Continue?
+## What is NextCLI?
 
-> _Note: The `continuedev/continue` repository is no longer actively maintained and is read-only for all users._
+NextCLI is a community-maintained continuation of [Continue](https://github.com/continuedev/continue). Continue Dev, Inc. stopped active maintenance of that project. This repository is where maintenance continues, under the [nextcli-dev](https://github.com/nextcli-dev) organization.
 
-Continue is a coding agent available as a [CLI](#cli), [VS Code extension](#vs-code), and [JetBrains plugin](#jetbrains).
+NextCLI is a coding agent available as a [CLI](#cli) and a [VS Code extension](#vs-code). It does not ship a JetBrains plugin. In a JetBrains IDE, run the CLI (`cn`) in the terminal. Configuration stays on your machine. There is no NextCLI-hosted hub, sign-in, or telemetry endpoint.
+
+Some identifiers are intentionally unchanged so existing installs keep working. The npm scope is still `@continuedev/*`, the VS Code extension id is still `Continue.continue`, the CLI command is still `cn`, and config still lives in `~/.continue`. See [MAINTAINING.md](./MAINTAINING.md) for why, and for the follow-up list.
 
 ## Documentation
 
-To learn how to configure Continue, how it works, and how to customize it, check out the [Continue Docs](https://docs.continue.dev).
+Usage and configuration docs are in [`docs/`](./docs). Published pages are intended for [docs.nextcli.dev](https://docs.nextcli.dev).
 
-## Final 2.0.0 Release
+## VS Code
 
-We polished Continue and did a final 2.0.0 release of the VS Code extension, CLI, and JetBrains plugin.
+The extension id has not changed yet, so the marketplace listing is still `Continue.continue` while that listing exists. To build from this repo, package `extensions/vscode` and install the VSIX.
 
-This included removing anonymous telemetry, pulling out authentication, squashing bugs, and more.
+[![View source](https://img.shields.io/badge/View_source-181717?logo=github&logoColor=white)](extensions/vscode)
 
-### VS Code
+## CLI
 
-[![VS Code Marketplace](https://img.shields.io/badge/VS_Code_Marketplace-007ACC?logo=visualstudiocode&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=Continue.continue) [![OpenVSX Registry](https://img.shields.io/badge/OpenVSX_Registry-C160EF?logo=eclipseide&logoColor=white)](https://open-vsx.org/extension/Continue/continue) [![View source](https://img.shields.io/badge/View_source-181717?logo=github&logoColor=white)](extensions/vscode)
+The package name is still `@continuedev/cli` and the command is still `cn`.
 
-### CLI
+[![View source](https://img.shields.io/badge/View_source-181717?logo=github&logoColor=white)](extensions/cli)
 
-[![npm](https://img.shields.io/badge/npm-CB3837?logo=npm&logoColor=white)](https://www.npmjs.com/package/@continuedev/cli) [![View source](https://img.shields.io/badge/View_source-181717?logo=github&logoColor=white)](extensions/cli)
+## Maintenance
 
-### JetBrains
-
-> _Note: We recommend using the Continue CLI instead of the JetBrains plugin._
-
-[![GitHub Releases](https://img.shields.io/badge/GitHub_Releases-181717?logo=github&logoColor=white)](https://github.com/continuedev/continue/releases) [![View source](https://img.shields.io/badge/View_source-181717?logo=github&logoColor=white)](extensions/intellij)
-
-## Contributors
-
-Thank you to the entire Continue community for helping us create a pioneering coding agent.
-
-What we built together pushed the boundaries of what AI developer tooling could be.
-
-We hope this codebase continues to serve as a foundation for others.
-
-## Code friends
-
-<a href="https://github.com/continuedev/continue/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=continuedev/continue&max=500" />
-</a>
+[MAINTAINING.md](./MAINTAINING.md) covers how to sync with upstream, which services are off, and what is left for a deeper rebrand.
 
 ## License
 
-Apache 2.0 © 2023-2026 Continue Dev, Inc.
+Apache 2.0. The original work is copyright Continue Dev, Inc. See [LICENSE](./LICENSE) and [NOTICE](./NOTICE).

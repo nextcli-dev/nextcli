@@ -2,8 +2,6 @@ import { readFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
-import node_machine_id from "node-machine-id";
-
 import { logger } from "./util/logger.js";
 
 export function getVersion(): string {
@@ -19,41 +17,38 @@ export function getVersion(): string {
   }
 }
 
-function getEventUserId(): string {
-  return node_machine_id.machineIdSync();
-}
-
 // Singleton to cache the latest version result
 let latestVersionCache: Promise<string | null> | null = null;
 
 export async function getLatestVersion(
   signal?: AbortSignal,
 ): Promise<string | null> {
+  const endpoint = process.env.NEXTCLI_VERSION_INFO_URL;
+  if (!endpoint) {
+    return null;
+  }
+
   // Return cached promise if it exists
   if (latestVersionCache) {
     return latestVersionCache;
   }
 
-  // Create and cache the promise
+  // Create and cache the promise. Do not attach a machine id.
   latestVersionCache = (async () => {
     try {
-      const id = getEventUserId();
-      const response = await fetch(
-        `https://api.continue.dev/cn/info?id=${encodeURIComponent(id)}`,
-        { signal },
-      );
+      const response = await fetch(endpoint, { signal });
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       const data = await response.json();
-      return data.version;
+      return data.version ?? null;
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
         // Request was aborted, don't log
         return null;
       }
       logger?.debug(
-        "Warning: Could not fetch latest version from api.continue.dev",
+        "Warning: Could not fetch latest version from NEXTCLI_VERSION_INFO_URL",
       );
       return null;
     }
@@ -69,9 +64,7 @@ getLatestVersion()
     }
   })
   .catch((error) => {
-    logger?.debug(
-      `Warning: Could not fetch latest version from api.continue.dev: ${error}`,
-    );
+    logger?.debug(`Warning: Could not fetch latest version: ${error}`);
   });
 
 export function compareVersions(

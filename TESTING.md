@@ -2,7 +2,7 @@
 
 ## Critical
 
-- [x] **Extension cold start** — Launch VS Code with the extension. No errors in Output panel ("Continue" channel) or Dev Tools console. _(Found and fixed `message.includes` crash in `webviewProtocol.ts` + removed dead proxy-server error handling block.)_
+- [x] **Extension cold start** — Launch VS Code with the extension. No errors in Output panel ("NextCLI" channel) or Dev Tools console. _(Found and fixed `message.includes` crash in `webviewProtocol.ts` + removed dead proxy-server error handling block.)_
 - [x] **Fresh install onboarding** — Delete/rename `~/.continue/config.yaml`, restart. Onboarding card shows "Configure your models" (no Hub sign-in). _(Removed "Credits" tab, fixed Ollama link padding, title font sizes, and "Google Gemini API API key" duplicate.)_
 - [x] **Existing config loads** — With existing `config.yaml`, models/context providers/MCP servers all load.
 - [x] **API key resolution from `.env`** — Models using secrets from `~/.continue/.env` or workspace `.env` authenticate and respond.
@@ -27,4 +27,3 @@
 ## Low Priority
 
 - [x] **"Main Config" naming** — Fresh installs show "Main Config" as default profile name.
-- [x] **IntelliJ startup** — Profiles load correctly after rebuilding core binary. _(Core binary must be rebuilt for IntelliJ to pick up changes.)_

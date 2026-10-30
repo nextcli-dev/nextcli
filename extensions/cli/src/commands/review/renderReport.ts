@@ -130,9 +130,9 @@ function renderTextReport(
     lines.push(
       isTTY
         ? chalk.dim(
-            "Tip: Run these automatically on every PR → https://continue.dev",
+            "Tip: Run these automatically on every PR → https://nextcli.dev",
           )
-        : "Tip: Run these automatically on every PR → https://continue.dev",
+        : "Tip: Run these automatically on every PR → https://nextcli.dev",
     );
   }
 

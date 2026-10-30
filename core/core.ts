@@ -1442,7 +1442,7 @@ export class Core {
         //     .then((userSelection) => {
         //       if (userSelection === toastOption) {
         //         void this.ide.openUrl(
-        //           "https://docs.continue.dev/customize/model-roles/embeddings",
+        //           "https://docs.nextcli.dev/customize/model-roles/embeddings",
         //         );
         //       }
         //     });

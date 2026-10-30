@@ -87,4 +87,4 @@ Determine if the Continue Docs should be updated based on the changes in the pro
 
 # Context: Continue
 
-Continue is the leading open-source AI coding agent, with IDE extensions for VS Code and JetBrains, as well as a CLI, `cn`.
+NextCLI is an open-source AI coding agent, with a VS Code extension and a CLI, `cn`. It does not ship a JetBrains plugin.

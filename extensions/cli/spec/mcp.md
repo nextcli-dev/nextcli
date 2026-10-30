@@ -1,8 +1,8 @@
-# Continue CLI Model Context Protocol (MCP) integration
+# NextCLI CLI Model Context Protocol (MCP) integration
 
 ## Intro
 
-Model Context Protocol is a protocol for giving models access to resources and tools. MCP servers can run locally (stdio) or be remote (http/streamable/etc). See https://modelcontextprotocol.io/specification. The Continue CLI uses MCP to extend model's capabilities with MCP prompts and tools. MCP server configurations are stored in the `mcpServers` field of an assistant/config.yaml configuration.
+Model Context Protocol is a protocol for giving models access to resources and tools. MCP servers can run locally (stdio) or be remote (http/streamable/etc). See https://modelcontextprotocol.io/specification. The NextCLI CLI uses MCP to extend model's capabilities with MCP prompts and tools. MCP server configurations are stored in the `mcpServers` field of an assistant/config.yaml configuration.
 
 ## Secret Resolution
 

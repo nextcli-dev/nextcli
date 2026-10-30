@@ -51,7 +51,7 @@ For example, you can say "Create a rule for this", and a rule will be created fo
 
 Rules can also be added to a configuration on the Continue Hub.
 
-Explore available rules [here](https://continue.dev), or [create your own](https://continue.dev/new?type=block&blockType=rules) in the Hub.
+Explore available rules [here](https://nextcli.dev), or [create your own](https://nextcli.dev/new?type=block&blockType=rules) in the Hub.
 
 ### Syntax
 
@@ -168,7 +168,7 @@ Whenever you are writing React code, make sure to
 
 Continue includes a simple default system message for [Agent mode](../../features/agent/quick-start) and [Chat](../../features/chat/quick-start) requests, to help the model provide reliable codeblock formats in its output.
 
-This can be viewed in the rules section of the toolbar (see above), or in the source code [here](https://github.com/continuedev/continue/blob/main/core/llm/constructMessages.ts#L4).
+This can be viewed in the rules section of the toolbar (see above), or in the source code [here](https://github.com/nextcli-dev/nextcli/blob/main/core/llm/constructMessages.ts#L4).
 
 Advanced users can override this system message for a specific model if needed by using `chatOptions.baseSystemMessage`. See the [`config.yaml` reference](/reference#models).
 

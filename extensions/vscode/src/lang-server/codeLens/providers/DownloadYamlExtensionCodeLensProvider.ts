@@ -24,7 +24,7 @@ export class DownloadYamlExtensionCodeLensProvider
       command: {
         title: "📖 View Continue Reference",
         command: "vscode.open",
-        arguments: [vscode.Uri.parse("https://docs.continue.dev/reference")],
+        arguments: [vscode.Uri.parse("https://docs.nextcli.dev/reference")],
       },
       isResolved: true,
     };

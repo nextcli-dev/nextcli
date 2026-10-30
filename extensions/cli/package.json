@@ -1,7 +1,7 @@
 {
   "name": "@continuedev/cli",
   "version": "0.0.0-dev",
-  "description": "Continue CLI",
+  "description": "NextCLI CLI",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
@@ -34,16 +34,16 @@
     "semantic-release": "semantic-release",
     "semantic-release:dry-run": "semantic-release --dry-run"
   },
-  "author": "Continue Dev, Inc.",
+  "author": "NextCLI",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/continuedev/continue.git"
+    "url": "https://github.com/nextcli-dev/nextcli.git"
   },
   "bugs": {
-    "url": "https://github.com/continuedev/continue/issues"
+    "url": "https://github.com/nextcli-dev/nextcli/issues"
   },
-  "homepage": "https://continue.dev",
+  "homepage": "https://nextcli.dev",
   "dependencies": {
     "fdir": "^6.4.2",
     "find-up": "^8.0.0",

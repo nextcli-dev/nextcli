@@ -2,9 +2,9 @@
 
 ## Overview
 
-The Continue CLI supports running in TTY-less environments (environments without a terminal/TTY), which is essential for:
+The NextCLI CLI supports running in TTY-less environments (environments without a terminal/TTY), which is essential for:
 
-- VSCode and IntelliJ extensions using the `run_terminal_command` tool
+- The VS Code extension using the `run_terminal_command` tool
 - Docker containers without TTY allocation
 - CI/CD pipelines
 - Automated scripts and tools
@@ -103,7 +103,7 @@ Configures output handling for TTY-less environments:
 
 ## Usage Examples
 
-### From VSCode/IntelliJ Extension
+### From the VS Code Extension
 
 ```typescript
 // Using the run_terminal_command tool
@@ -121,7 +121,7 @@ docker run --rm my-image cn -p "Generate a README"
 ### From CI/CD Pipeline
 
 ```yaml
-- name: Run Continue CLI
+- name: Run NextCLI CLI
   run: |
     cn -p "Review code changes" --format json
 ```

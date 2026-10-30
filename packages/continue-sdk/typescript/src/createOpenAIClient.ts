@@ -45,8 +45,13 @@ export function createOpenAIClient({
   models: assistantModels,
   organizationId,
   apiKey,
-  baseURL = "https://api.continue.dev/",
+  baseURL,
 }: OpenAIClientOptions): OpenAI {
+  if (!baseURL) {
+    throw new Error(
+      "NextCLI does not provide a hosted model proxy. Pass baseURL to use a compatible endpoint.",
+    );
+  }
   return new OpenAI({
     apiKey,
     baseURL: new URL("model-proxy/v1/", baseURL).toString(),

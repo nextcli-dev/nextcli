@@ -144,7 +144,7 @@ async function buildWithEsbuild() {
     );
   });
 
-  // copy tree-sitter colder to binary folder to make it available when running in intellij debug mode
+  // copy tree-sitter folder into the binary package
   const treeSitterDir = path.join(__dirname, "tree-sitter");
   fs.mkdirSync(treeSitterDir);
   await new Promise((resolve, reject) => {

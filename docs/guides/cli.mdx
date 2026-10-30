@@ -1,7 +1,7 @@
 ---
-title: "How to Use Continue CLI (cn)"
-sidebarTitle: "Continue CLI (cn)"
-description: "Learn how to use Continue's command-line interface for context engineering, automated coding tasks, and headless development workflows with customizable models, rules, and tools"
+title: "How to Use NextCLI CLI (cn)"
+sidebarTitle: "NextCLI CLI (cn)"
+description: "Learn how to use NextCLI's command-line interface for context engineering, automated coding tasks, and headless development workflows with customizable models, rules, and tools"
 ---
 
 import { OSAutoDetect } from '/snippets/OSAutoDetect.jsx'
@@ -29,7 +29,7 @@ cn
 cn -p "Generate a conventional commit name for the current git changes"
 ```
 
-## How to Use Continue CLI - Basic Usage
+## How to Use NextCLI CLI - Basic Usage
 
 Out of the box, `cn` comes with tools that let it understand your codebase, edit files, run terminal commands, and more (if you approve). You can ask `cn` to:
 
@@ -51,9 +51,9 @@ In headless mode, `cn` will only output its final response, making it perfect fo
 echo "$(git diff) Generate a conventional commit name for the current git changes" | cn -p > commit-message.txt
 ```
 
-## How to Configure Continue CLI
+## How to Configure NextCLI CLI
 
-`cn` uses [`config.yaml`](/reference), the exact same configuration file as Continue. This means that you can use your existing local configuration.
+`cn` uses [`config.yaml`](/reference), the exact same configuration file as NextCLI. This means that you can use your existing local configuration.
 
 To switch between configurations, you can use the `/config` slash command in `cn`, or you can start it with the `--config` flag (e.g. `cn --config continuedev/default-cli-config` or `cn --config ~/.continue/config.yaml`).
 
@@ -63,11 +63,11 @@ Learn how to add custom models [here](/customize/overview). Then, you can use th
 
 ### How to Configure Rules
 
-`cn` supports [rules](/customize/deep-dives/rules) in the same way as the Continue IDE extensions. You can also use the `--rule` flag to manually include a rule. For example, `cn --rule nate/spanish` will tell `cn` to always speak in Spanish.
+`cn` supports [rules](/customize/deep-dives/rules) in the same way as the NextCLI IDE extensions. You can also use the `--rule` flag to manually include a rule. For example, `cn --rule nate/spanish` will tell `cn` to always speak in Spanish.
 
 ### How to Configure Tools
 
-`cn` supports MCP tools, which can be configured in the [same way](/customize/deep-dives/mcp) as with the Continue IDE extensions.
+`cn` supports MCP tools, which can be configured in the [same way](/customize/deep-dives/mcp) as with the NextCLI IDE extensions.
 
 #### How to Set Tool Permissions
 
@@ -90,4 +90,4 @@ cn --exclude Fetch
 
 Run `cn` with the `--verbose` flag to see more detailed logs. These will be output to `~/.continue/logs/cn.log`.
 
-If you have feedback on the beta, please [file a GitHub issue](https://github.com/continuedev/continue/issues).
+If you have feedback on the beta, please [file a GitHub issue](https://github.com/nextcli-dev/nextcli/issues).

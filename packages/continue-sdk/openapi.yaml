@@ -1,18 +1,16 @@
 openapi: 3.0.0
 info:
-  title: Continue Hub IDE API
+  title: NextCLI Hub IDE API
   description: |
-    API for Continue IDE to fetch assistants and other related information.
-    These endpoints are primarily used by the Continue IDE extensions for VS Code and JetBrains.
+    API shape kept from Continue. NextCLI does not provide a hosted API.
+    Pass a base URL to use a compatible endpoint.
   version: 1.0.0
   contact:
     name: Continue Dev Team
-    url: https://continue.dev
+    url: https://nextcli.dev
 servers:
-  - url: https://api.continue.dev
-    description: Production server
   - url: http://localhost:3001
-    description: Local development server
+    description: Local development server. NextCLI does not provide a hosted API.
 paths:
   /ide/list-assistants:
     get:

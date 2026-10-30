@@ -72,14 +72,14 @@ class TelemetryService {
       process.env.OTEL_METRICS_EXPORTER
     );
 
-    let telemetryEnabled = true;
-    if (process.env.CONTINUE_METRICS_ENABLED === "0") {
-      telemetryEnabled = false;
-    } else if (process.env.CONTINUE_METRICS_ENABLED === "1") {
-      telemetryEnabled = true;
-    } else {
-      telemetryEnabled = process.env.CONTINUE_CLI_ENABLE_TELEMETRY !== "0";
-    }
+    // Off unless explicitly enabled. Metrics still require an OTLP endpoint.
+    const explicitlyOn =
+      process.env.CONTINUE_METRICS_ENABLED === "1" ||
+      process.env.CONTINUE_CLI_ENABLE_TELEMETRY === "1";
+    const explicitlyOff =
+      process.env.CONTINUE_METRICS_ENABLED === "0" ||
+      process.env.CONTINUE_CLI_ENABLE_TELEMETRY === "0";
+    const telemetryEnabled = explicitlyOn && !explicitlyOff;
 
     const enabled = telemetryEnabled && hasOtelConfig;
     const sessionId = uuidv4();
@@ -232,7 +232,7 @@ class TelemetryService {
     });
 
     this.costCounter = this.meter.createCounter("continue_cli_cost_usage", {
-      description: "Cost of the Continue CLI session",
+      description: "Cost of the NextCLI CLI session",
       unit: "USD",
     });
 
@@ -257,7 +257,7 @@ class TelemetryService {
       },
     );
 
-    // Additional Continue CLI specific metrics
+    // Additional NextCLI CLI specific metrics
     this.authAttemptsCounter = this.meter.createCounter(
       "continue_cli_auth_attempts",
       {

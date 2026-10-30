@@ -254,12 +254,21 @@ async function loadFromSavedUri(
 /**
  * Loads first available user assistant with fallback to default agent
  */
+function requireHostedApi(action: string): void {
+  if (!env.apiBase) {
+    throw new Error(
+      `NextCLI has no hosted API, so it cannot ${action}. Create ${path.join(env.continueHome, "config.yaml")} or set CONTINUE_API_BASE.`,
+    );
+  }
+}
+
 async function loadUserAssistantWithFallback(
   organizationId: string | null,
   apiClient: DefaultApiInterface,
   accessToken: string | null,
   injectBlocks: PackageIdentifier[],
 ): Promise<AssistantUnrolled> {
+  requireHostedApi("list assistants");
   const assistants = await apiClient.listAssistants({
     alwaysUseProxy: "false",
     organizationId: organizationId ?? undefined,
@@ -329,6 +338,7 @@ async function loadDefaultConfig(
   accessToken: string | null,
   injectBlocks: PackageIdentifier[],
 ): Promise<AssistantUnrolled> {
+  requireHostedApi("load a remote default config");
   const resp = await apiClient.getAssistant({
     ownerSlug: "continuedev",
     packageSlug: "default-cli-config",
@@ -456,6 +466,7 @@ async function loadAssistantSlug(
   apiClient: DefaultApiInterface,
   injectBlocks: PackageIdentifier[],
 ): Promise<AssistantUnrolled> {
+  requireHostedApi("load an assistant slug");
   const [ownerSlug, packageSlug] = slug.split("/");
   if (!ownerSlug || !packageSlug) {
     throw new Error(

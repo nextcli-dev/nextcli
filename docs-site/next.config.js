@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 
-// Served at the root of the custom domain docs.continue.dev (via GitHub Pages),
+// Served at the root of the custom domain docs.nextcli.dev (via GitHub Pages),
 // so there is no base path. (public/CNAME sets the custom domain.)
 const basePath = "";
 

@@ -1,15 +1,20 @@
 name: Publish Extension
 
+# Disabled until NextCLI has its own publish credentials and extension IDs.
+# Restore the commented triggers to turn this workflow back on.
+# on:
+#   release:
+#     types: [released]
+#
+#   workflow_dispatch:
+#     inputs:
+#       publish_build:
+#         description: "Whether or not to publish the built extension to the VS Code marketplace"
+#         required: true
+#         default: "false"
+#
 on:
-  release:
-    types: [released]
-
   workflow_dispatch:
-    inputs:
-      publish_build:
-        description: "Whether or not to publish the built extension to the VS Code marketplace"
-        required: true
-        default: "false"
 
 jobs:
   check_release_name:
@@ -133,7 +138,7 @@ jobs:
           files: |
             vsix-artifacts/*.vsix
           token: ${{ secrets.CI_GITHUB_TOKEN }}
-          repository: continuedev/continue
+          repository: nextcli-dev/nextcli
 
   publish:
     runs-on: ubuntu-latest

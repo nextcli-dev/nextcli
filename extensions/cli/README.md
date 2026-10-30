@@ -1,21 +1,21 @@
-# Continue CLI
+# NextCLI CLI
 
-The Continue CLI (`cn`) is a customizable command line coding agent.
+The NextCLI CLI (`cn`) is a customizable command line coding agent.
 
-![Continue CLI Demo](./media/demo.gif)
+![NextCLI CLI Demo](./media/demo.gif)
 
 ## Installation
 
 **macOS / Linux:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/continuedev/continue/main/extensions/cli/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/nextcli-dev/nextcli/main/extensions/cli/scripts/install.sh | bash
 ```
 
 **Windows (PowerShell):**
 
 ```powershell
-irm https://raw.githubusercontent.com/continuedev/continue/main/extensions/cli/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/nextcli-dev/nextcli/main/extensions/cli/scripts/install.ps1 | iex
 ```
 
 Or install with npm if you have Node.js 20+:
@@ -37,7 +37,7 @@ Headless mode (`-p` flag) runs without an interactive terminal UI, making it per
 - Scripts and automation
 - CI/CD pipelines
 - Docker containers
-- VSCode/IntelliJ extension integration
+- VS Code extension integration
 - Environments without a TTY
 
 ```bash
@@ -54,7 +54,7 @@ cn -p "Analyze the code" --format json
 cn -p "Write a README" --silent
 ```
 
-**TTY-less Environments**: Headless mode is designed to work in environments without a terminal (TTY), such as when called from VSCode/IntelliJ extensions using terminal commands. The CLI will not attempt to read stdin or initialize the interactive UI when running in headless mode with a supplied prompt.
+**TTY-less Environments**: Headless mode is designed to work in environments without a terminal (TTY), such as when called from the VS Code extension using terminal commands. The CLI will not attempt to read stdin or initialize the interactive UI when running in headless mode with a supplied prompt.
 
 ### Session Management
 
@@ -109,7 +109,7 @@ docker run --rm my-image cn -p "Generate docs"
 # From CI/CD pipeline
 cn -p "Review changes" --format json
 
-# From VSCode/IntelliJ extension terminal tool
+# From the VS Code extension terminal tool
 cn -p "Analyze code" --silent
 ```
 

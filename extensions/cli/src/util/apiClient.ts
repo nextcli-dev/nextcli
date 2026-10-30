@@ -63,6 +63,14 @@ export async function makeAuthenticatedRequest<T = any>(
 ): Promise<ApiResponse<T>> {
   const { method = "GET", body, headers = {} } = options;
 
+  if (!env.apiBase) {
+    throw new ApiRequestError(
+      0,
+      "No API base",
+      "NextCLI has no hosted API. Set CONTINUE_API_BASE to use a compatible endpoint.",
+    );
+  }
+
   const requestOptions: RequestInit = {
     method,
     headers: {

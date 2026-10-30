@@ -1,12 +1,17 @@
 name: Stable Release
 
+# Disabled until NextCLI has its own publish credentials and extension IDs.
+# Restore the commented triggers to turn this workflow back on.
+# on:
+#   workflow_dispatch:
+#     inputs:
+#       stable_version:
+#         description: "Version for stable release (e.g., 1.2.3)"
+#         required: true
+#         type: string
+#
 on:
   workflow_dispatch:
-    inputs:
-      stable_version:
-        description: "Version for stable release (e.g., 1.2.3)"
-        required: true
-        type: string
 
 permissions:
   contents: write
@@ -18,8 +23,8 @@ jobs:
   stable-release:
     name: Stable Release
     runs-on: ubuntu-latest
-    # Only run this workflow on the main repository (continuedev/continue)
-    if: github.repository == 'continuedev/continue'
+    # Only run this workflow on the main repository (nextcli-dev/nextcli)
+    if: github.repository == 'nextcli-dev/nextcli'
     steps:
       - name: Checkout
         uses: actions/checkout@v6

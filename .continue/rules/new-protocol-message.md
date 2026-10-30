@@ -18,19 +18,14 @@ Verify that no existing message type already provides the same functionality.
 
 If your message is between webview and core, add it to `core/protocol/passThrough.ts`.
 
-## 4. Add to IntelliJ constants (if webview ↔ core)
-
-If your message is between webview and core, add it to `extensions/intellij/src/main/kotlin/com/github/continuedev/continueintellijextension/constants/MessageTypes.kt`.
-
-## 5. Implement the message handler
+## 4. Implement the message handler
 
 Implement the message in the appropriate location:
 
 - **Messages to core**: `core/core.ts`
 - **Messages to GUI**: `useWebviewListener` hook
 - **Messages to VS Code IDE**: `VsCodeMessenger.ts`
-- **Messages to JetBrains IDE**: `IdeProtocolClient.kt`
 
-## 6. Test the implementation
+## 5. Test the implementation
 
-Verify that your message works correctly in both VS Code and JetBrains IDEs if applicable.
+Verify that your message works in VS Code. NextCLI does not ship a JetBrains plugin.

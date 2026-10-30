@@ -13,27 +13,12 @@ This document catalogs all build dependencies, secrets, and environment variable
 
 ---
 
-## JetBrains Extension
-
-| Secret                           | Purpose                                                               | Referenced In            |
-| -------------------------------- | --------------------------------------------------------------------- | ------------------------ |
-| `APPLE_CERT_DATA`                | Base64-encoded Apple signing certificate (p12) for macOS code signing | `jetbrains-release.yaml` |
-| `APPLE_CERT_PASSWORD`            | Password for the Apple signing certificate                            | `jetbrains-release.yaml` |
-| `APPLE_NOTARY_USER`              | Apple notarization username (currently commented out)                 | `jetbrains-release.yaml` |
-| `APPLE_NOTARY_PASSWORD`          | Apple notarization password (currently commented out)                 | `jetbrains-release.yaml` |
-| `JETBRAINS_PUBLISH_TOKEN`        | Token for publishing to JetBrains Marketplace                         | `jetbrains-release.yaml` |
-| `JETBRAINS_CERTIFICATE_CHAIN`    | Certificate chain for signing the JetBrains plugin                    | `jetbrains-release.yaml` |
-| `JETBRAINS_PRIVATE_KEY`          | Private key for signing the JetBrains plugin                          | `jetbrains-release.yaml` |
-| `JETBRAINS_PRIVATE_KEY_PASSWORD` | Password for the JetBrains signing private key                        | `jetbrains-release.yaml` |
-
----
-
 ## CLI
 
-| Variable            | Purpose                                                                 | Referenced In                                                                                      |
-| ------------------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `CONTINUE_API_BASE` | Base URL for the Continue API (defaults to `https://api.continue.dev/`) | `extensions/cli/.env.example`                                                                      |
-| `CONTINUE_API_KEY`  | API key for Continue authentication                                     | `extensions/cli/.env.example`, `packages/continue-sdk/typescript/.env.example`, multiple workflows |
+| Variable            | Purpose                                                                                           | Referenced In                                                                                      |
+| ------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `CONTINUE_API_BASE` | Optional base URL for a compatible API. Empty by default. NextCLI does not call api.continue.dev. | `extensions/cli/.env.example`                                                                      |
+| `CONTINUE_API_KEY`  | API key for NextCLI authentication                                                                | `extensions/cli/.env.example`, `packages/continue-sdk/typescript/.env.example`, multiple workflows |
 
 ---
 
@@ -72,8 +57,8 @@ Used for integration tests in PR checks and package releases.
 | Secret             | Purpose                                                         | Referenced In                                                                                                         |
 | ------------------ | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | `GITHUB_TOKEN`     | Default GitHub Actions token (automatic)                        | Many workflows                                                                                                        |
-| `CI_GITHUB_TOKEN`  | Elevated GitHub PAT for cross-repo operations and PR management | `jetbrains-release.yaml`, `preview.yaml`, `main.yaml`, `pr-checks.yaml`, `auto-assign-issue.yaml`                     |
-| `CONTINUE_API_KEY` | Continue platform API key for agent workflows                   | `run-continue-agent.yml`, `tidy-up-codebase.yml`, `snyk-agent.yaml`, `auto-fix-failed-tests.yml`, `cli-pr-checks.yml` |
+| `CI_GITHUB_TOKEN`  | Elevated GitHub PAT for cross-repo operations and PR management | `preview.yaml`, `main.yaml`, `pr-checks.yaml`                                                                         |
+| `CONTINUE_API_KEY` | NextCLI platform API key for agent workflows                    | `run-continue-agent.yml`, `tidy-up-codebase.yml`, `snyk-agent.yaml`, `auto-fix-failed-tests.yml`, `cli-pr-checks.yml` |
 | `RUNLOOP_API_KEY`  | Runloop API key for uploading sandbox blueprints                | `stable-release.yml`, `upload-runloop-blueprint.yml`                                                                  |
 | `SNYK_TOKEN`       | Snyk security scanning token                                    | `snyk-agent.yaml`                                                                                                     |
 

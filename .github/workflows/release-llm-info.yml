@@ -1,12 +1,17 @@
 name: Release @continuedev/llm-info
+# Disabled until NextCLI has its own publish credentials and extension IDs.
+# Restore the commented triggers to turn this workflow back on.
+# on:
+#   push:
+#     branches:
+#       - main
+#     paths:
+#       - "packages/llm-info/**"
+#       - ".github/workflows/release-llm-info.yml"
+#       - ".github/workflows/reusable-release.yml"
+#
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - "packages/llm-info/**"
-      - ".github/workflows/release-llm-info.yml"
-      - ".github/workflows/reusable-release.yml"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -15,8 +20,8 @@ permissions:
 
 jobs:
   release:
-    # Only run this workflow on the main repository (continuedev/continue)
-    if: github.repository == 'continuedev/continue'
+    # Only run this workflow on the main repository (nextcli-dev/nextcli)
+    if: github.repository == 'nextcli-dev/nextcli'
     uses: ./.github/workflows/reusable-release.yml
     with:
       package-name: "llm-info"

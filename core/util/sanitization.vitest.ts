@@ -47,7 +47,7 @@ describe("sanitizeShellArgument", () => {
 
 describe("validateGitHubRepoUrl", () => {
   it("should accept valid repository names", () => {
-    expect(validateGitHubRepoUrl("continuedev/continue")).toBe(true);
+    expect(validateGitHubRepoUrl("nextcli-dev/nextcli")).toBe(true);
     expect(validateGitHubRepoUrl("owner/repo")).toBe(true);
     expect(validateGitHubRepoUrl("owner-name/repo-name")).toBe(true);
     expect(validateGitHubRepoUrl("https://github.com/owner/repo")).toBe(true);

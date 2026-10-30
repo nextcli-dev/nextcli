@@ -1,12 +1,17 @@
 name: Deploy Docs to GitHub Pages
 
+# Disabled until NextCLI has its own publish credentials and extension IDs.
+# Restore the commented triggers to turn this workflow back on.
+# on:
+#   push:
+#     branches: [main]
+#     paths:
+#       - "docs/**"
+#       - "docs-site/**"
+#
+#   workflow_dispatch:
+#
 on:
-  push:
-    branches: [main]
-    paths:
-      - "docs/**"
-      - "docs-site/**"
-
   workflow_dispatch:
 
 permissions:

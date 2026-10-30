@@ -1,11 +1,11 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Continue CLI Installer for Windows
+    NextCLI CLI Installer for Windows
 .DESCRIPTION
-    Installs Node.js (if needed) and the Continue CLI globally
+    Installs Node.js (if needed) and the NextCLI CLI globally
 .EXAMPLE
-    irm https://continue.dev/install.ps1 | iex
+    irm https://nextcli.dev/install.ps1 | iex
 .NOTES
     Supports Windows 10/11, Windows Server 2016+
     Requires internet connectivity
@@ -310,7 +310,7 @@ function Install-Cli {
 function Show-Complete {
     Write-Host ""
     Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
-    Write-Success "Continue CLI installation complete!"
+    Write-Success "NextCLI CLI installation complete!"
     Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
     Write-Host ""
 
@@ -327,7 +327,7 @@ function Show-Complete {
 function Main {
     Write-Host ""
     Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
-    Write-Host "           Continue CLI Installer" -ForegroundColor White
+    Write-Host "           NextCLI CLI Installer" -ForegroundColor White
     Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
     Write-Host ""
 

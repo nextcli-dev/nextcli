@@ -1,11 +1,11 @@
 ---
-title: "How to Configure Continue"
-description: Learn how to access and manage Continue configurations through local YAML files
+title: "How to Configure NextCLI"
+description: Learn how to access and manage NextCLI configurations through local YAML files
 keywords: [config, settings, customize]
 sidebarTitle: "Configuration"
 ---
 
-You can easily access your configuration from the Continue Chat sidebar. Open the sidebar by pressing <kbd>cmd/ctrl</kbd> + <kbd>L</kbd> (VS Code) or <kbd>cmd/ctrl</kbd> + <kbd>J</kbd> (JetBrains) and click the Agent selector above the main chat input. Then, you can hover over an agent and click the `gear` icon.
+You can easily access your configuration from the NextCLI Chat sidebar. Open the sidebar by pressing <kbd>cmd/ctrl</kbd> + <kbd>L</kbd> and click the Agent selector above the main chat input. Then, you can hover over an agent and click the `gear` icon.
 
 ![configure](/images/configure-continue.png)
 
@@ -20,7 +20,7 @@ To open this `config.yaml`, you need to open the configs dropdown in the top-rig
 
 ![local-config-open-steps](/images/local-config-open-steps.png)
 
-When editing this file, you can see the available options suggested as you type, or check the reference below. When you save a config file from the IDE, Continue will automatically refresh to take into account your changes. A config file is automatically created the first time you use Continue, and always automatically generated with default values if it doesn't exist.
+When editing this file, you can see the available options suggested as you type, or check the reference below. When you save a config file from the IDE, NextCLI will automatically refresh to take into account your changes. A config file is automatically created the first time you use NextCLI, and always automatically generated with default values if it doesn't exist.
 
 See the full reference for `config.yaml` [here](/reference).
 
@@ -53,7 +53,7 @@ Example
 
 ### How to Use `config.ts` for Advanced Configuration
 
-`config.yaml` or `config.json` can handle the vast majority of necessary configuration, so we recommend using it whenever possible. However, if you need to programmatically extend Continue configuration, you can use a `config.ts` file, placed at `~/.continue/config.ts` (MacOS / Linux) or `%USERPROFILE%\.continue\config.ts` (Windows).
+`config.yaml` or `config.json` can handle the vast majority of necessary configuration, so we recommend using it whenever possible. However, if you need to programmatically extend NextCLI configuration, you can use a `config.ts` file, placed at `~/.continue/config.ts` (MacOS / Linux) or `%USERPROFILE%\.continue\config.ts` (Windows).
 
 `config.ts` must export a `modifyConfig` function, like:
 

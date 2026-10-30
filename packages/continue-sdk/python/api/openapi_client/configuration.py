@@ -190,7 +190,7 @@ class Configuration:
     ) -> None:
         """Constructor
         """
-        self._base_path = "https://api.continue.dev" if host is None else host
+        self._base_path = "" if host is None else host
         """Default Base url
         """
         self.server_index = 0 if server_index is None and host is None else server_index
@@ -520,8 +520,8 @@ class Configuration:
         """
         return [
             {
-                'url': "https://api.continue.dev",
-                'description': "Production server",
+                'url': "",
+                'description': "No default hosted API. Pass a base URL.",
             },
             {
                 'url': "http://localhost:3001",

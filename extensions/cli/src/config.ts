@@ -87,12 +87,16 @@ export function getLlmApi(
   return [llmApi, model];
 }
 
+/**
+ * Hub client. There is no default host: local config still needs a client
+ * object, and callers that talk to a hub must check `env.apiBase` first.
+ */
 export function getApiClient(
   accessToken: string | undefined | null,
 ): DefaultApi {
   return new DefaultApi(
     new Configuration({
-      basePath: env.apiBase.replace(/\/$/, ""),
+      basePath: env.apiBase ? env.apiBase.replace(/\/$/, "") : "",
       accessToken: accessToken ?? undefined,
     }),
   );

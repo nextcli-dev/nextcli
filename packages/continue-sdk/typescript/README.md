@@ -60,7 +60,7 @@ Creates a Continue instance with a pre-configured OpenAI client and assistant.
 - `apiKey` (string, required): Your Continue API key
 - `assistant` (string, optional): The assistant identifier in the format `owner-slug/assistant-slug`
 - `organizationId` (string, optional): Optional organization ID
-- `baseURL` (string, optional): Base URL for the Continue API (defaults to `https://api.continue.dev/`)
+- `baseURL` (string, required): Base URL for a compatible API. NextCLI does not provide a hosted API.
 
 #### Returns
 

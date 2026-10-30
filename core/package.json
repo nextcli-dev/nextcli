@@ -1,7 +1,7 @@
 {
   "name": "@continuedev/core",
   "version": "1.1.0",
-  "description": "The Continue Core contains functionality that can be shared across web, VS Code, or Node.js",
+  "description": "NextCLI core. Shared functionality for the web UI, VS Code extension, and Node.js.",
   "scripts": {
     "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest",
     "vitest": "vitest run",
@@ -13,7 +13,7 @@
     "lint:fix": "eslint . --ext ts --fix"
   },
   "type": "module",
-  "author": "Continue Dev, Inc",
+  "author": "NextCLI",
   "license": "Apache-2.0",
   "devDependencies": {
     "@babel/preset-env": "^7.24.7",

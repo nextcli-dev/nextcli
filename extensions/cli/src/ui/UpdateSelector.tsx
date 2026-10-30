@@ -78,7 +78,7 @@ export const UpdateSelector: React.FC<UpdateSelectorProps> = ({ onCancel }) => {
 
   return (
     <Selector
-      title="Update Continue CLI"
+      title="Update NextCLI CLI"
       options={options}
       selectedIndex={selectedIndex}
       loading={!!isWorking}

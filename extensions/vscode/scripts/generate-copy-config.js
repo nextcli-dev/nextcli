@@ -37,30 +37,6 @@ async function copyConfigSchema() {
       "<p>If set to <code>merge</code>, <code>.continuerc.json</code> will be applied on top of <code>config.json</code> (arrays and objects are merged). If set to <code>overwrite</code>, then every top-level property of <code>.continuerc.json</code> will overwrite that property from <code>config.json</code>.</p>",
   };
   fs.writeFileSync("continue_rc_schema.json", JSON.stringify(schema, null, 2));
-
-  // Copy config schemas to intellij
-  fs.copyFileSync(
-    "config_schema.json",
-    path.join(
-      "..",
-      "intellij",
-      "src",
-      "main",
-      "resources",
-      "config_schema.json",
-    ),
-  );
-  fs.copyFileSync(
-    "continue_rc_schema.json",
-    path.join(
-      "..",
-      "intellij",
-      "src",
-      "main",
-      "resources",
-      "continue_rc_schema.json",
-    ),
-  );
 }
 
 process.on("message", (msg) => {
@@ -102,7 +78,7 @@ async function generateAndCopyConfigYamlSchema() {
     });
   });
 
-  // Copy config schemas to intellij
+  // Write continue_rc_schema.json for the VS Code extension
   const copyConfigSchemaChild = fork(
     path.join(__dirname, "generate-copy-config.js"),
     {

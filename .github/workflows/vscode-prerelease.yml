@@ -1,16 +1,21 @@
 name: VSCode Pre-release
 
+# Disabled until NextCLI has its own publish credentials and extension IDs.
+# Restore the commented triggers to turn this workflow back on.
+# on:
+#   workflow_dispatch:
+#     inputs:
+#       main_commit_sha:
+#         description: "Main branch commit SHA to create pre-release from - leave empty to use HEAD of main"
+#         required: false
+#         type: string
+#       prerelease_version:
+#         description: "New pre-release version (e.g., 1.3.15) - leave empty to auto-increment"
+#         required: false
+#         type: string
+#
 on:
   workflow_dispatch:
-    inputs:
-      main_commit_sha:
-        description: "Main branch commit SHA to create pre-release from - leave empty to use HEAD of main"
-        required: false
-        type: string
-      prerelease_version:
-        description: "New pre-release version (e.g., 1.3.15) - leave empty to auto-increment"
-        required: false
-        type: string
 
 permissions:
   contents: write
