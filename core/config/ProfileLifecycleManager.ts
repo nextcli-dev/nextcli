@@ -2,7 +2,7 @@ import {
   ConfigResult,
   ConfigValidationError,
   FullSlug,
-} from "@continuedev/config-yaml";
+} from "@nextcli/config-yaml";
 
 import {
   BrowserSerializedContinueConfig,

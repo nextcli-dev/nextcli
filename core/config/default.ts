@@ -1,4 +1,4 @@
-import { ConfigYaml } from "@continuedev/config-yaml";
+import { ConfigYaml } from "@nextcli/config-yaml";
 
 export const defaultConfig: ConfigYaml = {
   name: "Main Config",

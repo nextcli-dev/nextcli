@@ -1,4 +1,4 @@
-import type { AssistantUnrolled } from "@continuedev/config-yaml";
+import type { AssistantUnrolled } from "@nextcli/config-yaml";
 import {
   beforeEach,
   describe,

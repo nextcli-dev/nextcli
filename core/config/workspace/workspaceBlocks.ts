@@ -4,7 +4,7 @@ import {
   createPromptMarkdown,
   createRuleMarkdown,
   sanitizeRuleName,
-} from "@continuedev/config-yaml";
+} from "@nextcli/config-yaml";
 import * as YAML from "yaml";
 import { IDE } from "../..";
 import { getContinueGlobalPath } from "../../util/paths";

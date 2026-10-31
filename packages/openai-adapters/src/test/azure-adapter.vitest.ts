@@ -4,8 +4,8 @@ import { runAdapterTest } from "./adapter-test-utils.js";
 
 // Mock the fetch package (the OpenAI client is stubbed directly, but the
 // shared test helper also patches this module).
-vi.mock("@continuedev/fetch", async () => {
-  const actual = await vi.importActual("@continuedev/fetch");
+vi.mock("@nextcli/fetch", async () => {
+  const actual = await vi.importActual("@nextcli/fetch");
   return {
     ...actual,
     fetchwithRequestOptions: vi.fn(),

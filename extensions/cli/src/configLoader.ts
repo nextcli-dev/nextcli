@@ -9,7 +9,7 @@ import {
   RegistryClient,
   unrollAssistant,
   unrollAssistantFromContent,
-} from "@continuedev/config-yaml";
+} from "@nextcli/config-yaml";
 import { DefaultApiInterface } from "@continuedev/sdk/dist/api/dist/index.js";
 import chalk from "chalk";
 

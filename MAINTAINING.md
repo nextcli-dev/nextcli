@@ -23,7 +23,7 @@ These stay so current installs, imports, and published package names keep workin
 
 | Identifier       | Current value                                  | Later value                |
 | ---------------- | ---------------------------------------------- | -------------------------- |
-| npm scope        | `@continuedev/*`                               | `@nextcli/*`               |
+| npm scope        | `@nextcli/cli` and the four libraries below; other packages stay `@continuedev/*` | remaining `@continuedev/*` packages |
 | CLI command      | `cn`                                           | `nextcli`                  |
 | Config directory | `~/.continue`, `.continue/`, `.continueignore` | migrate into `~/.nextcli`  |
 
@@ -50,7 +50,7 @@ Active workflows, adapted only where they named the Continue repository:
 - `.github/workflows/pr-build-upload-vsix.yaml`
 - `delete-stale-branches.yaml`, `label-merged-prs.yml`, `stale-issue-helper.yaml`
 
-`release-cli.yml` is manual on purpose (`workflow_dispatch` with a version input). The other release and preview workflows are limited to `workflow_dispatch`, and their original triggers are commented at the top of each file. Turn one of those back on only after the secrets below exist, and point `repository:` at `nextcli-dev/nextcli`.
+`release-cli.yml` is manual on purpose (`workflow_dispatch` with a version input). The four library releases are also manual: each takes a `patch`, `minor`, or `major` bump and reads the current version from npm. Extension preview workflows stay on `workflow_dispatch`, with their original triggers commented at the top of each file.
 
 Removed because they existed for Continue's own operations: CLA assistant, Continue agents, auto-fix-failed-tests, Snyk agent, metrics, similar-issues, auto-assign, the weekly tidy-up agent, and Runloop blueprint upload.
 
@@ -70,6 +70,18 @@ The first publish has to use a token, because trusted publishing can only be tur
 4. Delete the `NPM_TOKEN` secret and revoke the token. Later releases leave `NPM_TOKEN` unset and use the workflow's OIDC token.
 
 `extensions/cli/LICENSE` and `extensions/cli/NOTICE` are copies of the repository root files. npm only packs files inside the package directory. Update both copies when the root files change.
+
+## Releasing the libraries
+
+`@nextcli/fetch`, `@nextcli/config-yaml`, `@nextcli/llm-info`, and `@nextcli/openai-adapters` are published by the matching `release-*.yml` workflows. Each run takes `bump` (`patch`, `minor`, or `major`) and `dry_run` (default true). npm is the record of the current version. The workflow reads `npm view <name> version`, applies the bump, and publishes that version. It does not commit the new version back to git.
+
+If the package is not on npm yet, the version in `package.json` is the starting point. Those values continue Continue's numbering: fetch `1.9.0`, config-yaml `1.42.0`, llm-info `1.8.0`, openai-adapters `1.37.0`. The first real publish with `bump: patch` is one patch above that.
+
+Run each workflow from `main`. Use `dry_run: true` first. A run with `dry_run: false` publishes and creates a GitHub release tagged `@nextcli/<name>@<version>` without marking it Latest.
+
+Publish `fetch`, `llm-info`, and `config-yaml` before `openai-adapters`. `openai-adapters` depends on `@nextcli/config-yaml` and `@nextcli/fetch`, and its lockfile still points at the old `@continuedev` tarballs until `npm install` is run in `packages/openai-adapters` and `packages/continue-sdk` after those two packages exist on npm.
+
+`SEMANTIC_RELEASE_NPM_TOKEN` is the npm token these four workflows use. The name is historical. They no longer run semantic-release.
 
 ## Secrets needed before publishing
 

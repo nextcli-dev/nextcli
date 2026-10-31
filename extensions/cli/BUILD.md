@@ -2,7 +2,7 @@
 
 ## Overview
 
-The NextCLI CLI uses esbuild to bundle the application along with local packages (`@continuedev/config-yaml` and `@continuedev/openai-adapters`) into a single distributable file. This ensures that users who install the CLI from npm don't need to worry about local file references.
+The NextCLI CLI uses esbuild to bundle the application along with local packages (`@nextcli/config-yaml` and `@nextcli/openai-adapters`) into a single distributable file. This ensures that users who install the CLI from npm don't need to worry about local file references.
 
 ## Build Steps
 
@@ -19,7 +19,7 @@ The NextCLI CLI uses esbuild to bundle the application along with local packages
 The `build.mjs` script uses esbuild to:
 
 - Bundle all TypeScript/JavaScript code into a single ES module
-- Include local packages (`@continuedev/config-yaml`, `@continuedev/openai-adapters`) directly in the bundle
+- Include local packages (`@nextcli/config-yaml`, `@nextcli/openai-adapters`) directly in the bundle
 - Keep problematic or native dependencies external (e.g., `winston`, `express`)
 - Create a wrapper script (`dist/cn.js`) with the proper shebang for CLI execution
 

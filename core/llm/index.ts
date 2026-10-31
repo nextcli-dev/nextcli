@@ -1,11 +1,11 @@
-import { ModelRole } from "@continuedev/config-yaml";
-import { fetchwithRequestOptions } from "@continuedev/fetch";
-import { findLlmInfo } from "@continuedev/llm-info";
+import { ModelRole } from "@nextcli/config-yaml";
+import { fetchwithRequestOptions } from "@nextcli/fetch";
+import { findLlmInfo } from "@nextcli/llm-info";
 import {
   BaseLlmApi,
   ChatCompletionCreateParams,
   constructLlmApi,
-} from "@continuedev/openai-adapters";
+} from "@nextcli/openai-adapters";
 import Handlebars from "handlebars";
 
 import { DevDataSqliteDb } from "../data/devdataSqlite.js";
@@ -215,7 +215,7 @@ export abstract class BaseLLM implements ILLM {
     };
 
     this.model = options.model;
-    // Use @continuedev/llm-info package to autodetect certain parameters
+    // Use @nextcli/llm-info package to autodetect certain parameters
     const llmInfo = findLlmInfo(this.model, this.underlyingProviderName);
 
     const templateType =

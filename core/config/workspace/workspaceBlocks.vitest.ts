@@ -1,4 +1,4 @@
-import { BlockType, RULE_FILE_EXTENSION } from "@continuedev/config-yaml";
+import { BlockType, RULE_FILE_EXTENSION } from "@nextcli/config-yaml";
 import { describe, expect, test } from "vitest";
 import { findAvailableFilename, getFileContent } from "./workspaceBlocks";
 

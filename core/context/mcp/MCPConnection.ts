@@ -6,7 +6,7 @@ import { fileURLToPath } from "url";
 import {
   decodeSecretLocation,
   getTemplateVariables,
-} from "@continuedev/config-yaml";
+} from "@nextcli/config-yaml";
 import {
   SSEClientTransport,
   SseError,

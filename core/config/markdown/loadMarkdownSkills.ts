@@ -1,7 +1,7 @@
 import {
   ConfigValidationError,
   parseMarkdownRule,
-} from "@continuedev/config-yaml";
+} from "@nextcli/config-yaml";
 import z from "zod";
 import { IDE, Skill } from "../..";
 import { walkDir } from "../../indexing/walkDir";

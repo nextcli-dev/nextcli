@@ -23,8 +23,7 @@ Open VSX publishing does not use a secret. `main.yaml` publishes with trusted pu
 
 | Secret                          | Purpose                                                     | Referenced In                                                                                                                 |
 | ------------------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `SEMANTIC_RELEASE_GITHUB_TOKEN` | GitHub token used by semantic-release for creating releases | `release-openai-adapters.yml`, `release-config-yaml.yml`, `release-fetch.yml`, `release-llm-info.yml`, `reusable-release.yml` |
-| `SEMANTIC_RELEASE_NPM_TOKEN`    | npm token used by semantic-release for publishing packages  | `release-openai-adapters.yml`, `release-config-yaml.yml`, `release-fetch.yml`, `release-llm-info.yml`, `reusable-release.yml` |
+| `SEMANTIC_RELEASE_NPM_TOKEN`    | npm token used to publish `@nextcli/fetch`, `@nextcli/config-yaml`, `@nextcli/llm-info`, and `@nextcli/openai-adapters`. The workflow computes the version from the latest npm release plus a patch, minor, or major input. | `release-openai-adapters.yml`, `release-config-yaml.yml`, `release-fetch.yml`, `release-llm-info.yml`, `reusable-release.yml` |
 | `NPM_TOKEN`                     | Short-lived npm token used only to bootstrap `@nextcli/cli`. Delete it after trusted publishing is configured for `release-cli.yml`. | `release-cli.yml`                                                                                          |
 
 ---
@@ -49,8 +48,8 @@ Used for integration tests in PR checks and package releases.
 
 | Secret             | Purpose                                                         | Referenced In                                                                                                         |
 | ------------------ | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `GITHUB_TOKEN`     | Default GitHub Actions token (automatic)                        | Many workflows                                                                                                        |
-| `CI_GITHUB_TOKEN`  | Elevated GitHub PAT for cross-repo operations and PR management | `preview.yaml`, `main.yaml`, `pr-checks.yaml`                                                                         |
+| `GITHUB_TOKEN`     | Default GitHub Actions token (automatic). Attaches VSIX files to releases and assigns issues. | Many workflows, including `main.yaml`, `preview.yaml`, and `auto-assign-issue.yaml` |
+| `NEXTCLI_APP_PRIVATE_KEY` | Private key of the NextCLI Automation GitHub App. Jobs mint a one-hour installation token with `actions/create-github-app-token`. The pre-release version-bump pull request uses a token for the current repository. Extension `npm ci` uses an installation-wide token so `@vscode/ripgrep` can read public release assets. The client ID is the repository variable `NEXTCLI_APP_CLIENT_ID`, not a secret. | `preview.yaml`, `main.yaml`, `pr-checks.yaml`, `pr-build-upload-vsix.yaml` |
 | `NEXTCLI_API_KEY` | NextCLI platform API key for agent workflows                    | `run-continue-agent.yml`, `tidy-up-codebase.yml`, `snyk-agent.yaml`, `auto-fix-failed-tests.yml`, `cli-pr-checks.yml` |
 | `RUNLOOP_API_KEY`  | Runloop API key for uploading sandbox blueprints                | `upload-runloop-blueprint.yml`                                                                                    |
 | `SNYK_TOKEN`       | Snyk security scanning token                                    | `snyk-agent.yaml`                                                                                                     |

@@ -6,7 +6,7 @@ import {
   McpJsonConfig,
   mcpServersJsonSchema,
   RequestOptions,
-} from "@continuedev/config-yaml";
+} from "@nextcli/config-yaml";
 import * as JSONC from "comment-json";
 import ignore from "ignore";
 import { IDE, InternalMcpOptions } from "../../..";

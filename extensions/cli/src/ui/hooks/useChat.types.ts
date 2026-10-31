@@ -1,5 +1,5 @@
-import { AssistantUnrolled, ModelConfig } from "@continuedev/config-yaml";
-import { BaseLlmApi } from "@continuedev/openai-adapters";
+import { AssistantUnrolled, ModelConfig } from "@nextcli/config-yaml";
+import { BaseLlmApi } from "@nextcli/openai-adapters";
 import type { Session } from "core/index.js";
 
 import { QuestionRequestedEvent } from "../../services/QuizService.js";

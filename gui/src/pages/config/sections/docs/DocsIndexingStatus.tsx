@@ -1,4 +1,4 @@
-import { ConfigYaml } from "@continuedev/config-yaml";
+import { ConfigYaml } from "@nextcli/config-yaml";
 import {
   ArrowPathIcon,
   PencilIcon,

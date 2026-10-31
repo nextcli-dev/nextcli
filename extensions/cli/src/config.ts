@@ -1,9 +1,9 @@
-import { AssistantUnrolled, ModelConfig } from "@continuedev/config-yaml";
+import { AssistantUnrolled, ModelConfig } from "@nextcli/config-yaml";
 import {
   BaseLlmApi,
   constructLlmApi,
   LLMConfig,
-} from "@continuedev/openai-adapters";
+} from "@nextcli/openai-adapters";
 import {
   Configuration,
   DefaultApi,

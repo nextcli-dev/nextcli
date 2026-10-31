@@ -5,7 +5,7 @@ import {
   ConfigResult,
   ConfigValidationError,
   PackageIdentifier,
-} from "@continuedev/config-yaml";
+} from "@nextcli/config-yaml";
 
 import {
   ContinueConfig,

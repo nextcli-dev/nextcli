@@ -1,8 +1,8 @@
-# @continuedev/llm-info
+# @nextcli/llm-info
 
 A lightweight package providing information about various Large Language Models (LLMs), including embedding, reranking, and other models.
 
-Whereas @continuedev/openai-adapters is responsible for translation between API types, @continuedev/llm-info is concerned with
+Whereas @nextcli/openai-adapters is responsible for translation between API types, @nextcli/llm-info is concerned with
 
 - Templates
 - Capabilities (e.g. tools, images, streaming, predicted outputs, etc.)

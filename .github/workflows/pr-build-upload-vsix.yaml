@@ -28,6 +28,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.NEXTCLI_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NEXTCLI_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
       - name: Build VS Code extension
         uses: ./.github/actions/build-vscode-extension
         with:
@@ -36,7 +44,7 @@ jobs:
           npm_config_arch: ${{ matrix.arch }}
           pre-release: false
           commit-sha: ${{ github.sha }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ steps.app-token.outputs.token }}
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v7

@@ -54,8 +54,8 @@
     "provenance": true
   },
   "devDependencies": {
-    "@continuedev/config-yaml": "file:../../packages/config-yaml",
-    "@continuedev/openai-adapters": "file:../../packages/openai-adapters",
+    "@nextcli/config-yaml": "file:../../packages/config-yaml",
+    "@nextcli/openai-adapters": "file:../../packages/openai-adapters",
     "@continuedev/sdk": "^0.0.13",
     "@continuedev/terminal-security": "file:../../packages/terminal-security",
     "@modelcontextprotocol/sdk": "^1.24.0",

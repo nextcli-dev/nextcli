@@ -1,4 +1,4 @@
-import { ConfigResult, ConfigValidationError } from "@continuedev/config-yaml";
+import { ConfigResult, ConfigValidationError } from "@nextcli/config-yaml";
 
 import {
   BrowserSerializedContinueConfig,

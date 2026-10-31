@@ -9,7 +9,7 @@ import {
   AgentFile,
   ModelConfig,
   parseAgentFile,
-} from "@continuedev/config-yaml";
+} from "@nextcli/config-yaml";
 
 import { logger } from "./util/logger.js";
 

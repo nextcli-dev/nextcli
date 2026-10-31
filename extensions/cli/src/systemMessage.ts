@@ -2,7 +2,7 @@ import { execSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 
-import { parseMarkdownRule, RuleObject } from "@continuedev/config-yaml";
+import { parseMarkdownRule, RuleObject } from "@nextcli/config-yaml";
 
 import { env } from "./env.js";
 import { processRule } from "./hubLoader.js";

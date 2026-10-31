@@ -95,13 +95,21 @@ jobs:
         with:
           node-version-file: ".nvmrc"
 
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.NEXTCLI_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NEXTCLI_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
       - uses: ./.github/actions/build-vscode-extension
         with:
           platform: ${{ matrix.platform }}
           arch: ${{ matrix.arch }}
           npm_config_arch: ${{ matrix.npm_config_arch }}
           pre-release: false
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ steps.app-token.outputs.token }}
 
       - name: Upload .vsix artifact
         uses: actions/upload-artifact@v7
@@ -137,7 +145,7 @@ jobs:
           tag_name: ${{ github.ref_name }}
           files: |
             vsix-artifacts/*.vsix
-          token: ${{ secrets.CI_GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           repository: nextcli-dev/nextcli
 
   publish:

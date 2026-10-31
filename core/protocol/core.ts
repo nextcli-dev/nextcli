@@ -3,7 +3,7 @@ import {
   ConfigResult,
   DevDataLogEvent,
   ModelRole,
-} from "@continuedev/config-yaml";
+} from "@nextcli/config-yaml";
 import { ToolPolicy } from "@continuedev/terminal-security";
 
 import {

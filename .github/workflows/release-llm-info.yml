@@ -1,31 +1,41 @@
-name: Release @continuedev/llm-info
-# Disabled until NextCLI has its own publish credentials and extension IDs.
-# Restore the commented triggers to turn this workflow back on.
-# on:
-#   push:
-#     branches:
-#       - main
-#     paths:
-#       - "packages/llm-info/**"
-#       - ".github/workflows/release-llm-info.yml"
-#       - ".github/workflows/reusable-release.yml"
-#
+name: Release @nextcli/llm-info
+
 on:
   workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump from the latest published version"
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+      dry_run:
+        description: "Verify without publishing or tagging"
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: write
-  issues: write
-  pull-requests: write
+  id-token: write
 
 jobs:
   release:
-    # Only run this workflow on the main repository (nextcli-dev/nextcli)
     if: github.repository == 'nextcli-dev/nextcli'
     uses: ./.github/workflows/reusable-release.yml
     with:
-      package-name: "llm-info"
-      package-path: "packages/llm-info"
+      package-path: packages/llm-info
+      bump: ${{ inputs.bump }}
+      dry_run: ${{ inputs.dry_run }}
     secrets:
-      SEMANTIC_RELEASE_GITHUB_TOKEN: ${{ secrets.SEMANTIC_RELEASE_GITHUB_TOKEN }}
       SEMANTIC_RELEASE_NPM_TOKEN: ${{ secrets.SEMANTIC_RELEASE_NPM_TOKEN }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+      VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+      RELACE_API_KEY: ${{ secrets.RELACE_API_KEY }}
+      INCEPTION_API_KEY: ${{ secrets.INCEPTION_API_KEY }}

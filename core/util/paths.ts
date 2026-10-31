@@ -4,7 +4,7 @@ import * as path from "path";
 import * as URI from "uri-js";
 import * as YAML from "yaml";
 
-import { ConfigYaml, DevEventName } from "@continuedev/config-yaml";
+import { ConfigYaml, DevEventName } from "@nextcli/config-yaml";
 import * as JSONC from "comment-json";
 import dotenv from "dotenv";
 

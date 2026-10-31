@@ -1,4 +1,4 @@
-import { ConfigResult } from "@continuedev/config-yaml";
+import { ConfigResult } from "@nextcli/config-yaml";
 import type {
   BrowserSerializedContinueConfig,
   ContextItemWithId,

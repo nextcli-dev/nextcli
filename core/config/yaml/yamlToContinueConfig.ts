@@ -3,7 +3,7 @@ import {
   mergeConfigYamlRequestOptions,
   RequestOptions,
   Rule,
-} from "@continuedev/config-yaml";
+} from "@nextcli/config-yaml";
 import {
   InternalMcpOptions,
   InternalSseMcpOptions,

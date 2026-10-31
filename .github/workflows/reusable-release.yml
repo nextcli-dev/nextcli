@@ -1,64 +1,113 @@
 name: Reusable Release Workflow
 
-# Disabled until NextCLI has its own publish credentials and extension IDs.
-# Restore the commented triggers to turn this workflow back on.
-# on:
-#   workflow_call:
-#     inputs:
-#       package-name:
-#         required: true
-#         type: string
-#       package-path:
-#         required: true
-#         type: string
-#     secrets:
-#       SEMANTIC_RELEASE_GITHUB_TOKEN:
-#         required: true
-#       SEMANTIC_RELEASE_NPM_TOKEN:
-#         required: true
-#       OPENAI_API_KEY:
-#         required: false
-#       ANTHROPIC_API_KEY:
-#         required: false
-#       GEMINI_API_KEY:
-#         required: false
-#       MISTRAL_API_KEY:
-#         required: false
-#       VOYAGE_API_KEY:
-#         required: false
-#       RELACE_API_KEY:
-#         required: false
-#       INCEPTION_API_KEY:
-#         required: false
-#
 on:
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      package-path:
+        description: "Path to the package directory"
+        required: true
+        type: string
+      bump:
+        description: "patch, minor, or major"
+        required: true
+        type: string
+      dry_run:
+        description: "Verify without publishing or tagging"
+        required: true
+        type: boolean
+    secrets:
+      SEMANTIC_RELEASE_NPM_TOKEN:
+        required: true
+      OPENAI_API_KEY:
+        required: false
+      ANTHROPIC_API_KEY:
+        required: false
+      GEMINI_API_KEY:
+        required: false
+      MISTRAL_API_KEY:
+        required: false
+      VOYAGE_API_KEY:
+        required: false
+      RELACE_API_KEY:
+        required: false
+      INCEPTION_API_KEY:
+        required: false
 
 permissions:
   contents: write
-  issues: write
-  pull-requests: write
+  id-token: write
 
 jobs:
   release:
-    name: Release ${{ inputs.package-name }}
+    name: Release ${{ inputs.package-path }}
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ${{ inputs.package-path }}
+    env:
+      BUMP: ${{ inputs.bump }}
+      DRY_RUN: ${{ inputs.dry_run }}
+      NODE_AUTH_TOKEN: ${{ secrets.SEMANTIC_RELEASE_NPM_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
 
-      - name: Setup packages
-        uses: ./.github/actions/setup-packages
-
-      - name: Use Node.js from .nvmrc
+      - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version-file: ".nvmrc"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Require main
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "Library releases run from main (got ${GITHUB_REF})."
+            exit 1
+          fi
+
+      - name: Compute the next version
+        id: version
+        run: |
+          set -euo pipefail
+          case "$BUMP" in
+            patch|minor|major) ;;
+            *)
+              echo "bump must be patch, minor, or major (got ${BUMP})."
+              exit 1
+              ;;
+          esac
+          name=$(node -p "require('./package.json').name")
+          current=$(npm view "$name" version 2>/dev/null || true)
+          current=$(printf '%s\n' "$current" | tail -n 1)
+          if [ -n "$current" ]; then
+            base="$current"
+          else
+            base=$(node -p "require('./package.json').version")
+            echo "${name} is not on npm. Starting from package.json version ${base}."
+          fi
+          next=$(npx --yes semver@7 -i "$BUMP" "$base")
+          if npm view "${name}@${next}" version >/dev/null 2>&1; then
+            echo "${name}@${next} is already on npm."
+            exit 1
+          fi
+          echo "name=${name}" >> "$GITHUB_OUTPUT"
+          echo "next=${next}" >> "$GITHUB_OUTPUT"
+          echo "Next version is ${name}@${next} (${BUMP} from ${base})."
+
+      - name: Require published @nextcli dependencies
+        run: |
+          set -euo pipefail
+          deps=$(node -e 'const pkg=require("./package.json"); const deps={...pkg.dependencies,...pkg.optionalDependencies,...pkg.peerDependencies}; process.stdout.write(Object.keys(deps).filter((name)=>name.startsWith("@nextcli/")).join("\n"));')
+          if [ -z "$deps" ]; then
+            exit 0
+          fi
+          while IFS= read -r dep; do
+            if ! npm view "$dep" version >/dev/null 2>&1; then
+              echo "${dep} is not on npm. Publish it before this package."
+              exit 1
+            fi
+          done <<< "$deps"
 
       - name: Install dependencies
         run: npm ci
@@ -77,9 +126,34 @@ jobs:
           RELACE_API_KEY: ${{ secrets.RELACE_API_KEY }}
           INCEPTION_API_KEY: ${{ secrets.INCEPTION_API_KEY }}
 
-      - name: Release
+      - name: Stamp version
+        run: npm version "${{ steps.version.outputs.next }}" --no-git-tag-version
+
+      - name: Publish to npm
+        run: |
+          set -euo pipefail
+          if [ "$DRY_RUN" = "true" ]; then
+            npm publish --access public --provenance --dry-run
+            echo "Dry run only. Nothing was published."
+          else
+            npm publish --access public --provenance
+            echo "Published ${{ steps.version.outputs.name }}@${{ steps.version.outputs.next }}"
+          fi
+
+      - name: Create the GitHub release
+        if: inputs.dry_run == false
+        working-directory: .
         env:
-          GITHUB_TOKEN: ${{ secrets.SEMANTIC_RELEASE_GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.SEMANTIC_RELEASE_NPM_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.SEMANTIC_RELEASE_NPM_TOKEN }}
-        run: npx semantic-release
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE_NAME: ${{ steps.version.outputs.name }}
+          VERSION: ${{ steps.version.outputs.next }}
+        run: |
+          set -euo pipefail
+          git config user.email "action@github.com"
+          git config user.name "GitHub Action"
+          git tag "${PACKAGE_NAME}@${VERSION}"
+          git push origin "${PACKAGE_NAME}@${VERSION}"
+          gh release create "${PACKAGE_NAME}@${VERSION}" \
+            --title "${PACKAGE_NAME}@${VERSION}" \
+            --notes "Release ${VERSION} of ${PACKAGE_NAME}." \
+            --latest=false

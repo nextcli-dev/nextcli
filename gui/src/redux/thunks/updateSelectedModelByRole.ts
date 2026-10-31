@@ -1,4 +1,4 @@
-import { ModelRole } from "@continuedev/config-yaml";
+import { ModelRole } from "@nextcli/config-yaml";
 import { createAsyncThunk } from "@reduxjs/toolkit";
 import { ProfileDescription } from "core/config/ProfileLifecycleManager";
 import { updateConfig } from "../slices/configSlice";

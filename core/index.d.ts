@@ -3,7 +3,7 @@ import {
   ModelRole,
   PromptTemplates,
   ToolOverrideConfig,
-} from "@continuedev/config-yaml";
+} from "@nextcli/config-yaml";
 import { ToolPolicy } from "@continuedev/terminal-security";
 import { McpUiResourceMeta } from "@modelcontextprotocol/ext-apps";
 import { TextResourceContents } from "@modelcontextprotocol/sdk/types.js";

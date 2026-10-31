@@ -100,8 +100,6 @@ jobs:
         with:
           component: gui
           include-packages: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.CI_GITHUB_TOKEN }}
 
       - name: Type check and lint
         run: |
@@ -147,13 +145,20 @@ jobs:
         with:
           component: core
           include-root: true
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.NEXTCLI_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NEXTCLI_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
       - name: Setup vscode component
         uses: ./.github/actions/setup-component
         with:
           component: vscode
           include-packages: false
         env:
-          GITHUB_TOKEN: ${{ secrets.CI_GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
 
       - name: Type check and lint
         run: |
@@ -251,6 +256,14 @@ jobs:
           path: extensions/vscode/node_modules
           key: ${{ runner.os }}-vscode-node-modules-${{ hashFiles('extensions/vscode/package-lock.json') }}
 
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.NEXTCLI_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NEXTCLI_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
       - name: Build packages and get test files
         id: vscode-get-test-file-matrix
         run: |
@@ -269,8 +282,8 @@ jobs:
           echo "$FILES" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
         env:
-          # https://github.com/microsoft/vscode-ripgrep/issues/9#issuecomment-643965333
-          GITHUB_TOKEN: ${{ secrets.CI_GITHUB_TOKEN }}
+          # @vscode/ripgrep reads a public GitHub release. The default token cannot.
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
 
       - name: Debug Outputs
         run: |
@@ -284,6 +297,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.NEXTCLI_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NEXTCLI_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
       - name: Build VS Code extension
         uses: ./.github/actions/build-vscode-extension
         with:
@@ -292,7 +313,7 @@ jobs:
           npm_config_arch: x64
           pre-release: false
           commit-sha: ${{ github.sha }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ steps.app-token.outputs.token }}
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
@@ -313,6 +334,13 @@ jobs:
         command: ["e2e:ci:run", "e2e:ci:run-yaml"]
     steps:
       - uses: actions/checkout@v6
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.NEXTCLI_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NEXTCLI_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
       - name: Run VS Code E2E test
         uses: ./.github/actions/run-vscode-e2e-test
         with:
@@ -321,7 +349,7 @@ jobs:
           ssh_key: ${{ secrets.GH_ACTIONS_SSH_TEST_KEY_PEM }}
           ssh_host: ${{ secrets.GH_ACTIONS_SSH_TEST_DNS_NAME }}
           is_fork: ${{ github.event.pull_request.head.repo.fork == true || github.actor == 'dependabot[bot]' }}
-          github_token: ${{ secrets.CI_GITHUB_TOKEN }}
+          github_token: ${{ steps.app-token.outputs.token }}
 
   # GitHub does not have a way of requiring that all checks pass (you must manually select each job)
   # This action at least lets us manage the list of required tests via source control

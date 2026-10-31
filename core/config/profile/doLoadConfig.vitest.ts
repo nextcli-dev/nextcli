@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { PackageIdentifier } from "@continuedev/config-yaml";
+import type { PackageIdentifier } from "@nextcli/config-yaml";
 
 // Mock heavy dependencies before importing doLoadConfig
 const stubConfig = {

@@ -51,11 +51,11 @@ try {
 
     // Handle TypeScript paths and local packages
     alias: {
-      "@continuedev/config-yaml": resolve(
+      "@nextcli/config-yaml": resolve(
         __dirname,
         "../../packages/config-yaml/dist/index.js",
       ),
-      "@continuedev/openai-adapters": resolve(
+      "@nextcli/openai-adapters": resolve(
         __dirname,
         "../../packages/openai-adapters/dist/index.js",
       ),
@@ -64,11 +64,11 @@ try {
         "../../packages/config-types/dist/index.js",
       ),
       core: resolve(__dirname, "../../core"),
-      "@continuedev/fetch": resolve(
+      "@nextcli/fetch": resolve(
         __dirname,
         "../../packages/fetch/dist/index.js",
       ),
-      "@continuedev/llm-info": resolve(
+      "@nextcli/llm-info": resolve(
         __dirname,
         "../../packages/llm-info/dist/index.js",
       ),
