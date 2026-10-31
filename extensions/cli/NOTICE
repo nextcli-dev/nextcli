@@ -1,0 +1,24 @@
+NextCLI
+Copyright 2026 NextCLI contributors
+
+This project is a community continuation of Continue, originally developed by
+Continue Dev, Inc. (https://github.com/continuedev/continue) and distributed
+under the Apache License, Version 2.0. The original copyright notice is
+retained in the LICENSE file.
+
+This distribution changes user-facing branding from Continue to NextCLI and
+turns off calls to Continue-hosted services:
+
+- Docs, extension display names, and the CLI banner say NextCLI.
+- Repository links for this project point at https://github.com/nextcli-dev/nextcli.
+- There is no default hosted API. api.nextcli.dev, hub sign-in, and the
+  model proxy are not used unless NEXTCLI_API_BASE or an explicit base URL
+  is set.
+- Anonymous telemetry is off unless it is explicitly enabled, and it is not
+  sent to Continue. Sentry is not initialized unless NEXTCLI_SENTRY_DSN is
+  provided. This tree no longer contains a hard-coded Continue Sentry DSN.
+
+The following identifiers are unchanged so existing installs keep working:
+the VS Code publisher and extension id, the
+`cn` command, and the ~/.continue config directory. NextCLI does not ship a
+JetBrains plugin. In a JetBrains IDE, run `cn` in the terminal.
