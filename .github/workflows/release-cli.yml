@@ -1,0 +1,164 @@
+name: CLI Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (for example 0.1.0)"
+        required: true
+        type: string
+      dry_run:
+        description: "Pack and verify without publishing or tagging"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    name: CLI Release
+    runs-on: ubuntu-latest
+    if: github.repository == 'nextcli-dev/nextcli'
+    env:
+      VERSION: ${{ inputs.version }}
+      DRY_RUN: ${{ inputs.dry_run }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Validate version and branch
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "CLI releases run from main (got ${GITHUB_REF})."
+            exit 1
+          fi
+          if ! printf '%s' "$VERSION" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'; then
+            echo "version must be a semantic version (got ${VERSION})."
+            exit 1
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+
+      - name: Check the version is not already published
+        run: |
+          set -euo pipefail
+          if npm view "@nextcli/cli@${VERSION}" version >/dev/null 2>&1; then
+            echo "@nextcli/cli@${VERSION} is already on npm."
+            exit 1
+          fi
+          echo "@nextcli/cli@${VERSION} is not on npm."
+
+      - name: Setup packages
+        uses: ./.github/actions/setup-packages
+
+      - name: Setup core component
+        uses: ./.github/actions/setup-component
+        with:
+          component: core
+          include-root: true
+
+      - name: Build core
+        run: |
+          cd core
+          npm run build
+
+      - name: Install CLI dependencies
+        working-directory: extensions/cli
+        run: npm ci
+
+      - name: Stamp version
+        working-directory: extensions/cli
+        run: npm version "$VERSION" --no-git-tag-version
+
+      - name: Build
+        working-directory: extensions/cli
+        run: npm run build
+
+      - name: Run tests
+        working-directory: extensions/cli
+        run: npm test
+
+      - name: Run smoke tests
+        working-directory: extensions/cli
+        run: npm run test:smoke
+
+      - name: Pack and install the tarball
+        working-directory: extensions/cli
+        run: |
+          set -euo pipefail
+          # prepack prints the build log on stdout, so npm pack --json is not valid JSON.
+          npm pack > "$RUNNER_TEMP/npm-pack.txt"
+          tarball="$(grep -E '^nextcli-cli-.+\.tgz$' "$RUNNER_TEMP/npm-pack.txt" | tail -n 1)"
+          if [ -z "$tarball" ] || [ ! -f "$tarball" ]; then
+            echo "Could not find the packed tarball."
+            cat "$RUNNER_TEMP/npm-pack.txt"
+            exit 1
+          fi
+          echo "Packed ${tarball}"
+          if tar -tzf "$tarball" | grep -E '(^|/)src/'; then
+            echo "Tarball contains source files."
+            exit 1
+          fi
+          for required in package/LICENSE package/NOTICE package/README.md package/package.json package/dist/cn.js package/dist/index.js; do
+            if ! tar -tzf "$tarball" | grep -qx "$required"; then
+              echo "Tarball is missing ${required}."
+              exit 1
+            fi
+          done
+          if tar -tzf "$tarball" | grep -qx 'package/dist/meta.json'; then
+            echo "Tarball contains dist/meta.json."
+            exit 1
+          fi
+          npm i -g --prefix "$RUNNER_TEMP/cn" "./$tarball"
+          installed="$("$RUNNER_TEMP/cn/bin/cn" --version | tail -n 1)"
+          if [ "$installed" != "$VERSION" ]; then
+            echo "Installed cn --version printed '${installed}', expected '${VERSION}'."
+            exit 1
+          fi
+
+      - name: Setup Node.js for publish
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Publish to npm
+        working-directory: extensions/cli
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${NODE_AUTH_TOKEN}" ]; then
+            # An empty token line from setup-node overrides trusted publishing.
+            npm config delete "//registry.npmjs.org/:_authToken"
+            unset NODE_AUTH_TOKEN
+          fi
+          if [ "$DRY_RUN" = "true" ]; then
+            npm publish --tag latest --dry-run
+            echo "Dry run only. Nothing was published."
+          else
+            npm publish --tag latest
+            echo "Published @nextcli/cli@${VERSION}"
+          fi
+
+      - name: Create the GitHub release
+        if: inputs.dry_run == false
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config user.email "action@github.com"
+          git config user.name "GitHub Action"
+          git tag "cli-v${VERSION}"
+          git push origin "cli-v${VERSION}"
+          gh release create "cli-v${VERSION}" \
+            --title "CLI Release v${VERSION}" \
+            --notes "Release v${VERSION} of @nextcli/cli, built and published from main." \
+            --latest
