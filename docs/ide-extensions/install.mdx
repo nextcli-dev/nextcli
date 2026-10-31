@@ -1,29 +1,22 @@
 ---
 title: "Install"
-description: "Get NextCLI installed in your favorite IDE in just a few steps."
+description: "Install the NextCLI VS Code extension. Config stays in ~/.continue. There is no hub account."
 ---
 
-<iframe
-  width="100%"
-  height="400"
-  src="https://www.youtube.com/embed/gjekTru4Cg4"
-  title="Install NextCLI VS Code Extension"
-  frameborder="0"
-  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-  allowfullscreen
-></iframe>
+NextCLI in VS Code is the open-source continuation of the Continue extension, maintained by the nextcli-dev organization. It does not use a Continue hub account and it does not sign you in. Model settings and rules are read from `~/.continue` on your machine, so a config you already wrote for Continue still applies.
+
+The public Marketplace listing is not published yet. Until it is, install a `.vsix` you build from the [NextCLI repository](https://github.com/nextcli-dev/nextcli).
 
 <Tabs>
 <Tab title="VS Code">
 
 <Steps>
-<Step title="Install from Marketplace">
-Click `Install` on the [NextCLI extension page in the Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=Continue.continue)
+<Step title="Install the extension">
+Package `extensions/vscode` in the NextCLI repository and install the `.vsix` from `extensions/vscode/build/`.
 </Step>
 
-<Step title="Install in VS Code">
-  This will open the NextCLI extension page in VS Code, where you will need to
-  click `Install` again
+<Step title="Open NextCLI in VS Code">
+After the VSIX is installed, the NextCLI logo appears in the sidebar.
 </Step>
 
 <Step title="Move to Right Sidebar">

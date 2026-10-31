@@ -378,12 +378,12 @@ jobs:
 
       - name: Install NextCLI CLI
         run: |
-          npm install -g @continuedev/cli
+          npm install -g @nextcli/cli
           echo "✅ NextCLI CLI installed"
 
       - name: Analyze Database Security
         env:
-          CONTINUE_API_KEY: ${{ secrets.CONTINUE_API_KEY }}
+          NEXTCLI_API_KEY: ${{ secrets.NEXTCLI_API_KEY }}
         run: |
           echo "🔍 Performing security audit..."
           
@@ -428,7 +428,7 @@ jobs:
 
 <Warning>
   **Required GitHub Secrets**:
-  - `CONTINUE_API_KEY`: Your NextCLI API key from [nextcli.dev/settings/api-keys](https://nextcli.dev/settings/api-keys)
+  - `NEXTCLI_API_KEY`: Your NextCLI API key from [nextcli.dev/settings/api-keys](https://nextcli.dev/settings/api-keys)
 
   Add this at: **Repository Settings → Secrets and variables → Actions**
 </Warning>
@@ -444,7 +444,7 @@ After completing this guide, you have a complete **AI-powered database managemen
 - **Provides insights** - Delivers actionable recommendations based on data patterns
 
 <Card title="Continuous AI Database Management" icon="shield-check">
-  Your system now operates at **[Level 2 Continuous AI](https://blog.continue.dev/what-is-continuous-ai-a-developers-guide/)** - AI handles routine database analysis and optimization with human oversight for migration approval.
+  AI handles routine database analysis and optimization with human oversight for migration approval.
 </Card>
 
 ## Advanced Database Prompts
@@ -511,4 +511,3 @@ If you encounter connection issues:
 - [Supabase Security Best Practices](https://supabase.com/docs/guides/database/security)
 - [Model Context Protocol Docs](https://modelcontextprotocol.io/introduction)
 - [NextCLI CLI Guide](https://docs.nextcli.dev/guides/cli)
-- [Continuous AI Best Practices](https://blog.continue.dev/what-is-continuous-ai-a-developers-guide/)

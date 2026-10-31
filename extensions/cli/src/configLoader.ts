@@ -257,7 +257,7 @@ async function loadFromSavedUri(
 function requireHostedApi(action: string): void {
   if (!env.apiBase) {
     throw new Error(
-      `NextCLI has no hosted API, so it cannot ${action}. Create ${path.join(env.continueHome, "config.yaml")} or set CONTINUE_API_BASE.`,
+      `NextCLI has no hosted API, so it cannot ${action}. Create ${path.join(env.continueHome, "config.yaml")} or set NEXTCLI_API_BASE.`,
     );
   }
 }

@@ -8,7 +8,6 @@ import { type NavGroup, type NavItem, type NavTab } from "@/config/docsNav";
 import { TableOfContents } from "./TableOfContents";
 import { DocsSearch } from "./DocsSearch";
 import { resolveHref } from "@/lib/resolveHref";
-import { withBasePath } from "@/lib/basePath";
 import type { Heading } from "@/lib/docs";
 
 /* ------------------------------------------------------------------ */
@@ -46,10 +45,7 @@ function slugToLabel(slug: string, titleMap?: Record<string, string>) {
 /*  Top nav constants                                                  */
 /* ------------------------------------------------------------------ */
 
-const NAV_LINK_DEFS = [
-  { label: "Docs", path: "/docs" },
-  { label: "Blog", path: "/blog" },
-];
+const NAV_LINK_DEFS = [{ label: "Docs", path: "/docs" }];
 
 const NAV_LINKS = NAV_LINK_DEFS.map((d) => ({
   label: d.label,
@@ -60,6 +56,31 @@ const NAV_LINK_CLASSES =
   "text-[13px] text-black/40 dark:text-white/40 hover:text-black/70 dark:hover:text-white/70 transition-colors tracking-wide uppercase font-mono";
 
 const SIDEBAR_W = "w-64"; // shared sidebar width token
+
+function ChevronMark({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 64 48"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      className={className}
+    >
+      <g
+        fill="none"
+        strokeWidth="10"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path
+          className="stroke-[#0e0e0e] dark:stroke-[#f4f4f5]"
+          d="M8 8 L28 24 L8 40"
+        />
+        <path stroke="#65D3A2" d="M34 8 L54 24 L34 40" />
+      </g>
+    </svg>
+  );
+}
 
 function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme();
@@ -234,22 +255,26 @@ export function DocsShell({
             <div
               className={`hidden items-center lg:flex ${SIDEBAR_W} flex-shrink-0 px-5 py-3`}
             >
-              <Link href={resolveHref("/")} className="flex items-center">
-                <img
-                  src={withBasePath("/images/continue-logo-light.png")}
-                  alt="Continue"
-                  className="h-8 w-auto dark:invert"
-                />
+              <Link
+                href={resolveHref("/")}
+                className="flex items-center gap-2 text-black dark:text-white"
+              >
+                <ChevronMark className="h-[1.1rem] w-[1.45rem] shrink-0" />
+                <span className="text-[15px] font-semibold tracking-tight">
+                  NextCLI
+                </span>
               </Link>
             </div>
             {/* Mobile logo */}
             <div className="flex items-center px-5 py-3 lg:hidden">
-              <Link href={resolveHref("/")} className="flex items-center">
-                <img
-                  src={withBasePath("/images/continue-logo-light.png")}
-                  alt="Continue"
-                  className="h-8 w-auto dark:invert"
-                />
+              <Link
+                href={resolveHref("/")}
+                className="flex items-center gap-2 text-black dark:text-white"
+              >
+                <ChevronMark className="h-[1.1rem] w-[1.45rem] shrink-0" />
+                <span className="text-[15px] font-semibold tracking-tight">
+                  NextCLI
+                </span>
               </Link>
             </div>
             {/* Centered search */}

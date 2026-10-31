@@ -36,8 +36,34 @@ Indexing, in which we will insert your code into the vector database in a retrie
 
 With LanceDB, we can do steps 2 and 3 simultaneously, as demonstrated [in their docs](https://lancedb.github.io/lancedb/basic/#using-the-embedding-api). If you are using Voyage AI for example, it would be configured like this:
 
-```
-from lancedb.pydantic import LanceModel, Vectorfrom lancedb.embeddings import get_registrydb = lancedb.connect("/tmp/db")func = get_registry().get("openai").create(    name="voyage-code-3",    base_url="https://api.voyageai.com/v1/",    api_key=os.environ["VOYAGE_API_KEY"],)class CodeChunks(LanceModel):    filename: str    text: str = func.SourceField()    # 1024 is the default dimension for `voyage-code-3`: https://docs.voyageai.com/docs/embeddings#model-choices    vector: Vector(1024) = func.VectorField()table = db.create_table("code_chunks", schema=CodeChunks, mode="overwrite")table.add([    {"text": "print('hello world!')", filename: "hello.py"},    {"text": "print('goodbye world!')", filename: "goodbye.py"}])query = "greetings"actual = table.search(query).limit(1).to_pydantic(CodeChunks)[0]print(actual.text)
+```python
+import os
+
+import lancedb
+from lancedb.pydantic import LanceModel, Vector
+from lancedb.embeddings import get_registry
+
+db = lancedb.connect("/tmp/db")
+func = get_registry().get("openai").create(
+    name="voyage-code-3",
+    base_url="https://api.voyageai.com/v1/",
+    api_key=os.environ["VOYAGE_API_KEY"],
+)
+
+class CodeChunks(LanceModel):
+    filename: str
+    text: str = func.SourceField()
+    # 1024 is the default dimension for `voyage-code-3`: https://docs.voyageai.com/docs/embeddings#model-choices
+    vector: Vector(1024) = func.VectorField()
+
+table = db.create_table("code_chunks", schema=CodeChunks, mode="overwrite")
+table.add([
+    {"text": "print('hello world!')", "filename": "hello.py"},
+    {"text": "print('goodbye world!')", "filename": "goodbye.py"},
+])
+query = "greetings"
+actual = table.search(query).limit(1).to_pydantic(CodeChunks)[0]
+print(actual.text)
 ```
 
 <Check>

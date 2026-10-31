@@ -865,7 +865,7 @@
     },
     {
       "source": "/about",
-      "destination": "https://nextcli.dev/about-us"
+      "destination": "https://nextcli.dev/"
     },
     {
       "source": "/autocomplete/model-setup",

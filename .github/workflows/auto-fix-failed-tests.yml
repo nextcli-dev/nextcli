@@ -103,13 +103,13 @@ jobs:
 
       - name: Install Continue CLI globally
         if: steps.workflow-details.outputs.has_failed_tests == 'true'
-        run: npm i -g @continuedev/cli
+        run: npm i -g @nextcli/cli
 
       - name: Start remote session to fix failed tests
         if: steps.workflow-details.outputs.has_failed_tests == 'true'
         id: remote-session
         env:
-          CONTINUE_API_KEY: ${{ secrets.CONTINUE_API_KEY }}
+          NEXTCLI_API_KEY: ${{ secrets.NEXTCLI_API_KEY }}
         run: |
           # Create a detailed prompt for fixing the failed tests
           cat > /tmp/fix_tests_prompt.txt << 'PROMPT_EOF'

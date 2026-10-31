@@ -302,7 +302,7 @@ This example demonstrates a **Continuous AI workflow** where security scanning r
 
 Navigate to **Repository Settings → Secrets and variables → Actions** and add:
 
-- `CONTINUE_API_KEY`: Your NextCLI API key from [nextcli.dev/settings/api-keys](https://nextcli.dev/settings/api-keys)
+- `NEXTCLI_API_KEY`: Your NextCLI API key from [nextcli.dev/settings/api-keys](https://nextcli.dev/settings/api-keys)
 - `SNYK_TOKEN`: Your Snyk authentication token from [app.snyk.io/account](https://app.snyk.io/account)
 
 ### Create Workflow File
@@ -345,7 +345,7 @@ jobs:
 
       - name: Install NextCLI CLI
         run: |
-          npm install -g @continuedev/cli
+          npm install -g @nextcli/cli
           echo "✅ NextCLI CLI installed"
 
       - name: Validate Secrets
@@ -354,8 +354,8 @@ jobs:
             echo "❌ Error: SNYK_TOKEN secret is not set"
             exit 1
           fi
-          if [ -z "${{ secrets.CONTINUE_API_KEY }}" ]; then
-            echo "⚠️ Warning: CONTINUE_API_KEY not set - AI mitigation suggestions will be skipped"
+          if [ -z "${{ secrets.NEXTCLI_API_KEY }}" ]; then
+            echo "⚠️ Warning: NEXTCLI_API_KEY not set - AI mitigation suggestions will be skipped"
           fi
           echo "✅ Required secrets validated"
 
@@ -418,7 +418,7 @@ jobs:
         if: always() && steps.security-scan.outputs.scan_status == 'failed'
         continue-on-error: true
         env:
-          CONTINUE_API_KEY: ${{ secrets.CONTINUE_API_KEY }}
+          NEXTCLI_API_KEY: ${{ secrets.NEXTCLI_API_KEY }}
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         run: |
           echo "🤖 Generating AI-powered mitigation suggestions..."
@@ -653,8 +653,6 @@ After completing this guide, you have a complete **AI-powered security system** 
 - ✅ Enforces guardrails — Security rules prevent vulnerable code from shipping
 
 <Card title="Continuous AI" icon="rocket">
-  Your security workflow now operates at **[Level 2 Continuous
-  AI](https://blog.continue.dev/what-is-continuous-ai-a-developers-guide/)** -
   AI handles routine security scanning and remediation with human oversight
   through review and approval of fixes.
 </Card>

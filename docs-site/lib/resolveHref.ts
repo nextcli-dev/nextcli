@@ -9,10 +9,7 @@ export function resolveHref(path: string): string {
   if (path.startsWith("/docs/")) return path.slice(5);
   if (path === "/docs") return "/";
 
-  // Cross-app links → absolute URLs
-  if (path.startsWith("/blog"))
-    return `https://blog.continue.dev${path.slice(5) || ""}`;
-  if (path === "/login") return "https://nextcli.dev/login";
+  // The marketing site is the apex domain. Docs have no blog or login.
   if (path === "/") return "https://nextcli.dev";
 
   // Everything else stays as-is

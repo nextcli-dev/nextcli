@@ -363,12 +363,12 @@ jobs:
           node-version: '20'
 
       - name: Install NextCLI CLI
-        run: npm i -g @continuedev/cli
+        run: npm i -g @nextcli/cli
 
       - name: Analyze Changes for Documentation Needs
         id: analyze
         env:
-          CONTINUE_API_KEY: ${{ secrets.CONTINUE_API_KEY }}
+          NEXTCLI_API_KEY: ${{ secrets.NEXTCLI_API_KEY }}
         run: |
           echo "🔍 Analyzing code changes for documentation needs..."
 

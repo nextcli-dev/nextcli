@@ -6,9 +6,13 @@ import "./globals.css";
 import "./docs.css";
 
 export const metadata: Metadata = {
-  title: "Continue Docs",
+  metadataBase: new URL("https://docs.nextcli.dev"),
+  title: {
+    default: "NextCLI Docs",
+    template: "%s | NextCLI Docs",
+  },
   description:
-    "Documentation for Continue — the open-source AI code assistant.",
+    "Documentation for NextCLI, the open-source AI coding agent.",
 };
 
 export default function RootLayout({

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 48">
+  <style>
+    .ink { stroke: #0e0e0e; }
+    @media (prefers-color-scheme: dark) {
+      .ink { stroke: #f4f4f5; }
+    }
+  </style>
+  <g fill="none" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
+    <path class="ink" d="M8 8 L28 24 L8 40"/>
+    <path stroke="#65D3A2" d="M34 8 L54 24 L34 40"/>
+  </g>
+</svg>

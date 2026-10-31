@@ -252,7 +252,7 @@ Show me what columns were added or modified.
 
 Navigate to **Repository Settings → Secrets and variables → Actions** and add:
 
-- `CONTINUE_API_KEY`: Your NextCLI API key from [nextcli.dev/settings/api-keys](https://nextcli.dev/settings/api-keys)
+- `NEXTCLI_API_KEY`: Your NextCLI API key from [nextcli.dev/settings/api-keys](https://nextcli.dev/settings/api-keys)
 - Any required database credentials for your destination
 
 <Info>
@@ -277,7 +277,7 @@ jobs:
   validate-pipeline:
     runs-on: ubuntu-latest
     env:
-      CONTINUE_API_KEY: ${{ secrets.CONTINUE_API_KEY }}
+      NEXTCLI_API_KEY: ${{ secrets.NEXTCLI_API_KEY }}
 
     steps:
       - uses: actions/checkout@v4
@@ -299,7 +299,7 @@ jobs:
 
       - name: Install NextCLI CLI
         run: |
-          npm install -g @continuedev/cli
+          npm install -g @nextcli/cli
           echo "✅ NextCLI CLI installed"
 
       - name: Validate Pipeline Schema
@@ -407,8 +407,6 @@ After completing this guide, you have a complete **AI-powered data pipeline deve
 ✅ Ensures quality — Pipeline checks prevent bad data from shipping
 
 <Card title="Continuous AI" icon="rocket">
-  Your data pipeline workflow now operates at **[Level 2 Continuous
-  AI](https://blog.continue.dev/what-is-continuous-ai-a-developers-guide/)** -
   AI handles routine pipeline inspection and debugging with human oversight
   through review and approval of changes.
 </Card>

@@ -113,7 +113,7 @@ runs:
     - name: Install Continue CLI
       if: env.SHOULD_RUN == 'true'
       shell: bash
-      run: npm install -g @continuedev/cli@latest
+      run: npm install -g @nextcli/cli@latest
 
     - name: Setup Action Scripts
       if: env.SHOULD_RUN == 'true'
@@ -264,7 +264,7 @@ runs:
       if: env.SHOULD_RUN == 'true'
       shell: bash
       env:
-        CONTINUE_API_KEY: ${{ inputs.continue-api-key }}
+        NEXTCLI_API_KEY: ${{ inputs.continue-api-key }}
         CONTINUE_ORG: ${{ inputs.continue-org }}
         CONTINUE_AGENT: ${{ inputs.continue-agent }}
         GITHUB_TOKEN: ${{ github.token }}
@@ -277,8 +277,8 @@ runs:
         echo ""
 
         # Validate API key
-        if [ -z "$CONTINUE_API_KEY" ]; then
-          echo "Warning: CONTINUE_API_KEY environment variable is not set"
+        if [ -z "$NEXTCLI_API_KEY" ]; then
+          echo "Warning: NEXTCLI_API_KEY environment variable is not set"
           # Create fallback review and continue
           node .continue-action-scripts/writeMarkdown.js code_review.md missing_api_key
           echo "SKIP_CLI=true" >> $GITHUB_ENV
@@ -389,7 +389,7 @@ runs:
             } else {
               // Build direct link to workflow logs
               const workflowRunUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-              reviewContent = `⚠️ AI review completed but no review output was generated.\n\n**Likely cause:** Expired CONTINUE_API_KEY or missing continuedev/review-bot assistant\n\n[📋 View workflow logs](${workflowRunUrl}) for details.`;
+              reviewContent = `⚠️ AI review completed but no review output was generated.\n\n**Likely cause:** Expired NEXTCLI_API_KEY or missing continuedev/review-bot assistant\n\n[📋 View workflow logs](${workflowRunUrl}) for details.`;
             }
 
             // Get PR number based on event type

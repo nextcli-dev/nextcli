@@ -1,14 +1,23 @@
 ---
 title: "What is NextCLI?"
-description: "Open source AI code assistant for the CLI and VS Code"
+description: "NextCLI is the open-source continuation of Continue. Use the cn CLI or VS Code with your own model. No hub account. Config stays in ~/.continue."
 ---
 
-**NextCLI enables developers to create, share, and use custom AI code agents with the CLI and the open source [VS Code](https://marketplace.visualstudio.com/items?itemName=Continue.continue) extension.** NextCLI does not ship a JetBrains plugin. In a JetBrains IDE, run `cn` in the terminal.
+**NextCLI is an open-source coding agent for the terminal and VS Code.** It is the community continuation of Continue, maintained by the nextcli-dev organization after Continue Dev, Inc. stopped active maintenance. The software is free under the Apache License 2.0. You pay the model provider whose API key you configure.
 
-## Key Features
+There is no NextCLI hub and no account. Config stays in `~/.continue` on your machine, including a config you already used with Continue. The CLI package is `@nextcli/cli` and the command is `cn`.
 
-- [Agent mode](/ide-extensions/agent/quick-start) to work on development tasks together with AI
-- [Chat mode](/ide-extensions/chat/quick-start) to ask general questions and clarify code sections
-- [Edit mode](/ide-extensions/edit/quick-start) to modify code sections without leaving your current file
-- [Autocomplete](/ide-extensions/autocomplete/quick-start) to receive inline code suggestions as you type
-- [NextCLI CLI (cn)](/cli/quickstart) for terminal-native AI coding assistance
+## Install
+
+- [CLI quickstart](/cli/quickstart)
+- [VS Code extension](/ide-extensions/install)
+
+NextCLI does not ship a JetBrains plugin. In a JetBrains IDE, run `cn` in the terminal.
+
+## Key features
+
+- [Agent mode](/ide-extensions/agent/quick-start) to work on development tasks together with the model you configure
+- [Chat mode](/ide-extensions/chat/quick-start) to ask questions about the code you have open
+- [Edit mode](/ide-extensions/edit/quick-start) to change the current file
+- [Autocomplete](/ide-extensions/autocomplete/quick-start) to take inline suggestions as you type
+- [NextCLI (`cn`)](/cli/quickstart) for the same agent in the terminal

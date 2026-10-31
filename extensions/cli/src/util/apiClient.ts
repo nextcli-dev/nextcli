@@ -67,7 +67,7 @@ export async function makeAuthenticatedRequest<T = any>(
     throw new ApiRequestError(
       0,
       "No API base",
-      "NextCLI has no hosted API. Set CONTINUE_API_BASE to use a compatible endpoint.",
+      "NextCLI has no hosted API. Set NEXTCLI_API_BASE to use a compatible endpoint.",
     );
   }
 

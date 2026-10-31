@@ -38,12 +38,7 @@ function loadDocsRedirects(): Map<string, string> {
 export const docsRedirects: Map<string, string> = loadDocsRedirects();
 
 // Whitelist of allowed external redirect domains for security
-const ALLOWED_REDIRECT_DOMAINS = [
-  "nextcli.dev",
-  "docs.nextcli.dev",
-  "nextcli.dev",
-  "changelog.continue.dev",
-];
+const ALLOWED_REDIRECT_DOMAINS = ["nextcli.dev", "docs.nextcli.dev"];
 
 export function resolveDocsRedirect(slug: string[]): string | null {
   const key = slug.join("/");

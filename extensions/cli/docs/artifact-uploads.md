@@ -28,7 +28,7 @@ The agent requests a presigned upload URL from the backend:
 
 ```http
 POST /agents/artifacts/upload-url
-Authorization: Bearer <CONTINUE_API_KEY>
+Authorization: Bearer <NEXTCLI_API_KEY>
 Content-Type: application/json
 
 {
@@ -178,7 +178,7 @@ import { services } from "./services/index.js";
 const result = await services.artifactUpload.uploadArtifact({
   agentSessionId: process.env.AGENT_SESSION_ID,
   filePath: "/tmp/screenshot.png",
-  accessToken: process.env.CONTINUE_API_KEY,
+  accessToken: process.env.NEXTCLI_API_KEY,
 });
 
 if (result.success) {
@@ -194,7 +194,7 @@ if (result.success) {
 const results = await services.artifactUpload.uploadArtifacts(
   process.env.AGENT_SESSION_ID,
   ["/tmp/screenshot1.png", "/tmp/screenshot2.png", "/tmp/debug.log"],
-  process.env.CONTINUE_API_KEY,
+  process.env.NEXTCLI_API_KEY,
 );
 
 results.forEach((result) => {
@@ -206,8 +206,8 @@ results.forEach((result) => {
 
 The CLI requires these environment variables for artifact uploads:
 
-- `CONTINUE_API_KEY`: Bearer token for backend authentication
-- `CONTINUE_API_BASE`: API base URL. Required for uploads. NextCLI does not default this to a hosted API.
+- `NEXTCLI_API_KEY`: Bearer token for backend authentication
+- `NEXTCLI_API_BASE`: API base URL. Required for uploads. NextCLI does not default this to a hosted API.
 - `AGENT_SESSION_ID`: The current agent session identifier
 
 Set these yourself. NextCLI does not provide a hosted devbox.

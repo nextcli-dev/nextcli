@@ -38,7 +38,7 @@ jobs:
     steps:
       - uses: nextcli-dev/nextcli/actions/general-review@main
         with:
-          continue-api-key: ${{ secrets.CONTINUE_API_KEY }}
+          continue-api-key: ${{ secrets.NEXTCLI_API_KEY }}
           continue-org: "your-org-name"
           continue-config: "your-org-name/review-bot"
 ```
@@ -57,12 +57,12 @@ The action accepts the following inputs:
 
 ### 1. NextCLI API Key
 
-Add your NextCLI API key as a secret named `CONTINUE_API_KEY` in your repository:
+Add your NextCLI API key as a secret named `NEXTCLI_API_KEY` in your repository:
 
 1. Go to your repository's Settings
 2. Navigate to Secrets and variables → Actions
 3. Click "New repository secret"
-4. Name: `CONTINUE_API_KEY`
+4. Name: `NEXTCLI_API_KEY`
 5. Value: Your NextCLI API key
 
 ### 2. NextCLI Configuration

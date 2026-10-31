@@ -1,5 +1,6 @@
 ---
 title: "Quickstart"
+description: "Install NextCLI (cn) as @nextcli/cli. Config stays in ~/.continue. There is no hub account."
 ---
 
 import { OSAutoDetect } from '/snippets/OSAutoDetect.jsx'
@@ -7,7 +8,9 @@ import CLIInstall from '/snippets/cli-install.mdx'
 
 <OSAutoDetect />
 
-NextCLI CLI (`cn`) is a terminal-based coding agent. It can edit files, run commands, and work through multi-step tasks — the same agent that powers the NextCLI IDE extensions, running in your terminal.
+NextCLI (`cn`) is a terminal coding agent from the nextcli-dev organization. It edits files, runs commands, and works through multi-step tasks with a model you configure. The npm package is `@nextcli/cli`. It is not the old Continue CLI package.
+
+There is no hub account and no sign-in. Provider settings live in `~/.continue/config.yaml`. A config you already kept for Continue is read from that same directory.
 
 <Frame>
   <img src="/images/cn-demo.gif" />
@@ -26,7 +29,7 @@ cn --version
 ### Requirements
 
 - **Node.js 20+** — needed for the npm install path. The shell installer bundles its own runtime.
-- A [NextCLI](https://nextcli.dev) account, or an Anthropic API key.
+- An API key for a model provider, stored in local config. There is no NextCLI account.
 
 ## First run
 
@@ -35,30 +38,18 @@ cd your-project
 cn
 ```
 
-On first launch you'll be asked to log in with [NextCLI](https://nextcli.dev) or enter an Anthropic API key. After that, you're in a session and can start typing.
+On first launch, `cn` asks for an Anthropic API key and writes it to `~/.continue/config.yaml`. Other providers are added in that file. See [Models](/customize/models).
 
-## Authentication
+## API key
 
-### Log in with NextCLI
-
-```bash
-cn login
-```
-
-This opens your browser to authenticate with [NextCLI](https://nextcli.dev). Once authenticated, `cn` can use your configured assistants, models, and MCP servers from the platform.
-
-### API key (headless / CI)
-
-For automation environments where there's no browser, set the `CONTINUE_API_KEY` environment variable:
+For a terminal where there is no prompt, set `ANTHROPIC_API_KEY` before you run `cn`:
 
 ```bash
-export CONTINUE_API_KEY=your-key-here
+export ANTHROPIC_API_KEY=your-key-here
 cn -p "your prompt"
 ```
 
-### Local API key
-
-If you don't want to use NextCLI, you can use an Anthropic API key directly. On first launch, `cn` will prompt you to choose between logging in with NextCLI or entering an Anthropic API key.
+Or pass a config file with `--config`. NextCLI does not sign you in, and it does not call a hosted API unless `NEXTCLI_API_BASE` is set.
 
 ## Two modes
 

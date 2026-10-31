@@ -21,7 +21,7 @@ irm https://raw.githubusercontent.com/nextcli-dev/nextcli/main/extensions/cli/sc
 Or install with npm if you have Node.js 20+:
 
 ```bash
-npm i -g @continuedev/cli
+npm i -g @nextcli/cli
 ```
 
 ## Usage

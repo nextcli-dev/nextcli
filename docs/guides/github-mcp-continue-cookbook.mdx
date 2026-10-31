@@ -244,7 +244,7 @@ Run headless commands on a schedule or in PRs to keep teams informed.
 
 Repository Settings → Secrets and variables → Actions:
 
-- `CONTINUE_API_KEY`: From [nextcli.dev/settings/api-keys](https://nextcli.dev/settings/api-keys)
+- `NEXTCLI_API_KEY`: From [nextcli.dev/settings/api-keys](https://nextcli.dev/settings/api-keys)
 - `GITHUB_TOKEN`: A token with permissions to read issues/PRs and post comments
 
 ### Example Workflow
@@ -265,7 +265,7 @@ jobs:
   report:
     runs-on: ubuntu-latest
     env:
-      CONTINUE_API_KEY: ${{ secrets.CONTINUE_API_KEY }}
+      NEXTCLI_API_KEY: ${{ secrets.NEXTCLI_API_KEY }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
@@ -273,7 +273,7 @@ jobs:
         with:
           node-version: "18"
       - name: Install NextCLI CLI
-        run: npm i -g @continuedev/cli
+        run: npm i -g @nextcli/cli
 
       - name: Weekly Issue Triage Summary
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -316,8 +316,6 @@ After completing this guide, you have a complete **AI-powered GitHub workflow sy
 - ✅ Runs continuously — Automated reports via GitHub Actions
 
 <Card title="Continuous AI" icon="rocket">
-  Your GitHub workflow now operates at **[Level 2 Continuous
-  AI](https://blog.continue.dev/what-is-continuous-ai-a-developers-guide/)** -
   AI handles routine issue triage and PR summaries with human oversight
   through review and approval.
 </Card>

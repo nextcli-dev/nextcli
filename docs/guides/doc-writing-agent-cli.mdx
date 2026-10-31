@@ -57,10 +57,10 @@ This process utilizes the **NextCLI CLI** (`cn`) in **headless mode** to analyze
   <Card title="NextCLI API Key" icon="key">
     Get your API key from [nextcli.dev/settings/api-keys](https://nextcli.dev/settings/api-keys) and set:
     ```bash
-    export CONTINUE_API_KEY=your_key_here
+    export NEXTCLI_API_KEY=your_key_here
     ```
     <Info>
-    You can use the NextCLI CLI in headless mode without interactive login by setting the `CONTINUE_API_KEY` environment variable.
+    You can use the NextCLI CLI in headless mode without interactive login by setting the `NEXTCLI_API_KEY` environment variable.
     </Info>
   </Card>
 
@@ -155,7 +155,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Write Documentation for Branch
     env:
-      CONTINUE_API_KEY: ${{ secrets.CONTINUE_API_KEY }}
+      NEXTCLI_API_KEY: ${{ secrets.NEXTCLI_API_KEY }}
       CONTINUE_ORG: ${{ github.event.inputs.continue_org }}
       CONTINUE_CONFIG: ${{ github.event.inputs.continue_config }}
 
@@ -186,7 +186,7 @@ jobs:
     - name: Install NextCLI CLI
       run: |
         echo "Installing NextCLI CLI..."
-        npm i -g @continuedev/cli
+        npm i -g @nextcli/cli
 
     - name: Verify NextCLI CLI installation
       run: |
@@ -249,7 +249,7 @@ jobs:
 ### Local Development Implementation
 
 <Warning>
-Make sure to set your `CONTINUE_API_KEY` environment variable before running local scripts to enable headless mode.
+Make sure to set your `NEXTCLI_API_KEY` environment variable before running local scripts to enable headless mode.
 </Warning>
 
 When using the NextCLI CLI on your local machine, you can build workflows in various ways, one of which is by simply creating shell scripts that you can run, which call the CLI.

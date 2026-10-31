@@ -70,6 +70,6 @@ After building, check `dist/meta.json` to see:
 When publishing to npm:
 
 1. The bundled files in `dist/` are included
-2. Users install via `npm install -g @continuedev/cli`
+2. Users install via `npm install -g @nextcli/cli`
 3. The `cn` command becomes available globally
 4. No local file references or missing dependencies

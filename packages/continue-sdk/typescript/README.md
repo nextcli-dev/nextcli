@@ -19,7 +19,7 @@ import { Continue } from "@continuedev/sdk";
 
 // Initialize the Continue client with your API key and assistant
 const { client, assistant } = await Continue.from({
-  apiKey: process.env.CONTINUE_API_KEY,
+  apiKey: process.env.NEXTCLI_API_KEY,
   assistant: "owner-slug/assistant-slug", // The assistant identifier
 });
 
@@ -42,7 +42,7 @@ import { Continue } from "@continuedev/sdk";
 
 // Initialize just the Continue API client
 const { api } = await Continue.from({
-  apiKey: process.env.CONTINUE_API_KEY,
+  apiKey: process.env.NEXTCLI_API_KEY,
 });
 
 // Make calls to the Continue API

@@ -57,7 +57,7 @@ Before starting, ensure you have:
     Navigate to your repository settings: **Settings → Secrets and variables → Actions**
 
     **Required Secrets:**
-    - `CONTINUE_API_KEY` - Your NextCLI API key from [nextcli.dev/settings/api-keys](https://nextcli.dev/settings/api-keys)
+    - `NEXTCLI_API_KEY` - Your NextCLI API key from [nextcli.dev/settings/api-keys](https://nextcli.dev/settings/api-keys)
 
     **Optional (for better permissions):**
     - **Variables** tab: `APP_ID` - GitHub App ID (for enhanced API rate limits)
@@ -128,7 +128,7 @@ jobs:
           node-version: '20'
 
       - name: Install NextCLI CLI
-        run: npm i -g @continuedev/cli
+        run: npm i -g @nextcli/cli
 
       - name: Get Pull Request Details
         id: pr
@@ -152,7 +152,7 @@ jobs:
 
       - name: Run NextCLI Review
         env:
-          CONTINUE_API_KEY: ${{ secrets.CONTINUE_API_KEY }}
+          NEXTCLI_API_KEY: ${{ secrets.NEXTCLI_API_KEY }}
           GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
         run: |
           # Check if custom rules exist
@@ -347,7 +347,7 @@ The workflow will respond with a targeted review based on your request.
   ```yaml
   - name: Run NextCLI Review
     env:
-      CONTINUE_API_KEY: ${{ secrets.CONTINUE_API_KEY }}
+      NEXTCLI_API_KEY: ${{ secrets.NEXTCLI_API_KEY }}
       CONTINUE_ORG: your-org-name      # Add your org
       CONTINUE_CONFIG: username/config-name  # Add your config
     run: |
@@ -409,7 +409,7 @@ The workflow will respond with a targeted review based on your request.
 - Check the "Install NextCLI CLI" step logs for errors
 </Accordion>
 <Accordion title="Authentication failed">
-- Verify your `CONTINUE_API_KEY` is valid
+- Verify your `NEXTCLI_API_KEY` is valid
 - Check that GitHub token has required permissions
 </Accordion>
 <Accordion title="No review generated">
@@ -471,8 +471,6 @@ After completing this setup, you have an **AI-powered code review system** that:
 - ✅ **Continuous** - Updates reviews as pull requests change
 
 <Card title="Continuous AI" icon="rocket">
-  Your pull request workflow now operates at **[Level 2 Continuous
-  AI](https://blog.continue.dev/what-is-continuous-ai-a-developers-guide/)** -
   AI handles routine code review with human oversight through review and
   approval.
 </Card>

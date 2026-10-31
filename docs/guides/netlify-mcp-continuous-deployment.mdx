@@ -456,7 +456,7 @@ Unlike Google Analytics, Netlify Analytics:
 
 Navigate to **Repository Settings → Secrets and variables → Actions** and add:
 
-- `CONTINUE_API_KEY`: Your NextCLI API key from [nextcli.dev/settings/api-keys](https://nextcli.dev/settings/api-keys)
+- `NEXTCLI_API_KEY`: Your NextCLI API key from [nextcli.dev/settings/api-keys](https://nextcli.dev/settings/api-keys)
 - `NETLIFY_AUTH_TOKEN`: Your Netlify personal access token
 - `NETLIFY_SITE_ID`: Your Netlify site ID
 
@@ -481,14 +481,14 @@ jobs:
 
       - name: Install NextCLI CLI
         run: |
-          npm install -g @continuedev/cli
+          npm install -g @nextcli/cli
           echo "✅ NextCLI CLI installed"
 
       - name: Authenticate NextCLI CLI
         env:
-          CONTINUE_API_KEY: ${{ secrets.CONTINUE_API_KEY }}
+          NEXTCLI_API_KEY: ${{ secrets.NEXTCLI_API_KEY }}
         run: |
-          cn auth login --api-key "$CONTINUE_API_KEY"
+          cn auth login --api-key "$NEXTCLI_API_KEY"
           echo "✅ NextCLI CLI authenticated"
 
       - name: Deploy and Test Performance

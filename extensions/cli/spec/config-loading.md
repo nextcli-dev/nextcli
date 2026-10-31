@@ -8,7 +8,7 @@ This document specifies the behavior of the CLI's configuration loading system, 
 
 **Authentication Source Priority:**
 
-1. **Environment Variable**: `CONTINUE_API_KEY` environment variable
+1. **Environment Variable**: `NEXTCLI_API_KEY` environment variable
 2. **File-Based Auth**: `~/.continue/auth.json` file
 3. **No Authentication**: Unauthenticated mode
 
@@ -69,7 +69,7 @@ This document specifies the behavior of the CLI's configuration loading system, 
 - No config URI persistence
 - Direct fallback to default when no config specified
 
-### Environment Variable Auth (`CONTINUE_API_KEY`)
+### Environment Variable Auth (`NEXTCLI_API_KEY`)
 
 **Behavior:**
 

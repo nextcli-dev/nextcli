@@ -401,7 +401,7 @@ This example demonstrates a **Continuous AI workflow** where performance validat
 
 Navigate to **Repository Settings → Secrets and variables → Actions** and add:
 
-- `CONTINUE_API_KEY`: Your NextCLI API key from [nextcli.dev/settings/api-keys](https://nextcli.dev/settings/api-keys)
+- `NEXTCLI_API_KEY`: Your NextCLI API key from [nextcli.dev/settings/api-keys](https://nextcli.dev/settings/api-keys)
 
 ### Create Workflow File
 
@@ -426,7 +426,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          npm install -g @continuedev/cli
+          npm install -g @nextcli/cli
           npm ci
 
       - name: Build Project
@@ -439,7 +439,7 @@ jobs:
 
       - name: Run Performance Tests
         env:
-          CONTINUE_API_KEY: ${{ secrets.CONTINUE_API_KEY }}
+          NEXTCLI_API_KEY: ${{ secrets.NEXTCLI_API_KEY }}
         run: |
           cn --agent continuedev/chrome-dev-tools-agent \
              -p "Navigate to http://localhost:3000 and:
@@ -661,7 +661,7 @@ After completing this guide, you have a complete **AI-powered performance analys
 - ✅ **Ensures quality** — Performance checks prevent regressions from shipping
 
 <Card title="Continuous AI" icon="rocket">
-  Your performance workflow now operates at **[Level 2 Continuous AI](https://blog.continue.dev/what-is-continuous-ai-a-developers-guide/)** - AI handles routine performance analysis and debugging with human oversight through review and approval of changes.
+  AI handles routine performance analysis and debugging with human oversight through review and approval of changes.
 </Card>
 
 ## Chrome DevTools MCP Capabilities

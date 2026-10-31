@@ -16,9 +16,9 @@ import * as path from "node:path";
 const globalDir = fs.mkdtempSync(path.join(os.tmpdir(), "continue-cli-test-"));
 process.env.CONTINUE_GLOBAL_DIR = globalDir;
 
-// Production leaves CONTINUE_API_BASE unset so nothing calls a hosted API.
+// Production leaves NEXTCLI_API_BASE unset so nothing calls a hosted API.
 // Tests opt in so the fetch mock for the default assistant still matches.
-process.env.CONTINUE_API_BASE ??= "https://api.continue.dev";
+process.env.NEXTCLI_API_BASE ??= "https://api.nextcli.dev";
 
 // Best-effort cleanup of this worker's temp dir when the process exits.
 process.on("exit", () => {

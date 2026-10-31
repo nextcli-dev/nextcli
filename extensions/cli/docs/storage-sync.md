@@ -1,6 +1,6 @@
 # Storage Sync Flow for `cn serve`
 
-NextCLI does not call a hosted storage API unless `CONTINUE_API_BASE` is set. The steps below describe that optional endpoint. They do not run against api.continue.dev.
+NextCLI does not call a hosted storage API unless `NEXTCLI_API_BASE` is set. The steps below describe that optional endpoint. They do not run against api.nextcli.dev.
 
 ## Overview
 
@@ -13,7 +13,7 @@ This document captures the responsibilities for both the CLI and backend compone
 - **Flag plumbing**: When `cn serve` is invoked with `--id <storageId>`, the CLI treats that value as an opaque identifier.
 - **API key auth**: The CLI attaches the user-level Continue API key (same mechanism we already use for other authenticated requests) to backend calls.
 - **Presign handshake**:
-  1. On startup, issue `POST ${CONTINUE_API_BASE}/agents/storage/presigned-url` with JSON payload `{ "storageId": "<storageId>" }`.
+  1. On startup, issue `POST ${NEXTCLI_API_BASE}/agents/storage/presigned-url` with JSON payload `{ "storageId": "<storageId>" }`.
   2. Expect a response payload containing two pre-signed `PUT` URLs and their target object keys:
      ```json
      {

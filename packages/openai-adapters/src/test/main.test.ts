@@ -171,18 +171,6 @@ const TESTS: Omit<ModelConfig & { options?: TestConfigOptions }, "name">[] = [
   //   apiKey: process.env.COHERE_API_KEY!,
   //   roles: ["rerank"],
   // },
-  {
-    provider: "azure",
-    model: "gpt-4.1",
-    apiBase: "https://continue-openai.openai.azure.com",
-    apiKey: process.env.AZURE_OPENAI_GPT41_API_KEY,
-    roles: ["chat"],
-    env: {
-      deployment: "gpt-4.1",
-      apiVersion: "2024-02-15-preview",
-      apiType: "azure-openai",
-    },
-  },
   // {
   //   provider: "bedrock",
   //   model: "us.anthropic.claude-3-5-sonnet-20240620-v1:0",

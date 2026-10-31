@@ -312,7 +312,7 @@ jobs:
 
       - name: Install NextCLI CLI
         run: |
-          npm install -g @continuedev/cli
+          npm install -g @nextcli/cli
           echo "✅ NextCLI CLI installed"
 
       - name: Authenticate GitHub CLI
@@ -322,7 +322,7 @@ jobs:
 
       - name: Analyze Sentry Errors and Create Issues
         env:
-          CONTINUE_API_KEY: ${{ secrets.CONTINUE_API_KEY }}
+          NEXTCLI_API_KEY: ${{ secrets.NEXTCLI_API_KEY }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
@@ -371,7 +371,7 @@ jobs:
 
 <Warning>
   **Required GitHub Secrets**:
-  - `CONTINUE_API_KEY`: Your NextCLI API key from [nextcli.dev/settings/api-keys](https://nextcli.dev/settings/api-keys)
+  - `NEXTCLI_API_KEY`: Your NextCLI API key from [nextcli.dev/settings/api-keys](https://nextcli.dev/settings/api-keys)
   - `SENTRY_AUTH_TOKEN`: Your Sentry User Auth Token (needs scopes: `org:read`, `project:read`, `project:releases`, `event:read`)
   - `SENTRY_ORG`: Your Sentry organization slug
   - `SENTRY_PROJECT`: Your Sentry project slug
@@ -407,7 +407,7 @@ After completing this guide, you have a complete **Sentry-powered error monitori
 - **Scales with your app** - Handles growing error volumes and complexity automatically
 
 <Card title="Continuous AI Error Monitoring" icon="shield-check">
-  Your system now operates at **[Level 2 Continuous AI](https://blog.continue.dev/what-is-continuous-ai-a-developers-guide/)** - AI handles routine error analysis with human oversight through GitHub issue review and resolution.
+  AI handles routine error analysis with human oversight through GitHub issue review and resolution.
 </Card>
 
 ## Advanced Error Analysis Prompts
@@ -480,4 +480,3 @@ See the [Sentry MCP GitHub Issues](https://github.com/getsentry/sentry-mcp/issue
 - [Sentry MCP GitHub Repository](https://github.com/getsentry/sentry-mcp)
 - [GitHub CLI Documentation](https://cli.github.com/)
 - [NextCLI CLI Guide](https://docs.nextcli.dev/guides/cli)
-- [Continuous AI Best Practices](https://blog.continue.dev/what-is-continuous-ai-a-developers-guide/)
