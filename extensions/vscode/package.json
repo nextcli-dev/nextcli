@@ -19,7 +19,7 @@
   "license": "Apache-2.0",
   "displayName": "NextCLI - open-source AI code agent",
   "pricing": "Free",
-  "description": "The leading open-source AI code agent",
+  "description": "The open-source AI coding agent. Your model and API key. No account.",
   "publisher": "nextcli",
   "engines": {
     "vscode": "^1.70.0",
@@ -27,7 +27,7 @@
   },
   "engine-strict": true,
   "galleryBanner": {
-    "color": "#1E1E1E",
+    "color": "#0a0a0a",
     "theme": "dark"
   },
   "categories": [

@@ -1,0 +1,6 @@
+[project]
+name = "nextcli"
+version = "0.1.0"
+description = "Python toolchain for this repository, managed by uv."
+requires-python = ">=3.13"
+dependencies = []
