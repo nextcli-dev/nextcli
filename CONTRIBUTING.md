@@ -1,6 +1,6 @@
 # Contributing to NextCLI
 
-NextCLI is a community continuation of Continue. Report issues and open pull requests on [nextcli-dev/nextcli](https://github.com/nextcli-dev/nextcli). There is no contributor license agreement.
+NextCLI is a community continuation of Continue. Report issues and open pull requests on [nextcli-dev/nextcli](https://github.com/nextcli-dev/nextcli). Before your first pull request is merged, read the [Contributor Licence Agreement](CLA.md) and comment **“I have read the CLA Document and I hereby sign the CLA”** on that pull request.
 
 ## Table of Contents
 
@@ -152,7 +152,7 @@ npm i -g vite
       2. The window you started debugging from is referred to as the _Main VS Code_
 
 3. To package the extension, run `npm run package` in the `extensions/vscode` directory, select `Tasks: Run Task` and
-   then select `vscode-extension:package`. This will generate `extensions/vscode/build/continue-{VERSION}.vsix`, which
+   then select `vscode-extension:package`. This will generate `extensions/vscode/build/nextcli-{VERSION}.vsix`, which
    you can install by right-clicking and selecting "Install Extension VSIX".
 
 ##### Debugging

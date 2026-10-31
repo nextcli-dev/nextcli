@@ -18,7 +18,7 @@ turns off calls to Continue-hosted services:
   sent to Continue. Sentry is not initialized unless NEXTCLI_SENTRY_DSN is
   provided. This tree no longer contains a hard-coded Continue Sentry DSN.
 
-The following identifiers are unchanged so existing installs keep working:
-the VS Code publisher and extension id, the
+The VS Code extension id is nextcli.nextcli. The following identifiers are
+unchanged so existing installs keep working: the
 `cn` command, and the ~/.continue config directory. NextCLI does not ship a
 JetBrains plugin. In a JetBrains IDE, run `cn` in the terminal.

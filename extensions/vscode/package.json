@@ -1,5 +1,5 @@
 {
-  "name": "continue",
+  "name": "nextcli",
   "icon": "media/icon.png",
   "author": "NextCLI",
   "version": "1.3.40",
@@ -20,7 +20,7 @@
   "displayName": "NextCLI - open-source AI code agent",
   "pricing": "Free",
   "description": "The leading open-source AI code agent",
-  "publisher": "Continue",
+  "publisher": "nextcli",
   "engines": {
     "vscode": "^1.70.0",
     "node": ">=20.20.1"

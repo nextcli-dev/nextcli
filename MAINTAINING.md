@@ -21,14 +21,15 @@ Do not push to `upstream`. Its push URL is `DISABLE`.
 
 These stay so current installs, imports, and published package names keep working:
 
-| Identifier                         | Current value                                  | Later value                |
-| ---------------------------------- | ---------------------------------------------- | -------------------------- |
-| npm scope                          | `@continuedev/*`                               | `@nextcli/*`               |
-| VS Code publisher and extension id | `Continue.continue`                            | a NextCLI publisher and id |
-| CLI command                        | `cn`                                           | `nextcli`                  |
-| Config directory                   | `~/.continue`, `.continue/`, `.continueignore` | migrate into `~/.nextcli`  |
+| Identifier       | Current value                                  | Later value                |
+| ---------------- | ---------------------------------------------- | -------------------------- |
+| npm scope        | `@continuedev/*`                               | `@nextcli/*`               |
+| CLI command      | `cn`                                           | `nextcli`                  |
+| Config directory | `~/.continue`, `.continue/`, `.continueignore` | migrate into `~/.nextcli`  |
 
 Changing any of these is a compatibility break. Do them one at a time, with a migration for the config directory, and publish under the new ids only after the old ones are either transferred or left as a thin wrapper.
+
+The VS Code extension id is `nextcli.nextcli`.
 
 ## Services that are off
 
@@ -72,7 +73,7 @@ The first publish has to use a token, because trusted publishing can only be tur
 
 ## Secrets needed before publishing
 
-- VS Code Marketplace and Open VSX tokens, after the publisher id decision above
+- Open VSX trusted publishing: `main.yaml` in the `production` environment, and `preview.yaml` in the `staging` environment. Create both environments on `nextcli-dev/nextcli` with those exact names. No Open VSX secret has to live in either one.
 - `NPM_TOKEN` for the first `@nextcli/cli` publish only, then trusted publishing as above
 - `NEXTCLI_SENTRY_DSN` only if error reporting should be on
 - A docs host for `docs.nextcli.dev` if GitHub Pages (`docs-gh-pages.yml`) is re-enabled

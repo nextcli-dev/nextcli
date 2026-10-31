@@ -20,7 +20,7 @@ NextCLI is a community-maintained continuation of [Continue](https://github.com/
 
 NextCLI is a coding agent available as a [CLI](#cli) and a [VS Code extension](#vs-code). It does not ship a JetBrains plugin. In a JetBrains IDE, run the CLI (`cn`) in the terminal. Configuration stays on your machine. There is no NextCLI-hosted hub, sign-in, or telemetry endpoint.
 
-Some identifiers are intentionally unchanged so existing installs keep working. The VS Code extension id is still `Continue.continue`, the CLI command is still `cn`, and config still lives in `~/.continue`. The CLI package is `@nextcli/cli`. See [MAINTAINING.md](./MAINTAINING.md) for why, and for the follow-up list.
+The VS Code extension id is `nextcli.nextcli`. The CLI command is still `cn`, and config still lives in `~/.continue`. The CLI package is `@nextcli/cli`. See [MAINTAINING.md](./MAINTAINING.md) for the identifiers that stay unchanged.
 
 ## Documentation
 
@@ -28,7 +28,7 @@ Usage and configuration docs are in [`docs/`](./docs). Published pages are inten
 
 ## VS Code
 
-The extension id has not changed yet, so the marketplace listing is still `Continue.continue` while that listing exists. To build from this repo, package `extensions/vscode` and install the VSIX.
+The extension id is `nextcli.nextcli`. To build from this repo, package `extensions/vscode` and install the VSIX.
 
 [![View source](https://img.shields.io/badge/View_source-181717?logo=github&logoColor=white)](extensions/vscode)
 

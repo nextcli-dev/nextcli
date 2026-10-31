@@ -75,7 +75,7 @@ async function executeAdapterMethod(
   api: BaseLlmApi,
   methodToTest: keyof BaseLlmApi,
   params: any[],
-) {
+): Promise<unknown[]> {
   if (typeof (api as any)[methodToTest] !== "function") {
     throw new Error(
       `Method ${String(methodToTest)} does not exist on the adapter instance.`,
@@ -85,11 +85,14 @@ async function executeAdapterMethod(
   const result = await (api as any)[methodToTest](...params);
 
   // If it's a generator/async iterator, consume it to trigger the HTTP request
+  // and return the chunks so callers can assert on filtered streams.
+  const chunks: unknown[] = [];
   if (result?.next) {
-    for await (const _ of result) {
-      // Just consume the generator to trigger the request
+    for await (const chunk of result) {
+      chunks.push(chunk);
     }
   }
+  return chunks;
 }
 
 function assertFetchCall(mockFetch: any, expectedRequest: any) {
@@ -131,7 +134,9 @@ function assertFetchCall(mockFetch: any, expectedRequest: any) {
   }
 }
 
-export async function runAdapterTest(testCase: AdapterTestCase) {
+export async function runAdapterTest(
+  testCase: AdapterTestCase,
+): Promise<unknown[]> {
   const {
     config,
     methodToTest,
@@ -165,8 +170,9 @@ export async function runAdapterTest(testCase: AdapterTestCase) {
     (api as any).openai.fetch = mockFetch;
   }
 
-  await executeAdapterMethod(api, methodToTest, params);
+  const chunks = await executeAdapterMethod(api, methodToTest, params);
   assertFetchCall(mockFetch, expectedRequest);
+  return chunks;
 }
 
 export interface AdapterTestConfig {

@@ -6,10 +6,7 @@ This document catalogs all build dependencies, secrets, and environment variable
 
 ## VS Code Extension
 
-| Secret               | Purpose                                                                             | Referenced In               |
-| -------------------- | ----------------------------------------------------------------------------------- | --------------------------- |
-| `VSCE_TOKEN`         | Personal access token for publishing to the VS Code Marketplace (set as `VSCE_PAT`) | `main.yaml`, `preview.yaml` |
-| `VSX_REGISTRY_TOKEN` | Token for publishing to the Open VSX Registry                                       | `main.yaml`, `preview.yaml` |
+Open VSX publishing does not use a secret. `main.yaml` publishes with trusted publishing in the GitHub environment `production`. `preview.yaml` publishes pre-releases with trusted publishing in the GitHub environment `staging`. Both environments must exist on `nextcli-dev/nextcli` with those exact names.
 
 ---
 

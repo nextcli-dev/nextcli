@@ -395,6 +395,30 @@ class OpenAI extends BaseLLM {
     return completion;
   }
 
+  /**
+   * Deployment-style Azure OpenAI puts the deployment in the path and requires
+   * `api-version`. Azure AI Foundry keeps the caller-supplied path and only
+   * adds the version query. `apiBase` must already be set.
+   */
+  private _getAzureUrl(endpoint: string): URL {
+    if (!this.apiBase) {
+      throw new Error(
+        "No API base URL provided. Please set the 'apiBase' option in config.yaml",
+      );
+    }
+
+    // Default is `azure-openai`, but previously was `azure`
+    const isAzureOpenAI =
+      this.apiType === "azure-openai" || this.apiType === "azure";
+
+    const path = isAzureOpenAI
+      ? `openai/deployments/${this.deployment}/${endpoint}`
+      : endpoint;
+
+    const version = this.apiVersion ? `?api-version=${this.apiVersion}` : "";
+    return new URL(`${path}${version}`, this.apiBase);
+  }
+
   protected _getEndpoint(
     endpoint: "chat/completions" | "completions" | "models" | "responses",
   ) {
@@ -405,16 +429,7 @@ class OpenAI extends BaseLLM {
     }
 
     if (this.apiType?.includes("azure")) {
-      // Default is `azure-openai`, but previously was `azure`
-      const isAzureOpenAI =
-        this.apiType === "azure-openai" || this.apiType === "azure";
-
-      const path = isAzureOpenAI
-        ? `openai/deployments/${this.deployment}/${endpoint}`
-        : endpoint;
-
-      const version = this.apiVersion ? `?api-version=${this.apiVersion}` : "";
-      return new URL(`${path}${version}`, this.apiBase);
+      return this._getAzureUrl(endpoint);
     }
 
     return new URL(endpoint, this.apiBase);
@@ -705,11 +720,8 @@ class OpenAI extends BaseLLM {
       );
     }
 
-    if (this.apiType === "azure") {
-      return new URL(
-        `openai/deployments/${this.deployment}/embeddings?api-version=${this.apiVersion}`,
-        this.apiBase,
-      );
+    if (this.apiType?.includes("azure")) {
+      return this._getAzureUrl("embeddings");
     }
     return new URL("embeddings", this.apiBase);
   }
