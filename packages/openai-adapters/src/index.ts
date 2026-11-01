@@ -235,9 +235,13 @@ export type {
 
 export {
   addCacheControlToLastTwoUserMessages,
+  anthropicSupportsForcedToolChoice,
+  anthropicThinkingType,
+  filterAnthropicSamplingParams,
   getAnthropicErrorMessage,
   getAnthropicHeaders,
   getAnthropicMediaTypeFromDataUrl,
+  parseClaudeModelVersion,
 } from "./apis/AnthropicUtils.js";
 
 export { isResponsesModel } from "./apis/openaiResponses.js";

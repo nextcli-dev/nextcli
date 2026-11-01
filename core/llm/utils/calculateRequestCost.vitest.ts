@@ -17,6 +17,65 @@ interface TestCase {
 
 describe("calculateRequestCost", () => {
   const testCases: TestCase[] = [
+    // Current Claude models (prices checked 2026-11-01)
+    {
+      provider: "anthropic",
+      model: "claude-sonnet-5-5",
+      promptTokens: 1000,
+      completionTokens: 500,
+      cachedTokens: 2000,
+      expectedCost: 0.0072,
+      description: "Claude Sonnet 5.5 with cache reads",
+    },
+    {
+      provider: "anthropic",
+      model: "claude-sonnet-5",
+      promptTokens: 1000,
+      completionTokens: 500,
+      expectedCost: 0.007,
+      description: "Claude Sonnet 5 is not priced as Sonnet 5.5",
+    },
+    {
+      provider: "anthropic",
+      model: "claude-opus-5-5",
+      promptTokens: 1000,
+      completionTokens: 500,
+      expectedCost: 0.014,
+      description: "Claude Opus 5.5 basic usage",
+    },
+    {
+      provider: "anthropic",
+      model: "claude-fable-5-1",
+      promptTokens: 1000,
+      completionTokens: 500,
+      expectedCost: 0.035,
+      description: "Claude Fable 5.1 basic usage",
+    },
+    {
+      provider: "anthropic",
+      model: "claude-haiku-5-5",
+      promptTokens: 50_000,
+      completionTokens: 1000,
+      expectedCost: 0.0055,
+      description: "Claude Haiku 5.5 short prompt",
+    },
+    {
+      provider: "anthropic",
+      model: "claude-haiku-5-5",
+      promptTokens: 60_000,
+      completionTokens: 1000,
+      cachedTokens: 50_000,
+      expectedCost: 0.035,
+      description: "Claude Haiku 5.5 long prompt counts cache reads",
+    },
+    {
+      provider: "anthropic",
+      model: "claude-haiku-4-5-20251001",
+      promptTokens: 1000,
+      completionTokens: 500,
+      expectedCost: 0.0035,
+      description: "Claude Haiku 4.5 basic usage",
+    },
     // Anthropic Claude 3.5 Sonnet
     {
       provider: "anthropic",

@@ -17,6 +17,7 @@ import {
 } from "openai/resources/index";
 import { AiSdkConfig } from "../types.js";
 import { customFetch, embedding } from "../util.js";
+import { filterAnthropicSamplingParams } from "./AnthropicUtils.js";
 import {
   BaseLlmApi,
   CreateRerankResponse,
@@ -64,6 +65,24 @@ export class AiSdkApi implements BaseLlmApi {
     const [providerId, ...modelParts] = config.model.split("/");
     this.providerId = providerId;
     this.modelId = modelParts.join("/");
+  }
+
+  private samplingParams(body: {
+    temperature?: number | null;
+    top_p?: number | null;
+  }): { temperature?: number; topP?: number } {
+    const params = {
+      temperature: body.temperature ?? undefined,
+      topP: body.top_p ?? undefined,
+    };
+    if (this.providerId !== "anthropic") {
+      return params;
+    }
+    const { temperature, topP } = filterAnthropicSamplingParams(
+      this.modelId,
+      params,
+    );
+    return { temperature, topP };
   }
 
   private initializeProvider() {
@@ -133,16 +152,18 @@ export class AiSdkApi implements BaseLlmApi {
       model,
       system: systemText,
       messages: nonSystemMessages as any,
-      temperature: body.temperature ?? undefined,
+      ...this.samplingParams(body),
       maxOutputTokens: body.max_tokens ?? undefined,
-      topP: body.top_p ?? undefined,
       stopSequences: body.stop
         ? Array.isArray(body.stop)
           ? body.stop
           : [body.stop]
         : undefined,
       tools: vercelTools,
-      toolChoice: convertToolChoiceToVercel(body.tool_choice),
+      toolChoice: convertToolChoiceToVercel(body.tool_choice, {
+        provider: this.providerId,
+        model: this.modelId,
+      }),
       abortSignal: signal,
     });
 
@@ -219,16 +240,18 @@ export class AiSdkApi implements BaseLlmApi {
       model,
       system: systemText,
       messages: nonSystemMessages as any,
-      temperature: body.temperature ?? undefined,
+      ...this.samplingParams(body),
       maxOutputTokens: body.max_tokens ?? undefined,
-      topP: body.top_p ?? undefined,
       stopSequences: body.stop
         ? Array.isArray(body.stop)
           ? body.stop
           : [body.stop]
         : undefined,
       tools: vercelTools,
-      toolChoice: convertToolChoiceToVercel(body.tool_choice),
+      toolChoice: convertToolChoiceToVercel(body.tool_choice, {
+        provider: this.providerId,
+        model: this.modelId,
+      }),
       abortSignal: signal,
     });
 

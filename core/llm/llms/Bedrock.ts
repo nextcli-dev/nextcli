@@ -16,6 +16,10 @@ import {
   ToolUseBlockDelta,
 } from "@aws-sdk/client-bedrock-runtime";
 import { fromNodeProviderChain } from "@aws-sdk/credential-providers";
+import {
+  anthropicThinkingType,
+  filterAnthropicSamplingParams,
+} from "@nextcli/openai-adapters";
 
 import type { CompletionOptions } from "../../index.js";
 import { ChatMessage, Chunk, LLMOptions, MessageContent } from "../../index.js";
@@ -327,8 +331,10 @@ class Bedrock extends BaseLLM {
       messages: convertedMessages,
       inferenceConfig: {
         maxTokens: options.maxTokens,
-        temperature: options.temperature,
-        topP: options.topP,
+        ...filterAnthropicSamplingParams(options.model, {
+          temperature: options.temperature,
+          topP: options.topP,
+        }),
         // TODO: The current approach selects the first 4 items from the list to comply with Bedrock's requirement
         // of having at most 4 stop sequences, as per the AWS documentation:
         // https://docs.aws.amazon.com/bedrock/latest/APIReference/API_agent_InferenceConfiguration.html
@@ -343,10 +349,12 @@ class Bedrock extends BaseLLM {
       },
       additionalModelRequestFields: {
         thinking: options.reasoning
-          ? {
-              type: "enabled",
-              budget_tokens: options.reasoningBudgetTokens,
-            }
+          ? anthropicThinkingType(options.model) === "adaptive"
+            ? { type: "adaptive" }
+            : {
+                type: "enabled",
+                budget_tokens: options.reasoningBudgetTokens,
+              }
           : undefined,
         anthropic_beta: options.model.includes("claude")
           ? ["fine-grained-tool-streaming-2025-05-14"]

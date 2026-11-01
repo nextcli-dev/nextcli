@@ -13,6 +13,9 @@ import {
 import { streamSse } from "@nextcli/fetch";
 import {
   addCacheControlToLastTwoUserMessages,
+  anthropicSupportsForcedToolChoice,
+  anthropicThinkingType,
+  filterAnthropicSamplingParams,
   getAnthropicErrorMessage,
   getAnthropicHeaders,
   getAnthropicMediaTypeFromDataUrl,
@@ -35,9 +38,9 @@ import { BaseLLM } from "../index.js";
 class Anthropic extends BaseLLM {
   static providerName = "anthropic";
   static defaultOptions: Partial<LLMOptions> = {
-    model: "claude-sonnet-4-6",
+    model: "claude-sonnet-5-5",
     completionOptions: {
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5-5",
       maxTokens: 8192,
     },
     apiBase: "https://api.anthropic.com/v1/",
@@ -54,32 +57,51 @@ class Anthropic extends BaseLLM {
     };
   }
 
+  private convertThinking(
+    options: CompletionOptions,
+  ): MessageCreateParams["thinking"] {
+    if (!options.reasoning) {
+      return undefined;
+    }
+    if (anthropicThinkingType(options.model) === "adaptive") {
+      // The installed SDK types predate adaptive thinking, which takes no budget
+      return { type: "adaptive" } as unknown as MessageCreateParams["thinking"];
+    }
+    return {
+      type: "enabled",
+      budget_tokens: options.reasoningBudgetTokens ?? DEFAULT_REASONING_TOKENS,
+    };
+  }
+
   // Public for use within VertexAI
   public convertArgs(
     options: CompletionOptions,
   ): Omit<MessageCreateParams, "messages"> {
-    const finalOptions = {
-      top_k: options.topK,
-      top_p: options.topP,
+    const sampling = filterAnthropicSamplingParams(options.model, {
       temperature: options.temperature,
+      topP: options.topP,
+      topK: options.topK,
+    });
+    const finalOptions = {
+      top_k: sampling.topK,
+      top_p: sampling.topP,
+      temperature: sampling.temperature,
       max_tokens: options.maxTokens ?? 2048,
       model: options.model === "claude-2" ? "claude-2.1" : options.model,
       stop_sequences: options.stop?.filter((x) => x.trim() !== ""),
       stream: options.stream ?? true,
       tools: options.tools?.map(this.convertToolToAnthropicTool),
-      thinking: options.reasoning
-        ? {
-            type: "enabled" as const,
-            budget_tokens:
-              options.reasoningBudgetTokens ?? DEFAULT_REASONING_TOKENS,
-          }
-        : undefined,
-      tool_choice: options.toolChoice
-        ? {
-            type: "tool" as const,
-            name: options.toolChoice.function.name,
-          }
-        : undefined,
+      thinking: this.convertThinking(options),
+      // Anthropic rejects forced tool use together with thinking, and newer models reject it outright
+      tool_choice:
+        options.toolChoice &&
+        !options.reasoning &&
+        anthropicSupportsForcedToolChoice(options.model)
+          ? {
+              type: "tool" as const,
+              name: options.toolChoice.function.name,
+            }
+          : undefined,
     };
 
     return finalOptions;

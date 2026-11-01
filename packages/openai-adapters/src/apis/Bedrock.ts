@@ -35,6 +35,7 @@ import { BedrockConfig } from "../types.js";
 import { chatChunk, chatChunkFromDelta, embedding, rerank } from "../util.js";
 import { safeParseArgs } from "../util/parseArgs.js";
 import { parseDataUrl } from "../util/url.js";
+import { filterAnthropicSamplingParams } from "./AnthropicUtils.js";
 import {
   BaseLlmApi,
   CreateRerankResponse,
@@ -393,8 +394,10 @@ export class BedrockApi implements BaseLlmApi {
       modelId: oaiBody.model,
       messages: convertedMessages,
       inferenceConfig: {
-        temperature: oaiBody.temperature,
-        topP: oaiBody.top_p,
+        ...filterAnthropicSamplingParams(oaiBody.model, {
+          temperature: oaiBody.temperature ?? undefined,
+          topP: oaiBody.top_p ?? undefined,
+        }),
         maxTokens: oaiBody.max_tokens,
         stopSequences: Array.isArray(oaiBody.stop)
           ? oaiBody.stop.filter((s) => s.trim() !== "").slice(0, 4)

@@ -23,16 +23,16 @@ models:
       - autocomplete
       - chat
       - edit
-  - name: Claude 4 Sonnet
+  - name: Claude Sonnet 5.5
     provider: anthropic
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-5-5
     apiKey: \${{ secrets.ANTHROPIC_API_KEY }}
     roles:
       - chat
       - edit
       - apply
     defaultCompletionOptions:
-      contextLength: 200000
+      contextLength: 1000000
       maxTokens: 64000
     capabilities:
       - tool_use

@@ -493,3 +493,82 @@ describe("Anthropic", () => {
     });
   });
 });
+
+describe("Anthropic.convertArgs thinking and tool_choice", () => {
+  const llm = new Anthropic({ apiKey: "test-api-key", model: "unused" });
+  const toolChoice = {
+    type: "function" as const,
+    function: { name: "say_hello" },
+  };
+
+  test("uses enabled thinking with a budget for models before 4.6", () => {
+    const args = llm.convertArgs({
+      model: "claude-haiku-4-5-20251001",
+      reasoning: true,
+      reasoningBudgetTokens: 1024,
+    });
+    expect(args.thinking).toEqual({ type: "enabled", budget_tokens: 1024 });
+  });
+
+  test("uses adaptive thinking without a budget for 4.6 and newer", () => {
+    for (const model of [
+      "claude-sonnet-4-6",
+      "claude-opus-4-7",
+      "claude-sonnet-5-5",
+    ]) {
+      const args = llm.convertArgs({
+        model,
+        reasoning: true,
+        reasoningBudgetTokens: 1024,
+      });
+      expect(args.thinking).toEqual({ type: "adaptive" });
+    }
+  });
+
+  test("sends no thinking when reasoning is off", () => {
+    expect(
+      llm.convertArgs({ model: "claude-sonnet-5-5" }).thinking,
+    ).toBeUndefined();
+  });
+
+  test("forces a tool for models that accept it", () => {
+    const args = llm.convertArgs({ model: "claude-haiku-5-5", toolChoice });
+    expect(args.tool_choice).toEqual({ type: "tool", name: "say_hello" });
+  });
+
+  test("drops a forced tool for models that reject it", () => {
+    const args = llm.convertArgs({ model: "claude-sonnet-5-5", toolChoice });
+    expect(args.tool_choice).toBeUndefined();
+  });
+
+  test("drops sampling params that newer models reject", () => {
+    const args = llm.convertArgs({
+      model: "claude-sonnet-5-5",
+      temperature: 0.01,
+      topP: 0.9,
+      topK: 40,
+    });
+    expect(args.temperature).toBeUndefined();
+    expect(args.top_p).toBeUndefined();
+    expect(args.top_k).toBeUndefined();
+  });
+
+  test("keeps temperature but drops top_p together with it on older models", () => {
+    const args = llm.convertArgs({
+      model: "claude-sonnet-4-6",
+      temperature: 0.5,
+      topP: 0.9,
+    });
+    expect(args.temperature).toBe(0.5);
+    expect(args.top_p).toBeUndefined();
+  });
+
+  test("drops a forced tool when thinking is on", () => {
+    const args = llm.convertArgs({
+      model: "claude-haiku-5-5",
+      toolChoice,
+      reasoning: true,
+    });
+    expect(args.tool_choice).toBeUndefined();
+  });
+});

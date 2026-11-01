@@ -43,6 +43,7 @@ import {
   addCacheControlToLastTwoUserMessages,
   getAnthropicHeaders,
   getAnthropicMediaTypeFromDataUrl,
+  filterAnthropicSamplingParams,
   openAiToolChoiceToAnthropicToolChoice,
   openaiToolToAnthropicTool,
 } from "./AnthropicUtils.js";
@@ -90,6 +91,16 @@ export class AnthropicApi implements BaseLlmApi {
       return 8192;
     }
     return 32_000;
+  }
+
+  private convertSamplingParams(
+    oaiBody: ChatCompletionCreateParams,
+  ): Pick<MessageCreateParams, "temperature" | "top_p"> {
+    const { temperature, topP } = filterAnthropicSamplingParams(oaiBody.model, {
+      temperature: oaiBody.temperature ?? undefined,
+      topP: oaiBody.top_p ?? undefined,
+    });
+    return { temperature, top_p: topP };
   }
 
   public _convertToCleanAnthropicBody(
@@ -146,14 +157,16 @@ export class AnthropicApi implements BaseLlmApi {
               },
             ]
           : systemMessage,
-      top_p: oaiBody.top_p ?? undefined,
-      temperature: oaiBody.temperature ?? undefined,
+      ...this.convertSamplingParams(oaiBody),
       max_tokens: oaiBody.max_tokens ?? this.maxTokensForModel(oaiBody.model), // max_tokens is required
       model: oaiBody.model,
       stop_sequences: stop,
       stream: oaiBody.stream ?? undefined,
       tools,
-      tool_choice: openAiToolChoiceToAnthropicToolChoice(oaiBody.tool_choice),
+      tool_choice: openAiToolChoiceToAnthropicToolChoice(
+        oaiBody.tool_choice,
+        oaiBody.model,
+      ),
     };
 
     return anthropicBody;

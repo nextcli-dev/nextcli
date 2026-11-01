@@ -5,6 +5,17 @@ export interface CostBreakdown {
   breakdown: string;
 }
 
+interface AnthropicRates {
+  input: number;
+  output: number;
+  cacheWrite: number;
+  cacheRead: number;
+}
+
+interface AnthropicPricing extends AnthropicRates {
+  longPrompt?: AnthropicRates & { thresholdTokens: number };
+}
+
 function calculateAnthropicCost(
   model: string,
   usage: Usage,
@@ -12,11 +23,84 @@ function calculateAnthropicCost(
   // Normalize model name to handle various formats
   const normalizedModel = model.toLowerCase();
 
-  // Define pricing per million tokens (MTok) by model family prefix
-  const pricing: Record<
-    string,
-    { input: number; output: number; cacheWrite: number; cacheRead: number }
-  > = {
+  // Define pricing per million tokens (MTok) by model family prefix.
+  // Source: platform.claude.com/docs/en/about-claude/pricing (checked 2026-11-01)
+  const pricing: Record<string, AnthropicPricing> = {
+    // Claude Fable 5.1
+    "claude-fable-5-1": {
+      input: 10,
+      output: 50,
+      cacheWrite: 12.5,
+      cacheRead: 0.25,
+    },
+
+    // Claude Fable 5
+    "claude-fable-5": {
+      input: 10,
+      output: 50,
+      cacheWrite: 12.5,
+      cacheRead: 1,
+    },
+
+    // Claude Opus 5.5
+    "claude-opus-5-5": {
+      input: 4,
+      output: 20,
+      cacheWrite: 5,
+      cacheRead: 0.2,
+    },
+
+    // Claude Opus 5, 4.8 and 4.7
+    "claude-opus-5": {
+      input: 5,
+      output: 25,
+      cacheWrite: 6.25,
+      cacheRead: 0.5,
+    },
+    "claude-opus-4-8": {
+      input: 5,
+      output: 25,
+      cacheWrite: 6.25,
+      cacheRead: 0.5,
+    },
+    "claude-opus-4-7": {
+      input: 5,
+      output: 25,
+      cacheWrite: 6.25,
+      cacheRead: 0.5,
+    },
+
+    // Claude Sonnet 5.5
+    "claude-sonnet-5-5": {
+      input: 2,
+      output: 10,
+      cacheWrite: 2.5,
+      cacheRead: 0.1,
+    },
+
+    // Claude Sonnet 5
+    "claude-sonnet-5": {
+      input: 2,
+      output: 10,
+      cacheWrite: 2.5,
+      cacheRead: 0.2,
+    },
+
+    // Claude Haiku 5.5: prompts over 100K tokens (cache reads and writes included) pay the higher prices
+    "claude-haiku-5-5": {
+      input: 0.1,
+      output: 0.5,
+      cacheWrite: 0.125,
+      cacheRead: 0.01,
+      longPrompt: {
+        thresholdTokens: 100_000,
+        input: 0.5,
+        output: 2.5,
+        cacheWrite: 0.625,
+        cacheRead: 0.05,
+      },
+    },
+
     // Claude Sonnet 4.6
     "claude-sonnet-4-6": {
       input: 3,
@@ -39,6 +123,22 @@ function calculateAnthropicCost(
       output: 25,
       cacheWrite: 6.25,
       cacheRead: 0.5,
+    },
+
+    // Claude Sonnet 4.5
+    "claude-sonnet-4-5": {
+      input: 3,
+      output: 15,
+      cacheWrite: 3.75,
+      cacheRead: 0.3,
+    },
+
+    // Claude Haiku 4.5
+    "claude-haiku-4-5": {
+      input: 1,
+      output: 5,
+      cacheWrite: 1.25,
+      cacheRead: 0.1,
     },
 
     // Claude Opus 4 (legacy)
@@ -77,17 +177,27 @@ function calculateAnthropicCost(
   // Sort keys by length (longest first) to match most specific patterns first
   const sortedKeys = Object.keys(pricing).sort((a, b) => b.length - a.length);
 
-  let modelPricing = null;
+  let basePricing: AnthropicPricing | null = null;
   for (const prefix of sortedKeys) {
     if (normalizedModel.startsWith(prefix)) {
-      modelPricing = pricing[prefix];
+      basePricing = pricing[prefix];
       break;
     }
   }
 
-  if (!modelPricing) {
+  if (!basePricing) {
     return null; // Unknown model
   }
+
+  const promptLength =
+    usage.promptTokens +
+    (usage.promptTokensDetails?.cachedTokens ?? 0) +
+    (usage.promptTokensDetails?.cacheWriteTokens ?? 0);
+  const modelPricing =
+    basePricing.longPrompt &&
+    promptLength > basePricing.longPrompt.thresholdTokens
+      ? basePricing.longPrompt
+      : basePricing;
 
   // Calculate costs
   const inputCost = (usage.promptTokens / 1_000_000) * modelPricing.input;
