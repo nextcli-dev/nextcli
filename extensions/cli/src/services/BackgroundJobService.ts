@@ -1,6 +1,11 @@
 import { ChildProcess, spawn } from "child_process";
 
 import { logger } from "../util/logger.js";
+import {
+  killProcessTree,
+  processTreeSpawnOptions,
+  trackProcessTree,
+} from "../util/processTree.js";
 
 export type BackgroundJobStatus =
   | "pending"
@@ -67,7 +72,11 @@ export class BackgroundJobService {
 
     job.status = "running";
 
-    const child = spawn(shell, args, { stdio: "pipe" });
+    const child = spawn(shell, args, {
+      stdio: "pipe",
+      ...processTreeSpawnOptions(),
+    });
+    trackProcessTree(child);
     this.processes.set(jobId, child);
 
     child.stdout?.setEncoding("utf8");
@@ -186,7 +195,7 @@ export class BackgroundJobService {
     if (!job) return false;
 
     if (process) {
-      process.kill();
+      killProcessTree(process);
       this.processes.delete(jobId);
     }
 
@@ -215,7 +224,7 @@ export class BackgroundJobService {
 
   killAllJobs(): void {
     for (const [jobId, process] of this.processes) {
-      process.kill();
+      killProcessTree(process);
       const job = this.jobs.get(jobId);
       if (job) {
         job.status = "cancelled";

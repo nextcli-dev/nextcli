@@ -85,10 +85,10 @@ export class ChromiumCrawler {
 
     const responseWatcher = new Promise<void>(function (resolve, reject) {
       setTimeout(() => {
-        if (!responseEventOccurred) {
-          resolve();
-        } else {
+        if (responseEventOccurred) {
           setTimeout(() => resolve(), MAX_PAGE_WAIT_MS);
+        } else {
+          resolve();
         }
       }, 500);
     });

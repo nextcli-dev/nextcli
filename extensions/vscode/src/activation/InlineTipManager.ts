@@ -235,10 +235,8 @@ export class InlineTipManager {
   }
 
   private createSvgTooltipDecoration() {
-    var backgroundColour = "#333333";
-    if (this.theme) {
-      backgroundColour = this.theme.colors["editor.background"];
-    }
+    const backgroundColour =
+      this.theme?.colors?.["editor.background"] ?? "#333333";
     return vscode.window.createTextEditorDecorationType({
       after: {
         contentIconPath: this.svgTooltip,
@@ -274,7 +272,8 @@ export class InlineTipManager {
           {
             ...baseTextConfig,
             x: SVG_CONFIG.chatLabelX,
-            fill: this.theme?.colors["editor.foreground"] ?? SVG_CONFIG.stroke,
+            fill:
+              this.theme?.colors?.["editor.foreground"] ?? SVG_CONFIG.stroke,
           },
           SVG_CONFIG.chatLabel,
         )
@@ -291,7 +290,8 @@ export class InlineTipManager {
           {
             ...baseTextConfig,
             x: SVG_CONFIG.editLabelX,
-            fill: this.theme?.colors["editor.foreground"] ?? SVG_CONFIG.stroke,
+            fill:
+              this.theme?.colors?.["editor.foreground"] ?? SVG_CONFIG.stroke,
           },
           SVG_CONFIG.editLabel,
         )

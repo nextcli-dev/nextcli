@@ -94,13 +94,13 @@ export class BracketMatchingService {
       if (!seenNonWhitespaceOrClosingBracket) {
         const firstNonWhitespaceOrClosingBracketIndex =
           chunk.search(/[^\s\)\}\]]/);
-        if (firstNonWhitespaceOrClosingBracketIndex !== -1) {
+        if (firstNonWhitespaceOrClosingBracketIndex === -1) {
+          yield chunk;
+          continue;
+        } else {
           yield chunk.slice(0, firstNonWhitespaceOrClosingBracketIndex);
           chunk = chunk.slice(firstNonWhitespaceOrClosingBracketIndex);
           seenNonWhitespaceOrClosingBracket = true;
-        } else {
-          yield chunk;
-          continue;
         }
       }
 

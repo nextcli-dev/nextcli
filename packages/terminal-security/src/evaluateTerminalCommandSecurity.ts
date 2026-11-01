@@ -1,4 +1,9 @@
 import { parse } from "shell-quote";
+
+import {
+  classifyDestructiveCommand,
+  normalizeCommandName,
+} from "./destructiveCommands.js";
 import { ToolPolicy } from "./types.js";
 
 /**
@@ -49,6 +54,24 @@ export function evaluateTerminalCommandSecurity(
     return basePolicy;
   }
 
+  // Deletions and disk writes are classified on the whole command, after
+  // resolving paths. Catastrophic ones can never run; destructive ones always
+  // need permission (the CLI also refuses them in headless mode, see
+  // isDestructiveTerminalCommand).
+  const destructiveRisk = classifyDestructiveCommand(normalizedCommand);
+  if (destructiveRisk === "catastrophic") {
+    return "disabled";
+  }
+  const policy = evaluateCommandPolicy(basePolicy, normalizedCommand);
+  return destructiveRisk
+    ? getMostRestrictive(policy, "allowedWithPermission")
+    : policy;
+}
+
+function evaluateCommandPolicy(
+  basePolicy: ToolPolicy,
+  normalizedCommand: string,
+): ToolPolicy {
   try {
     // Split on line breaks to handle multi-line commands
     // Newlines are command separators in shells, similar to semicolons
@@ -400,6 +423,8 @@ function evaluateSingleCommand(
  * Checks if a command is critical and should always be disabled
  */
 function isCriticalCommand(baseCommand: string, args: string[]): boolean {
+  baseCommand = normalizeCommandName(baseCommand);
+
   // System destruction commands - check if base command starts with mkfs
   if (baseCommand.startsWith("mkfs")) {
     return true;
@@ -493,7 +518,15 @@ function isCriticalCommand(baseCommand: string, args: string[]): boolean {
   }
 
   // Privilege escalation
-  const privEscCommands = ["sudo", "su", "doas", "runas", "gsudo", "psexec"];
+  const privEscCommands = [
+    "sudo",
+    "su",
+    "doas",
+    "pkexec",
+    "runas",
+    "gsudo",
+    "psexec",
+  ];
   if (privEscCommands.includes(baseCommand)) {
     return true;
   }

@@ -11,12 +11,7 @@ export function validateConfig(config: SerializedContinueConfig) {
   const errors: ConfigValidationError[] = [];
 
   // Validate chat models
-  if (!Array.isArray(config.models)) {
-    errors.push({
-      fatal: true,
-      message: "The 'models' field should be an array.",
-    });
-  } else {
+  if (Array.isArray(config.models)) {
     config.models.forEach((model, index) => {
       if (typeof model.title !== "string" || model.title.trim() === "") {
         errors.push({
@@ -42,6 +37,11 @@ export function validateConfig(config: SerializedContinueConfig) {
           });
         }
       }
+    });
+  } else {
+    errors.push({
+      fatal: true,
+      message: "The 'models' field should be an array.",
     });
   }
 
@@ -78,12 +78,7 @@ export function validateConfig(config: SerializedContinueConfig) {
 
   // Validate slashCommands
   if (config.slashCommands) {
-    if (!Array.isArray(config.slashCommands)) {
-      errors.push({
-        fatal: true,
-        message: "The 'slashCommands' field should be an array if defined.",
-      });
-    } else {
+    if (Array.isArray(config.slashCommands)) {
       config.slashCommands.forEach((command, index) => {
         if (typeof command.name !== "string" || command.name.trim() === "") {
           errors.push({
@@ -98,17 +93,17 @@ export function validateConfig(config: SerializedContinueConfig) {
           });
         }
       });
+    } else {
+      errors.push({
+        fatal: true,
+        message: "The 'slashCommands' field should be an array if defined.",
+      });
     }
   }
 
   // Validate contextProviders
   if (config.contextProviders) {
-    if (!Array.isArray(config.contextProviders)) {
-      errors.push({
-        fatal: true,
-        message: "The 'contextProviders' field should be an array if defined.",
-      });
-    } else {
+    if (Array.isArray(config.contextProviders)) {
       config.contextProviders.forEach((provider, index) => {
         if (typeof provider.name !== "string" || provider.name.trim() === "") {
           errors.push({
@@ -116,6 +111,11 @@ export function validateConfig(config: SerializedContinueConfig) {
             message: `Context provider at index ${index} has an invalid or missing 'name'.`,
           });
         }
+      });
+    } else {
+      errors.push({
+        fatal: true,
+        message: "The 'contextProviders' field should be an array if defined.",
       });
     }
   }

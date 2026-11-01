@@ -177,6 +177,9 @@ export function getTheme() {
           : "vs-dark"
     ) as any;
 
+    // Themes that only define tokenColors have no `colors` (#12947)
+    convertedTheme.colors = convertedTheme.colors ?? {};
+
     return convertedTheme;
   } catch (e) {
     console.log("Error loading color theme: ", e);

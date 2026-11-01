@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ToolInterruptedError } from "../tools/toolInterruptedError.js";
 import type { PreprocessedToolCall } from "../tools/types.js";
 
 import {
@@ -152,6 +153,88 @@ describe("executeStreamedToolCalls", () => {
 
     expect(String(chatHistoryEntries[0].content)).toContain(
       "lines of tool output truncated",
+    );
+  });
+});
+
+// #12701: a tool call must never start once the turn is interrupted
+describe("executeStreamedToolCalls after an interrupt", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(checkToolPermission).mockReturnValue({ permission: "allow" });
+  });
+
+  it("cancels every call when the signal is already aborted", async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    const { chatHistoryEntries, hasRejection } = await executeStreamedToolCalls(
+      [readCall("call_1"), readCall("call_2")],
+      undefined,
+      true,
+      controller.signal,
+    );
+
+    expect(executeToolCall).not.toHaveBeenCalled();
+    expect(hasRejection).toBe(true);
+    expect(chatHistoryEntries).toHaveLength(2);
+    for (const entry of chatHistoryEntries) {
+      expect(entry).toMatchObject({
+        status: "canceled",
+        content: expect.stringContaining("interrupted"),
+      });
+    }
+  });
+
+  it("does not run a call approved after the interrupt", async () => {
+    const controller = new AbortController();
+    vi.mocked(checkToolPermission).mockImplementation(() => {
+      controller.abort();
+      return { permission: "allow" };
+    });
+
+    const { chatHistoryEntries } = await executeStreamedToolCalls(
+      [readCall("call_1")],
+      undefined,
+      true,
+      controller.signal,
+    );
+
+    expect(executeToolCall).not.toHaveBeenCalled();
+    expect(chatHistoryEntries[0]).toMatchObject({ status: "canceled" });
+  });
+
+  it("records a call interrupted before the tool ran as canceled", async () => {
+    vi.mocked(executeToolCall).mockRejectedValue(new ToolInterruptedError());
+
+    const { chatHistoryEntries, hasRejection } = await executeStreamedToolCalls(
+      [readCall("call_1")],
+      undefined,
+      true,
+      new AbortController().signal,
+    );
+
+    expect(hasRejection).toBe(true);
+    expect(chatHistoryEntries[0]).toMatchObject({
+      status: "canceled",
+      content: expect.stringContaining("interrupted"),
+    });
+  });
+
+  it("passes the signal to the tool", async () => {
+    vi.mocked(executeToolCall).mockResolvedValue("ok");
+    const controller = new AbortController();
+
+    await executeStreamedToolCalls(
+      [readCall("call_1")],
+      undefined,
+      true,
+      controller.signal,
+    );
+
+    expect(executeToolCall).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ signal: controller.signal }),
     );
   });
 });

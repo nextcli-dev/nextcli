@@ -13,12 +13,38 @@ async function dynamicImportAndActivate(context: vscode.ExtensionContext) {
   return await activateExtension(context);
 }
 
+// Holds the activation error. Created only when activation fails, so a healthy
+// install doesn't get an empty output channel.
+let activationErrorChannel: vscode.OutputChannel | undefined;
+
+/**
+ * Registered before anything else loads, so "View Logs" works even when
+ * activation fails (#12946). It toggles DevTools, as the webview expects, and
+ * also shows the activation error if there was one.
+ */
+function registerViewLogsCommand(context: vscode.ExtensionContext) {
+  context.subscriptions.push(
+    vscode.commands.registerCommand("continue.viewLogs", () => {
+      activationErrorChannel?.show(true);
+      void vscode.commands.executeCommand("workbench.action.toggleDevTools");
+    }),
+  );
+}
+
 export function activate(context: vscode.ExtensionContext) {
+  registerViewLogsCommand(context);
+
   return dynamicImportAndActivate(context).catch((e) => {
     console.log("Error activating extension: ", e);
+    const message = e instanceof Error ? e.message : String(e);
+    activationErrorChannel ??= vscode.window.createOutputChannel("NextCLI");
+    context.subscriptions.push(activationErrorChannel);
+    activationErrorChannel.appendLine(
+      `Error activating NextCLI: ${(e instanceof Error && e.stack) || message}`,
+    );
     vscode.window
       .showWarningMessage(
-        "Error activating the Continue extension.",
+        `Error activating NextCLI: ${message}`,
         "View Logs",
         "Retry",
       )

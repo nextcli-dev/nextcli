@@ -3,7 +3,9 @@ import { NextEditOutcome } from "core/nextEdit/types";
 // @ts-ignore
 import svgBuilder from "svg-builder";
 import * as vscode from "vscode";
+
 import { getTheme } from "../util/getTheme";
+
 import {
   HandlerPriority,
   SelectionChangeManager,
@@ -119,7 +121,9 @@ export class JumpManager {
   public dispose() {
     // Dispose current decoration.
     this._disposables.forEach((d) => {
-      if (d) d.dispose();
+      if (d) {
+        d.dispose();
+      }
     });
     this._disposables = [];
   }
@@ -145,7 +149,8 @@ export class JumpManager {
           {
             ...baseTextConfig,
             x: 4,
-            fill: this._theme?.colors["editor.foreground"] ?? SVG_CONFIG.stroke,
+            fill:
+              this._theme?.colors?.["editor.foreground"] ?? SVG_CONFIG.stroke,
           },
           SVG_CONFIG.label,
         )
@@ -168,7 +173,7 @@ export class JumpManager {
 
   private _createSvgJumpDecoration(): vscode.TextEditorDecorationType {
     const backgroundColour =
-      this._theme?.colors["editor.background"] ?? "#333333";
+      this._theme?.colors?.["editor.background"] ?? "#333333";
 
     return vscode.window.createTextEditorDecorationType({
       after: {
@@ -366,7 +371,9 @@ export class JumpManager {
           await this.clearJumpDecoration();
 
           this._jumpAccepted = false;
-          vscode.commands.executeCommand("editor.action.inlineSuggest.trigger");
+          await vscode.commands.executeCommand(
+            "editor.action.inlineSuggest.trigger",
+          );
         }
       },
     );
@@ -378,7 +385,7 @@ export class JumpManager {
           console.debug(
             "deleteChain from JumpManager.ts: rejectJump and decoration visible",
           );
-          NextEditProvider.getInstance().deleteChain();
+          await NextEditProvider.getInstance().deleteChain();
           await this.clearJumpDecoration();
         }
       },
@@ -404,7 +411,7 @@ export class JumpManager {
           this._oldCursorPosition &&
           !currentPosition.isEqual(this._oldCursorPosition)
         ) {
-          vscode.commands.executeCommand("continue.rejectJump");
+          void vscode.commands.executeCommand("continue.rejectJump");
         }
       });
 

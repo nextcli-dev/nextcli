@@ -2,6 +2,7 @@ import { NextEditProvider } from "core/nextEdit/NextEditProvider";
 import { NextEditOutcome } from "core/nextEdit/types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
+import { getTheme } from "../util/getTheme";
 import { CompletionDataForAfterJump, JumpManager } from "./JumpManager";
 
 // Mock VSCode API
@@ -230,6 +231,27 @@ describe("JumpManager", () => {
 
   afterEach(() => {
     jumpManager.dispose();
+  });
+
+  // #12947: themes without a `colors` key crashed activation
+  describe("themes without colors", () => {
+    it.each([
+      ["no colors key", { base: "vs-dark" }],
+      ["no theme at all", undefined],
+    ])("renders a jump decoration with %s", async (_, theme) => {
+      vi.mocked(getTheme).mockReturnValueOnce(theme as any);
+      JumpManager.clearInstance();
+      const manager = JumpManager.getInstance();
+
+      await expect(
+        manager.suggestJump(
+          new vscode.Position(1, 0),
+          new vscode.Position(8, 0),
+        ),
+      ).resolves.not.toThrow();
+      expect(vscode.window.createTextEditorDecorationType).toHaveBeenCalled();
+      manager.dispose();
+    });
   });
 
   describe("getInstance", () => {

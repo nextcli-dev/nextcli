@@ -181,7 +181,7 @@ describe("BaseLLM", () => {
         throw new Error(`did not find LLM provider for ${modelProvider.id}`);
       }
       const testContextLength = (llmInfo: LlmInfo) => () => {
-        const llm = new LLMClass({ model: llmInfo.model });
+        const llm = new LLMClass({ model: llmInfo.model, apiKey: "test-key" });
         if (llmInfo.contextLength) {
           expect(llm.contextLength).toEqual(llmInfo.contextLength);
         } else {

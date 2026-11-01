@@ -1,8 +1,10 @@
 import { ChildProcess, spawn } from "child_process";
 import fs from "fs";
+import type { Socket } from "net";
 
 import {
   evaluateTerminalCommandSecurity,
+  isDestructiveTerminalCommand,
   type ToolPolicy,
 } from "@continuedev/terminal-security";
 
@@ -16,6 +18,12 @@ import {
 import { backgroundSignalManager } from "../util/backgroundSignalManager.js";
 import { emitBashToolEnded, emitBashToolStarted } from "../util/cli.js";
 import {
+  killProcessTree,
+  processTreeSpawnOptions,
+  releaseForeground,
+  trackProcessTree,
+} from "../util/processTree.js";
+import {
   parseEnvNumber,
   truncateOutputFromStart,
 } from "../util/truncateOutput.js";
@@ -28,6 +36,10 @@ const DEFAULT_BASH_MAX_LINES = 1000;
 // Only the tail of the output is ever returned, so the in-memory buffers keep a
 // bounded tail too (a command that prints gigabytes must not exhaust memory)
 const BUFFER_TAIL_FACTOR = 4;
+// How long to keep reading output after the shell exits. A backgrounded child
+// (`cmd &`) inherits stdout/stderr, so waiting for them to close would block
+// until that child exits.
+const OUTPUT_DRAIN_MS = 300;
 
 function appendToTail(
   buffer: string,
@@ -164,6 +176,9 @@ IMPORTANT: To edit files, use Edit/MultiEdit tools instead of bash commands (sed
       parsedArgs.command as string,
     );
   },
+  // Broad deletes (top-level directories, unresolvable paths) need a person
+  requiresHumanApproval: (parsedArgs: Record<string, unknown>): boolean =>
+    isDestructiveTerminalCommand(parsedArgs.command as string),
   preprocess: async (args) => {
     const command = args.command;
     if (!command || typeof command !== "string") {
@@ -198,17 +213,28 @@ IMPORTANT: To edit files, use Edit/MultiEdit tools instead of bash commands (sed
     const maxChars = Math.floor(baseMaxChars / parallelCount);
     const maxLines = Math.floor(baseMaxLines / parallelCount);
 
+    if (context?.signal?.aborted) {
+      return "[Command interrupted]";
+    }
+
     emitBashToolStarted();
 
-    const terminalOutput: string = await new Promise((resolve, reject) => {
+    let removeAbortListener = () => {};
+    let spawnedChild: ChildProcess | undefined;
+    const outputPromise: Promise<string> = new Promise((resolve, reject) => {
       // Use same shell logic as core implementation
       const { shell, args } = getShellCommand(command);
-      const child = spawn(shell, args);
+      const child = spawn(shell, args, processTreeSpawnOptions());
+      trackProcessTree(child, { foreground: true });
+      spawnedChild = child;
       let stdout = "";
       let stderr = "";
       const bufferLimit = Math.max(maxChars, 1) * BUFFER_TAIL_FACTOR;
       const truncate = (output: string) => {
-        const result = truncateOutputFromStart(output, { maxChars, maxLines });
+        const result = truncateOutputFromStart(output, {
+          maxChars,
+          maxLines,
+        });
         return result.wasTruncated
           ? appendParallelLimitNote(result.output)
           : result.output;
@@ -284,6 +310,34 @@ IMPORTANT: To edit files, use Edit/MultiEdit tools instead of bash commands (sed
 
       backgroundSignalManager.on("backgroundRequested", moveToBackground);
 
+      // #12701: an interrupted turn must not leave the command running
+      const onAbort = () => {
+        if (isResolved) return;
+        isResolved = true;
+
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+        backgroundSignalManager.off("backgroundRequested", moveToBackground);
+        killProcessTree(child);
+        resolve(
+          truncate(
+            stdout +
+              (stderr ? `\nStderr: ${stderr}` : "") +
+              "\n\n[Command interrupted]",
+          ),
+        );
+      };
+      const signal = context?.signal;
+      if (signal) {
+        signal.addEventListener("abort", onAbort, { once: true });
+        removeAbortListener = () =>
+          signal.removeEventListener("abort", onAbort);
+        if (signal.aborted) {
+          onAbort();
+        }
+      }
+
       const resetTimeout = () => {
         if (timeoutId) {
           clearTimeout(timeoutId);
@@ -291,7 +345,7 @@ IMPORTANT: To edit files, use Edit/MultiEdit tools instead of bash commands (sed
         timeoutId = setTimeout(() => {
           if (isResolved) return;
           isResolved = true;
-          child.kill();
+          killProcessTree(child);
           let output = stdout + (stderr ? `\nStderr: ${stderr}` : "");
           output += `\n\n[Command timed out after ${TIMEOUT_MS / 1000} seconds of no output]`;
 
@@ -338,7 +392,30 @@ IMPORTANT: To edit files, use Edit/MultiEdit tools instead of bash commands (sed
       child.stdout.on("data", onStdout);
       child.stderr.on("data", onStderr);
 
+      let drainTimer: NodeJS.Timeout | undefined;
+
+      child.on("exit", (code) => {
+        if (isResolved) return;
+        drainTimer = setTimeout(() => {
+          // A backgrounded child still holds the pipes. Keep them open and
+          // drained, so its writes don't fail with SIGPIPE, but stop
+          // collecting output and don't let them keep the CLI alive. The
+          // child is killed with its process group when the CLI exits.
+          for (const stream of [child.stdout, child.stderr]) {
+            stream.removeAllListeners("data");
+            stream.resume();
+            (stream as Socket).unref?.();
+          }
+          finish(code);
+        }, OUTPUT_DRAIN_MS);
+      });
+
       child.on("close", (code) => {
+        clearTimeout(drainTimer);
+        finish(code);
+      });
+
+      const finish = (code: number | null) => {
         if (isResolved) return;
         isResolved = true;
 
@@ -379,7 +456,7 @@ IMPORTANT: To edit files, use Edit/MultiEdit tools instead of bash commands (sed
           ? appendParallelLimitNote(truncationResult.output)
           : truncationResult.output;
         resolve(finalOutput);
-      });
+      };
 
       child.on("error", (error) => {
         if (isResolved) return;
@@ -392,6 +469,16 @@ IMPORTANT: To edit files, use Edit/MultiEdit tools instead of bash commands (sed
         reject(`Error: ${error.message}`);
       });
     });
+
+    let terminalOutput: string;
+    try {
+      terminalOutput = await outputPromise;
+    } finally {
+      removeAbortListener();
+      if (spawnedChild) {
+        releaseForeground(spawnedChild);
+      }
+    }
 
     emitBashToolEnded();
 

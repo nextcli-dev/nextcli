@@ -284,7 +284,7 @@ const gemmaTemplateMessage = templateFactory(
 );
 
 const graniteTemplateMessages = templateFactory(
-  (msg) => (!!msg ? `\n\nSystem:\n ${msg.content}\n\n` : ""),
+  (msg) => (msg ? `\n\nSystem:\n ${msg.content}\n\n` : ""),
   "Question:\n",
   "Answer:\n",
   "\n\n",

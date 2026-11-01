@@ -7,10 +7,13 @@ export default {
       "ts-jest",
       {
         useESM: true,
-        isolatedModules: true,
         tsconfig: {
           experimentalDecorators: true,
           emitDecoratorMetadata: true,
+          // Transpile each file on its own, without typechecking the program.
+          // (ts-jest's own `isolatedModules` option is deprecated in favor of
+          // this one.)
+          isolatedModules: true,
         },
       },
     ],

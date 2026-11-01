@@ -20,6 +20,7 @@ import { post } from "./util/apiClient.js";
 import { markUnhandledError } from "./util/errorState.js";
 import { gracefulExit } from "./util/exit.js";
 import { logger } from "./util/logger.js";
+import { signalForegroundProcessTrees } from "./util/processTree.js";
 import { readStdinSync } from "./util/stdin.js";
 import { getVersion } from "./version.js";
 
@@ -61,6 +62,8 @@ export function enableSigintHandler() {
   process.removeAllListeners("SIGINT");
 
   process.on("SIGINT", async () => {
+    // The running command's shell is in its own process group
+    signalForegroundProcessTrees("SIGINT");
     const now = Date.now();
     const timeSinceLastCtrlC = now - lastCtrlCTime;
 
@@ -165,8 +168,24 @@ process.on("uncaughtException", (error) => {
 
 // keyboard interruption handler for non-TUI flows
 process.on("SIGINT", async () => {
+  // Like a terminal would, interrupt the running command first: its shell is
+  // in its own process group (gracefulExit then kills every tree)
+  signalForegroundProcessTrees("SIGINT");
   await gracefulExit(130);
 });
+
+// Ctrl+Z: stop the running command along with the CLI, and resume it with it
+if (process.platform !== "win32") {
+  process.on("SIGTSTP", () => {
+    // SIGSTOP, because the kernel ignores SIGTSTP in the shell's own session
+    // (an orphaned process group)
+    signalForegroundProcessTrees("SIGSTOP");
+    process.kill(process.pid, "SIGSTOP");
+  });
+  process.on("SIGCONT", () => {
+    signalForegroundProcessTrees("SIGCONT");
+  });
+}
 
 const program = new Command();
 

@@ -4,6 +4,7 @@ import { backgroundJobService } from "../services/BackgroundJobService.js";
 import { getSessionUsage } from "../session.js";
 import { telemetryService } from "../telemetry/telemetryService.js";
 
+import { abortAll } from "./abortRegistry.js";
 import { hadUnhandledError } from "./errorState.js";
 import { getGitDiffSnapshot } from "./git.js";
 import { logger } from "./logger.js";
@@ -13,6 +14,7 @@ import {
   getAgentIdFromArgs,
   postAgentMetadata,
 } from "./metadata.js";
+import { signalAllProcessTrees } from "./processTree.js";
 
 /**
  * Options for updating agent metadata
@@ -191,6 +193,10 @@ function displaySessionUsage(): void {
  * signal that the process encountered errors.
  */
 export async function gracefulExit(code: number = 0): Promise<void> {
+  // Synchronously, before any await: stop in-flight turns so no tool call
+  // that arrives during shutdown is executed
+  abortAll();
+
   // Display session usage breakdown in verbose mode
   displaySessionUsage();
 
@@ -205,10 +211,24 @@ export async function gracefulExit(code: number = 0): Promise<void> {
   }
 
   try {
+    // Includes processes that foreground tool calls left running (`cmd &`)
+    signalAllProcessTrees("SIGTERM");
+  } catch (err) {
+    logger.debug("Process tree cleanup error (ignored)", err as any);
+  }
+
+  try {
     // Flush metrics (forceFlush + shutdown inside service)
     await telemetryService.shutdown();
   } catch (err) {
     logger.debug("Telemetry shutdown error (ignored)", err as any);
+  }
+
+  try {
+    // Anything that ignored SIGTERM during the telemetry flush
+    signalAllProcessTrees("SIGKILL");
+  } catch (err) {
+    logger.debug("Process tree cleanup error (ignored)", err as any);
   }
 
   // If we're trying to exit with success (0) but had unhandled errors,

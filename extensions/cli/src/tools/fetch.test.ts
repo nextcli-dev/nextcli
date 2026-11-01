@@ -24,6 +24,41 @@ describe("fetchTool", () => {
     console.error = originalConsoleError;
   });
 
+  // #12701: an interrupted turn must stop the request
+  it("passes the turn's abort signal to fetch", async () => {
+    const controller = new AbortController();
+    const realFetch = vi.fn().mockResolvedValue(new Response("ok"));
+    vi.stubGlobal("fetch", realFetch);
+    mockFetchUrlContentImpl.mockImplementation(
+      async (_args: unknown, extras: any) => {
+        await extras.fetch("https://example.com", { method: "GET" });
+        return [
+          {
+            name: "Example",
+            description: "https://example.com",
+            content: "ok",
+            uri: { type: "url", value: "https://example.com" },
+          },
+        ];
+      },
+    );
+
+    await fetchTool.run(
+      { url: "https://example.com" },
+      {
+        toolCallId: "call_1",
+        parallelToolCallCount: 1,
+        signal: controller.signal,
+      },
+    );
+
+    expect(realFetch).toHaveBeenCalledWith("https://example.com", {
+      method: "GET",
+      signal: controller.signal,
+    });
+    vi.unstubAllGlobals();
+  });
+
   it("should return clean content from successful fetch", async () => {
     const mockContextItems: ContextItem[] = [
       {

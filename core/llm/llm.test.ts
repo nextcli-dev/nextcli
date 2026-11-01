@@ -246,7 +246,7 @@ describe("LLM", () => {
   testLLM(
     new Gemini({
       model: "gemini-2.0-flash-exp",
-      apiKey: process.env.GEMINI_API_KEY,
+      apiKey: process.env.GEMINI_API_KEY ?? "test-key",
     }),
     { skip: true }, // Skipped - @google/genai getReader issue
   );

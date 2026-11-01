@@ -12,7 +12,7 @@ export function validateSingleEdit(
   replaceAll: unknown,
   index?: number,
 ): { oldString: string; newString: string; replaceAll?: boolean } {
-  const context = index !== undefined ? `edit at index ${index}: ` : "";
+  const context = index === undefined ? "" : `edit at index ${index}: `;
 
   if (oldString === undefined || typeof oldString !== "string") {
     throw new ContinueError(

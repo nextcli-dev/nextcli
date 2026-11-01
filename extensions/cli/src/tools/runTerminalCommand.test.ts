@@ -1,3 +1,5 @@
+import { signalAllProcessTrees } from "../util/processTree.js";
+
 import {
   isRunningInWsl,
   runTerminalCommandTool,
@@ -160,3 +162,134 @@ describe("runTerminalCommandTool output limits", () => {
     },
   );
 });
+
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function waitUntilDead(pid: number): Promise<boolean> {
+  for (let i = 0; i < 50 && isAlive(pid); i++) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return !isAlive(pid);
+}
+
+// #12699: a backgrounded child must not block the tool call, and must not
+// outlive a timeout or the CLI itself
+describe.skipIf(process.platform === "win32")(
+  "runTerminalCommandTool background children",
+  () => {
+    it("returns promptly when the command backgrounds a child", async () => {
+      const start = Date.now();
+      const result = await runTerminalCommandTool.run({
+        command: "sleep 30 & echo $!; echo started",
+      });
+      const backgroundPid = Number(result.trim().split("\n")[0]);
+
+      expect(Date.now() - start).toBeLessThan(2000);
+      expect(result).toContain("started");
+      expect(isAlive(backgroundPid)).toBe(true);
+
+      signalAllProcessTrees("SIGKILL");
+      expect(await waitUntilDead(backgroundPid)).toBe(true);
+    });
+
+    // PR #7 review: closing the pipes killed writers with SIGPIPE
+    it("keeps a backgrounded child that writes to stdout alive", async () => {
+      const result = await runTerminalCommandTool.run({
+        command: `node -e "setInterval(() => console.log('tick'), 50)" & echo $!`,
+      });
+      const backgroundPid = Number(result.trim().split("\n")[0]);
+
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      expect(isAlive(backgroundPid)).toBe(true);
+
+      signalAllProcessTrees("SIGKILL");
+      expect(await waitUntilDead(backgroundPid)).toBe(true);
+    });
+
+    it("kills backgrounded children on timeout", async () => {
+      const result = await runTerminalCommandTool.run({
+        command: "sleep 30 & echo $!; sleep 30",
+        timeout: 1,
+      });
+      const backgroundPid = Number(result.trim().split("\n")[0]);
+
+      expect(result).toContain("[Command timed out");
+      expect(await waitUntilDead(backgroundPid)).toBe(true);
+    });
+
+    // #12701
+    it("kills the command and its children when the turn is aborted", async () => {
+      const controller = new AbortController();
+      const pending = runTerminalCommandTool.run(
+        { command: "sleep 30 & echo $!; sleep 30" },
+        {
+          toolCallId: "call_1",
+          parallelToolCallCount: 1,
+          signal: controller.signal,
+        },
+      );
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      controller.abort();
+
+      const result = await pending;
+      const backgroundPid = Number(result.trim().split("\n")[0]);
+
+      expect(result).toContain("[Command interrupted]");
+      expect(await waitUntilDead(backgroundPid)).toBe(true);
+    });
+
+    it("does not start the command when already aborted", async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      const result = await runTerminalCommandTool.run(
+        { command: "echo should-not-run" },
+        {
+          toolCallId: "call_1",
+          parallelToolCallCount: 1,
+          signal: controller.signal,
+        },
+      );
+
+      expect(result).toContain("[Command interrupted]");
+      expect(result).not.toContain("should-not-run");
+    });
+
+    it("kills backgrounded children with SIGTERM on exit", async () => {
+      const result = await runTerminalCommandTool.run({
+        command: "sleep 30 & echo $!",
+      });
+      const backgroundPid = Number(result.trim());
+
+      signalAllProcessTrees("SIGTERM");
+      expect(await waitUntilDead(backgroundPid)).toBe(true);
+    });
+  },
+);
+
+// PR #7 review: on Windows the tree was forgotten once the shell exited, so a
+// child it started outlived the CLI
+describe.runIf(process.platform === "win32")(
+  "runTerminalCommandTool background children on Windows",
+  () => {
+    it("kills a child of an exited shell on exit", async () => {
+      const result = await runTerminalCommandTool.run({
+        command:
+          "(Start-Process -PassThru -WindowStyle Hidden ping -ArgumentList '-n','60','127.0.0.1').Id",
+      });
+      const childPid = Number(result.trim().split(/\r?\n/).pop());
+
+      expect(isAlive(childPid)).toBe(true);
+
+      signalAllProcessTrees("SIGKILL");
+      expect(await waitUntilDead(childPid)).toBe(true);
+    }, 60000);
+  },
+);

@@ -28,8 +28,13 @@ export async function activateExtension(context: vscode.ExtensionContext) {
   getTsConfigPath();
   getContinueRcPath();
 
-  // Register commands and providers
-  setupInlineTips(context);
+  // Register commands and providers. Inline tips are cosmetic, so a failure
+  // there must not stop the extension from activating (#12947)
+  try {
+    setupInlineTips(context);
+  } catch (e) {
+    console.error("Failed to set up inline tips", e);
+  }
 
   const vscodeExtension = new VsCodeExtension(context);
 

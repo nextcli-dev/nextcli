@@ -31,6 +31,7 @@ import { runTerminalCommandTool } from "./runTerminalCommand.js";
 import { checkIfRipgrepIsInstalled, searchCodeTool } from "./searchCode.js";
 import { skillsTool } from "./skills.js";
 import { subagentTool } from "./subagent.js";
+import { ToolInterruptedError } from "./toolInterruptedError.js";
 import {
   isBetaSubagentToolEnabled,
   isBetaUploadArtifactToolEnabled,
@@ -213,7 +214,9 @@ export function convertMcpToolToContinueTool(mcpTool: MCPTool): Tool {
 
 export async function executeToolCall(
   toolCall: PreprocessedToolCall,
-  options: { parallelToolCallCount: number } = { parallelToolCallCount: 1 },
+  options: { parallelToolCallCount: number; signal?: AbortSignal } = {
+    parallelToolCallCount: 1,
+  },
 ): Promise<string> {
   const startTime = Date.now();
 
@@ -227,9 +230,14 @@ export async function executeToolCall(
     // Track edits if Git AI is enabled (no-op if not enabled)
     await services.gitAiIntegration.trackToolUse(toolCall, "PreToolUse");
 
+    if (options.signal?.aborted) {
+      throw new ToolInterruptedError();
+    }
+
     const context: ToolRunContext = {
       toolCallId: toolCall.id,
       parallelToolCallCount: options.parallelToolCallCount,
+      signal: options.signal,
     };
 
     // IMPORTANT: if preprocessed args are present, uses preprocessed args instead of original args

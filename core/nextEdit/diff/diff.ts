@@ -258,7 +258,7 @@ export function applyCompletionToFile(
 
   // Determine how many lines to replace
   const numLinesToReplace =
-    linesToReplace !== undefined ? linesToReplace : completionLines.length;
+    linesToReplace === undefined ? completionLines.length : linesToReplace;
 
   // Replace the lines
   const newLines = [

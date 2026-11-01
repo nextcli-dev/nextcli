@@ -404,12 +404,12 @@ function calculateOpenAICost(
 
   // OpenAI's prompt token count includes cached tokens, which are billed at the cached rate
   const cachedTokens =
-    modelPricing.cachedInput !== undefined
-      ? Math.min(
+    modelPricing.cachedInput === undefined
+      ? 0
+      : Math.min(
           usage.promptTokensDetails?.cachedTokens ?? 0,
           usage.promptTokens,
-        )
-      : 0;
+        );
   const uncachedTokens = usage.promptTokens - cachedTokens;
 
   // Calculate costs

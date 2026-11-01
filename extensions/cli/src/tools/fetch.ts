@@ -7,7 +7,7 @@ import {
   truncateOutputFromEnd,
 } from "../util/truncateOutput.js";
 
-import { Tool } from "./types.js";
+import { Tool, ToolRunContext } from "./types.js";
 
 // Output truncation defaults
 const DEFAULT_FETCH_MAX_CHARS = 20000;
@@ -47,7 +47,10 @@ export const fetchTool: Tool = {
       args,
     };
   },
-  run: async (args: { url: string }): Promise<string> => {
+  run: async (
+    args: { url: string },
+    context?: ToolRunContext,
+  ): Promise<string> => {
     const { url } = args;
 
     try {
@@ -56,7 +59,17 @@ export const fetchTool: Tool = {
       console.error = () => {};
 
       // Use the core fetchUrlContent implementation
-      const contextItems = await fetchUrlContentImpl({ url }, { fetch });
+      // Stop the request when the turn is interrupted
+      const signal = context?.signal;
+      const contextItems = await fetchUrlContentImpl(
+        { url },
+        {
+          fetch: signal
+            ? (input: RequestInfo | URL, init?: RequestInit) =>
+                fetch(input, { ...init, signal })
+            : fetch,
+        },
+      );
 
       // Restore console.error
       console.error = originalConsoleError;

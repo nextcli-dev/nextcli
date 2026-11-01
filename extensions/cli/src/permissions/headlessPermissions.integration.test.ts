@@ -1,4 +1,7 @@
-import { getDefaultToolPolicies } from "./defaultPolicies.js";
+import {
+  AUTO_MODE_POLICIES,
+  getDefaultToolPolicies,
+} from "./defaultPolicies.js";
 import { checkToolPermission } from "./permissionChecker.js";
 import { resolvePermissionPrecedence } from "./precedenceResolver.js";
 
@@ -171,6 +174,99 @@ describe("Headless Permissions Integration", () => {
       expect(
         checkToolPermission(
           { name: "unknown_tool", arguments: {} },
+          permissions,
+        ).permission,
+      ).toBe("allow");
+    });
+  });
+  describe("destructive commands (#13001)", () => {
+    const destructiveCommands = [
+      "rm -Rf /",
+      "rm -R -f /",
+      "rm -rf $HOME",
+      "rm -rf ~/",
+      "find / -delete",
+      "wipefs -a /dev/sda",
+    ];
+
+    it.each(destructiveCommands)(
+      "should exclude %s in headless mode",
+      (command) => {
+        const permissions = { policies: getDefaultToolPolicies(true) };
+        expect(
+          checkToolPermission(
+            { name: "Bash", arguments: { command } },
+            permissions,
+          ).permission,
+        ).toBe("exclude");
+      },
+    );
+
+    it.each(destructiveCommands)(
+      "should exclude %s in auto mode",
+      (command) => {
+        const permissions = { policies: AUTO_MODE_POLICIES };
+        expect(
+          checkToolPermission(
+            { name: "Bash", arguments: { command } },
+            permissions,
+          ).permission,
+        ).toBe("exclude");
+      },
+    );
+
+    // PR #7 review: broad deletes that aren't catastrophic need a person
+    const needsPersonCommands = [
+      "rm -rf /tmp",
+      "rm -rf ${BUILD_DIR}/..",
+      "bash -c 'rm -rf /var'",
+      "echo / | xargs rm -rf",
+      "find . -type f -delete",
+    ];
+
+    it.each(needsPersonCommands)(
+      "should ask instead of allowing %s in headless mode",
+      (command) => {
+        const permissions = { policies: getDefaultToolPolicies(true) };
+        expect(
+          checkToolPermission(
+            { name: "Bash", arguments: { command } },
+            permissions,
+          ).permission,
+        ).toBe("ask");
+      },
+    );
+
+    it.each(needsPersonCommands)(
+      "should ask instead of allowing %s in auto mode",
+      (command) => {
+        const permissions = { policies: AUTO_MODE_POLICIES };
+        expect(
+          checkToolPermission(
+            { name: "Bash", arguments: { command } },
+            permissions,
+          ).permission,
+        ).toBe("ask");
+      },
+    );
+
+    it("should ask even when a policy explicitly allows Bash", () => {
+      const permissions = {
+        policies: [{ tool: "Bash", permission: "allow" as const }],
+      };
+      expect(
+        checkToolPermission(
+          { name: "Bash", arguments: { command: "rm -rf /opt" } },
+          permissions,
+        ).permission,
+      ).toBe("ask");
+    });
+
+    it("should still allow ordinary commands in headless mode", () => {
+      const permissions = { policies: getDefaultToolPolicies(true) };
+      expect(
+        checkToolPermission(
+          { name: "Bash", arguments: { command: "rm -rf ./build" } },
           permissions,
         ).permission,
       ).toBe("allow");

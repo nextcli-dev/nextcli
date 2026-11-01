@@ -1,4 +1,8 @@
-import { fetchwithRequestOptions } from "@nextcli/fetch";
+import {
+  fetchwithRequestOptions,
+  streamResponse,
+  streamSse,
+} from "@nextcli/fetch";
 import * as openAiAdapters from "@nextcli/openai-adapters";
 import * as dotenv from "dotenv";
 import { beforeEach, describe, expect, test, vi } from "vitest";
@@ -58,6 +62,12 @@ const messagesWithInvalidToolCallArgs: ChatMessage[] = [
 describe("LLM Pre-fetch", () => {
   beforeEach(async () => {
     vi.resetAllMocks();
+    // Return an empty successful stream so calls end cleanly after the request is captured
+    vi.mocked(fetchwithRequestOptions).mockImplementation(
+      async () => new Response("", { status: 200 }) as any,
+    );
+    vi.mocked(streamSse).mockImplementation(async function* () {});
+    vi.mocked(streamResponse).mockImplementation(async function* () {});
     // Mock getAnthropicHeaders to return fake headers
     vi.mocked(openAiAdapters.getAnthropicHeaders).mockReturnValue({
       fake: "headers",
@@ -76,8 +86,6 @@ describe("LLM Pre-fetch", () => {
         actualAdapters[name] as any,
       );
     }
-    // Log to verify the mock is properly set up
-    console.log("Mock setup:", openAiAdapters);
   });
 
   test("Invalid tool call args are ignored", async () => {
