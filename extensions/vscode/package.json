@@ -718,7 +718,7 @@
     "vscode-extension-tester": "^8.14.1"
   },
   "dependencies": {
-    "@continuedev/config-types": "file:../../packages/config-types",
+    "@nextcli/config-types": "file:../../packages/config-types",
     "@nextcli/fetch": "file:../../packages/fetch",
     "@electron/rebuild": "^4.0.3",
     "@reduxjs/toolkit": "^1.9.3",

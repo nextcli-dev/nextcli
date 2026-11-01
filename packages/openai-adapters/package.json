@@ -11,6 +11,11 @@
   },
   "author": "Nate Sesti and Ty Dunn",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nextcli-dev/nextcli.git",
+    "directory": "packages/openai-adapters"
+  },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.44",
     "@ai-sdk/google": "^3.0.30",
@@ -20,7 +25,7 @@
     "@anthropic-ai/sdk": "^0.67.0",
     "@aws-sdk/client-bedrock-runtime": "^3.931.0",
     "@aws-sdk/credential-providers": "^3.974.0",
-    "@continuedev/config-types": "^1.0.14",
+    "@nextcli/config-types": "^1.0.14",
     "@nextcli/config-yaml": "^1.38.0",
     "@nextcli/fetch": "^1.6.0",
     "@google/genai": "^1.30.0",

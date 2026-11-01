@@ -11,6 +11,11 @@
   },
   "author": "Nate Sesti and Ty Dunn",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nextcli-dev/nextcli.git",
+    "directory": "packages/llm-info"
+  },
   "devDependencies": {
     "@types/node": "^22.15.29",
     "typescript": "^5.5.2",

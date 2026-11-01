@@ -11,8 +11,13 @@
   },
   "author": "Nate Sesti and Ty Dunn",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nextcli-dev/nextcli.git",
+    "directory": "packages/fetch"
+  },
   "dependencies": {
-    "@continuedev/config-types": "^1.0.14",
+    "@nextcli/config-types": "^1.0.14",
     "follow-redirects": "^1.15.6",
     "http-proxy-agent": "^7.0.2",
     "https-proxy-agent": "^7.0.5",

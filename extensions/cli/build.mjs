@@ -59,7 +59,7 @@ try {
         __dirname,
         "../../packages/openai-adapters/dist/index.js",
       ),
-      "@continuedev/config-types": resolve(
+      "@nextcli/config-types": resolve(
         __dirname,
         "../../packages/config-types/dist/index.js",
       ),

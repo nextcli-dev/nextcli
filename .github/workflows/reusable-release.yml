@@ -109,6 +109,20 @@ jobs:
             fi
           done <<< "$deps"
 
+      # The lockfile can link a dependency to a sibling package (for example ../config-types).
+      # npm ci only creates the symlink, so build the target first or its types are missing.
+      - name: Build linked local packages
+        run: |
+          set -euo pipefail
+          links=$(node -e 'const lock=require("./package-lock.json"); process.stdout.write(Object.values(lock.packages || {}).filter((p)=>p.link && p.resolved).map((p)=>p.resolved).join("\n"));')
+          if [ -z "$links" ]; then
+            exit 0
+          fi
+          while IFS= read -r dir; do
+            echo "Building linked package ${dir}"
+            (cd "$dir" && npm ci && npm run build)
+          done <<< "$links"
+
       - name: Install dependencies
         run: npm ci
 

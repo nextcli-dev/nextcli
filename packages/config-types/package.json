@@ -1,5 +1,5 @@
 {
-  "name": "@continuedev/config-types",
+  "name": "@nextcli/config-types",
   "version": "1.0.14",
   "description": "",
   "main": "dist/index.js",
@@ -11,6 +11,11 @@
   },
   "author": "Nate Sesti and Ty Dunn",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nextcli-dev/nextcli.git",
+    "directory": "packages/config-types"
+  },
   "devDependencies": {
     "@types/node": "^20.11.19",
     "typescript": "^5.5.2"
