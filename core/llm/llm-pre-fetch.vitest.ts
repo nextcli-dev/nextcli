@@ -11,6 +11,9 @@ dotenv.config();
 
 vi.mock("@nextcli/fetch");
 vi.mock("@nextcli/openai-adapters");
+const actualAdapters = await vi.importActual<
+  typeof import("@nextcli/openai-adapters")
+>("@nextcli/openai-adapters");
 
 async function dudLLMCall(llm: ILLM, messages: ChatMessage[]) {
   try {
@@ -62,6 +65,16 @@ describe("LLM Pre-fetch", () => {
     vi.mocked(openAiAdapters.getAnthropicHeaders).mockReturnValue({
       fake: "headers",
     });
+    // Anthropic request building relies on these pure helpers, so keep their real behavior
+    for (const name of [
+      "anthropicThinkingType",
+      "anthropicSupportsForcedToolChoice",
+      "filterAnthropicSamplingParams",
+    ] as const) {
+      vi.mocked(openAiAdapters[name]).mockImplementation(
+        actualAdapters[name] as any,
+      );
+    }
     // Log to verify the mock is properly set up
     console.log("Mock setup:", openAiAdapters);
   });
