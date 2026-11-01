@@ -31,7 +31,10 @@ function walkTextFiles(dir: string, out: string[]) {
 }
 
 function posixRelative(filePath: string): string {
-  return path.relative(DOCS_DIR, path.dirname(filePath)).split(path.sep).join("/");
+  return path
+    .relative(DOCS_DIR, path.dirname(filePath))
+    .split(path.sep)
+    .join("/");
 }
 
 function main() {
@@ -49,7 +52,9 @@ function main() {
     const normalized = path.posix.normalize(destRelative);
     if (normalized.startsWith("..") || path.isAbsolute(normalized)) return;
     const resolved = path.resolve(source);
-    const docsRoot = DOCS_DIR.endsWith(path.sep) ? DOCS_DIR : DOCS_DIR + path.sep;
+    const docsRoot = DOCS_DIR.endsWith(path.sep)
+      ? DOCS_DIR
+      : DOCS_DIR + path.sep;
     if (!resolved.startsWith(docsRoot)) return;
     if (!fs.existsSync(resolved)) {
       missing.push(resolved);
@@ -100,7 +105,9 @@ function main() {
     process.exit(1);
   }
 
-  console.log(`Copied ${jobs.size - oversized.length} referenced images to public/images/docs/`);
+  console.log(
+    `Copied ${jobs.size - oversized.length} referenced images to public/images/docs/`,
+  );
 }
 
 main();

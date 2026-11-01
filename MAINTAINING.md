@@ -21,11 +21,11 @@ Do not push to `upstream`. Its push URL is `DISABLE`.
 
 These stay so current installs, imports, and published package names keep working:
 
-| Identifier       | Current value                                  | Later value                |
-| ---------------- | ---------------------------------------------- | -------------------------- |
+| Identifier       | Current value                                                                     | Later value                         |
+| ---------------- | --------------------------------------------------------------------------------- | ----------------------------------- |
 | npm scope        | `@nextcli/cli` and the four libraries below; other packages stay `@continuedev/*` | remaining `@continuedev/*` packages |
-| CLI command      | `cn`                                           | `nextcli`                  |
-| Config directory | `~/.continue`, `.continue/`, `.continueignore` | migrate into `~/.nextcli`  |
+| CLI command      | `cn`                                                                              | `nextcli`                           |
+| Config directory | `~/.continue`, `.continue/`, `.continueignore`                                    | migrate into `~/.nextcli`           |
 
 Changing any of these is a compatibility break. Do them one at a time, with a migration for the config directory, and publish under the new ids only after the old ones are either transferred or left as a thin wrapper.
 

@@ -5,11 +5,7 @@
  * processing and string detection remain.
  */
 
-import {
-  AgentFile,
-  ModelConfig,
-  parseAgentFile,
-} from "@nextcli/config-yaml";
+import { AgentFile, ModelConfig, parseAgentFile } from "@nextcli/config-yaml";
 
 import { logger } from "./util/logger.js";
 
