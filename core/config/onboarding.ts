@@ -15,54 +15,46 @@ type OnboardingModel = NonNullable<ConfigYaml["models"]>[number];
 // via `uses:` slugs. Since Hub/slug resolution has been removed, we reproduce
 // the exact block contents here, with `apiKey` substituted for the block's
 // `${{ inputs.*_API_KEY }}` placeholder. Keep these in sync with the Hub blocks.
+// Keep in sync with extensions/cli/src/util/providerPresets.ts (ids checked 2026-11-01)
 const ANTHROPIC_ONBOARDING_MODELS = (apiKey: string): OnboardingModel[] => [
   {
-    name: "Claude Sonnet 4.6",
+    name: "Claude Sonnet 5.5",
     provider: "anthropic",
-    model: "claude-sonnet-4-6",
+    model: "claude-sonnet-5-5",
     apiKey,
     roles: ["chat", "edit", "apply"],
-    defaultCompletionOptions: { contextLength: 200000, maxTokens: 64000 },
+    defaultCompletionOptions: { contextLength: 1000000, maxTokens: 64000 },
     capabilities: ["tool_use", "image_input"],
   },
   {
-    name: "Claude Opus 4.6",
+    name: "Claude Opus 5.5",
     provider: "anthropic",
-    model: "claude-opus-4-6",
+    model: "claude-opus-5-5",
     apiKey,
     roles: ["chat", "edit", "apply"],
-    defaultCompletionOptions: { contextLength: 200000, maxTokens: 64000 },
+    defaultCompletionOptions: { contextLength: 1000000, maxTokens: 64000 },
     capabilities: ["tool_use", "image_input"],
   },
 ];
 
 const OPENAI_ONBOARDING_MODELS = (apiKey: string): OnboardingModel[] => [
   {
-    name: "OpenAI GPT-4.1",
+    name: "GPT-5.5",
     provider: "openai",
-    model: "gpt-4.1-2025-04-14",
+    model: "gpt-5.5",
     apiKey,
     roles: ["chat", "edit", "apply"],
-    defaultCompletionOptions: { contextLength: 1047576, maxTokens: 32768 },
-    useLegacyCompletionsEndpoint: false,
+    defaultCompletionOptions: { contextLength: 1050000, maxTokens: 64000 },
+    capabilities: ["tool_use", "image_input"],
   },
   {
-    name: "o3",
+    name: "GPT-5.4 mini",
     provider: "openai",
-    model: "o3",
-    apiKey,
-    roles: ["chat"],
-    defaultCompletionOptions: { contextLength: 200000, maxTokens: 100000 },
-    capabilities: ["image_input"],
-  },
-  {
-    name: "OpenAI GPT-4.1 mini",
-    provider: "openai",
-    model: "gpt-4.1-mini-2025-04-14",
+    model: "gpt-5.4-mini",
     apiKey,
     roles: ["chat", "edit", "apply"],
-    defaultCompletionOptions: { contextLength: 1047576, maxTokens: 32768 },
-    useLegacyCompletionsEndpoint: false,
+    defaultCompletionOptions: { contextLength: 400000, maxTokens: 64000 },
+    capabilities: ["tool_use", "image_input"],
   },
 ];
 

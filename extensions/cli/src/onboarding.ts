@@ -2,21 +2,26 @@ import * as fs from "fs";
 import * as path from "path";
 
 import chalk from "chalk";
+import { parse } from "yaml";
 import { setConfigFilePermissions } from "core/util/paths.js";
 
 import type { AuthConfig } from "./auth/workos.js";
 import { getApiClient } from "./config.js";
 import { loadConfiguration } from "./configLoader.js";
 import { env } from "./env.js";
+import { resolveEnvProviderConfig } from "./util/envProviderConfig.js";
+import { question, questionWithChoices } from "./util/prompt.js";
 import {
-  getApiKeyValidationError,
-  isValidAnthropicApiKey,
-} from "./util/apiKeyValidation.js";
-import { question } from "./util/prompt.js";
-import { updateAnthropicModelInYaml } from "./util/yamlConfigUpdater.js";
+  getProviderPreset,
+  PROVIDER_PRESETS,
+  type ProviderPreset,
+  type ProviderPresetOptions,
+} from "./util/providerPresets.js";
+import { upsertProviderModelsInYaml } from "./util/yamlConfigUpdater.js";
 
 const CONFIG_PATH = path.join(env.continueHome, "config.yaml");
 
+/** True when the config file exists and defines at least one model */
 export async function checkHasAcceptableModel(
   configPath: string,
 ): Promise<boolean> {
@@ -25,14 +30,17 @@ export async function checkHasAcceptableModel(
       return false;
     }
 
-    const content = fs.readFileSync(configPath, "utf8");
-    return content.includes("claude");
+    const config = parse(fs.readFileSync(configPath, "utf8"));
+    return Array.isArray(config?.models) && config.models.length > 0;
   } catch {
     return false;
   }
 }
 
-export async function createOrUpdateConfig(apiKey: string): Promise<void> {
+export async function createOrUpdateProviderConfig(
+  preset: ProviderPreset,
+  options: ProviderPresetOptions,
+): Promise<void> {
   const configDir = path.dirname(CONFIG_PATH);
 
   if (!fs.existsSync(configDir)) {
@@ -43,9 +51,72 @@ export async function createOrUpdateConfig(apiKey: string): Promise<void> {
     ? fs.readFileSync(CONFIG_PATH, "utf8")
     : "";
 
-  const updatedContent = updateAnthropicModelInYaml(existingContent, apiKey);
+  const updatedContent = upsertProviderModelsInYaml(
+    existingContent,
+    preset,
+    options,
+  );
   fs.writeFileSync(CONFIG_PATH, updatedContent);
   setConfigFilePermissions(CONFIG_PATH);
+}
+
+export async function createOrUpdateConfig(apiKey: string): Promise<void> {
+  await createOrUpdateProviderConfig(getProviderPreset("anthropic")!, {
+    apiKey,
+  });
+}
+
+async function promptForProvider(): Promise<ProviderPreset> {
+  console.log(chalk.yellow("To get started, choose a model provider:"));
+  PROVIDER_PRESETS.forEach((preset, i) => {
+    console.log(chalk.white(`  ${i + 1}. ${preset.label}`));
+  });
+  const choices = PROVIDER_PRESETS.map((_, i) => String(i + 1));
+  const answer = await questionWithChoices(
+    chalk.white(`\nEnter a number (1-${PROVIDER_PRESETS.length}) [1]: `),
+    choices,
+    "1",
+    chalk.red(`Please enter a number from 1 to ${PROVIDER_PRESETS.length}.`),
+  );
+  return PROVIDER_PRESETS[Number(answer) - 1];
+}
+
+async function promptForProviderOptions(
+  preset: ProviderPreset,
+): Promise<ProviderPresetOptions> {
+  const options: ProviderPresetOptions = {};
+
+  if (preset.needsApiBaseAndModel) {
+    options.apiBase = (
+      await question(chalk.white("Enter the base URL (e.g. https://host/v1): "))
+    ).trim();
+    options.model = (
+      await question(chalk.white("Enter the model name: "))
+    ).trim();
+    if (!options.apiBase || !options.model) {
+      throw new Error("A base URL and a model name are required");
+    }
+  } else if (!preset.needsApiKey) {
+    const model = (
+      await question(
+        chalk.white(`Enter the model name [${preset.defaultModel}]: `),
+      )
+    ).trim();
+    options.model = model || undefined;
+  }
+
+  if (preset.needsApiKey) {
+    const apiKey = (
+      await question(chalk.white(`\nEnter your ${preset.label} API key: `))
+    ).trim();
+    const error = preset.validateApiKey(apiKey);
+    if (error) {
+      throw new Error(error);
+    }
+    options.apiKey = apiKey;
+  }
+
+  return options;
 }
 
 export async function runOnboardingFlow(
@@ -56,7 +127,12 @@ export async function runOnboardingFlow(
     return false;
   }
 
-  // Step 2: Check for CONTINUE_USE_BEDROCK environment variable first (before test env check)
+  // Step 2: An existing config.yaml with models needs no onboarding (#12258)
+  if (await checkHasAcceptableModel(CONFIG_PATH)) {
+    return true;
+  }
+
+  // Step 3: Check for CONTINUE_USE_BEDROCK environment variable first (before test env check)
   if (process.env.CONTINUE_USE_BEDROCK === "1") {
     console.log(
       chalk.blue("✓ Using AWS Bedrock (CONTINUE_USE_BEDROCK detected)"),
@@ -64,7 +140,15 @@ export async function runOnboardingFlow(
     return true;
   }
 
-  // Step 3: Check if we're in a test/CI environment - if so, skip interactive prompts
+  // Step 4: Provider API key env vars are turned into an in-memory config
+  // by configLoader, so there is nothing to ask or write
+  const envConfig = resolveEnvProviderConfig();
+  if (envConfig) {
+    console.log(chalk.blue(`✓ Using ${envConfig.source} from environment`));
+    return false;
+  }
+
+  // Step 5: Check if we're in a test/CI environment - if so, skip interactive prompts
   const isTestEnv =
     process.env.NODE_ENV === "test" ||
     process.env.CI === "true" ||
@@ -73,30 +157,14 @@ export async function runOnboardingFlow(
     !process.stdin.isTTY;
 
   if (isTestEnv) {
-    // In test/CI environment, check for ANTHROPIC_API_KEY first
-    if (process.env.ANTHROPIC_API_KEY) {
-      console.log(chalk.blue("✓ Using ANTHROPIC_API_KEY from environment"));
-      await createOrUpdateConfig(process.env.ANTHROPIC_API_KEY);
-      console.log(chalk.gray(`  Config saved to: ${CONFIG_PATH}`));
-      return false;
-    }
-
-    // Otherwise return a minimal working configuration
     return false;
   }
 
-  // Step 4: Prompt for API key
-  console.log(chalk.yellow("To get started, enter your Anthropic API key."));
+  // Step 6: Ask for a provider and its settings
+  const preset = await promptForProvider();
+  const options = await promptForProviderOptions(preset);
 
-  const apiKey = await question(
-    chalk.white("\nEnter your Anthropic API key: "),
-  );
-
-  if (!isValidAnthropicApiKey(apiKey)) {
-    throw new Error(getApiKeyValidationError(apiKey));
-  }
-
-  await createOrUpdateConfig(apiKey);
+  await createOrUpdateProviderConfig(preset, options);
   console.log(
     chalk.green(`✓ Config file updated successfully at ${CONFIG_PATH}`),
   );

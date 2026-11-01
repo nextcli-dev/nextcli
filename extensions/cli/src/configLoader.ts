@@ -22,6 +22,10 @@ import {
 } from "./auth/workos.js";
 import { CLIPlatformClient } from "./CLIPlatformClient.js";
 import { env } from "./env.js";
+import {
+  resolveEnvProviderConfig,
+  SUPPORTED_ENV_VARS,
+} from "./util/envProviderConfig.js";
 
 export interface ConfigLoadResult {
   config: AssistantUnrolled;
@@ -33,6 +37,7 @@ export type ConfigSource =
   | { type: "saved-uri"; uri: string }
   | { type: "user-assistant"; slug: string }
   | { type: "local-config-yaml" }
+  | { type: "env-config"; yaml: string; envSource: string }
   | { type: "remote-default-config" }
   | { type: "no-config" };
 
@@ -96,6 +101,16 @@ function determineConfigSource(
   if (fs.existsSync(defaultConfigPath)) {
     return { type: "local-config-yaml" };
   }
+
+  // Priority 3: a config built in memory from provider API key env vars
+  const envConfig = resolveEnvProviderConfig();
+  if (envConfig) {
+    return {
+      type: "env-config",
+      yaml: envConfig.yaml,
+      envSource: envConfig.source,
+    };
+  }
   return { type: "remote-default-config" };
 }
 
@@ -140,6 +155,14 @@ async function loadFromSource(
       case "local-config-yaml":
         return await loadLocalConfigYaml(
           accessToken,
+          organizationId,
+          apiClient,
+          injectBlocks,
+        );
+
+      case "env-config":
+        return await loadConfigYamlContent(
+          source.yaml,
           organizationId,
           apiClient,
           injectBlocks,
@@ -257,7 +280,7 @@ async function loadFromSavedUri(
 function requireHostedApi(action: string): void {
   if (!env.apiBase) {
     throw new Error(
-      `NextCLI has no hosted API, so it cannot ${action}. Create ${path.join(env.continueHome, "config.yaml")} or set NEXTCLI_API_BASE.`,
+      `NextCLI has no hosted API, so it cannot ${action}. Create ${path.join(env.continueHome, "config.yaml")}, set a provider API key (${SUPPORTED_ENV_VARS.join(", ")}), or set NEXTCLI_API_BASE.`,
     );
   }
 }
@@ -362,6 +385,41 @@ async function loadDefaultConfig(
   }
 
   return apiConfig;
+}
+
+/**
+ * Loads a config from YAML content that only exists in memory (env-config)
+ */
+async function loadConfigYamlContent(
+  yaml: string,
+  organizationId: string | null,
+  apiClient: DefaultApiInterface,
+  injectBlocks: PackageIdentifier[],
+): Promise<AssistantUnrolled> {
+  const unrollResult = await unrollAssistantFromContent(
+    {
+      uriType: "file",
+      fileUri: "",
+    },
+    yaml,
+    new RegistryClient({
+      rootPath: undefined,
+    }),
+    {
+      currentUserSlug: "",
+      platformClient: new CLIPlatformClient(organizationId, apiClient),
+      renderSecrets: true,
+      injectBlocks,
+    },
+  );
+  const fatalError = unrollResult.errors?.find((e) => e.fatal);
+  if (fatalError) {
+    throw new Error(`Failed to load config: ${fatalError.message}`);
+  }
+  if (!unrollResult.config) {
+    throw new Error("Failed to load config");
+  }
+  return unrollResult.config;
 }
 
 export async function unrollPackageIdentifiersAsConfigYaml(

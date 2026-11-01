@@ -1,6 +1,10 @@
 import { parse } from "yaml";
 
-import { updateAnthropicModelInYaml } from "./yamlConfigUpdater.js";
+import { getProviderPreset } from "./providerPresets.js";
+import {
+  updateAnthropicModelInYaml,
+  upsertProviderModelsInYaml,
+} from "./yamlConfigUpdater.js";
 
 describe("updateAnthropicModelInYaml", () => {
   const testApiKey = "sk-ant-test123456789";
@@ -13,7 +17,7 @@ describe("updateAnthropicModelInYaml", () => {
       expect(result).toContain("version: 1.0.0");
       expect(result).toContain("schema: v1");
       expect(result).toContain("provider: anthropic");
-      expect(result).toContain("model: claude-sonnet-4-6");
+      expect(result).toContain("model: claude-sonnet-5-5");
       expect(result).toContain("apiKey: sk-ant-test123456789");
       expect(result).not.toContain("uses:");
     });
@@ -23,7 +27,7 @@ describe("updateAnthropicModelInYaml", () => {
       const result = updateAnthropicModelInYaml(invalidYaml, testApiKey);
 
       expect(result).toContain("name: Main Config");
-      expect(result).toContain("model: claude-sonnet-4-6");
+      expect(result).toContain("model: claude-sonnet-5-5");
       expect(result).toContain("apiKey: sk-ant-test123456789");
       expect(result).not.toContain("uses:");
     });
@@ -48,7 +52,7 @@ models:
       expect(result).toContain("# My Continue config");
       expect(result).toContain("# List of available models");
       expect(result).toContain("model: gpt-4");
-      expect(result).toContain("model: claude-sonnet-4-6");
+      expect(result).toContain("model: claude-sonnet-5-5");
       expect(result).toContain("apiKey: sk-ant-test123456789");
     });
 
@@ -69,7 +73,7 @@ models:
 
       expect(result).toContain("# My Continue config");
       expect(result).toContain("# List of available models");
-      expect(result).toContain("model: claude-sonnet-4-6");
+      expect(result).toContain("model: claude-sonnet-5-5");
       expect(result).toContain("apiKey: sk-ant-test123456789");
       expect(result).not.toContain("old-key");
     });
@@ -89,7 +93,7 @@ models:
       expect(result).not.toContain("uses:");
       expect(result).not.toContain("old-key");
       expect(result).toContain("provider: anthropic");
-      expect(result).toContain("model: claude-sonnet-4-6");
+      expect(result).toContain("model: claude-sonnet-5-5");
       expect(result).toContain("apiKey: sk-ant-test123456789");
     });
   });
@@ -109,7 +113,7 @@ models:
       const result = updateAnthropicModelInYaml(existingConfig, testApiKey);
 
       expect(result).toContain("model: gpt-4");
-      expect(result).toContain("model: claude-sonnet-4-6");
+      expect(result).toContain("model: claude-sonnet-5-5");
       expect(result).toContain("apiKey: sk-ant-test123456789");
       expect(result).toContain("apiKey: TEST-openai-test");
     });
@@ -131,15 +135,15 @@ models:
 
       const result = updateAnthropicModelInYaml(existingConfig, testApiKey);
 
-      expect(result).toContain("model: claude-sonnet-4-6");
+      expect(result).toContain("model: claude-sonnet-5-5");
       expect(result).toContain("model: gpt-4");
       expect(result).toContain("apiKey: sk-ant-test123456789");
       expect(result).toContain("apiKey: TEST-openai-test");
       expect(result).not.toContain("old-anthropic-key");
 
-      // Should only have one Claude Sonnet model
-      const sonnetMatches = result.match(/model: claude-sonnet-4-6/g);
-      expect(sonnetMatches).toHaveLength(1);
+      // The model onboarding wrote before is replaced, not kept next to the new one
+      expect(result).not.toContain("model: claude-sonnet-4-6");
+      expect(result.match(/model: claude-sonnet-5-5/g)).toHaveLength(1);
     });
 
     it("should handle config with no models array", () => {
@@ -155,7 +159,7 @@ schema: v1
 
       expect(result).toContain("name: Main Config");
       expect(result).toContain("models:");
-      expect(result).toContain("model: claude-sonnet-4-6");
+      expect(result).toContain("model: claude-sonnet-5-5");
       expect(result).toContain("apiKey: sk-ant-test123456789");
     });
 
@@ -172,7 +176,7 @@ models: []
       );
 
       expect(result).toContain("name: Main Config");
-      expect(result).toContain("model: claude-sonnet-4-6");
+      expect(result).toContain("model: claude-sonnet-5-5");
       expect(result).toContain("apiKey: sk-ant-test123456789");
     });
   });
@@ -217,7 +221,7 @@ models: "not an array"
 
       const result = updateAnthropicModelInYaml(malformedConfig, testApiKey);
 
-      expect(result).toContain("model: claude-sonnet-4-6");
+      expect(result).toContain("model: claude-sonnet-5-5");
       expect(result).toContain("apiKey: sk-ant-test123456789");
     });
 
@@ -233,5 +237,55 @@ models: "not an array"
         expect(result).toContain(`apiKey: ${key}`);
       });
     });
+  });
+});
+
+describe("upsertProviderModelsInYaml", () => {
+  it("writes OpenAI models and keeps other providers' models", () => {
+    const existing = `name: Main Config
+version: 1.0.0
+schema: v1
+models:
+  # keep me
+  - name: Claude Sonnet 5.5
+    provider: anthropic
+    model: claude-sonnet-5-5
+    apiKey: sk-ant-keep
+`;
+    const result = upsertProviderModelsInYaml(
+      existing,
+      getProviderPreset("openai")!,
+      { apiKey: "sk-openai-test" },
+    );
+    expect(result).toContain("provider: openai");
+    expect(result).toContain("model: gpt-5.5");
+    expect(result).toContain("apiKey: sk-openai-test");
+    expect(result).toContain("apiKey: sk-ant-keep");
+  });
+
+  it("writes an OpenAI-compatible gateway with its base URL and model", () => {
+    const result = upsertProviderModelsInYaml(
+      "",
+      getProviderPreset("openai-compatible")!,
+      {
+        apiKey: "gw-key",
+        apiBase: "https://gateway.example/v1",
+        model: "my-model",
+      },
+    );
+    expect(result).toContain("provider: openai");
+    expect(result).toContain("model: my-model");
+    expect(result).toContain("apiBase: https://gateway.example/v1");
+  });
+
+  it("writes Ollama without an API key", () => {
+    const result = upsertProviderModelsInYaml(
+      "",
+      getProviderPreset("ollama")!,
+      {},
+    );
+    expect(result).toContain("provider: ollama");
+    expect(result).toContain("model: llama3.1:8b");
+    expect(result).not.toContain("apiKey");
   });
 });
