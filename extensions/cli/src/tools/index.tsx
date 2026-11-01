@@ -31,6 +31,7 @@ import { runTerminalCommandTool } from "./runTerminalCommand.js";
 import { checkIfRipgrepIsInstalled, searchCodeTool } from "./searchCode.js";
 import { skillsTool } from "./skills.js";
 import { subagentTool } from "./subagent.js";
+import { ToolInterruptedError } from "./toolInterruptedError.js";
 import {
   isBetaSubagentToolEnabled,
   isBetaUploadArtifactToolEnabled,
@@ -230,7 +231,7 @@ export async function executeToolCall(
     await services.gitAiIntegration.trackToolUse(toolCall, "PreToolUse");
 
     if (options.signal?.aborted) {
-      throw new Error("Interrupted before the tool ran");
+      throw new ToolInterruptedError();
     }
 
     const context: ToolRunContext = {

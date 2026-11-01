@@ -1,5 +1,6 @@
 import { ChildProcess, spawn } from "child_process";
 import fs from "fs";
+import type { Socket } from "net";
 
 import {
   evaluateTerminalCommandSecurity,
@@ -19,6 +20,7 @@ import { emitBashToolEnded, emitBashToolStarted } from "../util/cli.js";
 import {
   killProcessTree,
   processTreeSpawnOptions,
+  releaseForeground,
   trackProcessTree,
 } from "../util/processTree.js";
 import {
@@ -218,11 +220,13 @@ IMPORTANT: To edit files, use Edit/MultiEdit tools instead of bash commands (sed
     emitBashToolStarted();
 
     let removeAbortListener = () => {};
+    let spawnedChild: ChildProcess | undefined;
     const outputPromise: Promise<string> = new Promise((resolve, reject) => {
       // Use same shell logic as core implementation
       const { shell, args } = getShellCommand(command);
       const child = spawn(shell, args, processTreeSpawnOptions());
-      trackProcessTree(child);
+      trackProcessTree(child, { foreground: true });
+      spawnedChild = child;
       let stdout = "";
       let stderr = "";
       const bufferLimit = Math.max(maxChars, 1) * BUFFER_TAIL_FACTOR;
@@ -393,8 +397,15 @@ IMPORTANT: To edit files, use Edit/MultiEdit tools instead of bash commands (sed
       child.on("exit", (code) => {
         if (isResolved) return;
         drainTimer = setTimeout(() => {
-          child.stdout.destroy();
-          child.stderr.destroy();
+          // A backgrounded child still holds the pipes. Keep them open and
+          // drained, so its writes don't fail with SIGPIPE, but stop
+          // collecting output and don't let them keep the CLI alive. The
+          // child is killed with its process group when the CLI exits.
+          for (const stream of [child.stdout, child.stderr]) {
+            stream.removeAllListeners("data");
+            stream.resume();
+            (stream as Socket).unref?.();
+          }
           finish(code);
         }, OUTPUT_DRAIN_MS);
       });
@@ -464,6 +475,9 @@ IMPORTANT: To edit files, use Edit/MultiEdit tools instead of bash commands (sed
       terminalOutput = await outputPromise;
     } finally {
       removeAbortListener();
+      if (spawnedChild) {
+        releaseForeground(spawnedChild);
+      }
     }
 
     emitBashToolEnded();

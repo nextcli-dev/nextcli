@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ToolInterruptedError } from "../tools/toolInterruptedError.js";
 import type { PreprocessedToolCall } from "../tools/types.js";
 
 import {
@@ -201,6 +202,23 @@ describe("executeStreamedToolCalls after an interrupt", () => {
 
     expect(executeToolCall).not.toHaveBeenCalled();
     expect(chatHistoryEntries[0]).toMatchObject({ status: "canceled" });
+  });
+
+  it("records a call interrupted before the tool ran as canceled", async () => {
+    vi.mocked(executeToolCall).mockRejectedValue(new ToolInterruptedError());
+
+    const { chatHistoryEntries, hasRejection } = await executeStreamedToolCalls(
+      [readCall("call_1")],
+      undefined,
+      true,
+      new AbortController().signal,
+    );
+
+    expect(hasRejection).toBe(true);
+    expect(chatHistoryEntries[0]).toMatchObject({
+      status: "canceled",
+      content: expect.stringContaining("interrupted"),
+    });
   });
 
   it("passes the signal to the tool", async () => {

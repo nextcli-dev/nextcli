@@ -24,6 +24,7 @@ import {
   Tool,
   validateToolCallArgsPresent,
 } from "../tools/index.js";
+import { ToolInterruptedError } from "../tools/toolInterruptedError.js";
 import { PreprocessedToolCall, ToolCall } from "../tools/types.js";
 import { logger } from "../util/logger.js";
 import {
@@ -668,6 +669,11 @@ export async function executeStreamedToolCalls(
               );
             } catch {}
           } catch (error) {
+            // Interrupted between approval and the tool starting
+            if (error instanceof ToolInterruptedError) {
+              cancelCall(index, call, INTERRUPTED_MESSAGE);
+              return;
+            }
             const errorMessage = capToolResult(
               `Error executing tool ${call.name}: ${
                 error instanceof Error ? error.message : String(error)
