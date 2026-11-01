@@ -1,3 +1,4 @@
+import { jest } from "@jest/globals";
 import * as fs from "fs";
 import {
   FQSN,
@@ -99,6 +100,9 @@ describe("E2E Scenarios", () => {
   };
 
   it("should unroll assistant with a single block that doesn't exist", async () => {
+    const consoleError = jest
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
     const unrolledConfig = await unrollAssistant(
       {
         uriType: "slug",
@@ -117,6 +121,7 @@ describe("E2E Scenarios", () => {
     );
 
     expect(unrolledConfig.config?.rules?.[0]).toBeNull();
+    consoleError.mockRestore();
   });
 
   it("should correctly unroll assistant", async () => {
@@ -256,6 +261,9 @@ describe("E2E Scenarios", () => {
   });
 
   it("should throw when a block is blocklisted", async () => {
+    const consoleError = jest
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
     const result = await unrollAssistant(
       {
         uriType: "slug",
@@ -289,9 +297,13 @@ describe("E2E Scenarios", () => {
         ),
       ),
     ).toBe(true);
+    consoleError.mockRestore();
   });
 
   it("should return an error when a block is not on the allowlist", async () => {
+    const consoleError = jest
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
     const result = await unrollAssistant(
       {
         uriType: "slug",
@@ -333,6 +345,7 @@ describe("E2E Scenarios", () => {
         ),
       ),
     ).toBe(true);
+    consoleError.mockRestore();
   });
 
   it("should allow blocks when they are on the allowlist", async () => {

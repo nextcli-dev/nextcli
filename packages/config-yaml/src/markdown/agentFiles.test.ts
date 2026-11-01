@@ -1,3 +1,4 @@
+import { jest } from "@jest/globals";
 import {
   AgentFile,
   parseAgentFile,
@@ -81,7 +82,13 @@ describe("parseAgentFile", () => {
   });
 
   test("throws error with invalid YAML syntax", () => {
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
     expect(() => parseAgentFile(invalidYamlExample)).toThrow();
+    expect(warn).toHaveBeenCalledWith(
+      "Error parsing markdown frontmatter:",
+      expect.anything(),
+    );
+    warn.mockRestore();
   });
 
   test("handles empty frontmatter with name", () => {

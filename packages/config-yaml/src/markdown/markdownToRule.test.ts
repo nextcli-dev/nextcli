@@ -1,3 +1,4 @@
+import { jest } from "@jest/globals";
 import { PackageIdentifier } from "../browser.js";
 import { getRuleName, markdownToRule } from "./markdownToRule.js";
 
@@ -204,7 +205,13 @@ invalid: yaml: content
 This is a test rule.`;
 
     // Should treat as only markdown when frontmatter is malformed
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
     const result = markdownToRule(content, mockId, "/path/to/");
+    expect(warn).toHaveBeenCalledWith(
+      "Error parsing markdown frontmatter:",
+      expect.anything(),
+    );
+    warn.mockRestore();
     expect(result.globs).toBe("/path/to/**/*");
     expect(result.rule).toBe(content);
     expect(result.name).toBe("to/file"); // Should use last two path segments
