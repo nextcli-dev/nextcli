@@ -462,9 +462,11 @@ export function expectNormalMode(frame: string | undefined) {
  * Helper to wait for a condition to be true
  * similar to `waitFor` in testing libraries
  */
+// The default leaves room for slow CI runners (macOS runners have taken over
+// 2 s to render typed input); it returns as soon as the condition holds
 export async function waitForCondition(
   conditionFn: () => boolean,
-  timeoutMs = 2000,
+  timeoutMs = 5000,
   intervalMs = 50,
 ): Promise<void> {
   const startTime = Date.now();
