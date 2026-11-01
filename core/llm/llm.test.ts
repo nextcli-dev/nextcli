@@ -221,14 +221,15 @@ describe("LLM", () => {
     skip: false,
     testToolCall: true,
   });
+  // Reasoning models on the Responses API
   testLLM(
-    new OpenAI({ apiKey: process.env.OPENAI_API_KEY, model: "o3-mini" }),
-    { skip: false, timeout: 60000 },
+    new OpenAI({ apiKey: process.env.OPENAI_API_KEY, model: "gpt-5.5" }),
+    { skip: false, testToolCall: true, timeout: 60000 },
   );
-  testLLM(new OpenAI({ apiKey: process.env.OPENAI_API_KEY, model: "o1" }), {
-    skip: false,
-    timeout: 60000,
-  });
+  testLLM(
+    new OpenAI({ apiKey: process.env.OPENAI_API_KEY, model: "gpt-6-sol" }),
+    { skip: false, testToolCall: true, timeout: 60000 },
+  );
   testLLM(
     new Gemini({
       model: "gemini-2.0-flash-exp",

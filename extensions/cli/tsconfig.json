@@ -15,6 +15,7 @@
     "isolatedModules": true,
     "noEmitOnError": false,
     "types": ["node", "vitest/globals"],
+    "rootDir": ".",
     "outDir": "dist",
     "declaration": true,
     "sourceMap": true,

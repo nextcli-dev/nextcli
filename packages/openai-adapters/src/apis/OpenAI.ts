@@ -64,6 +64,13 @@ export class OpenAIApi implements BaseLlmApi {
       body.max_tokens = undefined;
     }
 
+    // Reasoning models (o-series, GPT-5 and later) reject temperature and top_p
+    // other than their defaults, wherever they are served
+    if (isResponsesModel(body.model)) {
+      body.temperature = undefined;
+      body.top_p = undefined;
+    }
+
     // o-series models - only apply for official OpenAI API
     const isOfficialOpenAIAPI = this.apiBase === "https://api.openai.com/v1/";
     if (isOfficialOpenAIAPI) {

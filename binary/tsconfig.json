@@ -2,6 +2,7 @@
   "compilerOptions": {
     "module": "commonjs",
     "target": "ES2022",
+    "rootDir": ".",
     "outDir": "out",
     "lib": ["ES2022", "dom", "es6", "es5", "dom.iterable", "scripthost"],
     "sourceMap": true,

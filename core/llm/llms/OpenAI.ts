@@ -291,6 +291,10 @@ class OpenAI extends BaseLLM {
 
       // b) don't support system message
       finalOptions.messages = formatMessageForO1OrGpt5(finalOptions.messages);
+
+      // c) reject temperature and top_p other than their defaults
+      finalOptions.temperature = undefined;
+      finalOptions.top_p = undefined;
     }
 
     if (options.model === "o1") {
@@ -328,8 +332,13 @@ class OpenAI extends BaseLLM {
     const body: ResponseCreateParamsBase = {
       model,
       input,
-      temperature: options.temperature ?? null,
-      top_p: options.topP ?? null,
+      // Reasoning models reject temperature and top_p other than their defaults
+      temperature: this.isOSeriesOrGpt5PlusModel(model)
+        ? null
+        : (options.temperature ?? null),
+      top_p: this.isOSeriesOrGpt5PlusModel(model)
+        ? null
+        : (options.topP ?? null),
       reasoning: {
         effort: "medium",
         summary: "auto",
@@ -462,6 +471,10 @@ class OpenAI extends BaseLLM {
 
       // b) don't support system message
       body.messages = formatMessageForO1OrGpt5(body.messages);
+
+      // c) reject temperature and top_p other than their defaults
+      body.temperature = undefined;
+      body.top_p = undefined;
     }
 
     if (body.model === "o1") {

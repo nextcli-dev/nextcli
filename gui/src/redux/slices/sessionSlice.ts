@@ -594,6 +594,10 @@ export const sessionSlice = createSlice({
               message: {
                 ...message,
                 content: "", // Start with empty content, let accumulation logic handle it
+                // Same for reasoning_details, so the first chunk is not merged into itself
+                ...(message.role === "thinking"
+                  ? { reasoning_details: undefined }
+                  : {}),
                 id: uuidv4(),
               },
               contextItems: [],

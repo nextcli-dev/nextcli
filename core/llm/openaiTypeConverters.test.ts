@@ -39,6 +39,19 @@ function getMessagesByRole(items: ResponseInputItem[], role: string) {
   });
 }
 
+// A stored reasoning item, as a reasoning model emits before its output items.
+// fc_/msg_ ids are only kept when such an item precedes them in the same turn.
+function storedReasoning(): ChatMessage {
+  return {
+    role: "thinking",
+    content: "",
+    reasoning_details: [
+      { type: "reasoning_id", id: "rs_test" },
+      { type: "encrypted_content", encrypted_content: "enc_test" },
+    ],
+  } as ChatMessage;
+}
+
 describe("openaiTypeConverters", () => {
   describe("toResponsesInput", () => {
     describe("tool calls handling - OpenAI Responses API", () => {
@@ -48,6 +61,7 @@ describe("openaiTypeConverters", () => {
             role: "user",
             content: "List files in current directory",
           },
+          storedReasoning(),
           {
             role: "assistant",
             content: "",
@@ -141,6 +155,7 @@ describe("openaiTypeConverters", () => {
         // When streaming, both msg_ and fc_ IDs accumulate in responsesOutputItemIds.
         // Only fc_ IDs should be used for function_call items.
         const messages: ChatMessage[] = [
+          storedReasoning(),
           {
             role: "assistant",
             content: "Let me read those files.",
@@ -225,6 +240,7 @@ describe("openaiTypeConverters", () => {
           role: "user",
           content: "List files",
         },
+        storedReasoning(),
         {
           role: "assistant",
           content: "",
@@ -268,6 +284,7 @@ describe("openaiTypeConverters", () => {
           role: "user",
           content: "Read these 3 files",
         },
+        storedReasoning(),
         {
           role: "assistant",
           content: "",
@@ -341,6 +358,7 @@ describe("openaiTypeConverters", () => {
           role: "user",
           content: "Read these 3 files",
         },
+        storedReasoning(),
         {
           role: "assistant",
           content: "",
@@ -571,6 +589,112 @@ describe("openaiTypeConverters", () => {
         expect((assistantMsgs[0] as ResponseOutputMessage).id).toBeUndefined();
       });
 
+      // #12935: history pruning can drop the thinking message but keep the
+      // assistant message whose ids point at it
+      it("should strip fc_ id when the reasoning item was pruned", () => {
+        const messages: ChatMessage[] = [
+          { role: "user", content: "What's the weather in Paris?" },
+          {
+            role: "assistant",
+            content: "",
+            toolCalls: [
+              {
+                id: "call_001",
+                type: "function",
+                function: {
+                  name: "get_weather",
+                  arguments: '{"city":"Paris"}',
+                },
+              },
+            ],
+            metadata: { responsesOutputItemIds: ["fc_001"] },
+          } as ChatMessage,
+          { role: "tool", content: "Sunny", toolCallId: "call_001" },
+        ];
+
+        const result = toResponsesInput(messages);
+
+        const functionCalls = getFunctionCalls(result);
+        expect(functionCalls.length).toBe(1);
+        expect(functionCalls[0].id).toBeUndefined();
+        expect(functionCalls[0].call_id).toBe("call_001");
+        expect(getFunctionCallOutputs(result).length).toBe(1);
+      });
+
+      it("should send a pruned turn's msg_ item as a plain assistant message", () => {
+        const messages: ChatMessage[] = [
+          { role: "user", content: "Check the weather." },
+          {
+            role: "assistant",
+            content: "I'll check.",
+            toolCalls: [
+              {
+                id: "call_001",
+                type: "function",
+                function: { name: "get_weather", arguments: "{}" },
+              },
+            ],
+            metadata: { responsesOutputItemIds: ["msg_001", "fc_001"] },
+          } as ChatMessage,
+        ];
+
+        const result = toResponsesInput(messages);
+
+        const assistantMsgs = getMessagesByRole(result, "assistant");
+        expect(assistantMsgs).toEqual([
+          { role: "assistant", content: "I'll check.", type: "message" },
+        ]);
+        expect(getFunctionCalls(result)[0].id).toBeUndefined();
+      });
+
+      it("should not let reasoning from an earlier turn cover a later turn", () => {
+        const messages: ChatMessage[] = [
+          { role: "user", content: "Weather in Paris and Rome?" },
+          {
+            role: "thinking",
+            content: "",
+            reasoning_details: [
+              { type: "reasoning_id", id: "rs_001" },
+              { type: "encrypted_content", encrypted_content: "enc_001" },
+            ],
+          } as ChatMessage,
+          {
+            role: "assistant",
+            content: "",
+            toolCalls: [
+              {
+                id: "call_001",
+                type: "function",
+                function: {
+                  name: "get_weather",
+                  arguments: '{"city":"Paris"}',
+                },
+              },
+            ],
+            metadata: { responsesOutputItemIds: ["fc_001"] },
+          } as ChatMessage,
+          { role: "tool", content: "Sunny", toolCallId: "call_001" },
+          {
+            role: "assistant",
+            content: "",
+            toolCalls: [
+              {
+                id: "call_002",
+                type: "function",
+                function: { name: "get_weather", arguments: '{"city":"Rome"}' },
+              },
+            ],
+            metadata: { responsesOutputItemIds: ["fc_002"] },
+          } as ChatMessage,
+        ];
+
+        const result = toResponsesInput(messages);
+
+        const functionCalls = getFunctionCalls(result);
+        expect(functionCalls.map((fc) => fc.id)).toEqual(["fc_001", undefined]);
+        expect(getReasoningItems(result).length).toBe(1);
+      });
+
       it("should recover encrypted_content from metadata fallback", () => {
         // When reasoning_details doesn't contain encrypted_content but
         // metadata does (e.g. metadata was preserved but details were incomplete)
@@ -760,6 +884,7 @@ describe("openaiTypeConverters", () => {
 
       it("should handle more toolCalls than responsesOutputItemIds", () => {
         const messages: ChatMessage[] = [
+          storedReasoning(),
           {
             role: "assistant",
             content: "",

@@ -17,6 +17,48 @@ interface TestCase {
 
 describe("calculateRequestCost", () => {
   const testCases: TestCase[] = [
+    // Current OpenAI models (prices checked 2026-11-01)
+    {
+      provider: "openai",
+      model: "gpt-5.5",
+      promptTokens: 1000,
+      completionTokens: 500,
+      expectedCost: 0.02,
+      description: "GPT-5.5 basic usage",
+    },
+    {
+      provider: "openai",
+      model: "gpt-5.5-2026-04-23",
+      promptTokens: 1000,
+      completionTokens: 500,
+      expectedCost: 0.02,
+      description: "GPT-5.5 dated snapshot uses the GPT-5.5 price",
+    },
+    {
+      provider: "openai",
+      model: "gpt-5-mini",
+      promptTokens: 1000,
+      completionTokens: 500,
+      expectedCost: 0.00125,
+      description: "GPT-5 mini is not priced as GPT-5",
+    },
+    {
+      provider: "openai",
+      model: "gpt-6.1-sol",
+      promptTokens: 10_000,
+      completionTokens: 1000,
+      cachedTokens: 8000,
+      expectedCost: 0.0148,
+      description: "GPT-6.1 Sol bills cached prompt tokens at the cached rate",
+    },
+    {
+      provider: "openai",
+      model: "gpt-5.4",
+      promptTokens: 300_000,
+      completionTokens: 1000,
+      expectedCost: 1.5225,
+      description: "GPT-5.4 long context pricing above 272K input tokens",
+    },
     // Current Claude models (prices checked 2026-11-01)
     {
       provider: "anthropic",
