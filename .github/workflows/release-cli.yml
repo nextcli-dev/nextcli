@@ -102,17 +102,19 @@ jobs:
             exit 1
           fi
           echo "Packed ${tarball}"
-          if tar -tzf "$tarball" | grep -E '(^|/)src/'; then
+          # List once: grep -q closes the pipe early, and with pipefail that makes tar fail.
+          tar -tzf "$tarball" > "$RUNNER_TEMP/tarball-files.txt"
+          if grep -E '(^|/)src/' "$RUNNER_TEMP/tarball-files.txt"; then
             echo "Tarball contains source files."
             exit 1
           fi
           for required in package/LICENSE package/NOTICE package/README.md package/package.json package/dist/cn.js package/dist/index.js; do
-            if ! tar -tzf "$tarball" | grep -qx "$required"; then
+            if ! grep -qx "$required" "$RUNNER_TEMP/tarball-files.txt"; then
               echo "Tarball is missing ${required}."
               exit 1
             fi
           done
-          if tar -tzf "$tarball" | grep -qx 'package/dist/meta.json'; then
+          if grep -qx 'package/dist/meta.json' "$RUNNER_TEMP/tarball-files.txt"; then
             echo "Tarball contains dist/meta.json."
             exit 1
           fi
