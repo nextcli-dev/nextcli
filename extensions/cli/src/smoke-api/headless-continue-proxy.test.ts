@@ -11,7 +11,7 @@ import {
 const NEXTCLI_API_KEY = process.env.NEXTCLI_API_KEY;
 // continue-proxy requires a 4-part model name (owner/package/provider/model)
 // that depends on org-specific proxy configuration, so we also require
-// SMOKE_PROXY_MODEL to be set (e.g. "continuedev/default/anthropic/claude-3-haiku-20240307")
+// SMOKE_PROXY_MODEL to be set (e.g. "continuedev/default/anthropic/claude-haiku-5-5")
 const SMOKE_PROXY_MODEL = process.env.SMOKE_PROXY_MODEL;
 
 describe.skipIf(!NEXTCLI_API_KEY || !SMOKE_PROXY_MODEL)(
