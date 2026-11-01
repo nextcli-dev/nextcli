@@ -185,10 +185,20 @@ const codeLlama70bEditPrompt = `<s>Source: system\n\n You are an expert programm
 const claudeEditPrompt: PromptTemplate = (
   history: ChatMessage[],
   otherData: Record<string, string>,
-) => [
-  {
-    role: "user",
-    content: `\
+) =>
+  // Claude 4.6+ rejects assistant prefill, so use the prompt without one
+  otherData.supportsPrefill === "false"
+    ? gptEditPrompt(history, otherData)
+    : claudeEditPromptWithPrefill(history, otherData);
+
+function claudeEditPromptWithPrefill(
+  history: ChatMessage[],
+  otherData: Record<string, string>,
+): ChatMessage[] {
+  return [
+    {
+      role: "user",
+      content: `\
 \`\`\`${otherData.language}
 ${otherData.codeToEdit}
 \`\`\`
@@ -199,13 +209,14 @@ ${otherData.userInput}
 
 Leave existing comments in place unless changes require modifying them. Output only a code block with the rewritten code:
 `,
-  },
-  {
-    role: "assistant",
-    content: `Sure! Here is the rewritten code:
+    },
+    {
+      role: "assistant",
+      content: `Sure! Here is the rewritten code:
 \`\`\`${otherData.language}`,
-  },
-];
+    },
+  ];
+}
 
 const llama3EditPrompt: PromptTemplate = `<|begin_of_text|><|start_header_id|>user<|end_header_id|>
 \`\`\`{{{language}}}

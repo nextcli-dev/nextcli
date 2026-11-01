@@ -17,6 +17,7 @@ import {
 } from "@aws-sdk/client-bedrock-runtime";
 import { fromNodeProviderChain } from "@aws-sdk/credential-providers";
 import {
+  anthropicSupportsPrefill,
   anthropicThinkingType,
   filterAnthropicSamplingParams,
 } from "@nextcli/openai-adapters";
@@ -318,7 +319,11 @@ class Bedrock extends BaseLLM {
       });
     }
 
-    const convertedMessages = this._convertMessages(messages, availableTools);
+    const convertedMessages = this._convertMessages(
+      messages,
+      availableTools,
+      options.model,
+    );
 
     return {
       modelId: options.model,
@@ -370,6 +375,7 @@ class Bedrock extends BaseLLM {
   private _convertMessages(
     messages: ChatMessage[],
     availableTools: Set<string>,
+    model?: string,
   ): Message[] {
     let currentRole: "user" | "assistant" = "user";
     let currentBlocks: ContentBlock[] = [];
@@ -518,6 +524,20 @@ class Bedrock extends BaseLLM {
     }
     if (currentBlocks.length > 0) {
       pushCurrentMessage();
+    }
+
+    // Edit and apply prompts end with an assistant "prefill". Claude 4.6+ rejects
+    // any prefill, and Claude rejects one ending in whitespace.
+    const last = converted[converted.length - 1];
+    if (converted.length > 1 && last?.role === "assistant") {
+      if (anthropicSupportsPrefill(model)) {
+        const lastBlock = last.content?.[last.content.length - 1];
+        if (lastBlock && "text" in lastBlock && lastBlock.text) {
+          lastBlock.text = lastBlock.text.trimEnd();
+        }
+      } else {
+        converted.pop();
+      }
     }
 
     // If caching is enabled, we add cache_control parameter to the last two user messages

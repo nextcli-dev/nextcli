@@ -236,6 +236,7 @@ export type {
 export {
   addCacheControlToLastTwoUserMessages,
   anthropicSupportsForcedToolChoice,
+  anthropicSupportsPrefill,
   anthropicThinkingType,
   filterAnthropicSamplingParams,
   getAnthropicErrorMessage,

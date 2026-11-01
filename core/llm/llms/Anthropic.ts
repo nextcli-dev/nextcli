@@ -14,6 +14,7 @@ import { streamSse } from "@nextcli/fetch";
 import {
   addCacheControlToLastTwoUserMessages,
   anthropicSupportsForcedToolChoice,
+  anthropicSupportsPrefill,
   anthropicThinkingType,
   filterAnthropicSamplingParams,
   getAnthropicErrorMessage,
@@ -45,6 +46,10 @@ class Anthropic extends BaseLLM {
     },
     apiBase: "https://api.anthropic.com/v1/",
   };
+
+  supportsPrefill(): boolean {
+    return anthropicSupportsPrefill(this.model);
+  }
 
   private convertToolToAnthropicTool(tool: Tool): AnthropicTool {
     return {
@@ -233,11 +238,47 @@ class Anthropic extends BaseLLM {
     }
   }
 
+  /**
+   * Prompts like the edit and apply templates end with an assistant "prefill".
+   * Claude 4.6+ rejects any prefill, and all models reject one ending in
+   * whitespace, so drop or trim it.
+   */
+  private fixTrailingAssistantPrefill(
+    messages: MessageParam[],
+    model: string | undefined,
+  ): void {
+    const last = messages[messages.length - 1];
+    if (last?.role !== "assistant" || messages.length < 2) {
+      return;
+    }
+    if (!anthropicSupportsPrefill(model)) {
+      messages.pop();
+      return;
+    }
+    if (typeof last.content === "string") {
+      last.content = last.content.trimEnd();
+      return;
+    }
+    const lastBlock = last.content[last.content.length - 1];
+    if (lastBlock?.type === "text") {
+      lastBlock.text = lastBlock.text.trimEnd();
+    }
+  }
+
   public convertMessages(
     msgs: ChatMessage[],
     cachePrompt: boolean,
+    model?: string,
   ): MessageParam[] {
-    const nonSystemMessages = msgs.filter((m) => m.role !== "system");
+    // Thinking blocks are bound to the conversation that produced them: replaying
+    // one after the system prompt or earlier messages change is a 400 on newer
+    // models. Earlier turns' thinking is ignored by the API anyway, so only keep
+    // thinking for the current turn (after the last user message).
+    const lastUserIndex = msgs.map((m) => m.role).lastIndexOf("user");
+    const nonSystemMessages = msgs.filter(
+      (m, i) =>
+        m.role !== "system" && !(m.role === "thinking" && i < lastUserIndex),
+    );
 
     const convertedMessages: MessageParam[] = [];
     let currentRole: "user" | "assistant" | undefined = undefined;
@@ -265,6 +306,7 @@ class Anthropic extends BaseLLM {
       currentParts.push(...this.getContentBlocksFromChatMessage(message));
     }
     flushCurrentMessage();
+    this.fixTrailingAssistantPrefill(convertedMessages, model);
 
     if (cachePrompt) {
       addCacheControlToLastTwoUserMessages(convertedMessages);
@@ -313,7 +355,11 @@ class Anthropic extends BaseLLM {
         : {};
       yield {
         role: "assistant",
-        content: json.content[0].text,
+        // Newer models often put an (empty) thinking block first
+        content: json.content
+          .filter((block: { type: string }) => block.type === "text")
+          .map((block: { text: string }) => block.text)
+          .join(""),
         ...(Object.keys(cost).length > 0 ? { cost } : {}),
       };
       return;
@@ -444,7 +490,11 @@ class Anthropic extends BaseLLM {
       this.completionOptions.promptCaching
     );
 
-    const msgs = this.convertMessages(messages, shouldCachePrompt);
+    const msgs = this.convertMessages(
+      messages,
+      shouldCachePrompt,
+      options.model,
+    );
     const headers = getAnthropicHeaders(
       this.apiKey,
       shouldCacheSystemMessage || shouldCachePrompt,

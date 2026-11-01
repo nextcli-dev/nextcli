@@ -1,6 +1,7 @@
 import { vi } from "vitest";
 import {
   anthropicSupportsForcedToolChoice,
+  anthropicSupportsPrefill,
   anthropicThinkingType,
   filterAnthropicSamplingParams,
   getAnthropicHeaders,
@@ -319,5 +320,20 @@ describe("filterAnthropicSamplingParams", () => {
 
   it("passes non-Claude models through", () => {
     expect(filterAnthropicSamplingParams("meta.llama3-70b", all)).toEqual(all);
+  });
+});
+
+describe("anthropicSupportsPrefill", () => {
+  it.each([
+    ["claude-haiku-4-5-20251001", true],
+    ["claude-opus-4-5-20251101", true],
+    ["claude-3-7-sonnet-latest", true],
+    ["claude-sonnet-4-6", false],
+    ["claude-opus-4-7", false],
+    ["claude-haiku-5-5", false],
+    ["claude-sonnet-5-5", false],
+    ["some-proxy-model", true],
+  ])("%s supports prefill: %s", (model, expected) => {
+    expect(anthropicSupportsPrefill(model)).toBe(expected);
   });
 });

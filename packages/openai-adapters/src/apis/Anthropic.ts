@@ -363,7 +363,11 @@ export class AnthropicApi implements BaseLlmApi {
           finish_reason: "stop",
           message: {
             role: "assistant",
-            content: completion.content[0].text,
+            // Newer models often put an (empty) thinking block first
+            content: completion.content
+              .filter((block: any) => block.type === "text")
+              .map((block: any) => block.text)
+              .join(""),
             refusal: null,
           },
           index: 0,

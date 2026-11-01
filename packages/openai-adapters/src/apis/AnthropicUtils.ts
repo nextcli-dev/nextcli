@@ -182,6 +182,16 @@ export function anthropicThinkingType(
   return version && isAtLeast(version, 4, 6) ? "adaptive" : "enabled";
 }
 
+/**
+ * Claude 4.6 and newer reject a conversation that ends with an assistant
+ * message ("does not support assistant message prefill"). Haiku 4.5 and older
+ * models accept it. Unknown model names are assumed to accept it.
+ */
+export function anthropicSupportsPrefill(model: string | undefined): boolean {
+  const version = parseClaudeModelVersion(model);
+  return !version || !isAtLeast(version, 4, 6);
+}
+
 export interface AnthropicSamplingParams {
   temperature?: number;
   topP?: number;
