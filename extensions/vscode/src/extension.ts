@@ -13,12 +13,36 @@ async function dynamicImportAndActivate(context: vscode.ExtensionContext) {
   return await activateExtension(context);
 }
 
+/**
+ * Registered before anything else loads, so "View Logs" works even when
+ * activation fails (#12946)
+ */
+function registerViewLogsCommand(
+  context: vscode.ExtensionContext,
+  outputChannel: vscode.OutputChannel,
+) {
+  context.subscriptions.push(
+    vscode.commands.registerCommand("continue.viewLogs", () => {
+      outputChannel.show(true);
+      void vscode.commands.executeCommand("workbench.action.toggleDevTools");
+    }),
+  );
+}
+
 export function activate(context: vscode.ExtensionContext) {
+  const outputChannel = vscode.window.createOutputChannel("NextCLI");
+  context.subscriptions.push(outputChannel);
+  registerViewLogsCommand(context, outputChannel);
+
   return dynamicImportAndActivate(context).catch((e) => {
     console.log("Error activating extension: ", e);
+    const message = e instanceof Error ? e.message : String(e);
+    outputChannel.appendLine(
+      `Error activating NextCLI: ${(e instanceof Error && e.stack) || message}`,
+    );
     vscode.window
       .showWarningMessage(
-        "Error activating the Continue extension.",
+        `Error activating NextCLI: ${message}`,
         "View Logs",
         "Retry",
       )
