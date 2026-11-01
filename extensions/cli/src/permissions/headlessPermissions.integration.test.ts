@@ -1,4 +1,7 @@
-import { getDefaultToolPolicies } from "./defaultPolicies.js";
+import {
+  AUTO_MODE_POLICIES,
+  getDefaultToolPolicies,
+} from "./defaultPolicies.js";
 import { checkToolPermission } from "./permissionChecker.js";
 import { resolvePermissionPrecedence } from "./precedenceResolver.js";
 
@@ -171,6 +174,52 @@ describe("Headless Permissions Integration", () => {
       expect(
         checkToolPermission(
           { name: "unknown_tool", arguments: {} },
+          permissions,
+        ).permission,
+      ).toBe("allow");
+    });
+  });
+  describe("destructive commands (#13001)", () => {
+    const destructiveCommands = [
+      "rm -Rf /",
+      "rm -R -f /",
+      "rm -rf $HOME",
+      "rm -rf ~/",
+      "find / -delete",
+      "wipefs -a /dev/sda",
+    ];
+
+    it.each(destructiveCommands)(
+      "should exclude %s in headless mode",
+      (command) => {
+        const permissions = { policies: getDefaultToolPolicies(true) };
+        expect(
+          checkToolPermission(
+            { name: "Bash", arguments: { command } },
+            permissions,
+          ).permission,
+        ).toBe("exclude");
+      },
+    );
+
+    it.each(destructiveCommands)(
+      "should exclude %s in auto mode",
+      (command) => {
+        const permissions = { policies: AUTO_MODE_POLICIES };
+        expect(
+          checkToolPermission(
+            { name: "Bash", arguments: { command } },
+            permissions,
+          ).permission,
+        ).toBe("exclude");
+      },
+    );
+
+    it("should still allow ordinary commands in headless mode", () => {
+      const permissions = { policies: getDefaultToolPolicies(true) };
+      expect(
+        checkToolPermission(
+          { name: "Bash", arguments: { command: "rm -rf ./build" } },
           permissions,
         ).permission,
       ).toBe("allow");

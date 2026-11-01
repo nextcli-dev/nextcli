@@ -130,6 +130,16 @@ function evaluateTokensSecurity(
   basePolicy: ToolPolicy,
   originalCommand: string,
 ): ToolPolicy {
+  // shell-quote expands unset variables to "", which hides targets such as
+  // `rm -rf $HOME`. Re-parse with variable names kept so they can be checked.
+  const tokensWithVariables = parse(originalCommand, (key) => `$${key}`);
+  if (
+    evaluateTokens(tokensWithVariables, basePolicy, originalCommand) ===
+    "disabled"
+  ) {
+    return "disabled";
+  }
+
   // Check for empty strings that might indicate variable expansion
   const hasEmptyStrings = tokens.some((t) => typeof t === "string" && t === "");
 
@@ -397,11 +407,262 @@ function evaluateSingleCommand(
 }
 
 /**
+ * Commands that run their remaining arguments as another command
+ */
+const COMMAND_WRAPPERS = [
+  "xargs",
+  "env",
+  "nohup",
+  "nice",
+  "ionice",
+  "command",
+  "builtin",
+  "time",
+  "stdbuf",
+];
+
+/**
+ * System directories whose contents must never be deleted recursively
+ */
+const SYSTEM_PATH_PREFIXES = [
+  "/usr/",
+  "/etc/",
+  "/bin/",
+  "/sbin/",
+  "/boot/",
+  "/lib/",
+  "/lib32/",
+  "/lib64/",
+  "/system/",
+];
+
+/**
+ * Strips a path prefix from a command name, so `/bin/rm` is treated as `rm`
+ */
+function normalizeCommandName(command: string): string {
+  const name = command.replace(/^\\/, "");
+  return name.includes("/") && !name.endsWith("/")
+    ? name.slice(name.lastIndexOf("/") + 1)
+    : name;
+}
+
+/**
+ * Returns the wrapped command of a wrapper such as `xargs rm -rf /`
+ */
+function unwrapCommand(args: string[]): string[] {
+  const start = args.findIndex(
+    (arg) => !arg.startsWith("-") && !arg.includes("=") && !/^\d+$/.test(arg),
+  );
+  return start === -1 ? [] : args.slice(start);
+}
+
+/**
+ * Checks if an argument is a recursive flag, in any case or combination
+ * (`-r`, `-R`, `-Rf`, `-fR`, `--recursive`, PowerShell `-Recurse`)
+ */
+function isRecursiveFlag(arg: string): boolean {
+  const lower = arg.toLowerCase();
+  return (
+    lower === "--recursive" ||
+    lower === "-recurse" ||
+    (/^-[a-z]+$/.test(lower) && lower.includes("r"))
+  );
+}
+
+/**
+ * Checks if a path is too broad to delete: a filesystem or drive root, a
+ * top-level directory, a home directory, a bare variable, or a system path
+ */
+function isDangerousDeletionTarget(arg: string): boolean {
+  const lower = arg.toLowerCase();
+  // Drop trailing separators and `/*` or `/.`, so `/`, `/*` and `~/` reduce
+  // to their root
+  const path = lower.replace(/([\\/]+(\*|\.)?)+$/, "");
+
+  if (path === "") {
+    return lower.startsWith("/") || lower.startsWith("\\");
+  }
+  if (/^~[\w.-]*$/.test(path)) {
+    return true;
+  }
+  if (/^\$\{?\w+\}?$/.test(path)) {
+    return true;
+  }
+  if (/^\/[^/]+$/.test(path)) {
+    return true;
+  }
+  if (/^\/(home|users)\/[^/]+$/.test(path)) {
+    return true;
+  }
+  if (
+    /^[a-z]:([\\/]?\*|[\\/]?(windows|users|program files( \(x86\))?|programdata))?$/.test(
+      path,
+    )
+  ) {
+    return true;
+  }
+  return SYSTEM_PATH_PREFIXES.some((prefix) => `${path}/`.startsWith(prefix));
+}
+
+/**
+ * Checks if a command recursively deletes a dangerous path
+ */
+function isDangerousRecursiveDelete(
+  baseCommand: string,
+  args: string[],
+): boolean {
+  const isRm = baseCommand === "rm" || baseCommand.startsWith("$");
+  const isWindowsDelete = [
+    "remove-item",
+    "ri",
+    "rmdir",
+    "rd",
+    "del",
+    "erase",
+  ].includes(baseCommand);
+
+  const recursive =
+    (isRm && args.some(isRecursiveFlag)) ||
+    (isWindowsDelete &&
+      args.some((arg) => ["-recurse", "-r", "/s"].includes(arg.toLowerCase())));
+
+  // Windows switches such as `/s` and `/q` look like top-level paths
+  const targets = isWindowsDelete
+    ? args.filter((arg) => !/^\/[a-z?]$/i.test(arg))
+    : args;
+  return recursive && targets.some(isDangerousDeletionTarget);
+}
+
+/**
+ * Checks if a `find` command deletes everything under a dangerous root
+ */
+function isDangerousFindDelete(args: string[]): boolean {
+  const firstExpression = args.findIndex(
+    (arg) => arg.startsWith("-") || arg === "(" || arg === "!",
+  );
+  const roots = firstExpression === -1 ? args : args.slice(0, firstExpression);
+
+  const deletes =
+    args.includes("-delete") ||
+    args.some(
+      (arg, idx) =>
+        ["-exec", "-execdir", "-ok", "-okdir"].includes(arg) &&
+        idx < args.length - 1 &&
+        ["rm", "shred", "unlink"].includes(
+          normalizeCommandName(args[idx + 1].toLowerCase()),
+        ),
+    );
+  const narrowed = args.some((arg) =>
+    [
+      "-name",
+      "-iname",
+      "-path",
+      "-ipath",
+      "-wholename",
+      "-iwholename",
+      "-regex",
+      "-iregex",
+    ].includes(arg),
+  );
+
+  return deletes && !narrowed && roots.some(isDangerousDeletionTarget);
+}
+
+/**
+ * Checks for commands that wipe disks, partitions or system files
+ */
+function isDiskDestructionCommand(
+  baseCommand: string,
+  args: string[],
+): boolean {
+  const lowerArgs = args.map((arg) => arg.toLowerCase());
+
+  if (baseCommand === "wipefs") {
+    return true;
+  }
+
+  const partitionTools = [
+    "fdisk",
+    "sfdisk",
+    "cfdisk",
+    "gdisk",
+    "sgdisk",
+    "parted",
+  ];
+  if (partitionTools.includes(baseCommand)) {
+    const readOnly = lowerArgs.some((arg) =>
+      ["-l", "--list", "-p", "--print", "print"].includes(arg),
+    );
+    return !readOnly;
+  }
+
+  if (baseCommand === "diskutil" && lowerArgs.length > 0) {
+    const [verb, subVerb = ""] = lowerArgs;
+    return (
+      verb.startsWith("erase") ||
+      [
+        "zerodisk",
+        "randomdisk",
+        "secureerase",
+        "partitiondisk",
+        "reformat",
+      ].includes(verb) ||
+      (verb === "apfs" && /^(delete|erase)/.test(subVerb))
+    );
+  }
+
+  const targetsSystem = args.some(
+    (arg) => arg.startsWith("/dev/") || isDangerousDeletionTarget(arg),
+  );
+
+  if (baseCommand === "shred") {
+    return targetsSystem;
+  }
+
+  if (baseCommand === "truncate") {
+    const toZero = args.some(
+      (arg, idx) =>
+        arg === "-s0" ||
+        arg === "--size=0" ||
+        ((arg === "-s" || arg === "--size") && args[idx + 1] === "0"),
+    );
+    return toZero && targetsSystem;
+  }
+
+  return false;
+}
+
+/**
  * Checks if a command is critical and should always be disabled
  */
 function isCriticalCommand(baseCommand: string, args: string[]): boolean {
+  baseCommand = normalizeCommandName(baseCommand);
+
+  // Wrappers such as `xargs rm -rf /` run their arguments as a command
+  if (COMMAND_WRAPPERS.includes(baseCommand)) {
+    const wrapped = unwrapCommand(args);
+    if (
+      wrapped.length > 0 &&
+      isCriticalCommand(wrapped[0].toLowerCase(), wrapped.slice(1))
+    ) {
+      return true;
+    }
+  }
+
   // System destruction commands - check if base command starts with mkfs
   if (baseCommand.startsWith("mkfs")) {
+    return true;
+  }
+
+  if (isDangerousRecursiveDelete(baseCommand, args)) {
+    return true;
+  }
+
+  if (baseCommand === "find" && isDangerousFindDelete(args)) {
+    return true;
+  }
+
+  if (isDiskDestructionCommand(baseCommand, args)) {
     return true;
   }
 
@@ -493,7 +754,15 @@ function isCriticalCommand(baseCommand: string, args: string[]): boolean {
   }
 
   // Privilege escalation
-  const privEscCommands = ["sudo", "su", "doas", "runas", "gsudo", "psexec"];
+  const privEscCommands = [
+    "sudo",
+    "su",
+    "doas",
+    "pkexec",
+    "runas",
+    "gsudo",
+    "psexec",
+  ];
   if (privEscCommands.includes(baseCommand)) {
     return true;
   }
