@@ -9,7 +9,8 @@ on:
 jobs:
   build-and-upload-vsix:
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 10
+    # Windows and macOS builds with a cold cache take about 10 minutes
+    timeout-minutes: 25
     strategy:
       matrix:
         include:
