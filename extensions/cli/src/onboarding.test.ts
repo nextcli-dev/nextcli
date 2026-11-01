@@ -238,6 +238,24 @@ describe("CONTINUE_USE_BEDROCK environment variable", () => {
   });
 });
 
+// The real logger opens <CONTINUE_GLOBAL_DIR>/logs/cn.log on import, which
+// Windows then refuses to delete while the test process runs
+function mockLogger() {
+  vi.doMock("./util/logger.js", () => ({
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    setLogLevel: vi.fn(),
+    configureHeadlessMode: vi.fn(),
+  }));
+}
+
+function removeTempDir(dir: string) {
+  try {
+    fs.rmSync(dir, { recursive: true, force: true });
+  } catch {
+    // Best-effort cleanup, like vitest.global-dir-setup.ts
+  }
+}
+
 describe("onboarding with provider choices", () => {
   const ENV_KEYS = [
     "CONTINUE_GLOBAL_DIR",
@@ -264,6 +282,7 @@ describe("onboarding with provider choices", () => {
     process.env.CONTINUE_GLOBAL_DIR = tempDir;
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.resetModules();
+    mockLogger();
   });
 
   afterEach(() => {
@@ -275,9 +294,10 @@ describe("onboarding with provider choices", () => {
       }
     });
     process.stdin.isTTY = originalIsTTY;
-    fs.rmSync(tempDir, { recursive: true, force: true });
+    removeTempDir(tempDir);
     vi.restoreAllMocks();
     vi.doUnmock("./util/prompt.js");
+    vi.doUnmock("./util/logger.js");
   });
 
   test("skips onboarding and leaves an existing config.yaml unchanged (#12258)", async () => {
@@ -296,6 +316,8 @@ models:
 
     expect(await runOnboardingFlow(undefined)).toBe(true);
     expect(fs.readFileSync(configPath, "utf8")).toBe(content);
+    // Nothing holds a log file open in the temp dir (Windows cannot delete it then)
+    expect(fs.existsSync(path.join(tempDir, "logs"))).toBe(false);
   });
 
   test("uses a provider key from the environment without writing a config", async () => {

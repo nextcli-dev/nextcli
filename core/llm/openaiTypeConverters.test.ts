@@ -691,7 +691,9 @@ describe("openaiTypeConverters", () => {
         const result = toResponsesInput(messages);
 
         const functionCalls = getFunctionCalls(result);
-        expect(functionCalls.map((fc) => fc.id)).toEqual(["fc_001", undefined]);
+        expect(functionCalls.length).toBe(2);
+        expect(functionCalls[0].id).toBe("fc_001");
+        expect(functionCalls[1].id).toBeUndefined();
         expect(getReasoningItems(result).length).toBe(1);
       });
 

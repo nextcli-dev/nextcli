@@ -4,6 +4,24 @@ import * as path from "path";
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+// The real logger opens <CONTINUE_GLOBAL_DIR>/logs/cn.log on import, which
+// Windows then refuses to delete while the test process runs
+function mockLogger() {
+  vi.doMock("./util/logger.js", () => ({
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    setLogLevel: vi.fn(),
+    configureHeadlessMode: vi.fn(),
+  }));
+}
+
+function removeTempDir(dir: string) {
+  try {
+    fs.rmSync(dir, { recursive: true, force: true });
+  } catch {
+    // Best-effort cleanup, like vitest.global-dir-setup.ts
+  }
+}
+
 describe("loadConfiguration from provider env vars", () => {
   const ENV_KEYS = [
     "CONTINUE_GLOBAL_DIR",
@@ -24,6 +42,7 @@ describe("loadConfiguration from provider env vars", () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "nextcli-config-"));
     process.env.CONTINUE_GLOBAL_DIR = tempDir;
     vi.resetModules();
+    mockLogger();
   });
 
   afterEach(() => {
@@ -34,7 +53,8 @@ describe("loadConfiguration from provider env vars", () => {
         process.env[k] = savedEnv[k];
       }
     });
-    fs.rmSync(tempDir, { recursive: true, force: true });
+    removeTempDir(tempDir);
+    vi.doUnmock("./util/logger.js");
   });
 
   async function load() {
