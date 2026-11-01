@@ -25,6 +25,7 @@ import {
   getCompleteStateSnapshot,
   loadOrCreateSessionById,
 } from "../session.js";
+import { configureAgentLoopLimits } from "../stream/agentLoopLimits.js";
 import { messageQueue } from "../stream/messageQueue.js";
 import { constructSystemMessage } from "../systemMessage.js";
 import { telemetryService } from "../telemetry/telemetryService.js";
@@ -74,6 +75,7 @@ export function shouldQueueInitialPrompt(
 export async function serve(prompt?: string, options: ServeOptions = {}) {
   // Set agent ID for error reporting if provided
   setAgentId(options.id);
+  configureAgentLoopLimits(options);
 
   // Check if prompt should come from stdin instead of parameter
   let actualPrompt = prompt;

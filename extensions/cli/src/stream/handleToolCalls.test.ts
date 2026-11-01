@@ -15,6 +15,7 @@ vi.mock("../services/index.js", () => ({
       addAssistantMessage: vi.fn(),
       addToolResult: vi.fn(),
       addHistoryItem: vi.fn(),
+      getHistory: vi.fn(() => []),
     },
     toolPermissions: {
       getState: vi.fn().mockReturnValue({
@@ -36,6 +37,7 @@ vi.mock("../services/index.js", () => ({
 vi.mock("./streamChatResponse.helpers.js", () => ({
   preprocessStreamedToolCalls: vi.fn(),
   executeStreamedToolCalls: vi.fn(),
+  capToolResult: vi.fn((result: string) => result),
 }));
 
 // Import the mocked modules
@@ -388,5 +390,106 @@ describe("handleToolCalls - duplicate tool_result prevention", () => {
       (item) => item.message.role === "tool",
     );
     expect(separateToolMessages).toHaveLength(0);
+  });
+});
+
+describe("handleToolCalls - loop guards", () => {
+  const call = (id: string, args: Record<string, unknown>) => ({
+    id,
+    name: "Read",
+    arguments: args,
+    argumentsStr: JSON.stringify(args),
+    startNotified: false,
+  });
+  const priorTurn = (id: string, args: string): ChatHistoryItem => ({
+    message: {
+      role: "assistant",
+      content: "",
+      toolCalls: [
+        { id, type: "function", function: { name: "Read", arguments: args } },
+      ],
+    },
+    contextItems: [],
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(services.chatHistory.isReady).mockReturnValue(true);
+    mockPreprocess.mockImplementation(async (_headless, toolCalls) => ({
+      preprocessedCalls: toolCalls as any,
+      errorChatEntries: [],
+    }));
+    mockExecute.mockResolvedValue({
+      hasRejection: false,
+      chatHistoryEntries: [],
+    });
+  });
+
+  // #12702
+  it("cancels the third identical consecutive call instead of running it", async () => {
+    vi.mocked(services.chatHistory.getHistory).mockReturnValue([
+      priorTurn("call-1", '{"path":"a.ts"}'),
+      priorTurn("call-2", '{"path":"a.ts"}'),
+    ]);
+
+    await handleToolCalls({
+      toolCalls: [call("call-3", { path: "a.ts" })],
+      chatHistory: [],
+      content: "",
+      callbacks: undefined,
+      isHeadless: true,
+    });
+
+    expect(services.chatHistory.addToolResult).toHaveBeenCalledWith(
+      "call-3",
+      expect.stringContaining("already called with these exact arguments"),
+      "canceled",
+    );
+    expect(mockPreprocess).toHaveBeenCalledWith(true, [], undefined);
+  });
+
+  it("runs a repeated call when the arguments differ (key order ignored)", async () => {
+    vi.mocked(services.chatHistory.getHistory).mockReturnValue([
+      priorTurn("call-1", '{"path":"a.ts","limit":5}'),
+      priorTurn("call-2", '{"limit":5,"path":"a.ts"}'),
+    ]);
+
+    await handleToolCalls({
+      toolCalls: [call("call-3", { path: "b.ts", limit: 5 })],
+      chatHistory: [],
+      content: "",
+      callbacks: undefined,
+      isHeadless: true,
+    });
+
+    expect(services.chatHistory.addToolResult).not.toHaveBeenCalled();
+    expect(vi.mocked(mockPreprocess).mock.calls[0][1]).toHaveLength(1);
+  });
+
+  // #12626
+  it("gives a tool call that reuses an earlier id a fresh id", async () => {
+    vi.mocked(services.chatHistory.getHistory).mockReturnValue([
+      priorTurn("toolu_1", '{"path":"a.ts"}'),
+    ]);
+    const toolCalls = [
+      call("toolu_1", { path: "b.ts" }),
+      call("toolu_1", { path: "c.ts" }),
+    ];
+
+    await handleToolCalls({
+      toolCalls,
+      chatHistory: [],
+      content: "",
+      callbacks: undefined,
+      isHeadless: true,
+    });
+
+    const ids = toolCalls.map((tc) => tc.id);
+    expect(ids[0]).not.toBe("toolu_1");
+    expect(ids[1]).not.toBe("toolu_1");
+    expect(new Set(ids).size).toBe(2);
+    const stored = vi.mocked(services.chatHistory.addAssistantMessage).mock
+      .calls[0][1] as { id: string }[];
+    expect(stored.map((tc) => tc.id)).toEqual(ids);
   });
 });

@@ -122,3 +122,41 @@ describe("runTerminalCommandTool", () => {
     }
   });
 });
+
+// #12700: a command that prints a lot must not flood the context or memory
+describe("runTerminalCommandTool output limits", () => {
+  const isWindows = process.platform === "win32";
+
+  beforeEach(() => {
+    process.env.CONTINUE_CLI_BASH_MAX_OUTPUT_CHARS = "2000";
+  });
+
+  afterEach(() => {
+    delete process.env.CONTINUE_CLI_BASH_MAX_OUTPUT_CHARS;
+  });
+
+  it.skipIf(isWindows)("truncates long stdout to the limit", async () => {
+    const result = await runTerminalCommandTool.run({
+      command: "yes line | head -n 50000",
+    });
+    expect(result.length).toBeLessThan(2500);
+    expect(result).toContain("truncated");
+  });
+
+  it.skipIf(isWindows)(
+    "truncates stderr in the error of a failing command",
+    async () => {
+      let error: unknown;
+      try {
+        await runTerminalCommandTool.run({
+          command: "yes oops | head -n 50000 1>&2; exit 3",
+        });
+      } catch (e) {
+        error = e;
+      }
+      expect(typeof error).toBe("string");
+      expect(String(error).startsWith("Error (exit code 3):")).toBe(true);
+      expect(String(error).length).toBeLessThan(2500);
+    },
+  );
+});

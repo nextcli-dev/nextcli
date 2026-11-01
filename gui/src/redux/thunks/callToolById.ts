@@ -13,7 +13,12 @@ import {
   updateToolCallOutput,
 } from "../slices/sessionSlice";
 import { ThunkApiType } from "../store";
-import { findToolCallById, logToolUsage } from "../util";
+import {
+  countPrecedingIdenticalToolCalls,
+  findToolCallById,
+  logToolUsage,
+  MAX_IDENTICAL_TOOL_CALLS,
+} from "../util";
 import { streamResponseAfterToolCall } from "./streamResponseAfterToolCall";
 
 export const callToolById = createAsyncThunk<
@@ -57,6 +62,16 @@ export const callToolById = createAsyncThunk<
   // Errors that occur outside specifically calling the tool
   // Should not be caught here - should be handled as normal stream errors
   if (
+    countPrecedingIdenticalToolCalls(state.session.history, toolCallId) >=
+    MAX_IDENTICAL_TOOL_CALLS
+  ) {
+    // The model is stuck repeating the same call: tell it instead of running it again
+    error = new ContinueError(
+      ContinueErrorReason.Unspecified,
+      `this exact call was already made ${MAX_IDENTICAL_TOOL_CALLS} times in a row, so it was not run again. Use the earlier result`,
+    );
+    streamResponse = true;
+  } else if (
     CLIENT_TOOLS_IMPLS.find(
       (toolName) => toolName === toolCallState.toolCall.function.name,
     )

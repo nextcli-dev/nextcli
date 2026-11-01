@@ -25,6 +25,20 @@ import { Tool, ToolRunContext } from "./types.js";
 // Output truncation defaults
 const DEFAULT_BASH_MAX_CHARS = 50000; // ~12.5k tokens
 const DEFAULT_BASH_MAX_LINES = 1000;
+// Only the tail of the output is ever returned, so the in-memory buffers keep a
+// bounded tail too (a command that prints gigabytes must not exhaust memory)
+const BUFFER_TAIL_FACTOR = 4;
+
+function appendToTail(
+  buffer: string,
+  chunk: string,
+  maxLength: number,
+): string {
+  const combined = buffer + chunk;
+  return combined.length > maxLength
+    ? combined.slice(combined.length - maxLength)
+    : combined;
+}
 
 /**
  * When running on Windows, but inside WSL, shell commands need to run using the WSL environment.
@@ -192,6 +206,13 @@ IMPORTANT: To edit files, use Edit/MultiEdit tools instead of bash commands (sed
       const child = spawn(shell, args);
       let stdout = "";
       let stderr = "";
+      const bufferLimit = Math.max(maxChars, 1) * BUFFER_TAIL_FACTOR;
+      const truncate = (output: string) => {
+        const result = truncateOutputFromStart(output, { maxChars, maxLines });
+        return result.wasTruncated
+          ? appendParallelLimitNote(result.output)
+          : result.output;
+      };
       let timeoutId: NodeJS.Timeout;
       let isResolved = false;
 
@@ -256,7 +277,7 @@ IMPORTANT: To edit files, use Edit/MultiEdit tools instead of bash commands (sed
           );
         } else {
           resolve(
-            `Failed to move to background (job limit reached). Command continues in foreground.\nOutput so far: ${stdout}`,
+            `Failed to move to background (job limit reached). Command continues in foreground.\nOutput so far: ${truncate(stdout)}`,
           );
         }
       };
@@ -291,7 +312,7 @@ IMPORTANT: To edit files, use Edit/MultiEdit tools instead of bash commands (sed
           const currentOutput = stdout + (stderr ? `\nStderr: ${stderr}` : "");
           services.chatHistory.addToolResult(
             context.toolCallId,
-            currentOutput,
+            truncate(currentOutput),
             "calling",
           );
         } catch {
@@ -303,13 +324,13 @@ IMPORTANT: To edit files, use Edit/MultiEdit tools instead of bash commands (sed
       resetTimeout();
 
       const onStdout = (data: Buffer) => {
-        stdout += data.toString();
+        stdout = appendToTail(stdout, data.toString(), bufferLimit);
         resetTimeout();
         showCurrentOutput();
       };
 
       const onStderr = (data: Buffer) => {
-        stderr += data.toString();
+        stderr = appendToTail(stderr, data.toString(), bufferLimit);
         resetTimeout();
         showCurrentOutput();
       };
@@ -332,7 +353,7 @@ IMPORTANT: To edit files, use Edit/MultiEdit tools instead of bash commands (sed
 
         // Only reject on non-zero exit code if there's also stderr
         if (code !== 0 && stderr) {
-          reject(`Error (exit code ${code}): ${stderr}`);
+          reject(`Error (exit code ${code}): ${truncate(stderr)}`);
           return;
         }
 

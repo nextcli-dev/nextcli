@@ -1,6 +1,7 @@
 import { ToolCallState, ToolStatus } from "core";
 import { ChatHistoryItemWithMessageId } from "../slices/sessionSlice";
 import {
+  countPrecedingIdenticalToolCalls,
   findAllCurToolCalls,
   findAllCurToolCallsByStatus,
   findToolCallById,
@@ -368,5 +369,46 @@ describe("Edge cases and integration", () => {
     expect(hasCurrentToolCalls(chatHistory)).toBe(true);
     expect(findAllCurToolCalls(chatHistory)).toEqual(toolCallStates);
     expect(findToolCallById(chatHistory, "tool-1")).toBe(toolCallStates[0]);
+  });
+});
+
+// #12702
+describe("countPrecedingIdenticalToolCalls", () => {
+  const state = (id: string, args: string): ToolCallState => ({
+    toolCallId: id,
+    toolCall: {
+      id,
+      type: "function",
+      function: { name: "read_file", arguments: args },
+    },
+    status: "done",
+    parsedArgs: {},
+  });
+  const turn = (...states: ToolCallState[]): ChatHistoryItemWithMessageId => ({
+    message: { id: states[0].toolCallId, role: "assistant", content: "" },
+    contextItems: [],
+    toolCallStates: states,
+  });
+
+  it("counts identical calls across earlier turns, ignoring key order", () => {
+    const history = [
+      turn(state("t1", '{"path":"a","limit":1}')),
+      turn(state("t2", '{"limit":1,"path":"a"}')),
+      turn(state("t3", '{"path":"a","limit":1}')),
+    ];
+    expect(countPrecedingIdenticalToolCalls(history, "t3")).toBe(2);
+  });
+
+  it("stops counting at a different call", () => {
+    const history = [
+      turn(state("t1", '{"path":"a"}')),
+      turn(state("t2", '{"path":"b"}')),
+      turn(state("t3", '{"path":"a"}')),
+    ];
+    expect(countPrecedingIdenticalToolCalls(history, "t3")).toBe(0);
+  });
+
+  it("returns 0 for an unknown tool call", () => {
+    expect(countPrecedingIdenticalToolCalls([], "missing")).toBe(0);
   });
 });

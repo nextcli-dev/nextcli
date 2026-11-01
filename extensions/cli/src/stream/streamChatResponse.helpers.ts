@@ -26,6 +26,10 @@ import {
 } from "../tools/index.js";
 import { PreprocessedToolCall, ToolCall } from "../tools/types.js";
 import { logger } from "../util/logger.js";
+import {
+  parseEnvNumber,
+  truncateByLinesAndChars,
+} from "../util/truncateOutput.js";
 
 import { StreamCallbacks } from "./streamChatResponse.types.js";
 
@@ -180,6 +184,37 @@ export function processChunkContent(
   return updatedResponse;
 }
 
+// Every tool result passes through this cap before it reaches the model, so a
+// tool without its own limit (MCP servers, errors with full stderr) cannot
+// flood the context (#12700). Tools with tighter limits stay below it.
+const DEFAULT_TOOL_RESULT_MAX_CHARS = 100_000;
+const DEFAULT_TOOL_RESULT_MAX_LINES = 4000;
+
+export function capToolResult(result: string): string {
+  return truncateByLinesAndChars(
+    result,
+    parseEnvNumber(
+      process.env.CONTINUE_CLI_TOOL_RESULT_MAX_LINES,
+      DEFAULT_TOOL_RESULT_MAX_LINES,
+    ),
+    parseEnvNumber(
+      process.env.CONTINUE_CLI_TOOL_RESULT_MAX_CHARS,
+      DEFAULT_TOOL_RESULT_MAX_CHARS,
+    ),
+    "tool output",
+  ).output;
+}
+
+function isCompleteJson(text: string): boolean {
+  if (!text) return false;
+  try {
+    JSON.parse(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Helper function to handle tool call delta
 export function processToolCallDelta(
   toolCallDelta: any,
@@ -204,6 +239,38 @@ export function processToolCallDelta(
       toolCallDelta,
     });
     return;
+  }
+
+  // A named delta for an id whose call is already complete is a second call
+  // reusing the id (#12626). Some providers always send index 0, so the index
+  // can't tell them apart. Store it under a new key; handleToolCalls gives it
+  // a fresh id.
+  const existing = toolCallsMap.get(toolCallId);
+  if (
+    existing &&
+    toolCallDelta.function?.name &&
+    existing.name &&
+    isCompleteJson(existing.argumentsStr)
+  ) {
+    let suffix = 1;
+    while (toolCallsMap.has(`${toolCallId}#${suffix}`)) suffix++;
+    const newKey = `${toolCallId}#${suffix}`;
+    toolCallsMap.set(newKey, {
+      id: toolCallId,
+      name: "",
+      arguments: {},
+      argumentsStr: "",
+      startNotified: false,
+    });
+    if (toolCallDelta.index !== undefined) {
+      indexToIdMap.set(toolCallDelta.index, newKey);
+    }
+    toolCallId = newKey;
+  } else if (toolCallDelta.id && toolCallsMap.has(`${toolCallId}#1`)) {
+    // Later deltas for a reused id belong to the newest call with that id
+    let suffix = 1;
+    while (toolCallsMap.has(`${toolCallId}#${suffix + 1}`)) suffix++;
+    toolCallId = `${toolCallId}#${suffix}`;
   }
 
   // Create tool call entry if it doesn't exist
@@ -564,9 +631,11 @@ export async function executeStreamedToolCalls(
               arguments: call.arguments,
             });
 
-            const toolResult = await executeToolCall(call, {
-              parallelToolCallCount,
-            });
+            const toolResult = capToolResult(
+              await executeToolCall(call, {
+                parallelToolCallCount,
+              }),
+            );
             const entry: ToolResultWithStatus = {
               role: "tool",
               tool_call_id: call.id,
@@ -584,9 +653,11 @@ export async function executeStreamedToolCalls(
               );
             } catch {}
           } catch (error) {
-            const errorMessage = `Error executing tool ${call.name}: ${
-              error instanceof Error ? error.message : String(error)
-            }`;
+            const errorMessage = capToolResult(
+              `Error executing tool ${call.name}: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
             logger.error("Tool execution failed", {
               name: call.name,
               error: errorMessage,
@@ -610,9 +681,11 @@ export async function executeStreamedToolCalls(
         })(),
       );
     } catch (error) {
-      const errorMessage = `Error checking permissions for ${call.name}: ${
-        error instanceof Error ? error.message : String(error)
-      }`;
+      const errorMessage = capToolResult(
+        `Error checking permissions for ${call.name}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
       logger.error("Permission check failed", {
         name: call.name,
         error: errorMessage,

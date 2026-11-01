@@ -15,7 +15,10 @@ import {
 import { IDE, ToolExtras } from "../..";
 import * as processTerminalStates from "../../util/processTerminalStates";
 import { runTerminalCommandTool } from "../definitions/runTerminalCommand";
-import { runTerminalCommandImpl } from "./runTerminalCommand";
+import {
+  appendTerminalOutput,
+  runTerminalCommandImpl,
+} from "./runTerminalCommand";
 
 // We're using real child processes, so ensure these aren't mocked
 vi.unmock("node:child_process");
@@ -856,5 +859,23 @@ describe("runTerminalCommandTool.evaluateToolCallPolicy", () => {
     );
 
     expect(result).toBe("allowedWithPermission");
+  });
+});
+
+// #12700
+describe("appendTerminalOutput", () => {
+  it("keeps short output unchanged", () => {
+    expect(appendTerminalOutput("a", "b")).toBe("ab");
+  });
+
+  it("keeps only the newest 50,000 characters, with one truncation note", () => {
+    let output = "";
+    for (let i = 0; i < 20; i++) {
+      output = appendTerminalOutput(output, `${i}`.repeat(10_000));
+    }
+    expect(output.startsWith("[Earlier output truncated]\n")).toBe(true);
+    expect(output.match(/Earlier output truncated/g)).toHaveLength(1);
+    expect(output.length).toBe(50_000 + "[Earlier output truncated]\n".length);
+    expect(output.endsWith("19")).toBe(true);
   });
 });

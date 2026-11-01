@@ -22,6 +22,8 @@ export interface BackgroundJob {
 
 const MAX_CONCURRENT_JOBS = 5;
 const MAX_OUTPUT_LINES = 1000;
+// A line cap alone does not bound output made of a few huge lines
+const MAX_OUTPUT_CHARS = 100_000;
 
 /**
  * Service for managing background job execution and lifecycle
@@ -108,7 +110,7 @@ export class BackgroundJobService {
       id,
       status: "running",
       command,
-      output: existingOutput,
+      output: existingOutput.slice(-MAX_OUTPUT_CHARS),
       exitCode: null,
       startTime: new Date(),
       endTime: null,
@@ -147,6 +149,9 @@ export class BackgroundJobService {
       const lines = job.output.split("\n");
       if (lines.length > MAX_OUTPUT_LINES) {
         job.output = lines.slice(-MAX_OUTPUT_LINES).join("\n");
+      }
+      if (job.output.length > MAX_OUTPUT_CHARS) {
+        job.output = job.output.slice(-MAX_OUTPUT_CHARS);
       }
     }
   }

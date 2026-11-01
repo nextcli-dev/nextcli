@@ -138,4 +138,58 @@ describe("convertFromUnifiedHistory", () => {
       content: "Here's the analysis",
     });
   });
+
+  // #12626
+  it("never emits the same tool call id twice", () => {
+    const toolCall = (id: string, path: string) => ({
+      id,
+      type: "function" as const,
+      function: { name: "Read", arguments: JSON.stringify({ path }) },
+    });
+    const toolState = (id: string, output: string) => ({
+      toolCallId: id,
+      toolCall: toolCall(id, ""),
+      status: "done" as const,
+      parsedArgs: {},
+      output: [{ name: "Tool Result", description: "", content: output }],
+    });
+    const historyItems: ChatHistoryItem[] = [
+      { message: { role: "user", content: "Read files" }, contextItems: [] },
+      {
+        message: {
+          role: "assistant",
+          content: "",
+          toolCalls: [toolCall("call_1", "a.ts")],
+        },
+        contextItems: [],
+        toolCallStates: [toolState("call_1", "first")],
+      },
+      {
+        message: {
+          role: "assistant",
+          content: "",
+          toolCalls: [toolCall("call_1", "b.ts"), toolCall("call_2", "c.ts")],
+        },
+        contextItems: [],
+        toolCallStates: [
+          toolState("call_1", "duplicate"),
+          toolState("call_2", "second"),
+        ],
+      },
+    ];
+
+    const messages = convertFromUnifiedHistory(historyItems);
+
+    const callIds = messages.flatMap((m) =>
+      m.role === "assistant" ? (m.tool_calls ?? []).map((tc) => tc.id) : [],
+    );
+    const resultIds = messages
+      .filter((m) => m.role === "tool")
+      .map((m) => (m as any).tool_call_id);
+    expect(callIds).toEqual(["call_1", "call_2"]);
+    expect(resultIds).toEqual(["call_1", "call_2"]);
+    expect(messages.find((m) => (m as any).content === "duplicate")).toBe(
+      undefined,
+    );
+  });
 });

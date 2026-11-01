@@ -1,4 +1,5 @@
 import type { ChatHistoryItem, ToolStatus } from "core/index.js";
+import { generateOpenAIToolCallId } from "core/tools/systemMessageTools/systemToolUtils.js";
 import { stripImages } from "core/util/messageContent.js";
 import { createHistoryItem } from "core/util/messageConversion.js";
 
@@ -18,7 +19,9 @@ import {
 } from "../tools/index.js";
 import { logger } from "../util/logger.js";
 
+import { getAgentLoopLimits, toolCallFingerprint } from "./agentLoopLimits.js";
 import {
+  capToolResult,
   executeStreamedToolCalls,
   preprocessStreamedToolCalls,
 } from "./streamChatResponse.helpers.js";
@@ -31,6 +34,84 @@ interface HandleToolCallsOptions {
   callbacks: StreamCallbacks | undefined;
   isHeadless: boolean;
   usage?: any;
+}
+
+function parseToolArguments(args: string | undefined): unknown {
+  try {
+    return JSON.parse(args || "{}");
+  } catch {
+    return args;
+  }
+}
+
+/** Tool calls already in history, oldest first */
+function getPriorToolCalls(
+  history: ChatHistoryItem[],
+): { id: string; fingerprint: string }[] {
+  const calls: { id: string; fingerprint: string }[] = [];
+  for (const item of history) {
+    if (item.message.role !== "assistant") continue;
+    for (const tc of item.message.toolCalls ?? []) {
+      if (!tc.id) continue;
+      calls.push({
+        id: tc.id,
+        fingerprint: toolCallFingerprint(
+          tc.function?.name ?? "",
+          parseToolArguments(tc.function?.arguments),
+        ),
+      });
+    }
+  }
+  return calls;
+}
+
+/**
+ * Providers sometimes reuse a tool call id within or across turns (#12626).
+ * Both OpenAI and Anthropic reject a history with duplicate ids, so give
+ * colliding calls a fresh id before they are stored.
+ */
+function rewriteCollidingToolCallIds(
+  toolCalls: ToolCall[],
+  priorIds: Set<string>,
+): void {
+  const seen = new Set(priorIds);
+  for (const tc of toolCalls) {
+    if (!tc.id || seen.has(tc.id)) {
+      const newId = generateOpenAIToolCallId();
+      logger.warn("Rewriting duplicate tool call id", {
+        oldId: tc.id,
+        newId,
+      });
+      tc.id = newId;
+    }
+    seen.add(tc.id);
+  }
+}
+
+/**
+ * Finds calls that repeat the same tool with the same arguments more than
+ * maxIdenticalToolCalls times in a row (#12702), counting earlier turns.
+ */
+function findRepeatedToolCalls(
+  toolCalls: ToolCall[],
+  priorFingerprints: string[],
+): Set<string> {
+  const { maxIdenticalToolCalls } = getAgentLoopLimits();
+  const sequence = [...priorFingerprints];
+  const repeated = new Set<string>();
+  for (const tc of toolCalls) {
+    const fingerprint = toolCallFingerprint(tc.name, tc.arguments);
+    let run = 0;
+    for (let i = sequence.length - 1; i >= 0; i--) {
+      if (sequence[i] !== fingerprint) break;
+      run++;
+    }
+    if (run >= maxIdenticalToolCalls) {
+      repeated.add(tc.id);
+    }
+    sequence.push(fingerprint);
+  }
+  return repeated;
 }
 
 export async function handleToolCalls(
@@ -60,6 +141,20 @@ export async function handleToolCalls(
     }
     return false;
   }
+
+  const history =
+    useService && typeof chatHistorySvc.getHistory === "function"
+      ? chatHistorySvc.getHistory()
+      : chatHistory;
+  const priorToolCalls = getPriorToolCalls(history);
+  rewriteCollidingToolCallIds(
+    toolCalls,
+    new Set(priorToolCalls.map((tc) => tc.id)),
+  );
+  const repeatedCallIds = findRepeatedToolCalls(
+    toolCalls,
+    priorToolCalls.map((tc) => tc.fingerprint),
+  );
 
   // Create tool call states for the ChatHistoryItem
   const toolCallStates = toolCalls.map((tc) => ({
@@ -106,14 +201,43 @@ export async function handleToolCalls(
     chatHistory.push(createHistoryItem(messageWithUsage, [], toolCallStates));
   }
 
+  // Cancel calls that repeat the same tool with the same arguments, so a
+  // model stuck in a loop gets told instead of re-running the tool
+  for (const tc of toolCalls) {
+    if (!repeatedCallIds.has(tc.id)) continue;
+    const message = `Skipped: ${tc.name} was already called with these exact arguments ${getAgentLoopLimits().maxIdenticalToolCalls} times in a row. Use the earlier result or try a different approach.`;
+    logger.warn("Canceling repeated tool call", { name: tc.name });
+    callbacks?.onToolStart?.(tc.name, tc.arguments);
+    callbacks?.onToolResult?.(message, tc.name, "canceled");
+    if (useService) {
+      chatHistorySvc.addToolResult(tc.id, message, "canceled");
+    } else {
+      const toolState = toolCallStates.find((ts) => ts.toolCallId === tc.id);
+      if (toolState) {
+        toolState.status = "canceled";
+        (toolState as any).output = [
+          {
+            content: message,
+            name: "Tool Result",
+            description: "Tool execution result",
+          },
+        ];
+      }
+    }
+  }
+
   // First preprocess the tool calls
   const { preprocessedCalls, errorChatEntries } =
-    await preprocessStreamedToolCalls(isHeadless, toolCalls, callbacks);
+    await preprocessStreamedToolCalls(
+      isHeadless,
+      toolCalls.filter((tc) => !repeatedCallIds.has(tc.id)),
+      callbacks,
+    );
 
   // Add any preprocessing errors to the toolCallStates on the assistant message
   // (NOT as separate history items, which would cause duplicate tool_result messages)
   errorChatEntries.forEach((errorEntry) => {
-    const errorContent = stripImages(errorEntry.content) || "";
+    const errorContent = capToolResult(stripImages(errorEntry.content) || "");
     if (useService) {
       chatHistorySvc.addToolResult(
         errorEntry.tool_call_id,
