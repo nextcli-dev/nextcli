@@ -16,6 +16,11 @@ import {
 import { backgroundSignalManager } from "../util/backgroundSignalManager.js";
 import { emitBashToolEnded, emitBashToolStarted } from "../util/cli.js";
 import {
+  killProcessTree,
+  processTreeSpawnOptions,
+  trackProcessTree,
+} from "../util/processTree.js";
+import {
   parseEnvNumber,
   truncateOutputFromStart,
 } from "../util/truncateOutput.js";
@@ -28,6 +33,10 @@ const DEFAULT_BASH_MAX_LINES = 1000;
 // Only the tail of the output is ever returned, so the in-memory buffers keep a
 // bounded tail too (a command that prints gigabytes must not exhaust memory)
 const BUFFER_TAIL_FACTOR = 4;
+// How long to keep reading output after the shell exits. A backgrounded child
+// (`cmd &`) inherits stdout/stderr, so waiting for them to close would block
+// until that child exits.
+const OUTPUT_DRAIN_MS = 300;
 
 function appendToTail(
   buffer: string,
@@ -203,7 +212,8 @@ IMPORTANT: To edit files, use Edit/MultiEdit tools instead of bash commands (sed
     const terminalOutput: string = await new Promise((resolve, reject) => {
       // Use same shell logic as core implementation
       const { shell, args } = getShellCommand(command);
-      const child = spawn(shell, args);
+      const child = spawn(shell, args, processTreeSpawnOptions());
+      trackProcessTree(child);
       let stdout = "";
       let stderr = "";
       const bufferLimit = Math.max(maxChars, 1) * BUFFER_TAIL_FACTOR;
@@ -291,7 +301,7 @@ IMPORTANT: To edit files, use Edit/MultiEdit tools instead of bash commands (sed
         timeoutId = setTimeout(() => {
           if (isResolved) return;
           isResolved = true;
-          child.kill();
+          killProcessTree(child);
           let output = stdout + (stderr ? `\nStderr: ${stderr}` : "");
           output += `\n\n[Command timed out after ${TIMEOUT_MS / 1000} seconds of no output]`;
 
@@ -338,7 +348,23 @@ IMPORTANT: To edit files, use Edit/MultiEdit tools instead of bash commands (sed
       child.stdout.on("data", onStdout);
       child.stderr.on("data", onStderr);
 
+      let drainTimer: NodeJS.Timeout | undefined;
+
+      child.on("exit", (code) => {
+        if (isResolved) return;
+        drainTimer = setTimeout(() => {
+          child.stdout.destroy();
+          child.stderr.destroy();
+          finish(code);
+        }, OUTPUT_DRAIN_MS);
+      });
+
       child.on("close", (code) => {
+        clearTimeout(drainTimer);
+        finish(code);
+      });
+
+      const finish = (code: number | null) => {
         if (isResolved) return;
         isResolved = true;
 
@@ -379,7 +405,7 @@ IMPORTANT: To edit files, use Edit/MultiEdit tools instead of bash commands (sed
           ? appendParallelLimitNote(truncationResult.output)
           : truncationResult.output;
         resolve(finalOutput);
-      });
+      };
 
       child.on("error", (error) => {
         if (isResolved) return;

@@ -1,3 +1,5 @@
+import { signalAllProcessTrees } from "../util/processTree.js";
+
 import {
   isRunningInWsl,
   runTerminalCommandTool,
@@ -160,3 +162,61 @@ describe("runTerminalCommandTool output limits", () => {
     },
   );
 });
+
+// #12699: a backgrounded child must not block the tool call, and must not
+// outlive a timeout or the CLI itself
+describe.skipIf(process.platform === "win32")(
+  "runTerminalCommandTool background children",
+  () => {
+    const isAlive = (pid: number) => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const waitUntilDead = async (pid: number) => {
+      for (let i = 0; i < 50 && isAlive(pid); i++) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      return !isAlive(pid);
+    };
+
+    it("returns promptly when the command backgrounds a child", async () => {
+      const start = Date.now();
+      const result = await runTerminalCommandTool.run({
+        command: "sleep 30 & echo $!; echo started",
+      });
+      const backgroundPid = Number(result.trim().split("\n")[0]);
+
+      expect(Date.now() - start).toBeLessThan(2000);
+      expect(result).toContain("started");
+      expect(isAlive(backgroundPid)).toBe(true);
+
+      signalAllProcessTrees("SIGKILL");
+      expect(await waitUntilDead(backgroundPid)).toBe(true);
+    });
+
+    it("kills backgrounded children on timeout", async () => {
+      const result = await runTerminalCommandTool.run({
+        command: "sleep 30 & echo $!; sleep 30",
+        timeout: 1,
+      });
+      const backgroundPid = Number(result.trim().split("\n")[0]);
+
+      expect(result).toContain("[Command timed out");
+      expect(await waitUntilDead(backgroundPid)).toBe(true);
+    });
+
+    it("kills backgrounded children with SIGTERM on exit", async () => {
+      const result = await runTerminalCommandTool.run({
+        command: "sleep 30 & echo $!",
+      });
+      const backgroundPid = Number(result.trim());
+
+      signalAllProcessTrees("SIGTERM");
+      expect(await waitUntilDead(backgroundPid)).toBe(true);
+    });
+  },
+);
