@@ -56,6 +56,13 @@ cn -p "Write a README" --silent
 
 **TTY-less Environments**: Headless mode is designed to work in environments without a terminal (TTY), such as when called from the VS Code extension using terminal commands. The CLI will not attempt to read stdin or initialize the interactive UI when running in headless mode with a supplied prompt.
 
+**Command safety in headless mode**: headless mode runs Bash commands without asking. Two kinds of command are still refused:
+
+- Commands that would destroy the system, a home directory or a disk (`rm -rf /`, `rm -rf ~`, `find / -delete`, `wipefs -a`) never run, in any mode.
+- Broad deletes (a top-level directory such as `/tmp`, a path the CLI can't resolve, such as `rm -rf $DIR`) need a person. The interactive CLI asks first; headless mode refuses them.
+
+These checks read the command text, so they are best-effort: a command can always hide what it deletes. For untrusted prompts or repositories, run `cn -p` in a container or sandbox, and restrict Bash in `~/.continue/permissions.yaml`.
+
 ### Session Management
 
 The CLI automatically saves your chat history for each terminal session. You can resume where you left off:

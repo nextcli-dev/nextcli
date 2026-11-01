@@ -166,6 +166,18 @@ export function checkToolPermission(
       };
     }
 
+    // An allow policy can't approve a call that needs a person: ask instead.
+    // Headless mode refuses "ask", so these never run unattended.
+    if (
+      basePermission === "allow" &&
+      tool.requiresHumanApproval?.(toolCall.arguments)
+    ) {
+      return {
+        permission: "ask",
+        matchedPolicy,
+      };
+    }
+
     // Otherwise, user preference wins - return the original base permission
     return {
       permission: basePermission,

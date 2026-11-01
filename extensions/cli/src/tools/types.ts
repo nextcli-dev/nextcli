@@ -59,6 +59,11 @@ export interface Tool {
     basePolicy: ToolPolicy,
     parsedArgs: Record<string, unknown>,
   ) => ToolPolicy;
+  /**
+   * True when this call must be approved by a person even if a policy allows
+   * it: it prompts interactively and is refused in headless mode.
+   */
+  requiresHumanApproval?: (parsedArgs: Record<string, unknown>) => boolean;
 }
 
 export interface ToolCall {

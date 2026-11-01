@@ -3,6 +3,7 @@ import fs from "fs";
 
 import {
   evaluateTerminalCommandSecurity,
+  isDestructiveTerminalCommand,
   type ToolPolicy,
 } from "@continuedev/terminal-security";
 
@@ -173,6 +174,9 @@ IMPORTANT: To edit files, use Edit/MultiEdit tools instead of bash commands (sed
       parsedArgs.command as string,
     );
   },
+  // Broad deletes (top-level directories, unresolvable paths) need a person
+  requiresHumanApproval: (parsedArgs: Record<string, unknown>): boolean =>
+    isDestructiveTerminalCommand(parsedArgs.command as string),
   preprocess: async (args) => {
     const command = args.command;
     if (!command || typeof command !== "string") {
