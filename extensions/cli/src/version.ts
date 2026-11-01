@@ -20,6 +20,14 @@ export function getVersion(): string {
 // Singleton to cache the latest version result
 let latestVersionCache: Promise<string | null> | null = null;
 
+/**
+ * Update checks run only when NEXTCLI_VERSION_INFO_URL points at a version
+ * endpoint. NextCLI has no hosted default.
+ */
+export function isUpdateCheckEnabled(): boolean {
+  return !!process.env.NEXTCLI_VERSION_INFO_URL;
+}
+
 export async function getLatestVersion(
   signal?: AbortSignal,
 ): Promise<string | null> {

@@ -5,7 +5,12 @@ import { GlobalContext } from "core/util/GlobalContext.js";
 
 import { logger } from "src/util/logger.js";
 
-import { compareVersions, getLatestVersion, getVersion } from "../version.js";
+import {
+  compareVersions,
+  getLatestVersion,
+  getVersion,
+  isUpdateCheckEnabled,
+} from "../version.js";
 
 import { BaseService } from "./BaseService.js";
 import { serviceContainer } from "./ServiceContainer.js";
@@ -35,7 +40,11 @@ export class UpdateService extends BaseService<UpdateServiceState> {
   async doInitialize(headless?: boolean) {
     // Don't automatically check in tests/headless
     if (!headless && process.env.NODE_ENV !== "test") {
-      void this.checkAndAutoUpdate();
+      // Start the check after initialization has stored the state returned
+      // below. Started now, a check that finishes quickly would set its result
+      // first, and initialization would then overwrite it with the stale
+      // "checking" state it returns here, which hides the input box for good.
+      setImmediate(() => void this.checkAndAutoUpdate());
     }
 
     return this.currentState;
@@ -48,6 +57,15 @@ export class UpdateService extends BaseService<UpdateServiceState> {
     this.setState({
       autoUpdate,
     });
+
+    // Without an update endpoint there is nothing to check
+    if (!isUpdateCheckEnabled()) {
+      this.setState({
+        status: UpdateStatus.IDLE,
+        message: "NextCLI CLI",
+      });
+      return;
+    }
 
     try {
       // skip checking for updates in dev
