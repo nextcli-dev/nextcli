@@ -81,3 +81,27 @@ describe("activate when activation fails", () => {
     expect(outputChannel.show).toHaveBeenCalled();
   });
 });
+
+// PR #7 review: the webview uses continue.viewLogs to open DevTools; a healthy
+// activation must not open an empty output channel
+describe("continue.viewLogs after a successful activation", () => {
+  it("toggles DevTools without creating or showing an output channel", async () => {
+    vi.clearAllMocks();
+    vi.resetModules();
+    const { activateExtension } = await import("./activation/activate");
+    vi.mocked(activateExtension).mockResolvedValueOnce(undefined as any);
+    const { activate: freshActivate } = await import("./extension");
+
+    await freshActivate(makeContext());
+    const viewLogs = vi
+      .mocked(vscode.commands.registerCommand)
+      .mock.calls.find(([id]) => id === "continue.viewLogs")![1];
+    viewLogs();
+
+    expect(vscode.window.createOutputChannel).not.toHaveBeenCalled();
+    expect(outputChannel.show).not.toHaveBeenCalled();
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
+      "workbench.action.toggleDevTools",
+    );
+  });
+});
