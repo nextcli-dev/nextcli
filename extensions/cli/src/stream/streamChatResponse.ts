@@ -13,6 +13,7 @@ import { services } from "../services/index.js";
 import { telemetryService } from "../telemetry/telemetryService.js";
 import { applyChatCompletionToolOverrides } from "../tools/applyToolOverrides.js";
 import { ToolCall } from "../tools/index.js";
+import { registerAbortController } from "../util/abortRegistry.js";
 import {
   chatCompletionStreamWithBackoff,
   isContextLengthError,
@@ -452,155 +453,162 @@ export async function streamChatResponse(
       : undefined;
   let turn = 0;
 
-  while (true) {
-    turn++;
-    enforceAgentLoopLimits(limits, turn, usageAtStart);
+  // Aborted on exit, so an interrupted turn never starts another tool (#12701)
+  const unregisterAbort = registerAbortController(abortController);
+  try {
+    while (true) {
+      turn++;
+      enforceAgentLoopLimits(limits, turn, usageAtStart);
 
-    // If ChatHistoryService is available, refresh local chatHistory view
-    chatHistory = refreshChatHistoryFromService(chatHistory, isCompacting);
-    logger.debug("Starting conversation iteration");
+      // If ChatHistoryService is available, refresh local chatHistory view
+      chatHistory = refreshChatHistoryFromService(chatHistory, isCompacting);
+      logger.debug("Starting conversation iteration");
 
-    // Get system message once per iteration (can change based on tool permissions mode)
-    const systemMessage = await services.systemMessage.getSystemMessage(
-      services.toolPermissions.getState().currentMode,
-    );
+      // Get system message once per iteration (can change based on tool permissions mode)
+      const systemMessage = await services.systemMessage.getSystemMessage(
+        services.toolPermissions.getState().currentMode,
+      );
 
-    // Recompute tools on each iteration to handle mode changes during streaming
-    const rawTools = await getRequestTools(isHeadless);
-    const tools = applyChatCompletionToolOverrides(
-      rawTools,
-      model.chatOptions?.toolOverrides,
-    );
+      // Recompute tools on each iteration to handle mode changes during streaming
+      const rawTools = await getRequestTools(isHeadless);
+      const tools = applyChatCompletionToolOverrides(
+        rawTools,
+        model.chatOptions?.toolOverrides,
+      );
 
-    // Pre-API auto-compaction checkpoint (now includes tools)
-    const preCompactionResult = await handlePreApiCompaction(chatHistory, {
-      model,
-      llmApi,
-      isCompacting,
-      isHeadless,
-      callbacks,
-      systemMessage,
-      tools,
-    });
-    chatHistory = preCompactionResult.chatHistory;
-    if (preCompactionResult.wasCompacted) {
-      compactionOccurredThisTurn = true;
-    }
-
-    logger.debug("Tools prepared", {
-      toolCount: tools.length,
-      toolNames: tools.map((t) => t.function.name),
-    });
-
-    // Get response from LLM
-    const { content, toolCalls, shouldContinue, usage } =
-      await processStreamingResponse({
-        isHeadless,
-        chatHistory,
+      // Pre-API auto-compaction checkpoint (now includes tools)
+      const preCompactionResult = await handlePreApiCompaction(chatHistory, {
         model,
         llmApi,
-        abortController,
+        isCompacting,
+        isHeadless,
         callbacks,
-        tools,
         systemMessage,
+        tools,
+      });
+      chatHistory = preCompactionResult.chatHistory;
+      if (preCompactionResult.wasCompacted) {
+        compactionOccurredThisTurn = true;
+      }
+
+      logger.debug("Tools prepared", {
+        toolCount: tools.length,
+        toolNames: tools.map((t) => t.function.name),
       });
 
-    if (abortController?.signal.aborted) {
-      return finalResponse || content || fullResponse;
+      // Get response from LLM
+      const { content, toolCalls, shouldContinue, usage } =
+        await processStreamingResponse({
+          isHeadless,
+          chatHistory,
+          model,
+          llmApi,
+          abortController,
+          callbacks,
+          tools,
+          systemMessage,
+        });
+
+      if (abortController?.signal.aborted) {
+        return finalResponse || content || fullResponse;
+      }
+
+      fullResponse += content;
+
+      // Update final response based on mode
+      finalResponse = updateFinalResponse(
+        content,
+        shouldContinue,
+        isHeadless,
+        finalResponse,
+      );
+
+      // Handle content display
+      handleContentDisplay(content, callbacks, isHeadless);
+
+      // Handle tool calls and check for early return. This updates history via ChatHistoryService.
+      const shouldReturn = await handleToolCalls({
+        toolCalls,
+        chatHistory,
+        content,
+        callbacks,
+        isHeadless,
+        usage,
+        signal: abortController.signal,
+      });
+
+      if (shouldReturn || abortController.signal.aborted) {
+        return finalResponse || content || fullResponse;
+      }
+
+      // After tool execution, validate that we haven't exceeded context limit
+      const postToolResult = await handlePostToolValidation(
+        toolCalls,
+        chatHistory,
+        {
+          model,
+          llmApi,
+          isCompacting,
+          isHeadless,
+          callbacks,
+          systemMessage,
+          tools,
+        },
+      );
+      chatHistory = postToolResult.chatHistory;
+      if (postToolResult.wasCompacted) {
+        compactionOccurredThisTurn = true;
+      }
+
+      // Normal auto-compaction check at 80% threshold
+      const compactionResult = await handleNormalAutoCompaction(
+        chatHistory,
+        shouldContinue,
+        {
+          model,
+          llmApi,
+          isCompacting,
+          isHeadless,
+          callbacks,
+          systemMessage,
+          tools,
+        },
+      );
+      chatHistory = compactionResult.chatHistory;
+      if (compactionResult.wasCompacted) {
+        compactionOccurredThisTurn = true;
+      }
+
+      // If compaction happened during this turn and we're about to stop,
+      // automatically send a continuation message to keep the agent going
+      const autoContinueResult = handleAutoContinuation(
+        compactionOccurredThisTurn,
+        shouldContinue,
+        chatHistory,
+      );
+      chatHistory = autoContinueResult.chatHistory;
+      const shouldAutoContinue = autoContinueResult.shouldAutoContinue;
+
+      // Reset flag to avoid infinite continuation
+      if (shouldAutoContinue) {
+        compactionOccurredThisTurn = false;
+      }
+
+      // Check if we should continue (skip break if auto-continuing after compaction)
+      if (!shouldContinue && !shouldAutoContinue) {
+        break;
+      }
     }
 
-    fullResponse += content;
-
-    // Update final response based on mode
-    finalResponse = updateFinalResponse(
-      content,
-      shouldContinue,
-      isHeadless,
-      finalResponse,
-    );
-
-    // Handle content display
-    handleContentDisplay(content, callbacks, isHeadless);
-
-    // Handle tool calls and check for early return. This updates history via ChatHistoryService.
-    const shouldReturn = await handleToolCalls({
-      toolCalls,
-      chatHistory,
-      content,
-      callbacks,
-      isHeadless,
-      usage,
+    logger.debug("streamChatResponse complete", {
+      totalResponseLength: fullResponse.length,
+      totalMessages: chatHistory.length,
     });
 
-    if (shouldReturn) {
-      return finalResponse || content || fullResponse;
-    }
-
-    // After tool execution, validate that we haven't exceeded context limit
-    const postToolResult = await handlePostToolValidation(
-      toolCalls,
-      chatHistory,
-      {
-        model,
-        llmApi,
-        isCompacting,
-        isHeadless,
-        callbacks,
-        systemMessage,
-        tools,
-      },
-    );
-    chatHistory = postToolResult.chatHistory;
-    if (postToolResult.wasCompacted) {
-      compactionOccurredThisTurn = true;
-    }
-
-    // Normal auto-compaction check at 80% threshold
-    const compactionResult = await handleNormalAutoCompaction(
-      chatHistory,
-      shouldContinue,
-      {
-        model,
-        llmApi,
-        isCompacting,
-        isHeadless,
-        callbacks,
-        systemMessage,
-        tools,
-      },
-    );
-    chatHistory = compactionResult.chatHistory;
-    if (compactionResult.wasCompacted) {
-      compactionOccurredThisTurn = true;
-    }
-
-    // If compaction happened during this turn and we're about to stop,
-    // automatically send a continuation message to keep the agent going
-    const autoContinueResult = handleAutoContinuation(
-      compactionOccurredThisTurn,
-      shouldContinue,
-      chatHistory,
-    );
-    chatHistory = autoContinueResult.chatHistory;
-    const shouldAutoContinue = autoContinueResult.shouldAutoContinue;
-
-    // Reset flag to avoid infinite continuation
-    if (shouldAutoContinue) {
-      compactionOccurredThisTurn = false;
-    }
-
-    // Check if we should continue (skip break if auto-continuing after compaction)
-    if (!shouldContinue && !shouldAutoContinue) {
-      break;
-    }
+    // For headless mode, we return only the final response
+    // Otherwise, return the full response
+    return isHeadless ? finalResponse : fullResponse;
+  } finally {
+    unregisterAbort();
   }
-
-  logger.debug("streamChatResponse complete", {
-    totalResponseLength: fullResponse.length,
-    totalMessages: chatHistory.length,
-  });
-
-  // For headless mode, we return only the final response
-  // Otherwise, return the full response
-  return isHeadless ? finalResponse : fullResponse;
 }

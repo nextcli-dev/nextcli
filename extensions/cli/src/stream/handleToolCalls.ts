@@ -34,6 +34,8 @@ interface HandleToolCallsOptions {
   callbacks: StreamCallbacks | undefined;
   isHeadless: boolean;
   usage?: any;
+  /** Aborted when the turn is interrupted; remaining tools are not run */
+  signal?: AbortSignal;
 }
 
 function parseToolArguments(args: string | undefined): unknown {
@@ -117,8 +119,15 @@ function findRepeatedToolCalls(
 export async function handleToolCalls(
   options: HandleToolCallsOptions,
 ): Promise<boolean> {
-  const { toolCalls, chatHistory, content, callbacks, isHeadless, usage } =
-    options;
+  const {
+    toolCalls,
+    chatHistory,
+    content,
+    callbacks,
+    isHeadless,
+    usage,
+    signal,
+  } = options;
   const chatHistorySvc = services.chatHistory;
   const useService =
     typeof chatHistorySvc?.isReady === "function" && chatHistorySvc.isReady();
@@ -277,6 +286,7 @@ export async function handleToolCalls(
     preprocessedCalls,
     callbacks,
     isHeadless,
+    signal,
   );
 
   if (isHeadless && hasRejection) {

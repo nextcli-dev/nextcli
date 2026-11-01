@@ -527,6 +527,9 @@ export async function preprocessStreamedToolCalls(
   return { preprocessedCalls, errorChatEntries };
 }
 
+const INTERRUPTED_MESSAGE =
+  "Canceled: the session was interrupted before this tool ran";
+
 /**
  * Executes preprocessed tool calls, handling permissions and results
  * @param preprocessedCalls - The preprocessed tool calls ready for execution
@@ -537,6 +540,7 @@ export async function executeStreamedToolCalls(
   preprocessedCalls: PreprocessedToolCall[],
   callbacks?: StreamCallbacks,
   isHeadless?: boolean,
+  signal?: AbortSignal,
 ): Promise<{
   hasRejection: boolean;
   chatHistoryEntries: ToolResultWithStatus[];
@@ -559,9 +563,35 @@ export async function executeStreamedToolCalls(
 
   let hasRejection = false;
 
+  // Records a tool call that will not run, so history still has its result
+  const cancelCall = (
+    index: number,
+    call: PreprocessedToolCall,
+    message: string,
+  ) => {
+    entriesByIndex.set(index, {
+      role: "tool",
+      tool_call_id: call.id,
+      content: message,
+      status: "canceled",
+    });
+    callbacks?.onToolResult?.(message, call.name, "canceled");
+    // Immediate service update for UI feedback
+    try {
+      services.chatHistory.addToolResult(call.id, message, "canceled");
+    } catch {}
+    hasRejection = true;
+  };
+
   // Permission phase (sequential)
   for (const { index, call } of indexedCalls) {
     // Do not cancel subsequent tools after a rejection; handle each independently
+
+    // #12701: never start a tool once the turn has been interrupted
+    if (signal?.aborted) {
+      cancelCall(index, call, INTERRUPTED_MESSAGE);
+      continue;
+    }
 
     try {
       logger.debug("Checking tool permissions", {
@@ -591,29 +621,13 @@ export async function executeStreamedToolCalls(
           denialReason === "policy"
             ? `Command blocked by security policy`
             : `Permission denied by user`;
+        cancelCall(index, call, deniedMessage);
+        continue;
+      }
 
-        const deniedEntry: ToolResultWithStatus = {
-          role: "tool",
-          tool_call_id: call.id,
-          content: deniedMessage,
-          status: "canceled",
-        };
-        entriesByIndex.set(index, deniedEntry);
-        callbacks?.onToolResult?.(
-          String(deniedEntry.content),
-          call.name,
-          "canceled",
-        );
-        // Immediate service update for UI feedback
-        try {
-          services.chatHistory.addToolResult(
-            call.id,
-            String(deniedEntry.content),
-            "canceled",
-          );
-        } catch {}
-        hasRejection = true;
-        // Remaining items will be auto-cancelled in subsequent iterations
+      // The permission prompt may have waited while the turn was interrupted
+      if (signal?.aborted) {
+        cancelCall(index, call, INTERRUPTED_MESSAGE);
         continue;
       }
 
@@ -634,6 +648,7 @@ export async function executeStreamedToolCalls(
             const toolResult = capToolResult(
               await executeToolCall(call, {
                 parallelToolCallCount,
+                signal,
               }),
             );
             const entry: ToolResultWithStatus = {

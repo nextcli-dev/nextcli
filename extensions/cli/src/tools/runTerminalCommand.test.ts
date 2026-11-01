@@ -209,6 +209,44 @@ describe.skipIf(process.platform === "win32")(
       expect(await waitUntilDead(backgroundPid)).toBe(true);
     });
 
+    // #12701
+    it("kills the command and its children when the turn is aborted", async () => {
+      const controller = new AbortController();
+      const pending = runTerminalCommandTool.run(
+        { command: "sleep 30 & echo $!; sleep 30" },
+        {
+          toolCallId: "call_1",
+          parallelToolCallCount: 1,
+          signal: controller.signal,
+        },
+      );
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      controller.abort();
+
+      const result = await pending;
+      const backgroundPid = Number(result.trim().split("\n")[0]);
+
+      expect(result).toContain("[Command interrupted]");
+      expect(await waitUntilDead(backgroundPid)).toBe(true);
+    });
+
+    it("does not start the command when already aborted", async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      const result = await runTerminalCommandTool.run(
+        { command: "echo should-not-run" },
+        {
+          toolCallId: "call_1",
+          parallelToolCallCount: 1,
+          signal: controller.signal,
+        },
+      );
+
+      expect(result).toContain("[Command interrupted]");
+      expect(result).not.toContain("should-not-run");
+    });
+
     it("kills backgrounded children with SIGTERM on exit", async () => {
       const result = await runTerminalCommandTool.run({
         command: "sleep 30 & echo $!",

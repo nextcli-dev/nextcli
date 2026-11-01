@@ -207,9 +207,14 @@ IMPORTANT: To edit files, use Edit/MultiEdit tools instead of bash commands (sed
     const maxChars = Math.floor(baseMaxChars / parallelCount);
     const maxLines = Math.floor(baseMaxLines / parallelCount);
 
+    if (context?.signal?.aborted) {
+      return "[Command interrupted]";
+    }
+
     emitBashToolStarted();
 
-    const terminalOutput: string = await new Promise((resolve, reject) => {
+    let removeAbortListener = () => {};
+    const outputPromise: Promise<string> = new Promise((resolve, reject) => {
       // Use same shell logic as core implementation
       const { shell, args } = getShellCommand(command);
       const child = spawn(shell, args, processTreeSpawnOptions());
@@ -218,7 +223,10 @@ IMPORTANT: To edit files, use Edit/MultiEdit tools instead of bash commands (sed
       let stderr = "";
       const bufferLimit = Math.max(maxChars, 1) * BUFFER_TAIL_FACTOR;
       const truncate = (output: string) => {
-        const result = truncateOutputFromStart(output, { maxChars, maxLines });
+        const result = truncateOutputFromStart(output, {
+          maxChars,
+          maxLines,
+        });
         return result.wasTruncated
           ? appendParallelLimitNote(result.output)
           : result.output;
@@ -293,6 +301,34 @@ IMPORTANT: To edit files, use Edit/MultiEdit tools instead of bash commands (sed
       };
 
       backgroundSignalManager.on("backgroundRequested", moveToBackground);
+
+      // #12701: an interrupted turn must not leave the command running
+      const onAbort = () => {
+        if (isResolved) return;
+        isResolved = true;
+
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+        backgroundSignalManager.off("backgroundRequested", moveToBackground);
+        killProcessTree(child);
+        resolve(
+          truncate(
+            stdout +
+              (stderr ? `\nStderr: ${stderr}` : "") +
+              "\n\n[Command interrupted]",
+          ),
+        );
+      };
+      const signal = context?.signal;
+      if (signal) {
+        signal.addEventListener("abort", onAbort, { once: true });
+        removeAbortListener = () =>
+          signal.removeEventListener("abort", onAbort);
+        if (signal.aborted) {
+          onAbort();
+        }
+      }
 
       const resetTimeout = () => {
         if (timeoutId) {
@@ -418,6 +454,13 @@ IMPORTANT: To edit files, use Edit/MultiEdit tools instead of bash commands (sed
         reject(`Error: ${error.message}`);
       });
     });
+
+    let terminalOutput: string;
+    try {
+      terminalOutput = await outputPromise;
+    } finally {
+      removeAbortListener();
+    }
 
     emitBashToolEnded();
 

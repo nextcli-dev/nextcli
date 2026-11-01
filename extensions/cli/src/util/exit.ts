@@ -4,6 +4,7 @@ import { backgroundJobService } from "../services/BackgroundJobService.js";
 import { getSessionUsage } from "../session.js";
 import { telemetryService } from "../telemetry/telemetryService.js";
 
+import { abortAll } from "./abortRegistry.js";
 import { hadUnhandledError } from "./errorState.js";
 import { getGitDiffSnapshot } from "./git.js";
 import { logger } from "./logger.js";
@@ -192,6 +193,10 @@ function displaySessionUsage(): void {
  * signal that the process encountered errors.
  */
 export async function gracefulExit(code: number = 0): Promise<void> {
+  // Synchronously, before any await: stop in-flight turns so no tool call
+  // that arrives during shutdown is executed
+  abortAll();
+
   // Display session usage breakdown in verbose mode
   displaySessionUsage();
 

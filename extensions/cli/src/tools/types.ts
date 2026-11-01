@@ -39,6 +39,11 @@ export interface ToolRunContext {
    * Tools should divide their output limits by this number to avoid context overflow.
    */
   parallelToolCallCount: number;
+  /**
+   * Aborted when the turn is interrupted (e.g. SIGINT). Long-running tools
+   * should stop and clean up their child processes.
+   */
+  signal?: AbortSignal;
 }
 
 export interface Tool {
