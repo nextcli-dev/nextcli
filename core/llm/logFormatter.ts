@@ -141,15 +141,15 @@ export class LLMLogFormatter {
     interaction: InteractionData,
     item: LLMInteractionItem,
   ) {
-    if (item !== this.lastLineStartItem) {
+    if (item === this.lastLineStartItem) {
+      return "          ";
+    } else {
       if (item === interaction.startItem) {
         return formatTimestamp(item.timestamp);
       } else {
         const delta = (item.timestamp - interaction.startItem.timestamp) / 1000;
         return ("+" + delta.toFixed(1)).padStart(10, " ");
       }
-    } else {
-      return "          ";
     }
   }
 
@@ -208,11 +208,11 @@ export class LLMLogFormatter {
     this.output.write(fragment);
     this.openLine = joinAfter;
     this.lastItem = item;
-    if (!this.openLine) {
+    if (this.openLine) {
+      this.openLineChars += fragment.length;
+    } else {
       this.output.write("\n");
       this.openLineChars = 0;
-    } else {
-      this.openLineChars += fragment.length;
     }
 
     return continueAt;

@@ -337,12 +337,12 @@ export class LanceDbIndex implements CodebaseIndex {
         if (needToCreateLanceTable) {
           lanceTable = await lanceDb.createTable(lanceTableName, lanceRows);
           needToCreateLanceTable = false;
-        } else if (!lanceTable) {
+        } else if (lanceTable) {
+          await lanceTable?.add(lanceRows);
+        } else {
           lanceTable = await lanceDb.openTable(lanceTableName);
           needToCreateLanceTable = false;
           await lanceTable.add(lanceRows);
-        } else {
-          await lanceTable?.add(lanceRows);
         }
       }
 

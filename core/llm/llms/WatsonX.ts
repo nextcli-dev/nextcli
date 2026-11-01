@@ -47,13 +47,7 @@ class WatsonX extends BaseLLM {
       };
     } else {
       // watsonx Software
-      if (!this.apiKey?.includes(":")) {
-        // Using ZenApiKey auth
-        return {
-          token: this.apiKey ?? "",
-          expiration: -1,
-        };
-      } else {
+      if (this.apiKey?.includes(":")) {
         // Using username/password auth
         const userPass = this.apiKey?.split(":");
         const wxToken = await (
@@ -81,6 +75,12 @@ class WatsonX extends BaseLLM {
         return {
           token: wxToken["token"],
           expiration: wxTokenExpiry["exp"],
+        };
+      } else {
+        // Using ZenApiKey auth
+        return {
+          token: this.apiKey ?? "",
+          expiration: -1,
         };
       }
     }
@@ -110,7 +110,7 @@ class WatsonX extends BaseLLM {
       } else {
         return {
           role: "user",
-          content: !message.content.some((item) => item.type !== "text")
+          content: message.content.every((item) => item.type === "text")
             ? message.content
                 .map((item) => (item as TextMessagePart).text)
                 .join("") || " "

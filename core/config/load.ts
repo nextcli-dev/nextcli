@@ -442,14 +442,14 @@ async function intermediateToFinalConfig({
     const { name, params } = config.reranker as RerankerDescription;
     if (name === "llm") {
       const llm = models.find((model) => model.title === params?.modelTitle);
-      if (!llm) {
+      if (llm) {
+        return new LLMReranker(llm);
+      } else {
         errors.push({
           fatal: false,
           message: `Unknown reranking model ${params?.modelTitle}`,
         });
         return null;
-      } else {
-        return new LLMReranker(llm);
       }
     } else {
       const cls = LLMClasses.find((c) => c.providerName === name);
@@ -527,9 +527,9 @@ async function intermediateToFinalConfig({
       id: `continue-mcp-server-${index + 1}`,
       name: `MCP Server`,
       requestOptions: mergeConfigYamlRequestOptions(
-        server.transport.type !== "stdio"
-          ? server.transport.requestOptions
-          : undefined,
+        server.transport.type === "stdio"
+          ? undefined
+          : server.transport.requestOptions,
         config.requestOptions,
       ),
       ...server.transport,

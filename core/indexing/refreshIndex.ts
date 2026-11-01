@@ -175,17 +175,17 @@ async function getAddRemoveForTag(
   for (const item of saved) {
     const { lastUpdated, path, cacheKey } = item;
 
-    if (!pathGroups.has(path)) {
-      pathGroups.set(path, {
-        latest: { lastUpdated, cacheKey },
-        allVersions: [{ cacheKey }],
-      });
-    } else {
+    if (pathGroups.has(path)) {
       const group = pathGroups.get(path)!;
       group.allVersions.push({ cacheKey });
       if (lastUpdated > group.latest.lastUpdated) {
         group.latest = { lastUpdated, cacheKey };
       }
+    } else {
+      pathGroups.set(path, {
+        latest: { lastUpdated, cacheKey },
+        allVersions: [{ cacheKey }],
+      });
     }
   }
 
@@ -201,21 +201,21 @@ async function getAddRemoveForTag(
       if (group.latest.lastUpdated < files[path].lastModified) {
         // Change was made after last update
         const newHash = calculateHash(await readFile(path));
-        if (group.latest.cacheKey !== newHash) {
-          updateNewVersion.push({
-            path,
-            cacheKey: newHash,
-          });
-          for (const version of group.allVersions) {
-            updateOldVersion.push({ path, cacheKey: version.cacheKey });
-          }
-        } else {
+        if (group.latest.cacheKey === newHash) {
           // File contents did not change
           updateLastUpdated.push({ path, cacheKey: group.latest.cacheKey });
           for (const version of group.allVersions) {
             if (version.cacheKey !== group.latest.cacheKey) {
               updateOldVersion.push({ path, cacheKey: version.cacheKey });
             }
+          }
+        } else {
+          updateNewVersion.push({
+            path,
+            cacheKey: newHash,
+          });
+          for (const version of group.allVersions) {
+            updateOldVersion.push({ path, cacheKey: version.cacheKey });
           }
         }
       } else {

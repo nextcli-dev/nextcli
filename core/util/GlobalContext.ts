@@ -65,9 +65,7 @@ export class GlobalContext {
     value: GlobalContextType[T],
   ) {
     const filepath = getGlobalContextFilePath();
-    if (!fs.existsSync(filepath)) {
-      fs.writeFileSync(filepath, JSON.stringify({ [key]: value }, null, 2));
-    } else {
+    if (fs.existsSync(filepath)) {
       const data = fs.readFileSync(filepath, "utf-8");
 
       let parsed;
@@ -112,6 +110,8 @@ export class GlobalContext {
 
       parsed[key] = value;
       fs.writeFileSync(filepath, JSON.stringify(parsed, null, 2));
+    } else {
+      fs.writeFileSync(filepath, JSON.stringify({ [key]: value }, null, 2));
     }
   }
 

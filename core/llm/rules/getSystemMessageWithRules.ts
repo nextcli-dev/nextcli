@@ -235,7 +235,7 @@ export const shouldApplyRule = (
     const ruleDirectory = getCleanUriPath(rule.sourceFile);
     const lastSlashIndex = ruleDirectory.lastIndexOf("/");
     const ruleDirPath =
-      lastSlashIndex !== -1 ? ruleDirectory.substring(0, lastSlashIndex) : "";
+      lastSlashIndex === -1 ? "" : ruleDirectory.substring(0, lastSlashIndex);
 
     // Filter to only files in this directory or its subdirectories
     const filesInRuleDirectory = filePaths.filter((filePath) =>

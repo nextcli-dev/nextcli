@@ -77,7 +77,9 @@ export function migrateJsonSharedConfig(filepath: string, ide: IDE): void {
 
       const { disableInFiles, ...withoutDisableInFiles } = migratedAutocomplete;
       if (disableInFiles !== undefined) {
-        if (currentSharedConfig.disableAutocompleteInFiles !== undefined) {
+        if (currentSharedConfig.disableAutocompleteInFiles === undefined) {
+          shareConfigUpdates.disableAutocompleteInFiles = disableInFiles;
+        } else {
           // safe merge for security
           shareConfigUpdates.disableAutocompleteInFiles = deduplicateArray(
             [
@@ -86,8 +88,6 @@ export function migrateJsonSharedConfig(filepath: string, ide: IDE): void {
             ],
             (a, b) => a === b,
           );
-        } else {
-          shareConfigUpdates.disableAutocompleteInFiles = disableInFiles;
         }
         shareConfigUpdates.disableAutocompleteInFiles = disableInFiles;
         migratedAutocomplete = withoutDisableInFiles;

@@ -35,7 +35,7 @@ import Nebius from "./Nebius.js";
 import OVHcloud from "./OVHcloud.js";
 
 // Base OpenAI tests
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ILLM } from "../../index.js";
 
 interface LlmTestCase {
@@ -402,9 +402,16 @@ createOpenAISubclassTests(Inception, {
   },
 });
 
-createOpenAISubclassTests(Docker, {
-  providerName: "docker",
-  defaultApiBase: "http://localhost:12434/engines/v1/",
+describe("docker model runner probe", () => {
+  // Docker's constructor probes localhost:12434 and may spawn `docker`; keep tests offline
+  beforeEach(() => {
+    vi.spyOn(Docker.prototype as any, "isPortBound").mockResolvedValue(true);
+  });
+
+  createOpenAISubclassTests(Docker, {
+    providerName: "docker",
+    defaultApiBase: "http://localhost:12434/engines/v1/",
+  });
 });
 
 createOpenAISubclassTests(Voyage, {

@@ -310,14 +310,14 @@ export class NextEditProvider {
     helper: HelperVars | undefined;
   }> {
     // Create abort signal if not given
-    if (!token) {
+    if (token) {
+      // Token was provided externally, just track the completion.
+      this.loggingService.trackPendingCompletion(input.completionId);
+    } else {
       const controller = this.loggingService.createAbortController(
         input.completionId,
       );
       token = controller.signal;
-    } else {
-      // Token was provided externally, just track the completion.
-      this.loggingService.trackPendingCompletion(input.completionId);
     }
 
     const startTime = Date.now();

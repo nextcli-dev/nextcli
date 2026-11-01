@@ -55,10 +55,10 @@ export class ImportDefinitionsService {
         filepath,
         await this.ide.getWorkspaceDirs(),
       );
-      if (!foundInDir) {
-        return null;
-      } else {
+      if (foundInDir) {
         fileContents = await this.ide.readFile(filepath);
+      } else {
+        return null;
       }
     } catch (err) {
       // File removed
