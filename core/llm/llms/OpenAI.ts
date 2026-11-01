@@ -4,6 +4,7 @@ import {
 } from "openai/resources/index";
 
 import { streamSse } from "@nextcli/fetch";
+import { filterAnthropicSamplingParams } from "@nextcli/openai-adapters";
 import {
   ResponseCreateParamsBase,
   ResponseInputItem,
@@ -297,6 +298,14 @@ class OpenAI extends BaseLLM {
       finalOptions.top_p = undefined;
     }
 
+    // Claude models served through OpenAI-compatible gateways keep Anthropic's limits
+    const sampling = filterAnthropicSamplingParams(options.model, {
+      temperature: finalOptions.temperature ?? undefined,
+      topP: finalOptions.top_p ?? undefined,
+    });
+    finalOptions.temperature = sampling.temperature;
+    finalOptions.top_p = sampling.topP;
+
     if (options.model === "o1") {
       finalOptions.stream = false;
     }
@@ -476,6 +485,14 @@ class OpenAI extends BaseLLM {
       body.temperature = undefined;
       body.top_p = undefined;
     }
+
+    // Claude models served through OpenAI-compatible gateways keep Anthropic's limits
+    const sampling = filterAnthropicSamplingParams(body.model, {
+      temperature: body.temperature ?? undefined,
+      topP: body.top_p ?? undefined,
+    });
+    body.temperature = sampling.temperature;
+    body.top_p = sampling.topP;
 
     if (body.model === "o1") {
       // o1 doesn't support streaming

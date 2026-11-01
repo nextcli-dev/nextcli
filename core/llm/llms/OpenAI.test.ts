@@ -70,4 +70,20 @@ describe("OpenAI", () => {
     expect(args.temperature).toBeNull();
     expect(args.top_p).toBeNull();
   });
+
+  test("drops sampling params Claude 4.7+ rejects on OpenAI-compatible gateways", () => {
+    const gateway = new OpenAI({
+      model: "claude-sonnet-5-5",
+      apiKey: "test",
+      apiBase: "https://gateway.example/v1/",
+    });
+    const result = (gateway as any).modifyChatBody({
+      model: "claude-sonnet-5-5",
+      messages: [{ role: "user", content: "Hi" }],
+      temperature: 0.7,
+      top_p: 0.9,
+    });
+    expect(result.temperature).toBeUndefined();
+    expect(result.top_p).toBeUndefined();
+  });
 });

@@ -48,4 +48,20 @@ describe("OpenAI reasoning model request bodies", () => {
         .tool_choice,
     ).toBe("required");
   });
+
+  it("drops sampling params Claude 4.7+ rejects when served through an OpenAI-compatible gateway", () => {
+    const gateway = new OpenAIApi({
+      provider: "openai",
+      apiKey: "test-key",
+      apiBase: "https://gateway.example/v1",
+    });
+    const result = gateway.modifyChatBody(body("claude-sonnet-5-5"));
+    expect(result.temperature).toBeUndefined();
+    expect(result.top_p).toBeUndefined();
+
+    // Older Claude models only reject temperature and top_p together
+    const older = gateway.modifyChatBody(body("claude-sonnet-4-6"));
+    expect(older.temperature).toBe(0.5);
+    expect(older.top_p).toBeUndefined();
+  });
 });
