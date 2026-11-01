@@ -4,6 +4,7 @@ import {
 } from "openai/resources/index";
 
 import { streamSse } from "@nextcli/fetch";
+import { filterAnthropicSamplingParams } from "@nextcli/openai-adapters";
 import {
   ResponseCreateParamsBase,
   ResponseInputItem,
@@ -291,7 +292,19 @@ class OpenAI extends BaseLLM {
 
       // b) don't support system message
       finalOptions.messages = formatMessageForO1OrGpt5(finalOptions.messages);
+
+      // c) reject temperature and top_p other than their defaults
+      finalOptions.temperature = undefined;
+      finalOptions.top_p = undefined;
     }
+
+    // Claude models served through OpenAI-compatible gateways keep Anthropic's limits
+    const sampling = filterAnthropicSamplingParams(options.model, {
+      temperature: finalOptions.temperature ?? undefined,
+      topP: finalOptions.top_p ?? undefined,
+    });
+    finalOptions.temperature = sampling.temperature;
+    finalOptions.top_p = sampling.topP;
 
     if (options.model === "o1") {
       finalOptions.stream = false;
@@ -328,8 +341,13 @@ class OpenAI extends BaseLLM {
     const body: ResponseCreateParamsBase = {
       model,
       input,
-      temperature: options.temperature ?? null,
-      top_p: options.topP ?? null,
+      // Reasoning models reject temperature and top_p other than their defaults
+      temperature: this.isOSeriesOrGpt5PlusModel(model)
+        ? null
+        : (options.temperature ?? null),
+      top_p: this.isOSeriesOrGpt5PlusModel(model)
+        ? null
+        : (options.topP ?? null),
       reasoning: {
         effort: "medium",
         summary: "auto",
@@ -462,7 +480,19 @@ class OpenAI extends BaseLLM {
 
       // b) don't support system message
       body.messages = formatMessageForO1OrGpt5(body.messages);
+
+      // c) reject temperature and top_p other than their defaults
+      body.temperature = undefined;
+      body.top_p = undefined;
     }
+
+    // Claude models served through OpenAI-compatible gateways keep Anthropic's limits
+    const sampling = filterAnthropicSamplingParams(body.model, {
+      temperature: body.temperature ?? undefined,
+      topP: body.top_p ?? undefined,
+    });
+    body.temperature = sampling.temperature;
+    body.top_p = sampling.topP;
 
     if (body.model === "o1") {
       // o1 doesn't support streaming

@@ -257,6 +257,7 @@ class VertexAI extends BaseLLM {
         messages: this.anthropicInstance.convertMessages(
           messages,
           shouldCachePrompt,
+          options.model,
         ),
         system: shouldCacheSystemMessage
           ? [

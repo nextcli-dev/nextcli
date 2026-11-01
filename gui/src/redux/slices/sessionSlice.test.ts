@@ -133,6 +133,39 @@ describe("sessionSlice streamUpdate", () => {
       );
       expect(newState.history[1].message.id).toBe("mock-uuid-1");
     });
+
+    it("does not duplicate the first reasoning_details chunk", () => {
+      const initialState = createInitialState();
+      const action = {
+        type: "session/streamUpdate",
+        payload: [
+          {
+            role: "thinking" as const,
+            content: "",
+            reasoning_details: [
+              { type: "reasoning_id", id: "rs_1" },
+              { type: "summary_text", text: "Checking " },
+            ],
+          },
+          {
+            role: "thinking" as const,
+            content: "",
+            reasoning_details: [{ type: "summary_text", text: "the weather." }],
+          },
+        ],
+      };
+
+      const newState = sessionSlice.reducer(initialState, action);
+
+      const thinking = newState.history[1].message;
+      expect(thinking.role).toBe("thinking");
+      expect(
+        thinking.role === "thinking" && thinking.reasoning_details,
+      ).toEqual([
+        { type: "reasoning_id", id: "rs_1" },
+        { type: "summary_text", text: "Checking the weather." },
+      ]);
+    });
   });
 
   describe("Tool Call With Response", () => {

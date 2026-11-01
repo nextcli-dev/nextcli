@@ -108,7 +108,7 @@ runs:
       shell: bash
       run: |
         cd extensions/vscode
-        rm -rf e2e/.test-extensions/continue*
+        rm -rf e2e/.test-extensions/continue* e2e/.test-extensions/nextcli*
 
     - name: Sanitize test file name
       id: sanitize_filename

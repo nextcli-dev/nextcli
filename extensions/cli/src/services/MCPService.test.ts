@@ -1,7 +1,7 @@
-import { AssistantConfig } from "@continuedev/sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MCPService } from "./MCPService.js";
+import type { AssistantConfig } from "./types.js";
 
 // Mock the MCP SDK
 const mockClient = {

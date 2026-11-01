@@ -1,7 +1,13 @@
 import { vi } from "vitest";
 import {
+  anthropicSupportsForcedToolChoice,
+  anthropicSupportsPrefill,
+  anthropicThinkingType,
+  filterAnthropicSamplingParams,
   getAnthropicHeaders,
   isAzureAnthropicEndpoint,
+  openAiToolChoiceToAnthropicToolChoice,
+  parseClaudeModelVersion,
 } from "./AnthropicUtils.js";
 
 describe("isAzureAnthropicEndpoint", () => {
@@ -189,5 +195,145 @@ describe("getAnthropicHeaders", () => {
       expect(warnSpy).not.toHaveBeenCalled();
       warnSpy.mockRestore();
     });
+  });
+});
+
+// Expected values come from probing the live API on 2026-11-01
+describe("parseClaudeModelVersion", () => {
+  it.each([
+    ["claude-sonnet-5-5", { family: "sonnet", major: 5, minor: 5 }],
+    ["claude-opus-5", { family: "opus", major: 5, minor: 0 }],
+    ["claude-opus-4-5-20251101", { family: "opus", major: 4, minor: 5 }],
+    ["claude-sonnet-4-20250514", { family: "sonnet", major: 4, minor: 0 }],
+    ["claude-3-5-sonnet-20241022", { family: "sonnet", major: 3, minor: 5 }],
+    ["claude-3-7-sonnet-latest", { family: "sonnet", major: 3, minor: 7 }],
+    [
+      "us.anthropic.claude-opus-4-7-v1:0",
+      { family: "opus", major: 4, minor: 7 },
+    ],
+    ["anthropic/claude-fable-5-1", { family: "fable", major: 5, minor: 1 }],
+  ])("parses %s", (model, expected) => {
+    expect(parseClaudeModelVersion(model)).toEqual(expected);
+  });
+
+  it("returns undefined for non-Claude models", () => {
+    expect(parseClaudeModelVersion("gpt-5.5")).toBeUndefined();
+    expect(parseClaudeModelVersion(undefined)).toBeUndefined();
+  });
+});
+
+describe("anthropicThinkingType", () => {
+  it.each([
+    ["claude-haiku-4-5-20251001", "enabled"],
+    ["claude-opus-4-5-20251101", "enabled"],
+    ["claude-3-7-sonnet-latest", "enabled"],
+    ["claude-sonnet-4-6", "adaptive"],
+    ["claude-opus-4-7", "adaptive"],
+    ["claude-opus-5", "adaptive"],
+    ["claude-haiku-5-5", "adaptive"],
+    ["claude-sonnet-5-5", "adaptive"],
+    ["claude-fable-5-1", "adaptive"],
+    ["some-proxy-model", "enabled"],
+  ])("%s uses %s thinking", (model, expected) => {
+    expect(anthropicThinkingType(model)).toBe(expected);
+  });
+});
+
+describe("anthropicSupportsForcedToolChoice", () => {
+  it.each([
+    ["claude-haiku-5-5", true],
+    ["claude-opus-5", true],
+    ["claude-sonnet-5", true],
+    ["claude-fable-5", true],
+    ["claude-opus-4-8", true],
+    ["claude-sonnet-4-6", true],
+    ["claude-sonnet-5-5", false],
+    ["claude-opus-5-5", false],
+    ["claude-fable-5-1", false],
+    ["some-proxy-model", true],
+  ])("%s supports forced tool_choice: %s", (model, expected) => {
+    expect(anthropicSupportsForcedToolChoice(model)).toBe(expected);
+  });
+});
+
+describe("openAiToolChoiceToAnthropicToolChoice", () => {
+  const named = {
+    type: "function" as const,
+    function: { name: "say_hello" },
+  };
+
+  it("keeps forced choices for models that accept them", () => {
+    expect(
+      openAiToolChoiceToAnthropicToolChoice("required", "claude-haiku-5-5"),
+    ).toEqual({ type: "any" });
+    expect(
+      openAiToolChoiceToAnthropicToolChoice(named, "claude-haiku-5-5"),
+    ).toEqual({ type: "tool", name: "say_hello" });
+  });
+
+  it("downgrades forced choices to auto for models that reject them", () => {
+    expect(
+      openAiToolChoiceToAnthropicToolChoice("required", "claude-sonnet-5-5"),
+    ).toEqual({ type: "auto" });
+    expect(
+      openAiToolChoiceToAnthropicToolChoice(named, "claude-opus-5-5"),
+    ).toEqual({ type: "auto" });
+  });
+
+  it("leaves auto and none unchanged", () => {
+    expect(
+      openAiToolChoiceToAnthropicToolChoice("auto", "claude-sonnet-5-5"),
+    ).toEqual({ type: "auto" });
+    expect(
+      openAiToolChoiceToAnthropicToolChoice("none", "claude-sonnet-5-5"),
+    ).toBeUndefined();
+  });
+});
+
+describe("filterAnthropicSamplingParams", () => {
+  const all = { temperature: 0.5, topP: 0.9, topK: 40 };
+
+  it("drops all sampling params for Opus 4.7 and newer", () => {
+    for (const model of [
+      "claude-opus-4-7",
+      "claude-sonnet-5",
+      "claude-haiku-5-5",
+      "claude-sonnet-5-5",
+      "us.anthropic.claude-opus-4-8-v1:0",
+    ]) {
+      expect(filterAnthropicSamplingParams(model, all)).toEqual({});
+    }
+  });
+
+  it("drops top_p when temperature is also set on older models", () => {
+    expect(filterAnthropicSamplingParams("claude-sonnet-4-6", all)).toEqual({
+      temperature: 0.5,
+      topK: 40,
+    });
+  });
+
+  it("keeps a single sampling param on older models", () => {
+    expect(
+      filterAnthropicSamplingParams("claude-haiku-4-5-20251001", { topP: 0.9 }),
+    ).toEqual({ topP: 0.9 });
+  });
+
+  it("passes non-Claude models through", () => {
+    expect(filterAnthropicSamplingParams("meta.llama3-70b", all)).toEqual(all);
+  });
+});
+
+describe("anthropicSupportsPrefill", () => {
+  it.each([
+    ["claude-haiku-4-5-20251001", true],
+    ["claude-opus-4-5-20251101", true],
+    ["claude-3-7-sonnet-latest", true],
+    ["claude-sonnet-4-6", false],
+    ["claude-opus-4-7", false],
+    ["claude-haiku-5-5", false],
+    ["claude-sonnet-5-5", false],
+    ["some-proxy-model", true],
+  ])("%s supports prefill: %s", (model, expected) => {
+    expect(anthropicSupportsPrefill(model)).toBe(expected);
   });
 });

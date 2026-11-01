@@ -30,6 +30,7 @@ describe("E2E: Headless Mode with Tool Calls", () => {
     // In headless mode, the CLI makes only one request and exits
     // If that response contains only tool calls, nothing is printed
 
+    let requestCount = 0;
     mockServer = await setupMockLLMTest(context, {
       customHandler: (req: http.IncomingMessage, res: http.ServerResponse) => {
         // Collect request body first
@@ -45,6 +46,17 @@ describe("E2E: Headless Mode with Tool Calls", () => {
               "Cache-Control": "no-cache",
               Connection: "keep-alive",
             });
+
+            requestCount++;
+            if (requestCount > 1) {
+              // After the tool result, end the turn without any text
+              res.write(
+                `data: {"choices":[{"delta":{},"finish_reason":"stop","index":0}]}\n\n`,
+              );
+              res.write(`data: [DONE]\n\n`);
+              res.end();
+              return;
+            }
 
             // Send only tool call (no text content)
             res.write(

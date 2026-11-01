@@ -24,6 +24,7 @@ import {
   FimCreateParamsStreaming,
   RerankCreateParams,
 } from "./base.js";
+import { filterAnthropicSamplingParams } from "./AnthropicUtils.js";
 import {
   createResponsesStreamState,
   fromResponsesChunk,
@@ -63,6 +64,21 @@ export class OpenAIApi implements BaseLlmApi {
       body.max_completion_tokens = body.max_tokens;
       body.max_tokens = undefined;
     }
+
+    // Reasoning models (o-series, GPT-5 and later) reject temperature and top_p
+    // other than their defaults, wherever they are served
+    if (isResponsesModel(body.model)) {
+      body.temperature = undefined;
+      body.top_p = undefined;
+    }
+
+    // Claude models served through OpenAI-compatible gateways keep Anthropic's limits
+    const sampling = filterAnthropicSamplingParams(body.model, {
+      temperature: body.temperature ?? undefined,
+      topP: body.top_p ?? undefined,
+    });
+    body.temperature = sampling.temperature;
+    body.top_p = sampling.topP;
 
     // o-series models - only apply for official OpenAI API
     const isOfficialOpenAIAPI = this.apiBase === "https://api.openai.com/v1/";

@@ -69,6 +69,8 @@ function buildReasoningCompletionOptions(
   return reasoningOptions;
 }
 
+const MAX_AUTO_STREAM_DEPTH = 300;
+
 export const streamNormalInput = createAsyncThunk<
   void,
   {
@@ -86,6 +88,13 @@ export const streamNormalInput = createAsyncThunk<
       const message = `Max stream depth of ${50} reached in test`;
       console.error(message, JSON.stringify(getState(), null, 2));
       throw new Error(message);
+    }
+    // Each automatic tool round adds about 3 to the depth, so this allows
+    // roughly 100 model calls before a runaway loop is stopped (#12702)
+    if (depth > MAX_AUTO_STREAM_DEPTH) {
+      throw new Error(
+        "Stopped after about 100 automatic tool-call rounds. Send a new message to continue.",
+      );
     }
     const state = getState();
     const selectedChatModel = selectSelectedChatModel(state);

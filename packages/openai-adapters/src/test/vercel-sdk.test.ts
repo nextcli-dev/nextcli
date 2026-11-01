@@ -79,7 +79,7 @@ if (process.env.ANTHROPIC_API_KEY) {
   describe("Anthropic with AI SDK", () => {
     testAiSdkProvider({
       aiSdkProviderId: "anthropic",
-      model: "claude-haiku-4-5",
+      model: "claude-haiku-5-5",
       apiKey: process.env.ANTHROPIC_API_KEY!,
       skipTools: false,
       expectUsage: true,
@@ -270,8 +270,8 @@ describe("Contract Compatibility Tests", () => {
     }
 
     const testPrompt = "Say 'Hello World' and nothing else.";
-    const model = "claude-haiku-4-5";
-    const aiSdkModel = "anthropic/claude-haiku-4-5";
+    const model = "claude-haiku-5-5";
+    const aiSdkModel = "anthropic/claude-haiku-5-5";
 
     test("streaming output format matches", async () => {
       const originalApi = getLlmApi({

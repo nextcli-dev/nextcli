@@ -119,12 +119,150 @@ export function addCacheControlToLastTwoUserMessages(messages: MessageParam[]) {
   }
 }
 
+interface ClaudeModelVersion {
+  family: "opus" | "sonnet" | "haiku" | "fable";
+  major: number;
+  minor: number;
+}
+
+/**
+ * Parses Claude model ids in both naming schemes, including dated snapshots and
+ * Bedrock/Vertex prefixes: claude-sonnet-5-5, claude-opus-4-5-20251101,
+ * claude-3-5-sonnet-20241022, us.anthropic.claude-opus-4-7-v1:0.
+ */
+export function parseClaudeModelVersion(
+  model: string | undefined,
+): ClaudeModelVersion | undefined {
+  if (!model) {
+    return undefined;
+  }
+  const lower = model.toLowerCase();
+  const familyFirst = lower.match(
+    /claude-(opus|sonnet|haiku|fable)-(\d+)(?:[-.](\d{1,2})(?!\d))?/,
+  );
+  if (familyFirst) {
+    return {
+      family: familyFirst[1] as ClaudeModelVersion["family"],
+      major: Number(familyFirst[2]),
+      minor: Number(familyFirst[3] ?? 0),
+    };
+  }
+  const versionFirst = lower.match(
+    /claude-(\d+)(?:[-.](\d{1,2})(?!\d))?-(opus|sonnet|haiku)/,
+  );
+  if (versionFirst) {
+    return {
+      family: versionFirst[3] as ClaudeModelVersion["family"],
+      major: Number(versionFirst[1]),
+      minor: Number(versionFirst[2] ?? 0),
+    };
+  }
+  return undefined;
+}
+
+function isAtLeast(
+  version: ClaudeModelVersion,
+  major: number,
+  minor: number,
+): boolean {
+  return (
+    version.major > major || (version.major === major && version.minor >= minor)
+  );
+}
+
+/**
+ * Claude 4.6 and newer take `thinking: { type: "adaptive" }`. From Opus 4.7 on,
+ * `{ type: "enabled", budget_tokens }` is rejected, and models before 4.6 reject
+ * "adaptive". Unknown model names keep the older "enabled" form.
+ */
+export function anthropicThinkingType(
+  model: string | undefined,
+): "adaptive" | "enabled" {
+  const version = parseClaudeModelVersion(model);
+  return version && isAtLeast(version, 4, 6) ? "adaptive" : "enabled";
+}
+
+/**
+ * Claude 4.6 and newer reject a conversation that ends with an assistant
+ * message ("does not support assistant message prefill"). Haiku 4.5 and older
+ * models accept it. Unknown model names are assumed to accept it.
+ */
+export function anthropicSupportsPrefill(model: string | undefined): boolean {
+  const version = parseClaudeModelVersion(model);
+  return !version || !isAtLeast(version, 4, 6);
+}
+
+export interface AnthropicSamplingParams {
+  temperature?: number;
+  topP?: number;
+  topK?: number;
+}
+
+/**
+ * Claude Opus 4.7 and newer reject temperature, top_p and top_k. Older Claude
+ * models reject temperature and top_p together, so top_p is dropped when both
+ * are set. Non-Claude models (for example on Bedrock) are passed through.
+ */
+export function filterAnthropicSamplingParams(
+  model: string | undefined,
+  params: AnthropicSamplingParams,
+): AnthropicSamplingParams {
+  const version = parseClaudeModelVersion(model);
+  if (!version) {
+    return params;
+  }
+  if (isAtLeast(version, 4, 7)) {
+    return {};
+  }
+  if (params.temperature !== undefined && params.topP !== undefined) {
+    return { temperature: params.temperature, topK: params.topK };
+  }
+  return params;
+}
+
+/**
+ * Sonnet/Opus 5.5 and Fable 5.1 reject tool_choice types "any" and "tool".
+ * Haiku 5.5 and older models accept them. Assumed to hold for later versions.
+ */
+export function anthropicSupportsForcedToolChoice(
+  model: string | undefined,
+): boolean {
+  const version = parseClaudeModelVersion(model);
+  if (!version) {
+    return true;
+  }
+  switch (version.family) {
+    case "opus":
+    case "sonnet":
+      return !isAtLeast(version, 5, 5);
+    case "fable":
+      return !isAtLeast(version, 5, 1);
+    case "haiku":
+      return !isAtLeast(version, 6, 0);
+  }
+}
+
 export function openAiToolChoiceToAnthropicToolChoice(
   toolChoice: ChatCompletionToolChoiceOption | undefined,
+  model?: string,
 ): ToolChoice | undefined {
   if (!toolChoice) {
     return undefined;
   }
+  const choice = openAiToolChoiceToAnthropicToolChoiceUnchecked(toolChoice);
+  if (
+    choice &&
+    (choice.type === "any" || choice.type === "tool") &&
+    !anthropicSupportsForcedToolChoice(model)
+  ) {
+    return { type: "auto" };
+  }
+  return choice;
+}
+
+function openAiToolChoiceToAnthropicToolChoiceUnchecked(
+  toolChoice: ChatCompletionToolChoiceOption,
+): ToolChoice | undefined {
   switch (toolChoice) {
     case "none":
       // "none" is handled by excluding tools

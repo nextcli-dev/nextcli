@@ -1,13 +1,13 @@
+import {
+  Configuration,
+  DefaultApi,
+} from "@continuedev/sdk/dist/api/dist/index.js";
 import { AssistantUnrolled, ModelConfig } from "@nextcli/config-yaml";
 import {
   BaseLlmApi,
   constructLlmApi,
   LLMConfig,
 } from "@nextcli/openai-adapters";
-import {
-  Configuration,
-  DefaultApi,
-} from "@continuedev/sdk/dist/api/dist/index.js";
 
 import { AuthConfig } from "./auth/workos.js";
 import { env } from "./env.js";

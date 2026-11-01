@@ -1,6 +1,5 @@
-import { decodeFQSN, getTemplateVariables } from "@nextcli/config-yaml";
-import { type AssistantConfig } from "@continuedev/sdk";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { decodeFQSN, getTemplateVariables } from "@nextcli/config-yaml";
 
 import { getErrorString } from "../util/error.js";
 import { logger } from "../util/logger.js";
@@ -13,6 +12,7 @@ import {
 } from "./mcpTransports.js";
 import { isAuthError } from "./mcpUtils.js";
 import { serviceContainer } from "./ServiceContainer.js";
+import type { AssistantConfig } from "./types.js";
 import {
   MCPConnectionInfo,
   MCPServerConfig,

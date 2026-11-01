@@ -21,6 +21,7 @@ import {
   updateSessionHistory,
   updateSessionTitle,
 } from "../session.js";
+import { configureAgentLoopLimits } from "../stream/agentLoopLimits.js";
 import { streamChatResponse } from "../stream/streamChatResponse.js";
 import { telemetryService } from "../telemetry/telemetryService.js";
 import { startTUIChat } from "../ui/index.js";
@@ -551,6 +552,8 @@ export async function chat(prompt?: string, options: ChatOptions = {}) {
   logging.configureLogger({ headless: options.headless ?? false });
 
   try {
+    configureAgentLoopLimits(options);
+
     // Record session start
     telemetryService.recordSessionStart();
 

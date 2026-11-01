@@ -1,6 +1,6 @@
-import type { AssistantConfig } from "@continuedev/sdk";
 import React from "react";
 
+import type { AssistantConfig } from "../../services/types.js";
 import type {
   ActivePermissionRequest,
   ActiveQuizQuestion,

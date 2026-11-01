@@ -89,6 +89,54 @@ export function findToolCallById(
   return undefined;
 }
 
+// Identical consecutive tool calls allowed before the next one is not run (#12702)
+export const MAX_IDENTICAL_TOOL_CALLS = 2;
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value as Record<string, unknown>)
+      .sort()
+      .map(
+        (key) =>
+          `${JSON.stringify(key)}:${stableStringify((value as Record<string, unknown>)[key])}`,
+      )
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+function toolCallFingerprint(toolCallState: ToolCallState): string {
+  const { name, arguments: args } = toolCallState.toolCall.function;
+  let parsed: unknown = args;
+  try {
+    parsed = JSON.parse(args || "{}");
+  } catch {}
+  return `${name}:${stableStringify(parsed)}`;
+}
+
+/**
+ * Counts how many tool calls directly before this one used the same tool with
+ * the same arguments, across earlier turns.
+ */
+export function countPrecedingIdenticalToolCalls(
+  chatHistory: RootState["session"]["history"],
+  toolCallId: string,
+): number {
+  const states = chatHistory.flatMap((item) => item.toolCallStates ?? []);
+  const index = states.findIndex((state) => state.toolCallId === toolCallId);
+  if (index <= 0) return 0;
+  const fingerprint = toolCallFingerprint(states[index]);
+  let count = 0;
+  for (let i = index - 1; i >= 0; i--) {
+    if (toolCallFingerprint(states[i]) !== fingerprint) break;
+    count++;
+  }
+  return count;
+}
+
 export function findChatHistoryItemByToolCallId(
   chatHistory: RootState["session"]["history"],
   toolCallId: string,

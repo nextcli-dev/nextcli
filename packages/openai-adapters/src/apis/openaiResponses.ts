@@ -34,7 +34,8 @@ import {
   ResponseUsage,
 } from "openai/resources/responses/responses.js";
 
-const RESPONSES_MODEL_REGEX = /^(?:gpt-5|gpt-5-codex|o[0-9])/i;
+// GPT-5 and later (gpt-5.5, gpt-6-sol, gpt-10) and the o-series
+const RESPONSES_MODEL_REGEX = /^(?:gpt-(?:[5-9]|[1-9][0-9])|o[0-9])/i;
 
 export function isResponsesModel(model: string): boolean {
   return !!model && RESPONSES_MODEL_REGEX.test(model);
@@ -264,6 +265,13 @@ function resolveToolChoice(
   params: ChatCompletionCreateParams,
 ): ResponseCreateParams["tool_choice"] | undefined {
   if (params.tool_choice) {
+    // Chat Completions nests the name ({ function: { name } }), Responses does not
+    if (
+      typeof params.tool_choice !== "string" &&
+      params.tool_choice.type === "function"
+    ) {
+      return { type: "function", name: params.tool_choice.function.name };
+    }
     return params.tool_choice as any;
   }
   if (params.function_call) {
@@ -393,10 +401,20 @@ export function toResponsesParams(
     tools: convertTools(params.tools, params.functions),
   };
 
-  if (params.temperature !== undefined && params.temperature !== null) {
+  // Reasoning models reject temperature and top_p other than their defaults
+  const isReasoningModel = isResponsesModel(params.model);
+  if (
+    !isReasoningModel &&
+    params.temperature !== undefined &&
+    params.temperature !== null
+  ) {
     responsesParams.temperature = params.temperature;
   }
-  if (params.top_p !== undefined && params.top_p !== null) {
+  if (
+    !isReasoningModel &&
+    params.top_p !== undefined &&
+    params.top_p !== null
+  ) {
     responsesParams.top_p = params.top_p;
   }
   if (params.metadata !== undefined) {

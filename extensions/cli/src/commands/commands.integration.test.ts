@@ -1,5 +1,6 @@
-import type { AssistantConfig } from "@continuedev/sdk";
 import { describe, expect, it } from "vitest";
+
+import type { AssistantConfig } from "../services/types.js";
 
 import { getAllSlashCommands } from "./commands.js";
 

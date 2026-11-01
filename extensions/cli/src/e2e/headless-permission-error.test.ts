@@ -35,6 +35,7 @@ describe("E2E: Headless Mode Permission Errors", () => {
 
   it("should succeed with --auto flag when tool requires permission", async () => {
     // Set up mock LLM to return a Write tool call
+    let requestCount = 0;
     mockServer = await setupMockLLMTest(context, {
       customHandler: (req: http.IncomingMessage, res: http.ServerResponse) => {
         let body = "";
@@ -49,6 +50,17 @@ describe("E2E: Headless Mode Permission Errors", () => {
               "Cache-Control": "no-cache",
               Connection: "keep-alive",
             });
+
+            requestCount++;
+            if (requestCount > 1) {
+              // After the tool result, end the turn without any text
+              res.write(
+                `data: {"choices":[{"delta":{},"finish_reason":"stop","index":0}]}\n\n`,
+              );
+              res.write(`data: [DONE]\n\n`);
+              res.end();
+              return;
+            }
 
             // Send a Write tool call
             res.write(
@@ -93,6 +105,7 @@ describe("E2E: Headless Mode Permission Errors", () => {
 
   it("should succeed with --allow flag for specific tool", async () => {
     // Set up mock LLM to return a Write tool call
+    let requestCount = 0;
     mockServer = await setupMockLLMTest(context, {
       customHandler: (req: http.IncomingMessage, res: http.ServerResponse) => {
         let body = "";
@@ -107,6 +120,17 @@ describe("E2E: Headless Mode Permission Errors", () => {
               "Cache-Control": "no-cache",
               Connection: "keep-alive",
             });
+
+            requestCount++;
+            if (requestCount > 1) {
+              // After the tool result, end the turn without any text
+              res.write(
+                `data: {"choices":[{"delta":{},"finish_reason":"stop","index":0}]}\n\n`,
+              );
+              res.write(`data: [DONE]\n\n`);
+              res.end();
+              return;
+            }
 
             // Send a Write tool call
             res.write(

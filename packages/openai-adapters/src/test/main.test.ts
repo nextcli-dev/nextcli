@@ -48,6 +48,27 @@ function testConfig(_config: ModelConfig & { options?: TestConfigOptions }) {
 }
 
 const TESTS: Omit<ModelConfig & { options?: TestConfigOptions }, "name">[] = [
+  // Reasoning models, sent through the Responses API
+  {
+    provider: "openai",
+    model: "gpt-5.5",
+    apiKey: process.env.OPENAI_API_KEY!,
+    roles: ["chat"],
+    options: {
+      skipTools: false,
+      expectUsage: true,
+    },
+  },
+  {
+    provider: "openai",
+    model: "gpt-6-sol",
+    apiKey: process.env.OPENAI_API_KEY!,
+    roles: ["chat"],
+    options: {
+      skipTools: false,
+      expectUsage: true,
+    },
+  },
   {
     provider: "openai",
     model: "gpt-4o",
@@ -70,7 +91,17 @@ const TESTS: Omit<ModelConfig & { options?: TestConfigOptions }, "name">[] = [
   },
   {
     provider: "anthropic",
-    model: "claude-haiku-4-5",
+    model: "claude-haiku-5-5",
+    apiKey: process.env.ANTHROPIC_API_KEY!,
+    roles: ["chat"],
+    options: {
+      skipTools: false,
+      expectUsage: true,
+    },
+  },
+  {
+    provider: "anthropic",
+    model: "claude-sonnet-5-5",
     apiKey: process.env.ANTHROPIC_API_KEY!,
     roles: ["chat"],
     options: {

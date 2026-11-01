@@ -27,6 +27,12 @@ export interface BaseCommandOptions {
   betaUploadArtifactTool?: boolean;
   /** Enable beta Subagent tool */
   betaSubagentTool?: boolean;
+  /** Stop after this many model calls in one run (--max-turns) */
+  maxTurns?: string;
+  /** Stop when one run has used more than this many tokens (--max-session-tokens) */
+  maxSessionTokens?: string;
+  /** Stop when one run has cost more than this many US dollars (--max-cost) */
+  maxCost?: string;
 }
 
 /**

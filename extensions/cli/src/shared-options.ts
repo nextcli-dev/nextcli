@@ -88,6 +88,18 @@ export function addCommonOptions(command: Command): Command {
     .option(
       "--agent <slug>",
       "Load agent file from the hub (slug in format 'owner/package')",
+    )
+    .option(
+      "--max-turns <n>",
+      "Stop after this many model calls in one run (default 100)",
+    )
+    .option(
+      "--max-session-tokens <n>",
+      "Stop when one run has used more than this many tokens (off by default)",
+    )
+    .option(
+      "--max-cost <usd>",
+      "Stop when one run has cost more than this many US dollars (off by default)",
     );
 }
 
@@ -112,6 +124,9 @@ export function mergeParentOptions(parentCommand: Command, options: any): any {
     "ask",
     "exclude",
     "agent",
+    "maxTurns",
+    "maxSessionTokens",
+    "maxCost",
   ];
 
   for (const optName of inheritableOptions) {

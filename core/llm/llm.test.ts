@@ -200,7 +200,20 @@ function testLLM(
   });
 }
 
+// Live tests need a provider key. Without one (forks, dependabot, or a provider
+// whose secret isn't configured) that provider is skipped instead of failing.
+const missingKey = (envVar: string) => !process.env[envVar];
+
 describe("LLM", () => {
+  test("reports providers skipped for a missing API key", () => {
+    const skipped = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "MISTRAL_API_KEY"]
+      .filter(missingKey)
+      .join(", ");
+    console.log(
+      skipped ? `Skipped for missing keys: ${skipped}` : "All keys set",
+    );
+  });
+
   if (process.env.IGNORE_API_KEY_TESTS === "true") {
     test("Skipping API key tests", () => {
       console.log(
@@ -212,23 +225,24 @@ describe("LLM", () => {
 
   testLLM(
     new Anthropic({
-      model: "claude-sonnet-4-0",
+      model: "claude-sonnet-5-5",
       apiKey: process.env.ANTHROPIC_API_KEY,
     }),
-    { skip: false, testToolCall: true },
+    { skip: missingKey("ANTHROPIC_API_KEY"), testToolCall: true },
   );
   testLLM(new OpenAI({ apiKey: process.env.OPENAI_API_KEY, model: "gpt-4o" }), {
-    skip: false,
+    skip: missingKey("OPENAI_API_KEY"),
     testToolCall: true,
   });
+  // Reasoning models on the Responses API
   testLLM(
-    new OpenAI({ apiKey: process.env.OPENAI_API_KEY, model: "o3-mini" }),
-    { skip: false, timeout: 60000 },
+    new OpenAI({ apiKey: process.env.OPENAI_API_KEY, model: "gpt-5.5" }),
+    { skip: missingKey("OPENAI_API_KEY"), testToolCall: true, timeout: 60000 },
   );
-  testLLM(new OpenAI({ apiKey: process.env.OPENAI_API_KEY, model: "o1" }), {
-    skip: false,
-    timeout: 60000,
-  });
+  testLLM(
+    new OpenAI({ apiKey: process.env.OPENAI_API_KEY, model: "gpt-6-sol" }),
+    { skip: missingKey("OPENAI_API_KEY"), testToolCall: true, timeout: 60000 },
+  );
   testLLM(
     new Gemini({
       model: "gemini-2.0-flash-exp",
@@ -241,6 +255,11 @@ describe("LLM", () => {
       apiKey: process.env.MISTRAL_API_KEY,
       model: "codestral-latest",
     }),
-    { testFim: true, skip: false, testToolCall: true, timeout: 60000 },
+    {
+      testFim: true,
+      skip: missingKey("MISTRAL_API_KEY"),
+      testToolCall: true,
+      timeout: 60000,
+    },
   );
 });

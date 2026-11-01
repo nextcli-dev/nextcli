@@ -305,9 +305,21 @@ export function convertFromUnifiedHistory(
   historyItems: ChatHistoryItem[],
 ): ChatCompletionMessageParam[] {
   const messages: ChatCompletionMessageParam[] = [];
+  // OpenAI and Anthropic reject a history where a tool call id repeats (#12626)
+  const seenToolCallIds = new Set<string>();
 
   for (const item of historyItems) {
     const baseMessage = convertFromUnifiedMessage(item.message);
+    const itemToolCallIds = new Set<string>();
+    if (baseMessage.role === "assistant" && baseMessage.tool_calls?.length) {
+      const toolCalls = baseMessage.tool_calls.filter((tc) => {
+        if (seenToolCallIds.has(tc.id)) return false;
+        seenToolCallIds.add(tc.id);
+        itemToolCallIds.add(tc.id);
+        return true;
+      });
+      baseMessage.tool_calls = toolCalls.length ? toolCalls : undefined;
+    }
 
     // If this is a user message with context items, expand the content
     if (
@@ -333,6 +345,8 @@ export function convertFromUnifiedHistory(
     // Add tool result messages if there are completed tool calls, and fallback when tool output is missing
     if (item.toolCallStates) {
       for (const toolState of item.toolCallStates) {
+        // One result per call, and only for calls kept above
+        if (!itemToolCallIds.delete(toolState.toolCallId)) continue;
         if (toolState.output && toolState.output.length > 0) {
           messages.push({
             role: "tool",

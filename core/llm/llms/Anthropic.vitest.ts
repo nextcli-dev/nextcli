@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { ILLM } from "../../index.js";
+import { claudeEditPrompt } from "../templates/edit.js";
 import Anthropic from "./Anthropic.js";
 
 interface LlmTestCase {
@@ -491,5 +492,195 @@ describe("Anthropic", () => {
         "Request not sent. You have an Anthropic model configured in your config.yaml, but the API key is not set.",
       );
     });
+  });
+});
+
+describe("Anthropic.convertArgs thinking and tool_choice", () => {
+  const llm = new Anthropic({ apiKey: "test-api-key", model: "unused" });
+  const toolChoice = {
+    type: "function" as const,
+    function: { name: "say_hello" },
+  };
+
+  test("uses enabled thinking with a budget for models before 4.6", () => {
+    const args = llm.convertArgs({
+      model: "claude-haiku-4-5-20251001",
+      reasoning: true,
+      reasoningBudgetTokens: 1024,
+    });
+    expect(args.thinking).toEqual({ type: "enabled", budget_tokens: 1024 });
+  });
+
+  test("uses adaptive thinking without a budget for 4.6 and newer", () => {
+    for (const model of [
+      "claude-sonnet-4-6",
+      "claude-opus-4-7",
+      "claude-sonnet-5-5",
+    ]) {
+      const args = llm.convertArgs({
+        model,
+        reasoning: true,
+        reasoningBudgetTokens: 1024,
+      });
+      expect(args.thinking).toEqual({ type: "adaptive" });
+    }
+  });
+
+  test("sends no thinking when reasoning is off", () => {
+    expect(
+      llm.convertArgs({ model: "claude-sonnet-5-5" }).thinking,
+    ).toBeUndefined();
+  });
+
+  test("forces a tool for models that accept it", () => {
+    const args = llm.convertArgs({ model: "claude-haiku-5-5", toolChoice });
+    expect(args.tool_choice).toEqual({ type: "tool", name: "say_hello" });
+  });
+
+  test("drops a forced tool for models that reject it", () => {
+    const args = llm.convertArgs({ model: "claude-sonnet-5-5", toolChoice });
+    expect(args.tool_choice).toBeUndefined();
+  });
+
+  test("drops sampling params that newer models reject", () => {
+    const args = llm.convertArgs({
+      model: "claude-sonnet-5-5",
+      temperature: 0.01,
+      topP: 0.9,
+      topK: 40,
+    });
+    expect(args.temperature).toBeUndefined();
+    expect(args.top_p).toBeUndefined();
+    expect(args.top_k).toBeUndefined();
+  });
+
+  test("keeps temperature but drops top_p together with it on older models", () => {
+    const args = llm.convertArgs({
+      model: "claude-sonnet-4-6",
+      temperature: 0.5,
+      topP: 0.9,
+    });
+    expect(args.temperature).toBe(0.5);
+    expect(args.top_p).toBeUndefined();
+  });
+
+  test("drops a forced tool when thinking is on", () => {
+    const args = llm.convertArgs({
+      model: "claude-haiku-5-5",
+      toolChoice,
+      reasoning: true,
+    });
+    expect(args.tool_choice).toBeUndefined();
+  });
+});
+
+describe("Anthropic message conversion for newer models", () => {
+  const llm = new Anthropic({ apiKey: "test-api-key", model: "unused" });
+  const prefilled = [
+    { role: "user" as const, content: "Rewrite this code" },
+    { role: "assistant" as const, content: "Sure! Here is the code:\n```ts\n" },
+  ];
+
+  test("drops an assistant prefill for models that reject it", () => {
+    const messages = llm.convertMessages(prefilled, false, "claude-sonnet-5-5");
+    expect(messages.map((m) => m.role)).toEqual(["user"]);
+  });
+
+  test("trims trailing whitespace from a prefill for older models", () => {
+    const messages = llm.convertMessages(
+      prefilled,
+      false,
+      "claude-haiku-4-5-20251001",
+    );
+    expect(messages[1]).toEqual({
+      role: "assistant",
+      content: [{ type: "text", text: "Sure! Here is the code:\n```ts" }],
+    });
+  });
+
+  test("keeps thinking only for the current turn", () => {
+    const thinking = (text: string) => ({
+      role: "thinking" as const,
+      content: text,
+      signature: `sig-${text}`,
+    });
+    const messages = llm.convertMessages(
+      [
+        { role: "user", content: "First question" },
+        thinking("old"),
+        { role: "assistant", content: "First answer" },
+        { role: "user", content: "Second question" },
+        thinking("new"),
+        {
+          role: "assistant",
+          content: "",
+          toolCalls: [
+            {
+              id: "call_1",
+              type: "function",
+              function: { name: "read_file", arguments: "{}" },
+            },
+          ],
+        },
+        { role: "tool", content: "file contents", toolCallId: "call_1" },
+      ],
+      false,
+      "claude-sonnet-5-5",
+    );
+    const thinkingBlocks = messages
+      .flatMap((m) => (Array.isArray(m.content) ? m.content : []))
+      .filter((b) => b.type === "thinking");
+    expect(thinkingBlocks).toEqual([
+      { type: "thinking", thinking: "new", signature: "sig-new" },
+    ]);
+  });
+
+  test("reports prefill support by model", () => {
+    expect(
+      new Anthropic({
+        apiKey: "k",
+        model: "claude-sonnet-5-5",
+      }).supportsPrefill(),
+    ).toBe(false);
+    expect(
+      new Anthropic({
+        apiKey: "k",
+        model: "claude-haiku-4-5-20251001",
+      }).supportsPrefill(),
+    ).toBe(true);
+  });
+
+  test("renders the edit prompt without a prefill for models that reject it", () => {
+    const render = (model: string) => {
+      const claude = new Anthropic({ apiKey: "k", model });
+      return claude.renderPromptTemplate(claudeEditPrompt, [], {
+        userInput: "add a comment",
+        prefix: "",
+        codeToEdit: "const a = 1;",
+        suffix: "",
+        language: "ts",
+      }) as { role: string }[];
+    };
+    // The prompt without prefill is a single user prompt string
+    expect(typeof render("claude-sonnet-5-5")).toBe("string");
+    expect(render("claude-haiku-4-5-20251001").at(-1)?.role).toBe("assistant");
+  });
+
+  test("joins text blocks of non-streaming responses that start with thinking", async () => {
+    const response = new Response(
+      JSON.stringify({
+        content: [
+          { type: "thinking", thinking: "", signature: "sig" },
+          { type: "text", text: "Hello" },
+          { type: "text", text: " world" },
+        ],
+      }),
+      { status: 200 },
+    );
+    const chunks = [];
+    for await (const chunk of llm.handleResponse(response, false)) {
+      chunks.push(chunk);
+    }
+    expect(chunks).toEqual([{ role: "assistant", content: "Hello world" }]);
   });
 });

@@ -4,17 +4,9 @@ import type { ChatHistoryItem } from "core/index.js";
 import type { ChatCompletionChunk } from "openai/resources/chat/completions.mjs";
 import { vi } from "vitest";
 
-import { toolPermissionManager } from "../permissions/permissionManager.js";
 import { ToolCall } from "../tools/index.js";
-import { readFileTool } from "../tools/readFile.js";
-import { searchCodeTool } from "../tools/searchCode.js";
-import { PreprocessedToolCall } from "../tools/types.js";
-import { writeFileTool } from "../tools/writeFile.js";
 
-import {
-  executeStreamedToolCalls,
-  preprocessStreamedToolCalls,
-} from "./streamChatResponse.helpers.js";
+import { preprocessStreamedToolCalls } from "./streamChatResponse.helpers.js";
 import { processStreamingResponse } from "./streamChatResponse.js";
 
 // Test the chunk processing logic that was identified as buggy
@@ -256,7 +248,7 @@ describe("processStreamingResponse - content preservation", () => {
     expect(result.finalContent).toBe("Hello world!");
   });
 
-  it("routes gpt-5 models through responsesStream and preserves streaming tool updates", async () => {
+  it("leaves Responses API routing for gpt-5 models to the adapter and preserves streaming tool updates", async () => {
     const gpt5Chunks: ChatCompletionChunk[] = [
       {
         id: "resp_gpt5",
@@ -347,13 +339,14 @@ describe("processStreamingResponse - content preservation", () => {
       },
     ];
 
-    const responsesStream = vi.fn().mockImplementation(async function* () {
+    // OpenAIApi.chatCompletionStream switches to the Responses API itself
+    const chatCompletionStream = vi.fn().mockImplementation(async function* () {
       for (const chunk of gpt5Chunks) {
         yield chunk;
       }
     });
-    const chatCompletionStream = vi.fn().mockImplementation(async function* () {
-      throw new Error("chatCompletionStream should not be used for gpt-5");
+    const responsesStream = vi.fn().mockImplementation(async function* () {
+      throw new Error("responsesStream should not be called directly");
     });
 
     mockLlmApi = {
@@ -374,8 +367,8 @@ describe("processStreamingResponse - content preservation", () => {
       systemMessage: "You are a helpful assistant.",
     });
 
-    expect(responsesStream).toHaveBeenCalledTimes(1);
-    expect(chatCompletionStream).not.toHaveBeenCalled();
+    expect(chatCompletionStream).toHaveBeenCalledTimes(1);
+    expect(responsesStream).not.toHaveBeenCalled();
     expect(result.content).toBe("Analyzing repository…");
     expect(result.toolCalls).toHaveLength(1);
     expect(result.toolCalls[0]).toMatchObject({
@@ -384,6 +377,27 @@ describe("processStreamingResponse - content preservation", () => {
       arguments: { query: "unit tests" },
     });
     expect(result.shouldContinue).toBe(true);
+  });
+
+  // #12626: some providers reuse a tool call id and always send index 0
+  it("keeps two calls apart when a provider reuses the same id", async () => {
+    chunks = [
+      toolCallChunkWithIndex(0, "toolu_dup", "Read", '{"filepath":"a.ts"}'),
+      toolCallChunkWithIndex(0, "toolu_dup", "Read", '{"filepath":"b.ts"}'),
+    ];
+
+    const result = await processStreamingResponse({
+      chatHistory,
+      model: mockModel,
+      llmApi: mockLlmApi,
+      abortController: mockAbortController,
+      systemMessage: "You are a helpful assistant.",
+    });
+
+    expect(result.toolCalls.map((tc) => tc.argumentsStr)).toEqual([
+      '{"filepath":"a.ts"}',
+      '{"filepath":"b.ts"}',
+    ]);
   });
 
   it("handles provider that only sends tool ID in first chunk then uses index", async () => {
@@ -638,199 +652,4 @@ describe.skip("preprocessStreamedToolCalls", () => {
   });
 });
 
-// Tests for executeStreamedToolCalls function
-describe.skip("executeStreamedToolCalls", () => {
-  beforeEach(() => {
-    // Reset spies
-    vi.spyOn(toolPermissionManager, "requestPermission").mockReset();
-    vi.spyOn(toolPermissionManager, "on").mockReset();
-    vi.spyOn(toolPermissionManager, "off").mockReset();
-  });
-
-  it("executes tool calls with allowed permissions", async () => {
-    // Setup spies instead of mocks
-    const permissionsModule = await import("../permissions/index.js");
-    vi.spyOn(permissionsModule, "checkToolPermission").mockReturnValue({
-      permission: "allow",
-    });
-
-    const toolsModule = await import("../tools/index.js");
-    const mockedExecuteToolCall = vi
-      .spyOn(toolsModule, "executeToolCall")
-      .mockResolvedValue("Tool execution successful");
-
-    // Create preprocessed tool call
-    const preprocessedCalls: PreprocessedToolCall[] = [
-      {
-        id: "call_123",
-        name: "Read",
-        arguments: { filepath: "/test.txt" },
-        argumentsStr: '{"filepath": "/test.txt"}',
-        startNotified: false,
-        tool: readFileTool,
-      },
-    ];
-
-    const callbacks = {
-      onToolStart: vi.fn(),
-      onToolResult: vi.fn(),
-      onToolError: vi.fn(),
-    };
-
-    const { chatHistoryEntries } = await executeStreamedToolCalls(
-      preprocessedCalls,
-      callbacks,
-    );
-
-    // Verify results
-    expect(chatHistoryEntries).toHaveLength(1);
-    expect(chatHistoryEntries[0].content).toBe("Tool execution successful");
-    expect(callbacks.onToolStart).toHaveBeenCalledWith("read_file", {
-      filepath: "/test.txt",
-    });
-    expect(callbacks.onToolResult).toHaveBeenCalledWith(
-      "Tool execution successful",
-      "Read",
-      "done",
-    );
-    expect(mockedExecuteToolCall).toHaveBeenCalledWith(preprocessedCalls[0]);
-  });
-
-  it("handles permission denied correctly", async () => {
-    // Setup permission to ask
-    const permissionsModule = await import("../permissions/index.js");
-    vi.spyOn(permissionsModule, "checkToolPermission").mockReturnValue({
-      permission: "ask",
-    });
-
-    // Spy on permission request to be denied
-    vi.spyOn(toolPermissionManager, "requestPermission").mockResolvedValue({
-      approved: false,
-    });
-
-    // Add event listener mock
-    vi.spyOn(toolPermissionManager, "on").mockImplementation(
-      (event: any, callback: any) => {
-        if (event === "permissionRequested") {
-          // Immediately trigger the callback to simulate event
-          callback({
-            requestId: "req_123",
-            toolCall: {
-              name: "Write",
-              arguments: {
-                filepath: "/test.txt",
-                content: "data",
-              },
-            },
-          });
-        }
-        return toolPermissionManager;
-      },
-    );
-
-    // Create preprocessed tool call
-    const preprocessedCalls: PreprocessedToolCall[] = [
-      {
-        id: "call_456",
-        name: "Write",
-        arguments: { filepath: "/test.txt", content: "data" },
-        argumentsStr: '{"filepath": "/test.txt", "content": "data"}',
-        startNotified: false,
-        tool: writeFileTool,
-      },
-      {
-        id: "call_457",
-        name: "Write",
-        arguments: { filepath: "/test.txt", content: "data" },
-        argumentsStr: '{"filepath": "/test.txt", "content": "data"}',
-        startNotified: false,
-        tool: writeFileTool,
-      },
-    ];
-
-    const callbacks = {
-      onToolStart: vi.fn(),
-      onToolResult: vi.fn(),
-      onToolPermissionRequest: vi.fn(),
-    };
-
-    const { chatHistoryEntries, hasRejection } = await executeStreamedToolCalls(
-      preprocessedCalls,
-      callbacks,
-    );
-
-    // Verify results
-    expect(hasRejection).toEqual(true);
-    expect(chatHistoryEntries).toHaveLength(2);
-    expect(chatHistoryEntries[0].content).toBe("Permission denied by user");
-    expect(chatHistoryEntries[1].content).toBe(
-      "Cancelled due to previous tool rejection",
-    );
-    expect(callbacks.onToolStart).toHaveBeenCalledWith("Write", {
-      filepath: "/test.txt",
-      content: "data",
-    });
-    expect(callbacks.onToolResult).toHaveBeenCalledWith(
-      "Permission denied by user",
-      "Write",
-      "canceled",
-    );
-    expect(callbacks.onToolPermissionRequest).toHaveBeenCalledWith(
-      "Write",
-      { filepath: "/test.txt", content: "data" },
-      "req_123",
-      undefined,
-    );
-  });
-
-  it("handles tool execution errors", async () => {
-    // Setup spies
-    const permissionsModule = await import("../permissions/index.js");
-    vi.spyOn(permissionsModule, "checkToolPermission").mockReturnValue({
-      permission: "allow",
-    });
-
-    const toolsModule = await import("../tools/index.js");
-    vi.spyOn(toolsModule, "executeToolCall").mockRejectedValue(
-      new Error("Execution failed"),
-    );
-
-    // Create preprocessed tool call
-    const preprocessedCalls: PreprocessedToolCall[] = [
-      {
-        id: "call_789",
-        name: "search_code",
-        arguments: { pattern: "test" },
-        argumentsStr: '{"pattern": "test"}',
-        startNotified: false,
-        tool: searchCodeTool,
-      },
-    ];
-
-    const callbacks = {
-      onToolStart: vi.fn(),
-      onToolError: vi.fn(),
-    };
-
-    const { chatHistoryEntries, hasRejection } = await executeStreamedToolCalls(
-      preprocessedCalls,
-      callbacks,
-    );
-
-    // Verify results
-    expect(chatHistoryEntries).toHaveLength(1);
-    expect(chatHistoryEntries[0].content).toContain(
-      "Error executing tool search_code",
-    );
-    expect(chatHistoryEntries[0].content).toContain("Execution failed");
-    expect(callbacks.onToolStart).toHaveBeenCalledWith("search_code", {
-      pattern: "test",
-    });
-    expect(callbacks.onToolError).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "Error executing tool search_code: Execution failed",
-      ),
-      "search_code",
-    );
-  });
-});
+// executeStreamedToolCalls is covered in streamChatResponse.executeToolCalls.test.ts

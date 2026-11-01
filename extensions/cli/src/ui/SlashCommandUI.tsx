@@ -1,4 +1,3 @@
-import { type AssistantConfig } from "@continuedev/sdk";
 import { Box, Text } from "ink";
 import React, { useEffect, useState } from "react";
 
@@ -6,6 +5,7 @@ import {
   getAllSlashCommands,
   type SlashCommand,
 } from "../commands/commands.js";
+import type { AssistantConfig } from "../services/types.js";
 
 const MAX_DESCRIPTION_LENGTH = 80;
 

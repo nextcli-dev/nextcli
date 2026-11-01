@@ -237,3 +237,122 @@ describe("CONTINUE_USE_BEDROCK environment variable", () => {
     }
   });
 });
+
+// The real logger opens <CONTINUE_GLOBAL_DIR>/logs/cn.log on import, which
+// Windows then refuses to delete while the test process runs
+function mockLogger() {
+  vi.doMock("./util/logger.js", () => ({
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    setLogLevel: vi.fn(),
+    configureHeadlessMode: vi.fn(),
+  }));
+}
+
+function removeTempDir(dir: string) {
+  try {
+    fs.rmSync(dir, { recursive: true, force: true });
+  } catch {
+    // Best-effort cleanup, like vitest.global-dir-setup.ts
+  }
+}
+
+describe("onboarding with provider choices", () => {
+  const ENV_KEYS = [
+    "CONTINUE_GLOBAL_DIR",
+    "CONTINUE_USE_BEDROCK",
+    "ANTHROPIC_API_KEY",
+    "OPENAI_API_KEY",
+    "DEEPSEEK_API_KEY",
+    "OPENROUTER_API_KEY",
+    "NEXTCLI_PROVIDER",
+    "NEXTCLI_MODEL",
+    "VITEST",
+    "NODE_ENV",
+    "CI",
+    "GITHUB_ACTIONS",
+  ];
+  let savedEnv: Record<string, string | undefined>;
+  let tempDir: string;
+  const originalIsTTY = process.stdin.isTTY;
+
+  beforeEach(() => {
+    savedEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
+    ENV_KEYS.forEach((k) => delete process.env[k]);
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "nextcli-onboarding-"));
+    process.env.CONTINUE_GLOBAL_DIR = tempDir;
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.resetModules();
+    mockLogger();
+  });
+
+  afterEach(() => {
+    ENV_KEYS.forEach((k) => {
+      if (savedEnv[k] === undefined) {
+        delete process.env[k];
+      } else {
+        process.env[k] = savedEnv[k];
+      }
+    });
+    process.stdin.isTTY = originalIsTTY;
+    removeTempDir(tempDir);
+    vi.restoreAllMocks();
+    vi.doUnmock("./util/prompt.js");
+    vi.doUnmock("./util/logger.js");
+  });
+
+  test("skips onboarding and leaves an existing config.yaml unchanged (#12258)", async () => {
+    const configPath = path.join(tempDir, "config.yaml");
+    const content = `name: Mine
+version: 1.0.0
+schema: v1
+models:
+  - name: Gateway
+    provider: openai
+    model: some-model
+    apiBase: https://gateway.example/v1
+`;
+    fs.writeFileSync(configPath, content);
+    const { runOnboardingFlow } = await import("./onboarding.js");
+
+    expect(await runOnboardingFlow(undefined)).toBe(true);
+    expect(fs.readFileSync(configPath, "utf8")).toBe(content);
+    // Nothing holds a log file open in the temp dir (Windows cannot delete it then)
+    expect(fs.existsSync(path.join(tempDir, "logs"))).toBe(false);
+  });
+
+  test("uses a provider key from the environment without writing a config", async () => {
+    process.env.OPENAI_API_KEY = "sk-openai-test";
+    const { runOnboardingFlow } = await import("./onboarding.js");
+
+    expect(await runOnboardingFlow(undefined)).toBe(false);
+    expect(fs.existsSync(path.join(tempDir, "config.yaml"))).toBe(false);
+  });
+
+  test("asks for a provider and writes its models", async () => {
+    process.stdin.isTTY = true;
+    vi.doMock("./util/prompt.js", () => ({
+      questionWithChoices: vi.fn().mockResolvedValue("2"), // OpenAI
+      question: vi.fn().mockResolvedValue("sk-openai-test"),
+    }));
+    const { runOnboardingFlow } = await import("./onboarding.js");
+
+    expect(await runOnboardingFlow(undefined)).toBe(true);
+    const written = fs.readFileSync(path.join(tempDir, "config.yaml"), "utf8");
+    expect(written).toContain("provider: openai");
+    expect(written).toContain("model: gpt-5.5");
+    expect(written).toContain("apiKey: sk-openai-test");
+  });
+
+  test("rejects a key in the wrong format for the chosen provider", async () => {
+    process.stdin.isTTY = true;
+    vi.doMock("./util/prompt.js", () => ({
+      questionWithChoices: vi.fn().mockResolvedValue("1"), // Anthropic
+      question: vi.fn().mockResolvedValue("sk-openai-test"),
+    }));
+    const { runOnboardingFlow } = await import("./onboarding.js");
+
+    await expect(runOnboardingFlow(undefined)).rejects.toThrow(
+      'API key must start with "sk-ant-"',
+    );
+  });
+});

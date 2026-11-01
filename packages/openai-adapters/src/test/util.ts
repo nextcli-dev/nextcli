@@ -316,7 +316,7 @@ export function testChat(
       expect(parsedArgs.name).toBe("Nate");
     });
 
-    test.skip("Tool Call second message works", async () => {
+    test("Tool Call second message works", async () => {
       let response = "";
       for await (const chunk of api.chatCompletionStream(
         {

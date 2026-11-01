@@ -11,8 +11,7 @@ export const metadata: Metadata = {
     default: "NextCLI Docs",
     template: "%s | NextCLI Docs",
   },
-  description:
-    "Documentation for NextCLI, the open-source AI coding agent.",
+  description: "Documentation for NextCLI, the open-source AI coding agent.",
 };
 
 export default function RootLayout({

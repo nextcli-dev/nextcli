@@ -2,6 +2,7 @@ import * as fs from "fs";
 import { dirname } from "node:path";
 import * as path from "path";
 
+import { DefaultApiInterface } from "@continuedev/sdk/dist/api/dist/index.js";
 import {
   AssistantUnrolled,
   mergeUnrolledAssistants,
@@ -10,7 +11,6 @@ import {
   unrollAssistant,
   unrollAssistantFromContent,
 } from "@nextcli/config-yaml";
-import { DefaultApiInterface } from "@continuedev/sdk/dist/api/dist/index.js";
 import chalk from "chalk";
 
 import { uriToPath, uriToSlug } from "./auth/uriUtils.js";
@@ -22,6 +22,10 @@ import {
 } from "./auth/workos.js";
 import { CLIPlatformClient } from "./CLIPlatformClient.js";
 import { env } from "./env.js";
+import {
+  resolveEnvProviderConfig,
+  SUPPORTED_ENV_VARS,
+} from "./util/envProviderConfig.js";
 
 export interface ConfigLoadResult {
   config: AssistantUnrolled;
@@ -33,6 +37,7 @@ export type ConfigSource =
   | { type: "saved-uri"; uri: string }
   | { type: "user-assistant"; slug: string }
   | { type: "local-config-yaml" }
+  | { type: "env-config"; yaml: string; envSource: string }
   | { type: "remote-default-config" }
   | { type: "no-config" };
 
@@ -96,6 +101,16 @@ function determineConfigSource(
   if (fs.existsSync(defaultConfigPath)) {
     return { type: "local-config-yaml" };
   }
+
+  // Priority 3: a config built in memory from provider API key env vars
+  const envConfig = resolveEnvProviderConfig();
+  if (envConfig) {
+    return {
+      type: "env-config",
+      yaml: envConfig.yaml,
+      envSource: envConfig.source,
+    };
+  }
   return { type: "remote-default-config" };
 }
 
@@ -140,6 +155,14 @@ async function loadFromSource(
       case "local-config-yaml":
         return await loadLocalConfigYaml(
           accessToken,
+          organizationId,
+          apiClient,
+          injectBlocks,
+        );
+
+      case "env-config":
+        return await loadConfigYamlContent(
+          source.yaml,
           organizationId,
           apiClient,
           injectBlocks,
@@ -257,7 +280,7 @@ async function loadFromSavedUri(
 function requireHostedApi(action: string): void {
   if (!env.apiBase) {
     throw new Error(
-      `NextCLI has no hosted API, so it cannot ${action}. Create ${path.join(env.continueHome, "config.yaml")} or set NEXTCLI_API_BASE.`,
+      `NextCLI has no hosted API, so it cannot ${action}. Create ${path.join(env.continueHome, "config.yaml")}, set a provider API key (${SUPPORTED_ENV_VARS.join(", ")}), or set NEXTCLI_API_BASE.`,
     );
   }
 }
@@ -364,18 +387,21 @@ async function loadDefaultConfig(
   return apiConfig;
 }
 
-export async function unrollPackageIdentifiersAsConfigYaml(
-  packageIdentifiers: PackageIdentifier[],
-  accessToken: string | null,
+/**
+ * Unrolls config YAML that is not backed by a file (env-config, injected blocks)
+ */
+async function loadConfigYamlContent(
+  yaml: string,
   organizationId: string | null,
   apiClient: DefaultApiInterface,
+  injectBlocks: PackageIdentifier[],
 ): Promise<AssistantUnrolled> {
   const unrollResult = await unrollAssistantFromContent(
     {
       uriType: "file",
       fileUri: "",
     },
-    "name: Agent\nschema: v1\nversion: 0.0.1",
+    yaml,
     new RegistryClient({
       rootPath: undefined, // TODO verify this doesn't cause issues with file blocks
     }),
@@ -383,20 +409,31 @@ export async function unrollPackageIdentifiersAsConfigYaml(
       currentUserSlug: "",
       platformClient: new CLIPlatformClient(organizationId, apiClient),
       renderSecrets: true,
-      injectBlocks: packageIdentifiers,
+      injectBlocks,
     },
   );
-  if (unrollResult.errors) {
-    const fatalError = unrollResult.errors?.find((e) => e.fatal);
-    if (fatalError) {
-      throw new Error(`Failed to load config: ${fatalError.message}`);
-    }
+  const fatalError = unrollResult.errors?.find((e) => e.fatal);
+  if (fatalError) {
+    throw new Error(`Failed to load config: ${fatalError.message}`);
   }
-  if (!unrollResult?.config) {
-    throw new Error(`Failed to load config`);
+  if (!unrollResult.config) {
+    throw new Error("Failed to load config");
   }
-
   return unrollResult.config;
+}
+
+export async function unrollPackageIdentifiersAsConfigYaml(
+  packageIdentifiers: PackageIdentifier[],
+  accessToken: string | null,
+  organizationId: string | null,
+  apiClient: DefaultApiInterface,
+): Promise<AssistantUnrolled> {
+  return await loadConfigYamlContent(
+    "name: Agent\nschema: v1\nversion: 0.0.1",
+    organizationId,
+    apiClient,
+    packageIdentifiers,
+  );
 }
 
 async function unrollAssistantWithConfig(

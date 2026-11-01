@@ -1,13 +1,13 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+import { DefaultApiInterface } from "@continuedev/sdk/dist/api";
 import {
   FQSN,
   PlatformClient,
   SecretResult,
   SecretType,
 } from "@nextcli/config-yaml";
-import { DefaultApiInterface } from "@continuedev/sdk/dist/api";
 import * as dotenv from "dotenv";
 
 import { env } from "./env.js";

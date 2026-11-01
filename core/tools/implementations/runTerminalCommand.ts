@@ -6,6 +6,25 @@ import { ContinueError, ContinueErrorReason } from "../../util/errors";
 // Default timeout for terminal commands (2 minutes)
 const DEFAULT_TOOL_TIMEOUT_MS = 120_000;
 
+// Only the tail of a command's output is kept, so a noisy command cannot
+// exhaust memory or flood the model's context (#12700)
+const MAX_TERMINAL_OUTPUT_CHARS = 50_000;
+const TERMINAL_TRUNCATION_NOTE = "[Earlier output truncated]\n";
+
+export function appendTerminalOutput(
+  current: string,
+  addition: string,
+): string {
+  const combined = current + addition;
+  if (combined.length <= MAX_TERMINAL_OUTPUT_CHARS) {
+    return combined;
+  }
+  const body = combined.startsWith(TERMINAL_TRUNCATION_NOTE)
+    ? combined.slice(TERMINAL_TRUNCATION_NOTE.length)
+    : combined;
+  return TERMINAL_TRUNCATION_NOTE + body.slice(-MAX_TERMINAL_OUTPUT_CHARS);
+}
+
 // Automatically decode the buffer according to the platform to avoid garbled Chinese
 function getDecodedOutput(data: Buffer): string {
   if (process.platform === "win32") {
@@ -171,8 +190,10 @@ export const runTerminalCommandImpl: ToolImpl = async (args, extras) => {
           if (waitForCompletion) {
             timeoutId = setTimeout(() => {
               if (isRunning()) {
-                terminalOutput +=
-                  "\n[Timeout: process killed after 2 minutes]\n";
+                terminalOutput = appendTerminalOutput(
+                  terminalOutput,
+                  "\n[Timeout: process killed after 2 minutes]\n",
+                );
 
                 // Update UI with timeout message
                 if (extras.onPartialOutput) {
@@ -207,7 +228,7 @@ export const runTerminalCommandImpl: ToolImpl = async (args, extras) => {
             if (isProcessBackgrounded(toolCallId)) return;
 
             const newOutput = getDecodedOutput(data);
-            terminalOutput += newOutput;
+            terminalOutput = appendTerminalOutput(terminalOutput, newOutput);
 
             // Update the tracked output for potential cancellation notifications
             if (toolCallId && waitForCompletion) {
@@ -238,7 +259,7 @@ export const runTerminalCommandImpl: ToolImpl = async (args, extras) => {
             if (isProcessBackgrounded(toolCallId)) return;
 
             const newOutput = getDecodedOutput(data);
-            terminalOutput += newOutput;
+            terminalOutput = appendTerminalOutput(terminalOutput, newOutput);
 
             // Update the tracked output for potential cancellation notifications
             if (toolCallId && waitForCompletion) {

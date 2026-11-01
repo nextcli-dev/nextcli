@@ -21,6 +21,11 @@ import {
 import { logger } from "../util/logger.js";
 import { validateContextLength } from "../util/tokenizer.js";
 
+import {
+  enforceAgentLoopLimits,
+  getAgentLoopLimits,
+  takeUsageSnapshot,
+} from "./agentLoopLimits.js";
 import { getRequestTools, handleToolCalls } from "./handleToolCalls.js";
 import {
   handleNormalAutoCompaction,
@@ -440,7 +445,17 @@ export async function streamChatResponse(
   let finalResponse = "";
   let compactionOccurredThisTurn = false; // Track if compaction happened during this conversation turn
 
+  const limits = getAgentLoopLimits();
+  const usageAtStart =
+    limits.maxSessionTokens || limits.maxCostUsd
+      ? takeUsageSnapshot()
+      : undefined;
+  let turn = 0;
+
   while (true) {
+    turn++;
+    enforceAgentLoopLimits(limits, turn, usageAtStart);
+
     // If ChatHistoryService is available, refresh local chatHistory view
     chatHistory = refreshChatHistoryFromService(chatHistory, isCompacting);
     logger.debug("Starting conversation iteration");

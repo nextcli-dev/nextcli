@@ -14,7 +14,7 @@ describe("AnthropicApi", () => {
 
     it("adds cache_control to the last two user messages", () => {
       const body = api._convertToCleanAnthropicBody({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-5-5",
         messages: [
           { role: "system", content: "You are helpful." },
           { role: "user", content: "First user message" },
@@ -64,7 +64,7 @@ describe("AnthropicApi", () => {
 
     it("handles conversations with only one user message", () => {
       const body = api._convertToCleanAnthropicBody({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-5-5",
         messages: [
           { role: "system", content: "You are helpful." },
           { role: "user", content: "Only user message" },
@@ -91,7 +91,7 @@ describe("AnthropicApi", () => {
       });
 
       const result = (api as any)._convertBody({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-5-5",
         messages: [
           { role: "user", content: "Hello" },
           { role: "assistant", content: "Hi" },

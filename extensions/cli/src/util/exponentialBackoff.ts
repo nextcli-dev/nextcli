@@ -1,4 +1,4 @@
-import { BaseLlmApi, isResponsesModel } from "@nextcli/openai-adapters";
+import { BaseLlmApi } from "@nextcli/openai-adapters";
 import type { ChatCompletionCreateParamsStreaming } from "openai/resources.mjs";
 
 import { error, warn } from "../logging.js";
@@ -182,14 +182,8 @@ export async function chatCompletionStreamWithBackoff(
         throw new Error("Request aborted");
       }
 
-      const useResponses =
-        typeof llmApi.responsesStream === "function" &&
-        isResponsesModel(params.model);
-
-      if (useResponses) {
-        return llmApi.responsesStream!(params, abortSignal);
-      }
-
+      // OpenAIApi switches to the Responses API itself, and only for the official
+      // endpoint, so gpt-5 names behind proxies keep using Chat Completions
       return llmApi.chatCompletionStream(params, abortSignal);
     } catch (err: any) {
       lastError = err;

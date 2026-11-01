@@ -1,5 +1,4 @@
-import { type AssistantConfig } from "@continuedev/sdk";
-
+import type { AssistantConfig } from "../services/types.js";
 import {
   getSkillSlashCommandName,
   loadMarkdownSkills,

@@ -13,6 +13,10 @@ import {
 import { streamSse } from "@nextcli/fetch";
 import {
   addCacheControlToLastTwoUserMessages,
+  anthropicSupportsForcedToolChoice,
+  anthropicSupportsPrefill,
+  anthropicThinkingType,
+  filterAnthropicSamplingParams,
   getAnthropicErrorMessage,
   getAnthropicHeaders,
   getAnthropicMediaTypeFromDataUrl,
@@ -35,13 +39,17 @@ import { BaseLLM } from "../index.js";
 class Anthropic extends BaseLLM {
   static providerName = "anthropic";
   static defaultOptions: Partial<LLMOptions> = {
-    model: "claude-sonnet-4-6",
+    model: "claude-sonnet-5-5",
     completionOptions: {
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5-5",
       maxTokens: 8192,
     },
     apiBase: "https://api.anthropic.com/v1/",
   };
+
+  supportsPrefill(): boolean {
+    return anthropicSupportsPrefill(this.model);
+  }
 
   private convertToolToAnthropicTool(tool: Tool): AnthropicTool {
     return {
@@ -54,32 +62,51 @@ class Anthropic extends BaseLLM {
     };
   }
 
+  private convertThinking(
+    options: CompletionOptions,
+  ): MessageCreateParams["thinking"] {
+    if (!options.reasoning) {
+      return undefined;
+    }
+    if (anthropicThinkingType(options.model) === "adaptive") {
+      // The installed SDK types predate adaptive thinking, which takes no budget
+      return { type: "adaptive" } as unknown as MessageCreateParams["thinking"];
+    }
+    return {
+      type: "enabled",
+      budget_tokens: options.reasoningBudgetTokens ?? DEFAULT_REASONING_TOKENS,
+    };
+  }
+
   // Public for use within VertexAI
   public convertArgs(
     options: CompletionOptions,
   ): Omit<MessageCreateParams, "messages"> {
-    const finalOptions = {
-      top_k: options.topK,
-      top_p: options.topP,
+    const sampling = filterAnthropicSamplingParams(options.model, {
       temperature: options.temperature,
+      topP: options.topP,
+      topK: options.topK,
+    });
+    const finalOptions = {
+      top_k: sampling.topK,
+      top_p: sampling.topP,
+      temperature: sampling.temperature,
       max_tokens: options.maxTokens ?? 2048,
       model: options.model === "claude-2" ? "claude-2.1" : options.model,
       stop_sequences: options.stop?.filter((x) => x.trim() !== ""),
       stream: options.stream ?? true,
       tools: options.tools?.map(this.convertToolToAnthropicTool),
-      thinking: options.reasoning
-        ? {
-            type: "enabled" as const,
-            budget_tokens:
-              options.reasoningBudgetTokens ?? DEFAULT_REASONING_TOKENS,
-          }
-        : undefined,
-      tool_choice: options.toolChoice
-        ? {
-            type: "tool" as const,
-            name: options.toolChoice.function.name,
-          }
-        : undefined,
+      thinking: this.convertThinking(options),
+      // Anthropic rejects forced tool use together with thinking, and newer models reject it outright
+      tool_choice:
+        options.toolChoice &&
+        !options.reasoning &&
+        anthropicSupportsForcedToolChoice(options.model)
+          ? {
+              type: "tool" as const,
+              name: options.toolChoice.function.name,
+            }
+          : undefined,
     };
 
     return finalOptions;
@@ -211,11 +238,47 @@ class Anthropic extends BaseLLM {
     }
   }
 
+  /**
+   * Prompts like the edit and apply templates end with an assistant "prefill".
+   * Claude 4.6+ rejects any prefill, and all models reject one ending in
+   * whitespace, so drop or trim it.
+   */
+  private fixTrailingAssistantPrefill(
+    messages: MessageParam[],
+    model: string | undefined,
+  ): void {
+    const last = messages[messages.length - 1];
+    if (last?.role !== "assistant" || messages.length < 2) {
+      return;
+    }
+    if (!anthropicSupportsPrefill(model)) {
+      messages.pop();
+      return;
+    }
+    if (typeof last.content === "string") {
+      last.content = last.content.trimEnd();
+      return;
+    }
+    const lastBlock = last.content[last.content.length - 1];
+    if (lastBlock?.type === "text") {
+      lastBlock.text = lastBlock.text.trimEnd();
+    }
+  }
+
   public convertMessages(
     msgs: ChatMessage[],
     cachePrompt: boolean,
+    model?: string,
   ): MessageParam[] {
-    const nonSystemMessages = msgs.filter((m) => m.role !== "system");
+    // Thinking blocks are bound to the conversation that produced them: replaying
+    // one after the system prompt or earlier messages change is a 400 on newer
+    // models. Earlier turns' thinking is ignored by the API anyway, so only keep
+    // thinking for the current turn (after the last user message).
+    const lastUserIndex = msgs.map((m) => m.role).lastIndexOf("user");
+    const nonSystemMessages = msgs.filter(
+      (m, i) =>
+        m.role !== "system" && !(m.role === "thinking" && i < lastUserIndex),
+    );
 
     const convertedMessages: MessageParam[] = [];
     let currentRole: "user" | "assistant" | undefined = undefined;
@@ -243,6 +306,7 @@ class Anthropic extends BaseLLM {
       currentParts.push(...this.getContentBlocksFromChatMessage(message));
     }
     flushCurrentMessage();
+    this.fixTrailingAssistantPrefill(convertedMessages, model);
 
     if (cachePrompt) {
       addCacheControlToLastTwoUserMessages(convertedMessages);
@@ -291,7 +355,11 @@ class Anthropic extends BaseLLM {
         : {};
       yield {
         role: "assistant",
-        content: json.content[0].text,
+        // Newer models often put an (empty) thinking block first
+        content: json.content
+          .filter((block: { type: string }) => block.type === "text")
+          .map((block: { text: string }) => block.text)
+          .join(""),
         ...(Object.keys(cost).length > 0 ? { cost } : {}),
       };
       return;
@@ -422,7 +490,11 @@ class Anthropic extends BaseLLM {
       this.completionOptions.promptCaching
     );
 
-    const msgs = this.convertMessages(messages, shouldCachePrompt);
+    const msgs = this.convertMessages(
+      messages,
+      shouldCachePrompt,
+      options.model,
+    );
     const headers = getAnthropicHeaders(
       this.apiKey,
       shouldCacheSystemMessage || shouldCachePrompt,

@@ -917,6 +917,23 @@ function isValidSuccessor(item: ResponseInputItem | undefined): boolean {
   return false;
 }
 
+function withoutResponsesItemId(item: ResponseInputItem): ResponseInputItem {
+  if ("type" in item && item.type === "message" && "status" in item) {
+    // An output message without its id is sent as a plain assistant message
+    const text = (item as ResponseOutputMessage).content
+      .map((part) => (part.type === "output_text" ? part.text : ""))
+      .join("");
+    const easyMsg: EasyInputMessage = {
+      role: "assistant",
+      content: text,
+      type: "message",
+    };
+    return easyMsg as ResponseInputItem;
+  }
+  const { id: _id, ...rest } = item as ResponseFunctionToolCall;
+  return rest as ResponseInputItem;
+}
+
 /**
  * Fixes sequencing/ID issues that cause OpenAI Responses API 400 errors:
  * - Removes reasoning without encrypted_content; strips id from subsequent items
@@ -953,12 +970,33 @@ function sanitizeResponsesInput(input: ResponseInput): ResponseInput {
     }
   }
 
+  // An fc_/msg_ id makes the API look for the reasoning item that produced it.
+  // If that reasoning was pruned from history, the request fails with
+  // "provided without its required 'reasoning' item", so drop the id.
+  let reasoningInTurn = false;
+  for (let i = 0; i < input.length; i++) {
+    if (skipIndices.has(i)) continue;
+    const item = input[i];
+    if (isItemType<ResponseReasoningItem>(item, "reasoning")) {
+      reasoningInTurn = true;
+    } else if (
+      isItemType<ResponseInputItem.FunctionCallOutput>(
+        item,
+        "function_call_output",
+      ) ||
+      ("role" in item && item.role !== "assistant")
+    ) {
+      reasoningInTurn = false;
+    } else if (!reasoningInTurn && "id" in item && item.id) {
+      stripIdIndices.add(i);
+    }
+  }
+
   const result: ResponseInput = [];
   for (let i = 0; i < input.length; i++) {
     if (skipIndices.has(i)) continue;
     if (stripIdIndices.has(i)) {
-      const { id: _id, ...rest } = input[i] as ResponseFunctionToolCall;
-      result.push(rest as ResponseInputItem);
+      result.push(withoutResponsesItemId(input[i]));
     } else {
       result.push(input[i]);
     }

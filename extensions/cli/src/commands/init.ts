@@ -1,6 +1,6 @@
-import { type AssistantConfig } from "@continuedev/sdk";
 import { createRelativeRuleFilePath } from "core/config/markdown/utils.js";
 
+import type { AssistantConfig } from "../services/types.js";
 import { SlashCommandResult } from "../ui/hooks/useChat.types.js";
 
 function createInitPrompt(): string {
