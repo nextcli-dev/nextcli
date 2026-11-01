@@ -35,9 +35,10 @@ jobs:
             "https://api.github.com/repos/${{ github.repository }}/commits/$COMMIT_SHA/pulls" \
             | jq -r '.[0].number // empty')
 
+          # Direct pushes to main (including the first push of the repository) have no PR to republish from
           if [ -z "$PR_NUMBER" ]; then
-            echo "❌ Could not find PR for commit $COMMIT_SHA"
-            exit 1
+            echo "::notice::No PR found for commit $COMMIT_SHA. Nothing to republish."
+            exit 0
           fi
 
           echo "Found PR number: $PR_NUMBER"
@@ -45,6 +46,7 @@ jobs:
 
       - name: Find PR workflow run
         id: find-run
+        if: steps.get-pr.outputs.pr_number != ''
         env:
           PR_NUMBER: ${{ steps.get-pr.outputs.pr_number }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -79,6 +81,7 @@ jobs:
           echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
 
       - name: Download PR artifact
+        if: steps.get-pr.outputs.pr_number != ''
         env:
           RUN_ID: ${{ steps.find-run.outputs.run_id }}
           PLATFORM: ${{ matrix.platform }}
@@ -101,6 +104,7 @@ jobs:
           echo "✅ Successfully downloaded artifact"
 
       - name: Republish as main branch artifact
+        if: steps.get-pr.outputs.pr_number != ''
         uses: actions/upload-artifact@v7
         with:
           name: vscode-extension-build-${{ matrix.platform }}

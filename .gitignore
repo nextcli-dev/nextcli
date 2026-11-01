@@ -5,7 +5,7 @@ __pycache__/
 
 # C extensions
 *.so
-
+.husky/
 # Distribution / packaging
 .Python
 build/
