@@ -87,7 +87,7 @@ if (process.env.ANTHROPIC_API_KEY) {
 
     testAiSdkProvider({
       aiSdkProviderId: "anthropic",
-      model: "claude-sonnet-4-5",
+      model: "claude-sonnet-5-5",
       apiKey: process.env.ANTHROPIC_API_KEY!,
       skipTools: false,
       expectUsage: true,
