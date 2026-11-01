@@ -1,3 +1,5 @@
+import { DefaultApiInterface } from "@continuedev/sdk/dist/api/dist/index.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
   AgentFile,
   AssistantUnrolled,
@@ -6,13 +8,14 @@ import {
   parseAgentFileTools,
 } from "@nextcli/config-yaml";
 import { BaseLlmApi } from "@nextcli/openai-adapters";
-import { AssistantConfig } from "@continuedev/sdk";
-import { DefaultApiInterface } from "@continuedev/sdk/dist/api/dist/index.js";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 
 import type { AuthConfig } from "../auth/workos.js";
 import { BaseCommandOptions } from "../commands/BaseCommandOptions.js";
 import { PermissionMode } from "../permissions/types.js";
+
+// @continuedev/sdk defines this as AssistantUnrolled from @continuedev/config-yaml,
+// which is no longer installed, so its type silently resolved to any
+export type AssistantConfig = AssistantUnrolled;
 
 import { type MCPService } from "./MCPService.js";
 

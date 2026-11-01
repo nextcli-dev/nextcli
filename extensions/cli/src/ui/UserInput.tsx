@@ -1,6 +1,5 @@
 /* eslint-disable max-lines */
 
-import { type AssistantConfig } from "@continuedev/sdk";
 import { Box, Text, useApp, useInput } from "ink";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
@@ -16,6 +15,7 @@ import {
   serviceContainer,
   services,
 } from "../services/index.js";
+import type { AssistantConfig } from "../services/types.js";
 import { messageQueue } from "../stream/messageQueue.js";
 import { escapeEvents } from "../util/cli.js";
 import { InputHistory } from "../util/inputHistory.js";

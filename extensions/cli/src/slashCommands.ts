@@ -1,6 +1,5 @@
 import fs from "fs";
 
-import { type AssistantConfig } from "@continuedev/sdk";
 import chalk from "chalk";
 import type { Session } from "core/index.js";
 import historyManager from "core/util/history.js";
@@ -9,6 +8,7 @@ import { v4 as uuidv4 } from "uuid";
 import { getAllSlashCommands } from "./commands/commands.js";
 import { handleInit } from "./commands/init.js";
 import { handleInfoSlashCommand } from "./infoScreen.js";
+import type { AssistantConfig } from "./services/types.js";
 import { getCurrentSession, updateSessionTitle } from "./session.js";
 import { telemetryService } from "./telemetry/telemetryService.js";
 import { buildImportSkillPrompt } from "./tools/skills.js";

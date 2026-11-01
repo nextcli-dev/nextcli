@@ -1,5 +1,5 @@
-import { parse } from "yaml";
 import { describe, expect, it } from "vitest";
+import { parse } from "yaml";
 
 import { resolveEnvProviderConfig } from "./envProviderConfig.js";
 

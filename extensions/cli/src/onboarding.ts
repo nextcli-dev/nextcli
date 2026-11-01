@@ -2,8 +2,8 @@ import * as fs from "fs";
 import * as path from "path";
 
 import chalk from "chalk";
-import { parse } from "yaml";
 import { setConfigFilePermissions } from "core/util/paths.js";
+import { parse } from "yaml";
 
 import type { AuthConfig } from "./auth/workos.js";
 import { getApiClient } from "./config.js";

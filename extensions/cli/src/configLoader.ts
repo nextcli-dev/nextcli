@@ -2,6 +2,7 @@ import * as fs from "fs";
 import { dirname } from "node:path";
 import * as path from "path";
 
+import { DefaultApiInterface } from "@continuedev/sdk/dist/api/dist/index.js";
 import {
   AssistantUnrolled,
   mergeUnrolledAssistants,
@@ -10,7 +11,6 @@ import {
   unrollAssistant,
   unrollAssistantFromContent,
 } from "@nextcli/config-yaml";
-import { DefaultApiInterface } from "@continuedev/sdk/dist/api/dist/index.js";
 import chalk from "chalk";
 
 import { uriToPath, uriToSlug } from "./auth/uriUtils.js";
@@ -388,7 +388,7 @@ async function loadDefaultConfig(
 }
 
 /**
- * Loads a config from YAML content that only exists in memory (env-config)
+ * Unrolls config YAML that is not backed by a file (env-config, injected blocks)
  */
 async function loadConfigYamlContent(
   yaml: string,
@@ -403,7 +403,7 @@ async function loadConfigYamlContent(
     },
     yaml,
     new RegistryClient({
-      rootPath: undefined,
+      rootPath: undefined, // TODO verify this doesn't cause issues with file blocks
     }),
     {
       currentUserSlug: "",
@@ -428,33 +428,12 @@ export async function unrollPackageIdentifiersAsConfigYaml(
   organizationId: string | null,
   apiClient: DefaultApiInterface,
 ): Promise<AssistantUnrolled> {
-  const unrollResult = await unrollAssistantFromContent(
-    {
-      uriType: "file",
-      fileUri: "",
-    },
+  return await loadConfigYamlContent(
     "name: Agent\nschema: v1\nversion: 0.0.1",
-    new RegistryClient({
-      rootPath: undefined, // TODO verify this doesn't cause issues with file blocks
-    }),
-    {
-      currentUserSlug: "",
-      platformClient: new CLIPlatformClient(organizationId, apiClient),
-      renderSecrets: true,
-      injectBlocks: packageIdentifiers,
-    },
+    organizationId,
+    apiClient,
+    packageIdentifiers,
   );
-  if (unrollResult.errors) {
-    const fatalError = unrollResult.errors?.find((e) => e.fatal);
-    if (fatalError) {
-      throw new Error(`Failed to load config: ${fatalError.message}`);
-    }
-  }
-  if (!unrollResult?.config) {
-    throw new Error(`Failed to load config`);
-  }
-
-  return unrollResult.config;
 }
 
 async function unrollAssistantWithConfig(
