@@ -85,7 +85,7 @@ Publish `fetch`, `llm-info`, and `config-yaml` before `openai-adapters`. `openai
 
 ## Secrets needed before publishing
 
-- Open VSX trusted publishing: `main.yaml` in the `production` environment, and `preview.yaml` in the `staging` environment. Create both environments on `nextcli-dev/nextcli` with those exact names. No Open VSX secret has to live in either one.
+- Open VSX trusted publishing: one registration for `nextcli.nextcli`, naming the workflow `publish-vscode.yaml` with the environment left blank. Its `publish-preview` job runs in the `staging` environment and its `publish-stable` job in `production`. Create both environments on `nextcli-dev/nextcli` with those exact names. No Open VSX secret has to live in either one.
 - `NPM_TOKEN` for the first `@nextcli/cli` publish only, then trusted publishing as above
 - `NEXTCLI_SENTRY_DSN` only if error reporting should be on
 - A docs host for `docs.nextcli.dev` if GitHub Pages (`docs-gh-pages.yml`) is re-enabled

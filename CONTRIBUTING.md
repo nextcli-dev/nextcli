@@ -170,10 +170,10 @@ Code_ window with cmd/ctrl+shift+p "Reload Window".
 
 We keep a single permanent branch: `main`. When we are ready to create a "pre-release" version, we create a tag on the
 `main` branch titled `v1.3.x-vscode`, which automatically triggers the workflow
-in [preview.yaml](./.github/workflows/preview.yaml), which builds and releases a version of the VS Code extension. When
-a release has been sufficiently tested, we will create a new release titled `v1.2.x-vscode`, triggering a similar
-workflow in [main.yaml](./.github/workflows/main.yaml), which will build and release a main release of the VS Code
-extension. Any hotfixes can be made by creating a feature branch from the tag for the release in question. This workflow
+in [publish-vscode.yaml](./.github/workflows/publish-vscode.yaml), which builds and releases a pre-release version of
+the VS Code extension. When a release has been sufficiently tested, we will create a new release titled `v1.2.x-vscode`,
+which triggers the same workflow to build and release a main release of the VS Code extension. Odd minor versions
+ship as pre-releases and even minor versions as main releases. Any hotfixes can be made by creating a feature branch from the tag for the release in question. This workflow
 is well explained by <http://releaseflow.org>.
 
 ### What makes a good PR?
