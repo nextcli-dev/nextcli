@@ -309,14 +309,6 @@ function isSignedReasoningDetail(detail: ReasoningDetail): boolean {
   return !!(detail.signature || detail.data || detail.encrypted_content);
 }
 
-/**
- * Sends a history item's reasoning back in the fields the server produced it
- * in (#12246). Plain reasoning text goes back only for the current turn (after
- * the last user message), where providers such as DeepSeek need it between
- * tool calls. Signed or encrypted details (Anthropic thinking signatures,
- * OpenAI encrypted reasoning) go back for every turn, unmodified, and the
- * server decides what to keep.
- */
 function addReasoningFields(
   message: ChatCompletionMessageParam,
   reasoning: Reasoning,
@@ -326,8 +318,7 @@ function addReasoningFields(
   const details = (reasoning.details ?? []).filter(
     (detail) => isCurrentTurn || isSignedReasoningDetail(detail),
   );
-  // Claude rejects reasoning it can't verify, so without a signature or
-  // encrypted data none is sent (as core does for OpenRouter)
+
   if (
     options.model?.toLowerCase().includes("claude") &&
     !details.some(isSignedReasoningDetail)
@@ -367,8 +358,6 @@ export function convertFromUnifiedHistory(
 
   for (const [index, item] of historyItems.entries()) {
     if (isReasoningOnlyReply(item)) {
-      // Kept in the history for display and /resume, but a turn with only
-      // thinking in it isn't valid to send back
       continue;
     }
     const baseMessage = convertFromUnifiedMessage(item.message);

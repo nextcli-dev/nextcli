@@ -96,8 +96,6 @@ export const defaultApplyPrompt: PromptTemplateFunction = (
         - Preserve all unchanged code exactly as-is.`,
     },
   ];
-  // Prefill the opening fence only where the provider allows it. Otherwise the
-  // prompt would be flattened into a raw completion (#9379, #7143)
   if (otherData.supportsPrefill === "false") {
     return messages;
   }

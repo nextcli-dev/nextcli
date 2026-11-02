@@ -16,16 +16,13 @@ function normalize(line: string): string {
 
 /**
  * Detects an LLM apply result that destroys the file instead of merging the
- * suggested code into it, e.g. when the apply model answers in prose or leaks
- * its reasoning (upstream #9379).
+ * suggested code into it, e.g. when the apply model answers in prose or leaks its reasoning
  *
  * The result is flagged only when it both drops most of the original lines and
  * consists mostly of lines found in neither the original nor the suggested
  * code. A legitimate full rewrite matches the suggested code and isn't flagged.
  *
- * It is also flagged when the suggested code is a partial snippet (it has
- * "... existing code ..." markers) and the output keeps almost none of the
- * original: the model wrote out the snippet instead of merging it.
+ * It is also flagged when the suggested code is a partial snippet (it has "... existing code ..." markers) and the output keeps almost none of the
  */
 export function isLikelyDestructiveApply(
   diffLines: DiffLine[],
@@ -67,7 +64,6 @@ export function isLikelyDestructiveApply(
     return true;
   }
   if (outputLines.length === 0) {
-    // The file was emptied although there was code to merge into it
     return suggestedCode.trim() !== "";
   }
 

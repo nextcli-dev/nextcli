@@ -107,8 +107,6 @@ export async function* streamLines(
 
   try {
     for await (const update of streamCompletion) {
-      // Reasoning is never part of the code being produced. Rendering it
-      // would write the model's thoughts into the file (upstream #9379).
       if (typeof update !== "string" && update.role === "thinking") {
         continue;
       }
@@ -121,11 +119,6 @@ export async function* streamLines(
         yield line;
         allLines.push(line);
       }
-
-      // if (buffer === "" && chunk.endsWith("\n")) {
-      //   yield "";
-      //   allLines.push("");
-      // }
     }
     if (buffer.length > 0) {
       yield buffer;
