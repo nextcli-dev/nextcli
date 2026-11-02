@@ -8,7 +8,10 @@ vi.mock("vscode", () => {
       public character: number,
     ) {}
     translate(lineDelta = 0, characterDelta = 0) {
-      return new Position(this.line + lineDelta, this.character + characterDelta);
+      return new Position(
+        this.line + lineDelta,
+        this.character + characterDelta,
+      );
     }
     with(line?: number, character?: number) {
       return new Position(line ?? this.line, character ?? this.character);

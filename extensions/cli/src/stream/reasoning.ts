@@ -14,11 +14,12 @@ export function mergeReasoningDetailDeltas(
   const result = existing ? [...existing] : [];
   for (const item of delta) {
     if (!item || typeof item !== "object") continue;
-    const matchIndex = result.findIndex((current) =>
-      current.type === item.type &&
-      (item.index === undefined
-        ? current.index === undefined
-        : current.index === item.index),
+    const matchIndex = result.findIndex(
+      (current) =>
+        current.type === item.type &&
+        (item.index === undefined
+          ? current.index === undefined
+          : current.index === item.index),
     );
     if (matchIndex === -1) {
       result.push({ ...item });

@@ -465,9 +465,7 @@ export async function* removeTrailingWhitespace(
  * `</think>` on the closing line is kept. If the block is never closed,
  * nothing after `<think>` is yielded.
  */
-export async function* filterLeadingThinkBlock(
-  lines: LineStream,
-): LineStream {
+export async function* filterLeadingThinkBlock(lines: LineStream): LineStream {
   let state: "start" | "thinking" | "done" = "start";
   for await (const line of lines) {
     if (state === "done") {

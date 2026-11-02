@@ -30,7 +30,7 @@ export type GlobalContextType = {
   selectedModelsByProfileId: {
     [profileId: string]: GlobalContextModelSelections;
   };
-  cliSelectedModel?: string; 
+  cliSelectedModel?: string;
   cliModelSettings?: {
     [modelKey: string]: {
       effort?: string;

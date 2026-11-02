@@ -46,7 +46,14 @@ describe("lineStream", () => {
 
     it("removes a leading multi-line think block", async () => {
       expect(
-        await run(["", "<think>", "The user wants", "</think>", "a: 1", "b: 2"]),
+        await run([
+          "",
+          "<think>",
+          "The user wants",
+          "</think>",
+          "a: 1",
+          "b: 2",
+        ]),
       ).toEqual(["a: 1", "b: 2"]);
     });
 
@@ -62,7 +69,11 @@ describe("lineStream", () => {
     });
 
     it("leaves output without a leading think block untouched", async () => {
-      expect(await run(["a: 1", "<think>", "b"])).toEqual(["a: 1", "<think>", "b"]);
+      expect(await run(["a: 1", "<think>", "b"])).toEqual([
+        "a: 1",
+        "<think>",
+        "b",
+      ]);
     });
   });
 

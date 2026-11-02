@@ -39,7 +39,8 @@ function applyThen(
   return result.join("\n");
 }
 
-const CONFIG = "name: cfg\nversion: 1.0.0\nmodels:\n  - name: A\n    model: a\n";
+const CONFIG =
+  "name: cfg\nversion: 1.0.0\nmodels:\n  - name: A\n    model: a\n";
 const PROSE = "The user wants me to apply an edit.\nCould you clarify?";
 
 describe("getRangeDiffSides round trip", () => {
