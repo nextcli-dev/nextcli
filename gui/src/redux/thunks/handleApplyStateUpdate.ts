@@ -96,8 +96,29 @@ export const handleApplyStateUpdate = createAsyncThunk<
                   }),
                 );
 
-                // Add autoformatting diff to tool output if present
-                if (applyState.autoFormattingDiff) {
+                // The user kept a result that looked like it destroyed the
+                // file, so tell the model instead of reporting a clean edit
+                const destructiveWarning =
+                  applyState.destructiveWarning ??
+                  newApplyState?.destructiveWarning;
+                if (destructiveWarning) {
+                  dispatch(
+                    updateToolCallOutput({
+                      toolCallId: applyState.toolCallId,
+                      contextItems: [
+                        {
+                          icon: "warning",
+                          name: "Edit May Be Destructive",
+                          description:
+                            "The applied edit replaced most of the file",
+                          content: `The edit to ${applyState.filepath} was applied, but it looked destructive: ${destructiveWarning}\n\nRead the file again and check that no code was lost before making further changes.`,
+                          hidden: false,
+                        },
+                      ],
+                    }),
+                  );
+                } else if (applyState.autoFormattingDiff) {
+                  // Add autoformatting diff to tool output if present
                   dispatch(
                     updateToolCallOutput({
                       toolCallId: applyState.toolCallId,

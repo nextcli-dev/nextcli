@@ -37,6 +37,11 @@ export async function* recursiveStream(
   // let whiteSpaceAtEndOfBuffer = buffer.match(/\s*$/)?.[0] ?? ""; // attempts at fixing whitespace bug with recursive boundaries
 
   const injectApplyToken = type === "apply" && shouldInjectApplyToken(llm);
+  // A provider without a completions endpoint can't take a raw prompt, so
+  // send it as one user message instead (#7143)
+  if (typeof prompt === "string" && !llm.supportsCompletions()) {
+    prompt = [{ role: "user", content: prompt }];
+  }
   if (typeof prompt === "string") {
     const finalPrompt = injectApplyToken ? prompt + APPLY_UNIQUE_TOKEN : prompt;
 

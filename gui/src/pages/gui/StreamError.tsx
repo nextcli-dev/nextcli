@@ -165,7 +165,8 @@ const StreamErrorDialog = ({ error }: StreamErrorProps) => {
     );
   }
 
-  if (statusCode === 429) {
+  // The config error explains the failure; HTTP hints below would replace it
+  if (!isConfigLoadError && statusCode === 429) {
     errorContent = (
       <div className="flex flex-col gap-2">
         <span>
@@ -180,7 +181,7 @@ const StreamErrorDialog = ({ error }: StreamErrorProps) => {
     );
   }
 
-  if (statusCode === 404) {
+  if (!isConfigLoadError && statusCode === 404) {
     errorContent = (
       <div className="flex flex-col gap-2">
         <span>Likely causes:</span>
@@ -210,7 +211,7 @@ const StreamErrorDialog = ({ error }: StreamErrorProps) => {
     );
   }
 
-  if (statusCode === 401) {
+  if (!isConfigLoadError && statusCode === 401) {
     errorContent = (
       <div className="flex flex-col gap-2">
         <span>{`It's possible that your API key is invalid.`}</span>
@@ -222,7 +223,7 @@ const StreamErrorDialog = ({ error }: StreamErrorProps) => {
     );
   }
 
-  if (statusCode === 403) {
+  if (!isConfigLoadError && statusCode === 403) {
     errorContent = (
       <div className="flex flex-col gap-2">
         <span>{`Likely cause: not authorized to access the model deployment.`}</span>
@@ -235,6 +236,7 @@ const StreamErrorDialog = ({ error }: StreamErrorProps) => {
   }
 
   if (
+    !isConfigLoadError &&
     message &&
     (message.toLowerCase().includes("overloaded") ||
       message.toLowerCase().includes("malformed json"))
@@ -253,7 +255,7 @@ const StreamErrorDialog = ({ error }: StreamErrorProps) => {
   }
 
   // Custom error message from error analysis (e.g. invalid API key, insufficient balance)
-  if (customErrorMessage) {
+  if (!isConfigLoadError && customErrorMessage) {
     errorContent = (
       <div className="flex flex-col gap-2">
         <span>{customErrorMessage}</span>
@@ -286,7 +288,9 @@ const StreamErrorDialog = ({ error }: StreamErrorProps) => {
     <div className="flex flex-col gap-4 px-3 pb-3 pt-3">
       {/* Concise error title */}
       <h3 className="text-error m-0 p-0 text-lg font-medium">
-        {isConfigLoadError ? "Config failed to load" : "Error handling model response"}
+        {isConfigLoadError
+          ? "Config failed to load"
+          : "Error handling model response"}
       </h3>
 
       {errorContent}

@@ -280,6 +280,51 @@ describe("handleApplyStateUpdate", () => {
       });
     });
 
+    it("tells the model when the user keeps a destructive-looking edit", async () => {
+      const toolCallState: ToolCallState = {
+        toolCallId: "test-tool-call",
+        status: "done",
+        ...UNUSED_TOOL_CALL_PARAMS,
+      };
+      // The warning was stored on the "done" update; "closed" doesn't repeat it
+      const newApplyState = {
+        streamId: "chat-stream",
+        destructiveWarning: "Most of the file was replaced",
+      };
+
+      vi.mocked(findToolCallById).mockReturnValue(toolCallState);
+      mockGetState.mockReturnValue({
+        session: {
+          history: [],
+          codeBlockApplyStates: { states: [newApplyState] },
+        },
+        config: { config: {} },
+      });
+
+      await handleApplyStateUpdate({
+        streamId: "chat-stream",
+        toolCallId: "test-tool-call",
+        status: "closed",
+        filepath: "test.txt",
+      })(mockDispatch, mockGetState, mockExtra);
+
+      expect(updateToolCallOutput).toHaveBeenCalledWith({
+        toolCallId: "test-tool-call",
+        contextItems: [
+          expect.objectContaining({
+            name: "Edit May Be Destructive",
+            hidden: false,
+            content: expect.stringContaining("Most of the file was replaced"),
+          }),
+        ],
+      });
+      expect(updateToolCallOutput).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          contextItems: [expect.objectContaining({ name: "Edit Success" })],
+        }),
+      );
+    });
+
     it("should handle canceled tool call closure", async () => {
       const toolCallState: ToolCallState = {
         toolCallId: "test-tool-call",

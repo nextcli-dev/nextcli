@@ -176,3 +176,6 @@ keys
 .copy-status
 .copy-log
 
+
+# TypeScript incremental build info
+*.tsbuildinfo
