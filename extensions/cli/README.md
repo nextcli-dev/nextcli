@@ -2,7 +2,7 @@
 
 The NextCLI CLI (`cn`) is a customizable command line coding agent.
 
-![NextCLI CLI Demo](./media/demo.gif)
+![NextCLI CLI Demo](https://raw.githubusercontent.com/nextcli-dev/nextcli/main/extensions/cli/media/demo.gif)
 
 ## Installation
 
