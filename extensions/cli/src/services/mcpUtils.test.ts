@@ -3,7 +3,7 @@ import { SseError } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPError } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { describe, expect, it } from "vitest";
 
-import { isAuthError } from "./mcpUtils.js";
+import { isAuthError, isMethodNotAllowed } from "./mcpUtils.js";
 
 describe("isAuthError", () => {
   it("accepts the SDK's UnauthorizedError", () => {
@@ -19,6 +19,8 @@ describe("isAuthError", () => {
     ).toBe(true);
   });
 
+  // A 405 also means "use SSE" for SSE-only servers; MCPService only signs in
+  // on a 405 when the server publishes OAuth metadata (isMethodNotAllowed).
   it("rejects 405 and other status codes", () => {
     expect(isAuthError(new StreamableHTTPError(405, "Not allowed"))).toBe(
       false,
@@ -39,5 +41,18 @@ describe("isAuthError", () => {
     expect(isAuthError(new Error("HTTP 401"))).toBe(false);
     expect(isAuthError("401")).toBe(false);
     expect(isAuthError(undefined)).toBe(false);
+  });
+});
+
+describe("isMethodNotAllowed", () => {
+  it("accepts HTTP and SSE 405 errors only", () => {
+    expect(
+      isMethodNotAllowed(new StreamableHTTPError(405, "Not allowed")),
+    ).toBe(true);
+    expect(
+      isMethodNotAllowed(new SseError(405, "Not allowed", undefined as never)),
+    ).toBe(true);
+    expect(isMethodNotAllowed(new StreamableHTTPError(401, "x"))).toBe(false);
+    expect(isMethodNotAllowed(new Error("405"))).toBe(false);
   });
 });

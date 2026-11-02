@@ -106,4 +106,6 @@ ${{ secrets.MY_API_KEY }}
 
 ## MCP servers that use OAuth
 
-For a remote MCP server that requires OAuth, `cn` opens your browser to sign in the first time it connects. It saves the tokens in `~/.continue/mcp-oauth.json`. Headless runs (`cn -p`) reuse those tokens but never open a browser, so sign in interactively first or configure an `apiKey`. See [OAuth-protected MCP servers](/customize/deep-dives/mcp#how-to-connect-to-oauth-protected-mcp-servers).
+For a remote MCP server that requires OAuth, `cn` opens your browser to sign in the first time it connects. It saves the tokens in `~/.continue/mcp-oauth.json`. Headless runs (`cn -p`) reuse those tokens but never open a browser, so sign in interactively first or configure an `apiKey`. The browser redirects to port 33418; set `NEXTCLI_MCP_OAUTH_PORT` if that port is taken.
+
+`cn` no longer starts `npx mcp-remote` for these servers. If you used a server through `mcp-remote` before, sign in to it once in an interactive session. See [OAuth-protected MCP servers](/customize/deep-dives/mcp#how-to-connect-to-oauth-protected-mcp-servers).

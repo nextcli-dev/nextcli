@@ -15,7 +15,11 @@ import {
   constructSseTransport,
   constructStdioTransport,
 } from "./mcpTransports.js";
-import { isAuthError, McpAuthRequiredError } from "./mcpUtils.js";
+import {
+  isAuthError,
+  isMethodNotAllowed,
+  McpAuthRequiredError,
+} from "./mcpUtils.js";
 import { serviceContainer } from "./ServiceContainer.js";
 import type { AssistantConfig } from "./types.js";
 import {
@@ -499,7 +503,10 @@ Org-level secrets can only be used for MCP by Background Agents (https://docs.ne
       try {
         await client.connect(transport, {});
       } catch (error) {
-        if (isAuthError(error)) {
+        if (
+          isAuthError(error) ||
+          (isMethodNotAllowed(error) && (await authProvider?.startSignIn()))
+        ) {
           throw new McpAuthRequiredError(transport, error);
         }
         throw error;

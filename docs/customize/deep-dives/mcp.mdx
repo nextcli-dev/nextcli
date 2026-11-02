@@ -164,14 +164,14 @@ mcpServers:
 
 In the CLI (`cn`):
 
-- **First connection.** When the server answers with `401 Unauthorized`, `cn` opens your browser at the server's sign-in page. The server shows as connecting in `/mcp` until you finish. If the browser does not open, `/mcp` shows the URL to visit.
+- **First connection.** When the server answers with `401 Unauthorized`, `cn` opens your browser at the server's sign-in page. A server that answers with `405` and publishes OAuth metadata gets the same sign-in. The server shows as connecting in `/mcp` until you finish. If the browser does not open, `/mcp` shows the URL to visit. `cn` only opens `https` sign-in pages (or `http` on `localhost`).
 - **Where credentials go.** The client registration and tokens are saved in `~/.continue/mcp-oauth.json`, readable only by your user. Tokens are refreshed automatically.
-- **Callback port.** The browser redirects to `http://127.0.0.1:33418/oauth/callback`. If that port is taken, set `NEXTCLI_MCP_OAUTH_PORT` to a free port.
+- **Callback port.** The browser redirects to `http://127.0.0.1:33418/oauth/callback`. If that port is taken, set `NEXTCLI_MCP_OAUTH_PORT` to a free port. Existing tokens keep working after a port change; a new browser sign-in registers `cn` again for the new port.
 - **Headless mode (`cn -p`).** `cn` never opens a browser. Sign in once in an interactive session, or give the server an `apiKey` or an `Authorization` header in `requestOptions.headers`.
 - **Signing out.** In `/mcp`, choose the server and then **Sign out (clear OAuth credentials)**.
 - **Static credentials.** If a server has an `apiKey` or an `Authorization` header, `cn` uses those and skips OAuth.
 
-`cn` handles OAuth itself and does not start helper processes such as `mcp-remote`.
+`cn` handles OAuth itself. Earlier versions started `npx mcp-remote` for servers that required sign-in; `cn` no longer does, and it doesn't reuse `mcp-remote`'s saved tokens. Sign in to each such server once in an interactive session, or configure an `apiKey` or `Authorization` header.
 
 ### How to Work with Secrets in MCP Servers
 

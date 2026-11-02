@@ -4,7 +4,7 @@ import type { AddressInfo } from "net";
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getMcpOAuthStoragePath } from "./mcpOAuth.js";
+import { CliMcpOAuthProvider, getMcpOAuthStoragePath } from "./mcpOAuth.js";
 import { MCPService } from "./MCPService.js";
 import type { AssistantConfig } from "./types.js";
 
@@ -573,6 +573,62 @@ describe("MCPService", () => {
       expect(transports).toHaveLength(2);
       for (const t of transports) {
         expect(t.opts.authProvider).toBeUndefined();
+      }
+    });
+
+    it("starts a sign-in on a 405 when the server publishes OAuth metadata", async () => {
+      const open = (await import("open")).default as unknown as ReturnType<
+        typeof vi.fn
+      >;
+      const { StreamableHTTPError } = await import(
+        "@modelcontextprotocol/sdk/client/streamableHttp.js"
+      );
+      let state = "";
+      const startSignIn = vi
+        .spyOn(CliMcpOAuthProvider.prototype, "startSignIn")
+        .mockImplementation(async function (this: CliMcpOAuthProvider) {
+          state = this.state();
+          await this.redirectToAuthorization(
+            new URL("https://auth.example.com/authorize"),
+          );
+          return true;
+        });
+      open.mockImplementationOnce(async () => {
+        await hitCallback(`code=the-code&state=${state}`);
+      });
+      mockClient.connect.mockRejectedValueOnce(
+        new StreamableHTTPError(405, "Method Not Allowed"),
+      );
+      mockClient.connect.mockResolvedValueOnce(undefined);
+
+      try {
+        await mcpService.initialize(oauthAssistant(), true, false);
+        expect(mcpService.getState().connections[0].status).toBe("connected");
+        expect(transports[0].finishAuth).toHaveBeenCalledWith("the-code");
+      } finally {
+        startSignIn.mockRestore();
+      }
+    });
+
+    it("reports a 405 as-is when no sign-in can be started", async () => {
+      const { StreamableHTTPError } = await import(
+        "@modelcontextprotocol/sdk/client/streamableHttp.js"
+      );
+      const startSignIn = vi
+        .spyOn(CliMcpOAuthProvider.prototype, "startSignIn")
+        .mockResolvedValue(false);
+      mockClient.connect.mockRejectedValueOnce(
+        new StreamableHTTPError(405, "Method Not Allowed"),
+      );
+
+      try {
+        await mcpService.initialize(oauthAssistant(), true, false);
+        const conn = mcpService.getState().connections[0];
+        expect(conn.status).toBe("error");
+        expect(conn.error).toContain("Method Not Allowed");
+        expect(startSignIn).toHaveBeenCalled();
+      } finally {
+        startSignIn.mockRestore();
       }
     });
 

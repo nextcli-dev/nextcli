@@ -3,7 +3,11 @@ import * as fs from "fs";
 import * as http from "http";
 import * as path from "path";
 
-import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
+import {
+  auth,
+  UnauthorizedError,
+  type OAuthClientProvider,
+} from "@modelcontextprotocol/sdk/client/auth.js";
 import {
   OAuthTokensSchema,
   type OAuthClientInformationMixed,
@@ -39,11 +43,20 @@ const SUPABASE_SCOPES = [
 ].join(" ");
 
 interface StoredServerEntry {
-  clientInformation?: OAuthClientInformationMixed;
-  /** redirect_uri the client was registered with */
-  redirectUri?: string;
+  /** Registered clients, keyed by the redirect_uri each was registered with */
+  clients?: Record<string, OAuthClientInformationMixed>;
   tokens?: OAuthTokens;
+  /** redirect_uri of the client that obtained `tokens`, for refreshing them */
+  tokensRedirectUri?: string;
+  /** Older single-client layout, migrated to `clients` on the next write */
+  clientInformation?: OAuthClientInformationMixed;
+  redirectUri?: string;
 }
+
+/** Key for an older client stored without its redirect_uri */
+const ANY_REDIRECT = "*";
+const LOCK_STALE_MS = 10_000;
+let lockTimeoutMs = 5_000;
 
 type StoredOAuthFile = Record<string, StoredServerEntry>;
 
@@ -67,19 +80,56 @@ export function getMcpOAuthRedirectUrl(): string {
   return `http://127.0.0.1:${getMcpOAuthPort()}${MCP_OAUTH_CALLBACK_PATH}`;
 }
 
-function readStore(): StoredOAuthFile {
+/** Test hook: how long a write waits for another process's lock */
+export function setMcpOAuthLockTimeoutForTests(ms: number): void {
+  lockTimeoutMs = ms;
+}
+
+function ensureStoreDir(file: string): void {
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+}
+
+/**
+ * Move an unreadable store aside instead of overwriting it, so a bad edit or
+ * a partial write never silently discards every server's sign-in.
+ */
+function backUpCorruptStore(file: string): void {
+  const backup = `${file}.corrupt-${Date.now()}.bak`;
   try {
-    const raw = fs.readFileSync(getMcpOAuthStoragePath(), "utf8");
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? parsed : {};
+    fs.renameSync(file, backup);
+    logger.warn(
+      `${file} is not valid JSON. Moved it to ${backup}; sign in to OAuth MCP servers again.`,
+    );
+  } catch (error) {
+    logger.warn(`${file} is not valid JSON and could not be moved aside`, {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+function readStore(): StoredOAuthFile {
+  const file = getMcpOAuthStoragePath();
+  let raw: string;
+  try {
+    raw = fs.readFileSync(file, "utf8");
   } catch {
     return {};
   }
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed;
+    }
+  } catch {
+    // Handled below
+  }
+  backUpCorruptStore(file);
+  return {};
 }
 
 function writeStore(store: StoredOAuthFile): void {
   const file = getMcpOAuthStoragePath();
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureStoreDir(file);
   const tmp = `${file}.${process.pid}.${randomUUID()}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(store, null, 2), { mode: 0o600 });
   fs.renameSync(tmp, file);
@@ -92,18 +142,79 @@ function writeStore(store: StoredOAuthFile): void {
   }
 }
 
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function isStaleLock(lock: string): boolean {
+  try {
+    return Date.now() - fs.statSync(lock).mtimeMs > LOCK_STALE_MS;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Run a read-modify-write of the store under a lock file, so two `cn`
+ * processes finishing sign-in or refreshing tokens at once don't drop each
+ * other's update. A lock older than LOCK_STALE_MS is from a crashed process.
+ */
+function withStoreLock<T>(fn: () => T): T {
+  const file = getMcpOAuthStoragePath();
+  ensureStoreDir(file);
+  const lock = `${file}.lock`;
+  const deadline = Date.now() + lockTimeoutMs;
+  for (;;) {
+    try {
+      fs.closeSync(fs.openSync(lock, "wx", 0o600));
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      if (isStaleLock(lock)) {
+        fs.rmSync(lock, { force: true });
+        continue;
+      }
+      if (Date.now() > deadline) {
+        throw new Error(
+          `Timed out waiting for ${lock}. If no other cn process is running, delete it.`,
+        );
+      }
+      sleepSync(25);
+    }
+  }
+  try {
+    return fn();
+  } finally {
+    fs.rmSync(lock, { force: true });
+  }
+}
+
+/** Moves an older single-client entry into `clients` */
+function normalizeEntry(entry: StoredServerEntry): StoredServerEntry {
+  const { clientInformation, redirectUri, ...rest } = entry;
+  if (!clientInformation) return rest;
+  const key = redirectUri ?? ANY_REDIRECT;
+  return {
+    ...rest,
+    clients: { [key]: clientInformation, ...rest.clients },
+    tokensRedirectUri: rest.tokensRedirectUri ?? redirectUri,
+  };
+}
+
 function updateEntry(
   serverUrl: string,
   update: (entry: StoredServerEntry) => StoredServerEntry | undefined,
 ): void {
-  const store = readStore();
-  const next = update({ ...(store[serverUrl] ?? {}) });
-  if (next && Object.keys(next).length > 0) {
-    store[serverUrl] = next;
-  } else {
-    delete store[serverUrl];
-  }
-  writeStore(store);
+  withStoreLock(() => {
+    const store = readStore();
+    const next = update(normalizeEntry({ ...(store[serverUrl] ?? {}) }));
+    if (next && Object.keys(next).length > 0) {
+      store[serverUrl] = next;
+    } else {
+      delete store[serverUrl];
+    }
+    writeStore(store);
+  });
 }
 
 export function hasStoredMcpOAuthTokens(serverUrl: string): boolean {
@@ -279,6 +390,18 @@ export interface CliMcpOAuthProviderOptions {
   timeoutMs?: number;
 }
 
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/**
+ * Whether an authorization URL from server metadata is safe to open: https,
+ * or http on a loopback host (local development servers). Anything else
+ * (file:, custom app schemes, plain http to a remote host) is refused.
+ */
+export function isSafeAuthorizationUrl(url: URL): boolean {
+  if (url.protocol === "https:") return true;
+  return url.protocol === "http:" && LOOPBACK_HOSTS.has(url.hostname);
+}
+
 async function defaultOpenBrowser(url: string) {
   const open = (await import("open")).default;
   return open(url);
@@ -288,6 +411,8 @@ export class CliMcpOAuthProvider implements OAuthClientProvider {
   private _codeVerifier: string | undefined;
   private _state: string | undefined;
   private _pendingCode: Promise<string> | undefined;
+  /** redirect_uri of the client last returned by clientInformation() */
+  private _activeClientRedirect: string | undefined;
 
   constructor(
     public readonly serverUrl: string,
@@ -317,22 +442,39 @@ export class CliMcpOAuthProvider implements OAuthClientProvider {
     return this._state;
   }
 
+  /**
+   * The client registered for the current callback URL. With stored tokens,
+   * the client that obtained them is used instead when the callback port has
+   * changed, so the tokens can still be refreshed.
+   */
   clientInformation(): OAuthClientInformationMixed | undefined {
-    const entry = readStore()[this.serverUrl];
-    if (!entry?.clientInformation) return undefined;
-    // A client registered for a different callback URL (port changed) cannot
-    // complete the redirect, so register again.
-    if (entry.redirectUri && entry.redirectUri !== this.redirectUrl) {
-      return undefined;
+    const entry = normalizeEntry(readStore()[this.serverUrl] ?? {});
+    const clients = entry.clients ?? {};
+    const current = clients[this.redirectUrl] ?? clients[ANY_REDIRECT];
+    if (current) {
+      this._activeClientRedirect = this.redirectUrl;
+      return current;
     }
-    return entry.clientInformation;
+    const tokensRedirect = entry.tokensRedirectUri;
+    if (entry.tokens && tokensRedirect && clients[tokensRedirect]) {
+      this._activeClientRedirect = tokensRedirect;
+      return clients[tokensRedirect];
+    }
+    this._activeClientRedirect = undefined;
+    if (!this.options.interactive) {
+      // Registering a client is only useful for a browser sign-in
+      throw new UnauthorizedError(
+        "No usable OAuth sign-in is stored. Run cn interactively to sign in.",
+      );
+    }
+    return undefined;
   }
 
   saveClientInformation(clientInformation: OAuthClientInformationMixed): void {
+    this._activeClientRedirect = this.redirectUrl;
     updateEntry(this.serverUrl, (entry) => ({
       ...entry,
-      clientInformation,
-      redirectUri: this.redirectUrl,
+      clients: { ...entry.clients, [this.redirectUrl]: clientInformation },
     }));
   }
 
@@ -344,7 +486,12 @@ export class CliMcpOAuthProvider implements OAuthClientProvider {
   }
 
   saveTokens(tokens: OAuthTokens): void {
-    updateEntry(this.serverUrl, (entry) => ({ ...entry, tokens }));
+    const tokensRedirectUri = this._activeClientRedirect ?? this.redirectUrl;
+    updateEntry(this.serverUrl, (entry) => ({
+      ...entry,
+      tokens,
+      tokensRedirectUri,
+    }));
   }
 
   saveCodeVerifier(codeVerifier: string): void {
@@ -366,15 +513,21 @@ export class CliMcpOAuthProvider implements OAuthClientProvider {
     if (scope === "all") {
       this._codeVerifier = undefined;
     }
+    const clientKey = this._activeClientRedirect ?? this.redirectUrl;
     updateEntry(this.serverUrl, (entry) => {
       if (scope === "all") return undefined;
       if (scope === "client") {
-        const { clientInformation: _c, redirectUri: _r, ...rest } = entry;
-        return rest;
+        const {
+          [clientKey]: _removed,
+          [ANY_REDIRECT]: _legacy,
+          ...clients
+        } = entry.clients ?? {};
+        return { ...entry, clients };
       }
-      const { tokens: _t, ...rest } = entry;
+      const { tokens: _t, tokensRedirectUri: _r, ...rest } = entry;
       return rest;
     });
+    if (scope !== "tokens") this._activeClientRedirect = undefined;
   }
 
   async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
@@ -382,6 +535,21 @@ export class CliMcpOAuthProvider implements OAuthClientProvider {
       // Headless: leave _pendingCode unset; the transport throws
       // UnauthorizedError and the caller reports that sign-in is required.
       return;
+    }
+    if (!isSafeAuthorizationUrl(authorizationUrl)) {
+      throw new Error(
+        `Refusing to open the OAuth authorization URL for ${this.serverUrl}: only https (or http on localhost) is allowed, got ${authorizationUrl.protocol}`,
+      );
+    }
+    const registeredFor = this._activeClientRedirect;
+    if (registeredFor && registeredFor !== this.redirectUrl) {
+      // The tokens' client can't receive a redirect on the new callback URL.
+      // Drop the tokens so the next attempt registers a client for it.
+      this.invalidateCredentials("tokens");
+      this._activeClientRedirect = undefined;
+      throw new Error(
+        `The OAuth client for ${this.serverUrl} was registered for ${registeredFor}, but sign-in now uses ${this.redirectUrl}. Reconnect to sign in again.`,
+      );
     }
 
     const { code } = await startAuthorizationCallback(this._state, {
@@ -398,6 +566,25 @@ export class CliMcpOAuthProvider implements OAuthClientProvider {
       logger.warn("Could not open browser for MCP OAuth sign-in", {
         error: error instanceof Error ? error.message : String(error),
       });
+    }
+  }
+
+  /**
+   * Start a browser sign-in without waiting for a 401. Some servers (Sanity)
+   * answer unauthenticated requests with 405. Returns true when a sign-in is
+   * now pending; false when the server has no usable OAuth metadata.
+   */
+  async startSignIn(): Promise<boolean> {
+    if (!this.options.interactive || this.tokens()) return false;
+    try {
+      const result = await auth(this, { serverUrl: this.serverUrl });
+      return result === "REDIRECT" && this.isAuthorizationPending();
+    } catch (error) {
+      logger.debug("MCP OAuth sign-in could not be started", {
+        serverUrl: this.serverUrl,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
     }
   }
 
