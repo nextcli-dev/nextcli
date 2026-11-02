@@ -168,13 +168,17 @@ Code_ window with cmd/ctrl+shift+p "Reload Window".
 
 ### Our Git Workflow
 
-We keep a single permanent branch: `main`. When we are ready to create a "pre-release" version, we create a tag on the
-`main` branch titled `v1.3.x-vscode`, which automatically triggers the workflow
-in [publish-vscode.yaml](./.github/workflows/publish-vscode.yaml), which builds and releases a pre-release version of
-the VS Code extension. When a release has been sufficiently tested, we will create a new release titled `v1.2.x-vscode`,
-which triggers the same workflow to build and release a main release of the VS Code extension. Odd minor versions
-ship as pre-releases and even minor versions as main releases. Any hotfixes can be made by creating a feature branch from the tag for the release in question. This workflow
-is well explained by <http://releaseflow.org>.
+`main` is the only permanent branch. Open pull requests against it. They are squash-merged once the `ci` check passes and the branch is up to date with `main`.
+
+Pull request titles follow [Conventional Commits](https://www.conventionalcommits.org/), for example `fix(cli): keep input visible after resize` or `feat(vscode): stream reasoning`. The title becomes the commit message on `main`, and releases and changelogs are generated from it. CI checks the format.
+
+CI runs only the checks your change can affect. To see which ones, and why:
+
+```bash
+node scripts/ci/affected.mjs --base origin/main --explain
+```
+
+Releases are cut by maintainers; see [MAINTAINING.md](./MAINTAINING.md#releasing).
 
 ### What makes a good PR?
 

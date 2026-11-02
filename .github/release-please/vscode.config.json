@@ -1,0 +1,45 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/v17.6.0/schemas/config.json",
+  "bootstrap-sha": "a3cdbaf8970d48349e7d2cc40356999dc893480f",
+  "release-type": "simple",
+  "include-component-in-tag": true,
+  "include-v-in-tag": true,
+  "separate-pull-requests": true,
+  "label": "autorelease: pending,release: vscode",
+  "release-label": "autorelease: tagged,release: vscode",
+  "packages": {
+    ".": {
+      "component": "vscode",
+      "package-name": "nextcli.nextcli",
+      "versioning": "always-bump-patch",
+      "changelog-path": "extensions/vscode/CHANGELOG.md",
+      "exclude-paths": [
+        "extensions/cli",
+        "binary",
+        "docs",
+        "docs-site",
+        "eval",
+        "actions",
+        "scripts",
+        ".github",
+        ".continue",
+        ".claude",
+        ".husky",
+        ".idea",
+        ".vscode"
+      ],
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "extensions/vscode/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "extensions/vscode/package-lock.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    }
+  }
+}

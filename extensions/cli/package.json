@@ -1,6 +1,6 @@
 {
   "name": "@nextcli/cli",
-  "version": "0.0.0-dev",
+  "version": "0.1.1",
   "description": "NextCLI CLI",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -137,7 +137,7 @@
     "yaml": "^2.8.0"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "overrides": {
     "minimatch@<9.0.7": "^9.0.7",

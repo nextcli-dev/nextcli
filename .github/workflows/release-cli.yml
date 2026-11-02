@@ -1,59 +1,53 @@
 name: CLI Release
 
+# Publishes @nextcli/cli to npm.
+#
+#   Release  release-please creates release `cli-vX.Y.Z` when its Release PR
+#            is merged. The version comes from extensions/cli/package.json,
+#            which release-please bumps in that PR. Publishes in env
+#            `production`.
+#   Dry run  Run this workflow manually to build, test and pack the CLI at the
+#            selected ref without publishing.
+#
+# npm trusted publishing (OIDC) is bound to this file name, so keep it.
+
 on:
+  release:
+    types: [published]
   workflow_dispatch:
-    inputs:
-      version:
-        description: "Version to publish (for example 0.1.0)"
-        required: true
-        type: string
-      dry_run:
-        description: "Pack and verify without publishing or tagging"
-        required: false
-        type: boolean
-        default: true
+
+concurrency:
+  group: release-cli-${{ github.event.release.tag_name || github.ref }}
+  cancel-in-progress: false
 
 permissions:
-  contents: write
-  id-token: write
+  contents: read
 
 jobs:
-  release:
-    name: CLI Release
+  build:
+    name: Build and verify
+    if: github.repository == 'nextcli-dev/nextcli' && (github.event_name != 'release' || startsWith(github.event.release.tag_name, 'cli-v'))
     runs-on: ubuntu-latest
-    if: github.repository == 'nextcli-dev/nextcli'
-    env:
-      VERSION: ${{ inputs.version }}
-      DRY_RUN: ${{ inputs.dry_run }}
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tarball: ${{ steps.pack.outputs.tarball }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
 
-      - name: Validate version and branch
+      - name: Read and check the version
+        id: version
+        env:
+          TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
-          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
-            echo "CLI releases run from main (got ${GITHUB_REF})."
+          version=$(node -p "require('./extensions/cli/package.json').version")
+          if [ -n "$TAG" ] && [ "${TAG#cli-v}" != "$version" ]; then
+            echo "::error::Tag $TAG does not match extensions/cli/package.json version $version"
             exit 1
           fi
-          if ! printf '%s' "$VERSION" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'; then
-            echo "version must be a semantic version (got ${VERSION})."
-            exit 1
-          fi
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: 20
-
-      - name: Check the version is not already published
-        run: |
-          set -euo pipefail
-          if npm view "@nextcli/cli@${VERSION}" version >/dev/null 2>&1; then
-            echo "@nextcli/cli@${VERSION} is already on npm."
-            exit 1
-          fi
-          echo "@nextcli/cli@${VERSION} is not on npm."
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "CLI version $version"
 
       - name: Setup packages
         uses: ./.github/actions/setup-packages
@@ -65,17 +59,21 @@ jobs:
           include-root: true
 
       - name: Build core
+        working-directory: core
+        run: npm run build
+
+      - name: Check the version is not already published
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          cd core
-          npm run build
+          if npm view "@nextcli/cli@${VERSION}" version >/dev/null 2>&1; then
+            echo "::error::@nextcli/cli@${VERSION} is already on npm."
+            exit 1
+          fi
 
       - name: Install CLI dependencies
         working-directory: extensions/cli
         run: npm ci
-
-      - name: Stamp version
-        working-directory: extensions/cli
-        run: npm version "$VERSION" --no-git-tag-version
 
       - name: Build
         working-directory: extensions/cli
@@ -90,7 +88,10 @@ jobs:
         run: npm run test:smoke
 
       - name: Pack and install the tarball
+        id: pack
         working-directory: extensions/cli
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
           # prepack prints the build log on stdout, so npm pack --json is not valid JSON.
@@ -124,9 +125,34 @@ jobs:
             echo "Installed cn --version printed '${installed}', expected '${VERSION}'."
             exit 1
           fi
+          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
 
-      - name: Setup Node.js for publish
-        uses: actions/setup-node@v7
+      - name: Upload the tarball
+        uses: actions/upload-artifact@v7
+        with:
+          name: cli-tarball
+          path: extensions/cli/${{ steps.pack.outputs.tarball }}
+          if-no-files-found: error
+
+  publish:
+    name: Publish to npm
+    needs: build
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: cli-tarball
+          path: dist-tarball
+
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           registry-url: "https://registry.npmjs.org"
@@ -135,6 +161,7 @@ jobs:
         working-directory: extensions/cli
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          TARBALL: ${{ github.workspace }}/dist-tarball/${{ needs.build.outputs.tarball }}
         run: |
           set -euo pipefail
           if [ -z "${NODE_AUTH_TOKEN}" ]; then
@@ -142,25 +169,11 @@ jobs:
             npm config delete "//registry.npmjs.org/:_authToken"
             unset NODE_AUTH_TOKEN
           fi
-          if [ "$DRY_RUN" = "true" ]; then
-            npm publish --tag latest --dry-run
-            echo "Dry run only. Nothing was published."
-          else
-            npm publish --tag latest
-            echo "Published @nextcli/cli@${VERSION}"
-          fi
+          npm publish "$TARBALL" --tag latest
+          echo "Published @nextcli/cli@${{ needs.build.outputs.version }}"
 
-      - name: Create the GitHub release
-        if: inputs.dry_run == false
+      - name: Attach the tarball to the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          git config user.email "action@github.com"
-          git config user.name "GitHub Action"
-          git tag "cli-v${VERSION}"
-          git push origin "cli-v${VERSION}"
-          gh release create "cli-v${VERSION}" \
-            --title "CLI Release v${VERSION}" \
-            --notes "Release v${VERSION} of @nextcli/cli, built and published from main." \
-            --latest
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$TAG" dist-tarball/*.tgz --repo "$GITHUB_REPOSITORY" --clobber

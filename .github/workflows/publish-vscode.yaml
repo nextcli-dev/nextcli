@@ -1,111 +1,120 @@
 name: Publish VS Code Extension
 
-# Open VSX allows one trusted publisher per extension, and that registration
-# names a single workflow file. Pre-releases and stable releases therefore both
-# publish from this file:
+# Builds the extension for all 8 targets and publishes it to Open VSX and the
+# Visual Studio Marketplace.
 #
-#   odd minor  (1.3.x) -> "prereleased" release -> publish-preview (staging)
-#   even minor (1.4.x) -> "released" release    -> publish-stable  (production)
+#   Stable       release-please creates release `vscode-vX.Y.Z` (even minor)
+#                when its Release PR is merged. Publishes in env `production`.
+#   Pre-release  Run this workflow from main with channel `pre-release`. It
+#                picks the next odd-minor version (stable 1.4.x -> 1.5.N),
+#                stamps it at build time (no commit), creates the tag and the
+#                GitHub pre-release, and publishes in env `staging`.
+#   Dry run      Run this workflow with channel `dry-run` to build all targets
+#                for any ref. Nothing is published.
 #
-# The two publish jobs run in different GitHub environments, so the Open VSX
-# trusted publisher for nextcli.nextcli must name this file and leave the
-# environment blank.
+# Trusted publishing binds to this file name, so keep it:
+#   - Open VSX: one trusted publisher for this file, environment left blank.
+#   - Marketplace: this file with env `production`, and this file with env
+#     `staging`.
 
 on:
   release:
-    types: [prereleased, released]
+    types: [published]
   workflow_dispatch:
     inputs:
-      publish_build:
-        description: "Whether or not to publish the built extension to Open VSX"
-        required: true
-        default: "false"
+      channel:
+        description: "pre-release publishes from main; dry-run only builds"
+        type: choice
+        options: [dry-run, pre-release]
+        default: dry-run
+      ref:
+        description: "Ref to build for a dry run (ignored for pre-release, which uses main)"
+        type: string
+        default: main
+
+concurrency:
+  group: publish-vscode-${{ github.event.release.tag_name || inputs.channel }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
   resolve:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       should_run: ${{ steps.resolve.outputs.should_run }}
       channel: ${{ steps.resolve.outputs.channel }}
+      version: ${{ steps.resolve.outputs.version }}
+      tag: ${{ steps.resolve.outputs.tag }}
+      ref: ${{ steps.resolve.outputs.ref }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.channel == 'dry-run' && inputs.ref || '' }}
 
-      - name: Resolve release channel
+      - name: Resolve channel and version
         id: resolve
         env:
           EVENT_NAME: ${{ github.event_name }}
-          EVENT_ACTION: ${{ github.event.action }}
+          CHANNEL_INPUT: ${{ inputs.channel }}
           TAG: ${{ github.event.release.tag_name }}
+          IS_PRERELEASE: ${{ github.event.release.prerelease }}
         run: |
+          set -euo pipefail
           version=$(node -p "require('./extensions/vscode/package.json').version")
+          major=$(echo "$version" | cut -d. -f1)
           minor=$((10#$(echo "$version" | cut -d. -f2)))
-          if (( minor % 2 == 0 )); then channel=stable; else channel=preview; fi
+          sha=$(git rev-parse HEAD)
 
-          should_run=true
-          if [[ "$EVENT_NAME" == "release" ]]; then
-            if [[ ! "$TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-vscode$ ]]; then
-              echo "Release $TAG is not a VS Code extension release, skipping."
-              should_run=false
-            elif [[ "${BASH_REMATCH[1]}" != "$version" ]]; then
-              echo "::error::Tag $TAG does not match extensions/vscode/package.json version $version"
-              exit 1
-            elif [[ "$EVENT_ACTION" == "prereleased" && "$channel" != "preview" ]]; then
-              echo "::warning::$TAG has an even minor version but was published as a pre-release, skipping. Even minors ship as stable releases."
-              should_run=false
-            elif [[ "$EVENT_ACTION" == "released" && "$channel" != "stable" ]]; then
-              echo "::warning::$TAG has an odd minor version but was published as a full release, skipping. Odd minors ship as pre-releases."
-              should_run=false
-            fi
+          out() { echo "$1=$2" >> "$GITHUB_OUTPUT"; }
+          skip() { echo "$1"; out should_run false; exit 0; }
+
+          if [ "$EVENT_NAME" = "release" ]; then
+            [[ "$TAG" == vscode-v* ]] || skip "Release $TAG is not a VS Code extension release."
+            # Pre-releases are created and published by the workflow_dispatch run.
+            [ "$IS_PRERELEASE" != "true" ] || skip "Pre-release $TAG is published by its own dispatch run."
+            [ "${TAG#vscode-v}" = "$version" ] || { echo "::error::Tag $TAG does not match extensions/vscode/package.json version $version"; exit 1; }
+            (( minor % 2 == 0 )) || { echo "::error::$version has an odd minor version. Stable releases use even minors; odd minors are for pre-releases."; exit 1; }
+            out channel stable; out version "$version"; out tag "$TAG"; out ref "$sha"
+          elif [ "$CHANNEL_INPUT" = "pre-release" ]; then
+            [ "$GITHUB_REF" = "refs/heads/main" ] || { echo "::error::Pre-releases are published from main (got $GITHUB_REF)."; exit 1; }
+            (( minor % 2 == 0 )) || { echo "::error::package.json version $version should be a stable (even-minor) version."; exit 1; }
+            pre_minor=$((minor + 1))
+            last=$(git tag -l "vscode-v${major}.${pre_minor}.*" | sed "s/^vscode-v${major}\.${pre_minor}\.//" | grep -E '^[0-9]+$' | sort -n | tail -n 1 || true)
+            patch=$(( ${last:--1} + 1 ))
+            pre="${major}.${pre_minor}.${patch}"
+            out channel pre-release; out version "$pre"; out tag "vscode-v$pre"; out ref "$sha"
+            echo "Pre-release $pre from main at $sha (stable is $version)."
+          else
+            out channel dry-run; out version ""; out tag ""; out ref "$sha"
+            echo "Dry run of $version at $sha."
           fi
-
-          echo "Version $version -> channel $channel, should_run=$should_run"
-          echo "channel=$channel" >> $GITHUB_OUTPUT
-          echo "should_run=$should_run" >> $GITHUB_OUTPUT
+          out should_run true
 
   build:
     needs: resolve
     if: needs.resolve.outputs.should_run == 'true'
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
     strategy:
       matrix:
         include:
-          - os: windows-latest
-            platform: win32
-            arch: x64
-            npm_config_arch: x64
-          - os: windows-latest
-            platform: win32
-            arch: arm64
-            npm_config_arch: arm
-          - os: ubuntu-latest
-            platform: linux
-            arch: x64
-            npm_config_arch: x64
-          - os: ubuntu-latest
-            platform: linux
-            arch: arm64
-            npm_config_arch: arm64
-          - os: ubuntu-latest
-            platform: linux
-            arch: armhf
-            npm_config_arch: arm
-          - os: ubuntu-latest
-            platform: alpine
-            arch: x64
-            npm_config_arch: x64
-          - os: macos-latest
-            platform: darwin
-            arch: x64
-            npm_config_arch: x64
-          - os: macos-latest
-            platform: darwin
-            arch: arm64
-            npm_config_arch: arm64
+          - { os: windows-latest, platform: win32, arch: x64, npm_config_arch: x64 }
+          - { os: windows-latest, platform: win32, arch: arm64, npm_config_arch: arm }
+          - { os: ubuntu-latest, platform: linux, arch: x64, npm_config_arch: x64 }
+          - { os: ubuntu-latest, platform: linux, arch: arm64, npm_config_arch: arm64 }
+          - { os: ubuntu-latest, platform: linux, arch: armhf, npm_config_arch: arm }
+          - { os: ubuntu-latest, platform: alpine, arch: x64, npm_config_arch: x64 }
+          - { os: macos-latest, platform: darwin, arch: x64, npm_config_arch: x64 }
+          - { os: macos-latest, platform: darwin, arch: arm64, npm_config_arch: arm64 }
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          ref: ${{ needs.resolve.outputs.ref }}
 
       - uses: actions/setup-node@v7
         with:
@@ -124,7 +133,8 @@ jobs:
           platform: ${{ matrix.platform }}
           arch: ${{ matrix.arch }}
           npm_config_arch: ${{ matrix.npm_config_arch }}
-          pre-release: ${{ needs.resolve.outputs.channel == 'preview' }}
+          pre-release: ${{ needs.resolve.outputs.channel == 'pre-release' }}
+          version: ${{ needs.resolve.outputs.version }}
           github-token: ${{ steps.app-token.outputs.token }}
 
       - name: Upload .vsix artifact
@@ -133,151 +143,85 @@ jobs:
           name: ${{ matrix.platform }}-${{ matrix.arch }}-vsix
           path: "extensions/vscode/*.vsix"
 
-  release:
-    # Only attach files to a real GitHub release. A manual run has no release
-    # to attach to; its .vsix files stay available as workflow artifacts.
-    if: github.event_name == 'release'
+  github-release:
+    # Attaches the .vsix files to the GitHub release. For a pre-release it
+    # creates the tag and release first, so the version is reserved before it
+    # is published. GITHUB_TOKEN is used on purpose: a release it creates does
+    # not trigger this workflow again.
+    needs: [resolve, build]
+    if: needs.resolve.outputs.channel == 'stable' || needs.resolve.outputs.channel == 'pre-release'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
-    runs-on: ubuntu-latest
-    needs:
-      - resolve
-      - build
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Set up Git
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-
-      # Download the .vsix artifacts
       - uses: actions/download-artifact@v8
         with:
           pattern: "*-vsix"
           path: vsix-artifacts
           merge-multiple: true
 
-      - name: Release
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ github.ref_name }}
-          files: |
-            vsix-artifacts/*.vsix
-          token: ${{ secrets.GITHUB_TOKEN }}
-          repository: nextcli-dev/nextcli
-          prerelease: ${{ needs.resolve.outputs.channel == 'preview' }}
+      - name: Create the pre-release
+        if: needs.resolve.outputs.channel == 'pre-release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          SHA: ${{ needs.resolve.outputs.ref }}
+        run: |
+          gh release create "$TAG" vsix-artifacts/*.vsix \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$SHA" \
+            --prerelease \
+            --latest=false \
+            --title "VS Code extension $VERSION (pre-release)" \
+            --generate-notes
 
-  publish-preview:
+      - name: Attach to the stable release
+        if: needs.resolve.outputs.channel == 'stable'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+        run: gh release upload "$TAG" vsix-artifacts/*.vsix --repo "$GITHUB_REPOSITORY" --clobber
+
+  publish:
+    needs: [resolve, build, github-release]
+    if: needs.resolve.outputs.channel == 'stable' || needs.resolve.outputs.channel == 'pre-release'
     runs-on: ubuntu-latest
-    needs:
-      - resolve
-      - build
-    if: needs.resolve.outputs.channel == 'preview' && (github.event_name != 'workflow_dispatch' || github.event.inputs.publish_build == 'true')
-    environment: staging
+    timeout-minutes: 20
+    # The Marketplace trusted publishers are bound to these environment names.
+    environment: ${{ needs.resolve.outputs.channel == 'stable' && 'production' || 'staging' }}
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
       id-token: write
+    env:
+      PRE_RELEASE_FLAG: ${{ needs.resolve.outputs.channel == 'pre-release' && '--pre-release' || '' }}
     steps:
-      # 0. Setup git
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Set up Git
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-
-      - name: Pull latest changes from release
-        run: git fetch origin ${{ github.ref }} && git checkout ${{ github.ref }}
-
-      # 1. Download the artifacts
       - uses: actions/download-artifact@v8
         with:
           pattern: "*-vsix"
           path: vsix-artifacts
           merge-multiple: true
 
-      # 2. Publish the extension to Open VSX Registry
-      - name: Publish (Open VSX Registry)
-        run: |
-          cd extensions/vscode
-          npx --yes ovsx@1.3.0 publish --pre-release --trusted-publishing --packagePath ../../vsix-artifacts/*.vsix
-
-      # 3. Create PR with version bump
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version-file: ".nvmrc"
+          node-version: 22
 
-      - name: Create PR branch
+      # Both publish steps skip versions that already exist, so the job can be
+      # re-run after a partial failure.
+      - name: Publish to Open VSX
+        run: npx --yes ovsx@1.3.0 publish --trusted-publishing --skip-duplicate $PRE_RELEASE_FLAG --packagePath vsix-artifacts/*.vsix
+
+      - name: Publish to the Visual Studio Marketplace
+        run: npx --yes @vscode/vsce@4.1.0 publish --oidc --skip-duplicate $PRE_RELEASE_FLAG --packagePath vsix-artifacts/*.vsix
+
+      - name: Summary
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+          CHANNEL: ${{ needs.resolve.outputs.channel }}
         run: |
-          BRANCH_NAME="chore/bump-vscode-version-$(date +%Y%m%d-%H%M%S)"
-          git checkout -b $BRANCH_NAME
-          echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
-
-      - name: Bump version in package.json
-        run: |
-          cd extensions/vscode
-          npm version patch --no-git-tag-version
-          VERSION=$(node -p "require('./package.json').version")
-          echo "NEW_VERSION=$VERSION" >> $GITHUB_ENV
-
-      - name: Create GitHub App token
-        id: app-token
-        uses: actions/create-github-app-token@v3
-        with:
-          client-id: ${{ vars.NEXTCLI_APP_CLIENT_ID }}
-          private-key: ${{ secrets.NEXTCLI_APP_PRIVATE_KEY }}
-
-      - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v8
-        with:
-          token: ${{ steps.app-token.outputs.token }}
-          commit-message: "chore: bump vscode extension version to ${{ env.NEW_VERSION }}"
-          title: "chore: bump vscode extension version to ${{ env.NEW_VERSION }}"
-          body: |
-            Automated PR to bump the VS Code extension version after successful pre-release publication.
-
-            - Bumped version in extensions/vscode/package.json to ${{ env.NEW_VERSION }}
-          branch: ${{ env.BRANCH_NAME }}
-          base: main
-          delete-branch: true
-
-  publish-stable:
-    runs-on: ubuntu-latest
-    needs:
-      - resolve
-      - build
-    if: needs.resolve.outputs.channel == 'stable' && (github.event_name != 'workflow_dispatch' || github.event.inputs.publish_build == 'true')
-    environment: production
-    permissions:
-      contents: write
-      id-token: write
-    steps:
-      # 0. Setup git
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Set up Git
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-
-      - name: Pull latest changes from release
-        run: git fetch origin ${{ github.ref }} && git checkout ${{ github.ref }}
-
-      # 1. Download the artifacts
-      - uses: actions/download-artifact@v8
-        with:
-          pattern: "*-vsix"
-          path: vsix-artifacts
-          merge-multiple: true
-
-      # 2. Publish the extension to Open VSX Registry
-      - name: Publish (Open VSX Registry)
-        run: |
-          cd extensions/vscode
-          npx --yes ovsx@1.3.0 publish --trusted-publishing --packagePath ../../vsix-artifacts/*.vsix
+          {
+            echo "## Published nextcli.nextcli $VERSION ($CHANNEL)"
+            echo "- https://open-vsx.org/extension/nextcli/nextcli"
+            echo "- https://marketplace.visualstudio.com/items?itemName=nextcli.nextcli"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,4 +1,7 @@
 name: "CLA Assistant"
+
+# Contributors sign CLA.md by commenting on their pull request. Signatures are
+# stored on the `cla-signatures` branch, which the action creates on first use.
 on:
   issue_comment:
     types: [created]
@@ -14,18 +17,18 @@ permissions:
 jobs:
   CLAAssistant:
     runs-on: ubuntu-latest
-    # Only run this workflow on the main repository (continuedev/continue)
-    if: github.repository == 'continuedev/continue'
+    if: github.repository == 'nextcli-dev/nextcli'
     steps:
       - name: "CLA Assistant"
-        if: (contains(github.event.comment.body, 'recheck') || contains(github.event.comment.body, 'I have read the CLA Document and I hereby sign the CLA')) || github.event_name == 'pull_request_target'
+        if: (github.event.issue.pull_request && (contains(github.event.comment.body, 'recheck') || contains(github.event.comment.body, 'I have read the CLA Document and I hereby sign the CLA'))) || github.event_name == 'pull_request_target'
         uses: contributor-assistant/github-action@v2.6.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          path-to-signatures: "signatures/version1/cla.json"
-          path-to-document: "https://github.com/continuedev/continue/blob/main/CLA.md"
+          path-to-signatures: "signatures/version2/cla.json"
+          path-to-document: "https://github.com/nextcli-dev/nextcli/blob/main/CLA.md"
           branch: cla-signatures
-          # Bots and CLAs signed outside of GitHub
-          allowlist: dependabot[bot],fbricon,panyamkeerthana,Jazzcort,owtaylor,halfline,agent@continue.dev,action@github.com,continue[bot],snyk-bot,noreply@continue.dev,google-labs-jules[bot]
+          # Maintainers and bots. Everyone else signs once by commenting.
+          allowlist: lmolotii,dependabot[bot],github-actions[bot],nextcli-automation[bot]
           signed-commit-message: "CLA signed in $pullRequestNo"
+          lock-pullrequest-aftermerge: false

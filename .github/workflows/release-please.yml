@@ -1,0 +1,66 @@
+name: Release Please
+
+# Keeps one Release PR per product open on main, built from the
+# conventional-commit titles of merged pull requests:
+#   - "chore(main): release vscode X.Y.Z" bumps extensions/vscode
+#   - "chore(main): release cli X.Y.Z"    bumps extensions/cli
+# Merging a Release PR creates the tag and GitHub release (vscode-vX.Y.Z or
+# cli-vX.Y.Z), which starts publish-vscode.yaml or release-cli.yml.
+#
+# Each product has its own config in .github/release-please/. Both use the
+# repository root as their path, with exclude-paths for the other product's
+# files, so shared code (core/, packages/) counts towards both.
+#
+# The GitHub App token is required: pull requests and releases created with
+# GITHUB_TOKEN do not start other workflows, so CI would not run on the
+# Release PR and nothing would be published.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release-please:
+    if: github.repository == 'nextcli-dev/nextcli'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      # Sequential, so the two runs don't race on labels or the same commits.
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        product: [vscode, cli]
+    steps:
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.NEXTCLI_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NEXTCLI_APP_PRIVATE_KEY }}
+
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: .github/release-please/${{ matrix.product }}.config.json
+          manifest-file: .github/release-please/${{ matrix.product }}.manifest.json
+
+      - name: Summary
+        env:
+          RELEASES_CREATED: ${{ steps.release.outputs.releases_created }}
+          PRS: ${{ steps.release.outputs.prs }}
+          PRODUCT: ${{ matrix.product }}
+        run: |
+          {
+            echo "## $PRODUCT"
+            echo "- Release created: ${RELEASES_CREATED:-false}"
+            echo "- Release PR: $(echo "${PRS:-[]}" | jq -r 'map(.html_url // empty) | join(", ")')"
+          } >> "$GITHUB_STEP_SUMMARY"
