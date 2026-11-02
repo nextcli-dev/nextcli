@@ -31,9 +31,10 @@ type ParsedToken = string | ShellOperator | GlobPattern | CommentToken;
  * defense-in-depth security validation for terminal commands.
  *
  * Critical commands are disabled, and high-risk or destructive commands, and
- * risky forms of commands such as git or find, require permission. Commands
- * the evaluator does not recognise keep the base policy, so a tool set to
- * automatic runs them without asking.
+ * risky forms of commands such as git or find, require permission. Known
+ * build, test and file commands (pytest, tsc, dotnet build, cp...) keep the
+ * base policy, so a tool set to automatic runs them without asking. Commands
+ * the evaluator does not recognise require permission.
  *
  * @param basePolicy The base policy configured for the tool
  * @param command The command string to evaluate
@@ -252,7 +253,11 @@ function evaluateTokens(
         }
         const target = tokens[targetIndex];
         if (typeof target === "string") {
-          if (op !== "<" && op !== "<&" && isOutsideWorkspacePath(target)) {
+          if (
+            op !== "<" &&
+            op !== "<&" &&
+            (isOutsideWorkspacePath(target) || isGitInternalPath(target))
+          ) {
             mostRestrictivePolicy = getMostRestrictive(
               mostRestrictivePolicy,
               "allowedWithPermission",
@@ -421,20 +426,53 @@ function evaluateSingleCommand(
     return "allowedWithoutPermission";
   }
 
-  // The first token is the command
-  const baseCommand = commandTokens[0].toLowerCase();
-  const args = commandTokens.slice(1);
+  // Leading variable assignments (`FOO=1 cmd`) apply to the command after
+  // them, which is the one to evaluate
+  let start = 0;
+  while (
+    start < commandTokens.length &&
+    VARIABLE_ASSIGNMENT.test(commandTokens[start])
+  ) {
+    start++;
+  }
+  const assignments = commandTokens.slice(0, start);
+  // Variables that change which program runs or what it loads
+  // (PATH=/tmp:$PATH ls, LD_PRELOAD=x.so ls) require permission
+  const assignsDangerousVariable = assignments.some((assignment) =>
+    isDangerousEnvironmentVariable(
+      assignment.slice(0, assignment.indexOf("=")),
+    ),
+  );
+  if (start >= commandTokens.length) {
+    return assignsDangerousVariable ? "allowedWithPermission" : basePolicy;
+  }
+
+  const commandName = commandTokens[start].toLowerCase();
+  const args = commandTokens.slice(start + 1);
 
   // Check for critical commands that should always be disabled
-  if (isCriticalCommand(baseCommand, args)) {
+  if (isCriticalCommand(commandName, args)) {
     return "disabled";
   }
 
   // Handle variable expansion patterns
-  if (baseCommand.startsWith("$")) {
+  if (commandName.startsWith("$")) {
     // Command is a variable - could be anything, so require permission
     return "allowedWithPermission";
   }
+
+  if (assignsDangerousVariable) {
+    return "allowedWithPermission";
+  }
+
+  // A program named by its path (./build.sh, bin/app, /tmp/x, .\app.exe)
+  // is not a command the checks below know, so it requires permission
+  if (/[\\/]/.test(commandName.replace(/^\\/, ""))) {
+    return "allowedWithPermission";
+  }
+
+  // `\rm` bypasses aliases, and Windows commands may carry `.exe`
+  const baseCommand = normalizeCommandName(commandName).replace(/\.exe$/, "");
 
   // Check for high-risk commands that require permission
   if (isHighRiskCommand(baseCommand, args, originalCommand)) {
@@ -446,15 +484,103 @@ function evaluateSingleCommand(
     return "allowedWithoutPermission";
   }
 
-  // A command isSafeCommand inspects by its arguments, in a form it did not
-  // accept (git push, find -exec, cargo run, tar x...), requires permission
-  if (ARGUMENT_CHECKED_COMMANDS.includes(normalizeCommandName(baseCommand))) {
-    return "allowedWithPermission";
+  // Build, test and file commands users run all the time follow the policy
+  // the user chose for the tool, once the checks above passed (#10512)
+  if (isPolicyFollowingCommand(baseCommand, args)) {
+    return basePolicy;
   }
 
-  // Unknown commands (pytest, msbuild, dotnet...) are not known to be risky,
-  // so the policy the user chose for the tool decides (#10512)
-  return basePolicy;
+  // Anything else (argument-checked commands in a risky form such as git push
+  // or cargo run, and commands the evaluator doesn't know) requires permission
+  return "allowedWithPermission";
+}
+
+const VARIABLE_ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
+
+/**
+ * Environment variables that change which program runs or what code it loads
+ */
+function isDangerousEnvironmentVariable(name: string): boolean {
+  const upper = name.toUpperCase();
+  return (
+    [
+      "PATH",
+      "NODE_OPTIONS",
+      "NODE_PATH",
+      "PYTHONPATH",
+      "PYTHONSTARTUP",
+      "PYTHONHOME",
+      "BASH_ENV",
+      "ENV",
+      "PERL5OPT",
+      "PERL5LIB",
+      "RUBYOPT",
+      "RUBYLIB",
+      "IFS",
+      "GIT_SSH",
+      "GIT_SSH_COMMAND",
+      "GIT_EXEC_PATH",
+      "JAVA_TOOL_OPTIONS",
+    ].includes(upper) ||
+    upper.startsWith("LD_") ||
+    upper.startsWith("DYLD_")
+  );
+}
+
+/**
+ * Commands that follow the tool's policy instead of always asking: test
+ * runners, compilers, linters and in-workspace file commands. Commands with
+ * subcommands only qualify for build and test subcommands (dotnet run and
+ * go run execute arbitrary programs, so they ask).
+ */
+const POLICY_FOLLOWING_COMMANDS = [
+  "pytest",
+  "py.test",
+  "tox",
+  "nox",
+  "tsc",
+  "jest",
+  "vitest",
+  "mocha",
+  "eslint",
+  "prettier",
+  "ruff",
+  "mypy",
+  "black",
+  "isort",
+  "flake8",
+  "pylint",
+  "msbuild",
+  "ctest",
+  "cd",
+  "pushd",
+  "popd",
+  "cp",
+  "copy",
+  "xcopy",
+  "robocopy",
+  "mv",
+  "move",
+  "mkdir",
+  "md",
+  "touch",
+  "tee",
+];
+
+const POLICY_FOLLOWING_SUBCOMMANDS: Record<string, string[]> = {
+  dotnet: ["build", "test", "restore", "format", "clean"],
+  go: ["build", "test", "vet", "fmt"],
+};
+
+function isPolicyFollowingCommand(
+  baseCommand: string,
+  args: string[],
+): boolean {
+  if (POLICY_FOLLOWING_COMMANDS.includes(baseCommand)) {
+    return true;
+  }
+  const subcommands = POLICY_FOLLOWING_SUBCOMMANDS[baseCommand];
+  return !!subcommands && args.length > 0 && subcommands.includes(args[0]);
 }
 
 /**
@@ -842,17 +968,10 @@ function isHighRiskFileOperation(baseCommand: string, args: string[]): boolean {
 /**
  * Checks if rm command is high risk (but not critical)
  */
-function isHighRiskRmCommand(baseCommand: string, args: string[]): boolean {
-  if (baseCommand === "rm") {
-    const hasRf = args.some((arg) => arg === "-rf" || arg === "-fr");
-    const hasCriticalPath = args.some((arg) =>
-      ["/etc/", "/usr/", "/bin/", "/sbin/"].some((path) => arg.includes(path)),
-    );
-    if (!hasRf && !hasCriticalPath) {
-      return true;
-    }
-  }
-  return false;
+function isHighRiskRmCommand(baseCommand: string): boolean {
+  // Critical deletions are disabled earlier; every other rm, recursive or
+  // not, requires permission
+  return baseCommand === "rm";
 }
 
 /**
@@ -1034,7 +1153,7 @@ function isHighRiskCommand(
   if (isHighRiskProcessCommand(baseCommand)) return true;
   if (isHighRiskSystemService(baseCommand)) return true;
   if (isHighRiskFileOperation(baseCommand, args)) return true;
-  if (isHighRiskRmCommand(baseCommand, args)) return true;
+  if (isHighRiskRmCommand(baseCommand)) return true;
   if (isHighRiskArchiveExtraction(baseCommand, args)) return true;
   if (isHighRiskContainerCommand(baseCommand)) return true;
   if (isHighRiskCloudCLI(baseCommand)) return true;
@@ -1151,8 +1270,16 @@ function isHighRiskOutsideWorkspacePath(
       !(
         windowsCommands.includes(baseCommand) && /^\/[a-z?]+(:\S*)?$/i.test(arg)
       ) &&
-      isOutsideWorkspacePath(arg),
+      (isOutsideWorkspacePath(arg) || isGitInternalPath(arg)),
   );
+}
+
+/**
+ * Checks if a path is inside a `.git` directory, where writes can plant code
+ * that git runs later (hooks, config aliases)
+ */
+function isGitInternalPath(path: string): boolean {
+  return /(^|[\\/])\.git([\\/]|$)/.test(path);
 }
 
 const REDIRECT_OPERATORS = [">", ">>", ">&", "<", "<&"];
@@ -1181,25 +1308,6 @@ function isOutsideWorkspacePath(path: string): boolean {
     /(^|[\\/])\.\.([\\/]|$)/.test(path)
   );
 }
-
-/**
- * Commands that isSafeCommand only accepts with certain arguments. Any other
- * form of them requires permission, even when the tool policy is automatic.
- */
-const ARGUMENT_CHECKED_COMMANDS = [
-  "grep",
-  "find",
-  "git",
-  "npm",
-  "yarn",
-  "pnpm",
-  "make",
-  "gradle",
-  "mvn",
-  "cargo",
-  "tar",
-  "zip",
-];
 
 /**
  * Checks if a command is safe and can be auto-approved
