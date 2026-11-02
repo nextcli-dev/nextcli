@@ -49,8 +49,12 @@ export const handleApplyStateUpdate = createAsyncThunk<
           applyState.toolCallId,
         );
 
+        // Never auto-accept an apply result that looks like it destroyed the
+        // file (e.g. the apply model answered in prose); leave the diff for
+        // the user to review.
         if (
           applyState.status === "done" &&
+          !applyState.destructiveWarning &&
           toolCallState?.toolCall.function.name &&
           getState().ui.toolSettings[toolCallState.toolCall.function.name] ===
             "allowedWithoutPermission"

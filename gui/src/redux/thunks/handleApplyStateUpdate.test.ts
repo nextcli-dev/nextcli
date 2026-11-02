@@ -163,6 +163,70 @@ describe("handleApplyStateUpdate", () => {
     });
   });
 
+  describe("auto-accept for tools allowed without permission", () => {
+    function setup() {
+      const toolCallState = {
+        ...UNUSED_TOOL_CALL_PARAMS,
+        toolCallId: "test-tool-call",
+        status: "calling",
+        toolCall: {
+          ...UNUSED_TOOL_CALL_PARAMS.toolCall,
+          function: { name: "edit_existing_file", arguments: "{}" },
+        },
+      } as unknown as ToolCallState;
+      vi.mocked(findToolCallById).mockReturnValue(toolCallState);
+      mockGetState.mockReturnValue({
+        session: { history: [] },
+        ui: {
+          toolSettings: { edit_existing_file: "allowedWithoutPermission" },
+        },
+      });
+    }
+
+    it("auto-accepts a normal result", async () => {
+      setup();
+      const applyState: ApplyState = {
+        streamId: "chat-stream",
+        toolCallId: "test-tool-call",
+        status: "done",
+        filepath: "config.yaml",
+      };
+
+      await handleApplyStateUpdate(applyState)(
+        mockDispatch,
+        mockGetState,
+        mockExtra,
+      );
+
+      expect(mockExtra.ideMessenger.post).toHaveBeenCalledWith("acceptDiff", {
+        streamId: "chat-stream",
+        filepath: "config.yaml",
+      });
+    });
+
+    it("does not auto-accept a result flagged as destructive", async () => {
+      setup();
+      const applyState: ApplyState = {
+        streamId: "chat-stream",
+        toolCallId: "test-tool-call",
+        status: "done",
+        filepath: "config.yaml",
+        destructiveWarning: "looks destructive",
+      };
+
+      await handleApplyStateUpdate(applyState)(
+        mockDispatch,
+        mockGetState,
+        mockExtra,
+      );
+
+      expect(mockExtra.ideMessenger.post).not.toHaveBeenCalledWith(
+        "acceptDiff",
+        expect.anything(),
+      );
+    });
+  });
+
   describe("closed status handling", () => {
     it("should handle accepted tool call closure", async () => {
       const toolCallState: ToolCallState = {

@@ -3,7 +3,11 @@ import { IdeMessengerContext } from "../context/IdeMessenger";
 
 import { FromCoreProtocol } from "core/protocol";
 import { useAppDispatch, useAppSelector } from "../redux/hooks";
-import { setConfigLoading, setConfigResult } from "../redux/slices/configSlice";
+import {
+  setConfigLoading,
+  setConfigResult,
+  shouldApplyConfigResult,
+} from "../redux/slices/configSlice";
 import { setLastNonEditSessionEmpty } from "../redux/slices/editState";
 import { updateIndexingStatus } from "../redux/slices/indexingSlice";
 import {
@@ -58,10 +62,12 @@ function ParallelListeners() {
       if (isInitial && hasDoneInitialConfigLoad.current) {
         return;
       }
-      if (configResult.configLoadInterrupted || !configResult.config) {
+      if (!shouldApplyConfigResult(configResult)) {
         return;
       }
-      hasDoneInitialConfigLoad.current = true;
+      if (configResult.config) {
+        hasDoneInitialConfigLoad.current = true;
+      }
       dispatch(setProfiles(profiles));
       dispatch(setSelectedProfile(profileId));
       dispatch(setConfigResult(configResult));

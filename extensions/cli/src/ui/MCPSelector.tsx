@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import { quote } from "shell-quote";
 
 import { useServices } from "../hooks/useService.js";
+import { clearMcpOAuth } from "../services/mcpOAuth.js";
 import {
   MCPConnectionInfo,
   MCPServerStatus,
@@ -143,6 +144,13 @@ export const MCPSelector: React.FC<MCPSelectorProps> = ({ onCancel }) => {
     // Only show stop server if it's connected
     if (serverInfo.status === "connected") {
       items.push({ label: "⏹️  Stop server", value: "stop" });
+    }
+
+    if ("url" in serverInfo.config) {
+      items.push({
+        label: "🔑 Sign out (clear OAuth credentials)",
+        value: "sign-out",
+      });
     }
 
     return items;
@@ -314,6 +322,23 @@ export const MCPSelector: React.FC<MCPSelectorProps> = ({ onCancel }) => {
           await mcpService?.stopServer(selectedServer);
           setMessage(`Server "${selectedServer}" stopped`);
           break;
+        case "sign-out": {
+          if (!selectedServer) {
+            return;
+          }
+          const serverInfo = connections.find(
+            (conn) => conn.config.name === selectedServer,
+          );
+          if (!serverInfo || !("url" in serverInfo.config)) {
+            return;
+          }
+          clearMcpOAuth(serverInfo.config.url);
+          await mcpService?.stopServer(selectedServer);
+          setMessage(
+            `Signed out of "${selectedServer}". Restart the server to sign in again.`,
+          );
+          break;
+        }
         case "back":
           handleBack();
           return;

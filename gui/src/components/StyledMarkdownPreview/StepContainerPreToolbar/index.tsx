@@ -19,9 +19,12 @@ import { ApplyActions } from "./ApplyActions";
 import { CollapsibleContainer } from "./CollapsibleContainer";
 import { CopyButton } from "./CopyButton";
 import { CreateFileButton } from "./CreateFileButton";
+import { getFallbackApplyWarning } from "./fallbackApplyWarning";
 import { FileInfo } from "./FileInfo";
 import { InsertButton } from "./InsertButton";
 import { RunInTerminalButton } from "./RunInTerminalButton";
+
+const APPLY_ANYWAY = "Apply anyway";
 
 export interface StepContainerPreToolbarProps {
   showToolCallStatusIcon?: boolean;
@@ -178,6 +181,7 @@ export function StepContainerPreToolbar({
   }
 
   async function onClickApply() {
+    const isActiveFileFallback = !appliedFileUri && !relativeFilepathUri;
     const fileUri = await getFileUriToApplyTo();
     if (!fileUri) {
       void ideMessenger.ide.showToast(
@@ -185,6 +189,22 @@ export function StepContainerPreToolbar({
         "Could not resolve filepath to apply changes",
       );
       return;
+    }
+
+    // Without a file name, Apply targets whatever file is active. Confirm
+    // when that is likely the wrong file, since the apply model rewrites it.
+    if (isActiveFileFallback) {
+      const warning = getFallbackApplyWarning(language, fileUri);
+      if (warning) {
+        const choice = await ideMessenger.ide.showToast(
+          "warning",
+          warning,
+          APPLY_ANYWAY,
+        );
+        if (choice !== APPLY_ANYWAY) {
+          return;
+        }
+      }
     }
 
     // applyToFile will create the file if it doesn't exist

@@ -6,11 +6,16 @@ import { logger } from "../util/logger.js";
 
 import { BaseService, ServiceWithDependencies } from "./BaseService.js";
 import {
+  cancelAllMcpOAuthFlows,
+  CliMcpOAuthProvider,
+  hasStoredMcpOAuthTokens,
+} from "./mcpOAuth.js";
+import {
   constructHttpTransport,
   constructSseTransport,
   constructStdioTransport,
 } from "./mcpTransports.js";
-import { isAuthError } from "./mcpUtils.js";
+import { isAuthError, McpAuthRequiredError } from "./mcpUtils.js";
 import { serviceContainer } from "./ServiceContainer.js";
 import type { AssistantConfig } from "./types.js";
 import {
@@ -392,6 +397,7 @@ Org-level secrets can only be used for MCP by Background Agents (https://docs.ne
     this.isShuttingDown = true;
 
     this.removeAllListeners();
+    cancelAllMcpOAuthFlows("MCP service shut down");
     await this.shutdownConnections();
   }
 
@@ -412,72 +418,144 @@ Org-level secrets can only be used for MCP by Background Agents (https://docs.ne
       const transport = constructStdioTransport(serverConfig, connection);
       await client.connect(transport, {});
     } else {
-      // SSE/HTTP: if type isn't explicit: try http and fall back to sse
+      const authProvider = this.createOAuthProvider(serverConfig, connection);
       try {
-        await this.withTokenRefresh(serverConfig.name, async () => {
-          if (serverConfig.apiKey && !this.apiKeyCache.get(serverConfig.name)) {
-            this.apiKeyCache.set(serverConfig.name, serverConfig.apiKey);
-          }
-          const apiKey = this.apiKeyCache.get(serverConfig.name);
-          if (serverConfig.type === "sse") {
-            const transport = constructSseTransport(serverConfig, apiKey);
-            await client.connect(transport, {});
-          } else if (serverConfig.type === "streamable-http") {
-            const transport = constructHttpTransport(serverConfig, apiKey);
-            await client.connect(transport, {});
-          } else {
-            try {
-              const transport = constructHttpTransport(serverConfig, apiKey);
-              await client.connect(transport, {});
-            } catch (e) {
-              if (isAuthError(e)) {
-                throw e;
-              }
-              const transport = constructSseTransport(serverConfig, apiKey);
-              await client.connect(transport, {});
-            }
-          }
-        });
+        await this.withTokenRefresh(serverConfig.name, () =>
+          this.connectRemote(serverConfig, client, authProvider),
+        );
       } catch (error: unknown) {
-        // If token refresh didn't work and it's a 401, fall back to mcp-remote
-        if (isAuthError(error) && !this.isHeadless) {
-          // Build mcp-remote args with Supabase-specific OAuth scopes if needed
-          const mcpRemoteArgs = ["-y", "mcp-remote", serverConfig.url];
-
-          // Detect Supabase MCP and add custom OAuth scopes
-          if (serverConfig.url.includes("mcp.supabase.com")) {
-            const supabaseScopes = [
-              "organizations:read",
-              "projects:read",
-              "database:read",
-              "analytics:read",
-              "secrets:read",
-              "edge_functions:read",
-              "environment:read",
-              "storage:read",
-            ].join(" ");
-
-            mcpRemoteArgs.push(
-              "--static-oauth-client-metadata",
-              JSON.stringify({ scope: supabaseScopes }),
-            );
-          }
-
-          const transport = constructStdioTransport(
-            {
-              name: serverConfig.name,
-              command: "npx",
-              args: mcpRemoteArgs,
-            },
-            connection,
-          );
-          await client.connect(transport, {});
-        } else {
+        if (!(error instanceof McpAuthRequiredError)) {
           throw error;
         }
+        if (!authProvider?.isAuthorizationPending()) {
+          throw new Error(
+            this.isHeadless
+              ? `MCP server "${serverConfig.name}" requires OAuth sign-in. Run cn interactively once to sign in, or set apiKey or an Authorization header in requestOptions.headers.`
+              : `MCP server "${serverConfig.name}" requires authorization, and OAuth sign-in could not be started. Set apiKey or an Authorization header in requestOptions.headers.`,
+          );
+        }
+        await this.completeOAuthSignIn(
+          serverConfig,
+          client,
+          authProvider,
+          error.transport,
+          connection,
+        );
       }
     }
 
     return client;
   }
+
+  /**
+   * Create the OAuth provider for a remote server, or undefined when OAuth
+   * should not be used: static credentials are configured, or (headless) no
+   * stored sign-in exists, so a browser flow could not complete anyway.
+   */
+  private createOAuthProvider(
+    serverConfig: RemoteMcpServerConfig,
+    connection: ServerConnection,
+  ): CliMcpOAuthProvider | undefined {
+    const headers = serverConfig.requestOptions?.headers ?? {};
+    const hasStaticAuth =
+      !!serverConfig.apiKey ||
+      Object.keys(headers).some((h) => h.toLowerCase() === "authorization");
+    if (hasStaticAuth) return undefined;
+    if (this.isHeadless && !hasStoredMcpOAuthTokens(serverConfig.url)) {
+      return undefined;
+    }
+
+    return new CliMcpOAuthProvider(serverConfig.url, {
+      interactive: !this.isHeadless,
+      onAuthorizationUrl: (url) => {
+        connection.warnings.push(
+          `${OAUTH_WAITING_PREFIX} If the browser did not open, visit: ${url.toString()}`,
+        );
+        this.updateState();
+      },
+    });
+  }
+
+  /**
+   * Connect over SSE/HTTP. If the type isn't explicit, try HTTP and fall back
+   * to SSE. Auth failures are wrapped with the transport that saw them so the
+   * OAuth code can be exchanged on it.
+   */
+  private async connectRemote(
+    serverConfig: RemoteMcpServerConfig,
+    client: Client,
+    authProvider: CliMcpOAuthProvider | undefined,
+  ): Promise<void> {
+    if (serverConfig.apiKey && !this.apiKeyCache.get(serverConfig.name)) {
+      this.apiKeyCache.set(serverConfig.name, serverConfig.apiKey);
+    }
+    const apiKey = this.apiKeyCache.get(serverConfig.name);
+
+    const attempt = async (kind: "sse" | "http") => {
+      const transport =
+        kind === "sse"
+          ? constructSseTransport(serverConfig, apiKey, authProvider)
+          : constructHttpTransport(serverConfig, apiKey, authProvider);
+      try {
+        await client.connect(transport, {});
+      } catch (error) {
+        if (isAuthError(error)) {
+          throw new McpAuthRequiredError(transport, error);
+        }
+        throw error;
+      }
+    };
+
+    if (serverConfig.type === "sse") {
+      await attempt("sse");
+    } else if (serverConfig.type === "streamable-http") {
+      await attempt("http");
+    } else {
+      try {
+        await attempt("http");
+      } catch (error) {
+        if (error instanceof McpAuthRequiredError) {
+          throw error;
+        }
+        await attempt("sse");
+      }
+    }
+  }
+
+  /**
+   * Wait for the browser redirect, exchange the code on the transport that
+   * started the flow, then reconnect with the new tokens.
+   */
+  private async completeOAuthSignIn(
+    serverConfig: RemoteMcpServerConfig,
+    client: Client,
+    authProvider: CliMcpOAuthProvider,
+    transport: McpAuthRequiredError["transport"],
+    connection: ServerConnection,
+  ): Promise<void> {
+    try {
+      const code = await authProvider.waitForAuthorizationCode();
+      await transport.finishAuth(code);
+    } finally {
+      connection.warnings = connection.warnings.filter(
+        (w) => !w.startsWith(OAUTH_WAITING_PREFIX),
+      );
+      this.updateState();
+    }
+
+    try {
+      await this.connectRemote(serverConfig, client, authProvider);
+    } catch (error) {
+      if (error instanceof McpAuthRequiredError) {
+        throw new Error(
+          `MCP server "${serverConfig.name}" still rejected the connection after OAuth sign-in: ${getErrorString(error.cause)}`,
+        );
+      }
+      throw error;
+    }
+  }
 }
+
+type RemoteMcpServerConfig = Exclude<MCPServerConfig, { command: string }>;
+
+const OAUTH_WAITING_PREFIX = "Waiting for OAuth sign-in in your browser.";

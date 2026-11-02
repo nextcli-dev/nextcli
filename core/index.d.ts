@@ -1490,6 +1490,8 @@ export interface ApplyState {
   originalFileContent?: string;
   toolCallId?: string;
   autoFormattingDiff?: string;
+  /** Set when an LLM apply result looks like it destroyed the file */
+  destructiveWarning?: string;
 }
 
 export type StreamDiffLinesType = "edit" | "apply";

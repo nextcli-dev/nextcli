@@ -54,3 +54,7 @@ Store sensitive values (API keys, tokens) as environment variables. Reference th
 ```yaml
 ${{ secrets.MY_API_KEY }}
 ```
+
+## MCP servers that use OAuth
+
+For a remote MCP server that requires OAuth, `cn` opens your browser to sign in the first time it connects. It saves the tokens in `~/.continue/mcp-oauth.json`. Headless runs (`cn -p`) reuse those tokens but never open a browser, so sign in interactively first or configure an `apiKey`. See [OAuth-protected MCP servers](/customize/deep-dives/mcp#how-to-connect-to-oauth-protected-mcp-servers).

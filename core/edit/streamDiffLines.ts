@@ -13,6 +13,7 @@ import {
   filterEnglishLinesAtEnd,
   filterEnglishLinesAtStart,
   filterLeadingAndTrailingNewLineInsertion,
+  filterLeadingThinkBlock,
   removeTrailingWhitespace,
   skipLines,
   stopAtLines,
@@ -166,6 +167,7 @@ export async function* streamDiffLines(
 
   let lines = streamLines(completion);
 
+  lines = filterLeadingThinkBlock(lines);
   lines = filterEnglishLinesAtStart(lines);
   lines = filterCodeBlockLines(lines);
   lines = stopAtLines(lines, () => {});

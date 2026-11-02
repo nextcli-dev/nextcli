@@ -1,4 +1,8 @@
 import { myersDiff } from "core/diff/myers";
+import {
+  DESTRUCTIVE_APPLY_WARNING,
+  isLikelyDestructiveApply,
+} from "core/edit/destructiveApply";
 import * as URI from "uri-js";
 import * as vscode from "vscode";
 
@@ -11,7 +15,7 @@ import {
 
 import type { ApplyState, DiffLine } from "core";
 import type { VerticalDiffCodeLens } from "./manager";
-import { getFirstChangedLine } from "./util";
+import { getFirstChangedLine, getRangeDiffSides } from "./util";
 
 export interface VerticalDiffHandlerOptions {
   input?: string;
@@ -20,8 +24,14 @@ export interface VerticalDiffHandlerOptions {
     status?: ApplyState["status"],
     numDiffs?: ApplyState["numDiffs"],
     fileContent?: ApplyState["fileContent"],
+    destructiveWarning?: ApplyState["destructiveWarning"],
   ) => void;
   streamId?: string;
+  /**
+   * For LLM apply output: the suggested code block. When set, a result that
+   * looks like it destroyed the file is reported instead of passing silently.
+   */
+  destructiveCheckSuggestedCode?: string;
 }
 
 export class VerticalDiffHandler implements vscode.Disposable {
@@ -36,6 +46,10 @@ export class VerticalDiffHandler implements vscode.Disposable {
   private addedLineDecorations: AddedLineDecorationManager;
   private _diffLinesQueue: DiffLine[] = [];
   private _queueLock = false;
+  /** The range's text before any streamed edits */
+  private readonly originalRangeText: string;
+  /** Whether the range ran to the end of the document before any edits */
+  private readonly rangeReachesEndOfDocument: boolean;
 
   constructor(
     private startLine: number,
@@ -54,6 +68,11 @@ export class VerticalDiffHandler implements vscode.Disposable {
   ) {
     this.currentLineIndex = startLine;
     this.streamId = options.streamId;
+    this.originalRangeText = editor.document.getText(
+      editor.document.validateRange(this.range),
+    );
+    this.rangeReachesEndOfDocument =
+      Math.max(startLine, endLine) >= editor.document.lineCount - 1;
 
     this.removedLineDecorations = new RemovedLineDecorationManager(this.editor);
     this.addedLineDecorations = new AddedLineDecorationManager(this.editor);
@@ -211,10 +230,23 @@ export class VerticalDiffHandler implements vscode.Disposable {
       const range = new vscode.Range(scrollToLine, 0, scrollToLine, 0);
       this.editor.revealRange(range, vscode.TextEditorRevealType.Default);
 
+      const destructiveWarning =
+        this.options.destructiveCheckSuggestedCode !== undefined &&
+        isLikelyDestructiveApply(
+          diffLines,
+          this.options.destructiveCheckSuggestedCode,
+        )
+          ? DESTRUCTIVE_APPLY_WARNING
+          : undefined;
+      if (destructiveWarning) {
+        void vscode.window.showWarningMessage(destructiveWarning);
+      }
+
       this.options.onStatusUpdate(
         "done",
         this.editorToVerticalDiffCodeLens.get(this.fileUri)?.length ?? 0,
         this.editor.document.getText(),
+        destructiveWarning,
       );
 
       // Reject on user typing
@@ -346,35 +378,39 @@ export class VerticalDiffHandler implements vscode.Disposable {
     // newline separated, because myersDiff() would consider
     // ["A"] => "A" and ["A", ""] => "A\n" to be the same single line.
     // "A\n" and "A\n\n" are unambiguous.
-    const oldContentWithoutTrailingNewline = diffLines
-      .filter((line) => line.type === "same" || line.type === "old")
-      .map((line) => line.line)
-      .join("\n");
-
-    const oldFileContent = oldContentWithoutTrailingNewline + "\n";
-
-    const newFileContent =
-      diffLines
-        .filter((line) => line.type === "same" || line.type === "new")
-        .map((line) => line.line)
-        .join("\n") + "\n";
+    // Use the range as it was before streaming: deleting the document's
+    // empty last line while streaming is a no-op, so the reset above can
+    // leave a stray line at the end of the document.
+    const rangeText = this.originalRangeText;
+    const { originalLines, newLines } = getRangeDiffSides(
+      diffLines,
+      rangeText,
+      rangeText.split("\n").length,
+    );
+    const oldFileContent = originalLines.join("\n") + "\n";
+    const newFileContent = newLines.join("\n") + "\n";
 
     const myersDiffs = myersDiff(oldFileContent, newFileContent);
 
-    // Preserve the trailing newline behavior by checking the original document content
-    const originalDocumentContent = this.editor.document.getText(this.range);
-    const originalContentEndsWithNewline =
-      originalDocumentContent.endsWith("\n");
-
-    // Add trailing newline only if the original file had one to prevent line count discrepancies
+    // Keep the range's trailing newline (its empty last line)
     const replaceContent =
       myersDiffs
         .map((diff) => (diff.type === "old" ? "" : diff.line))
-        .join("\n") + (originalContentEndsWithNewline ? "\n" : "");
+        .join("\n") + (rangeText.endsWith("\n") ? "\n" : "");
 
-    // Then, we insert our diff lines
+    // Then, we insert our diff lines. A range that reached the end of the
+    // document is rebuilt up to the current end, which also removes any stray
+    // line the streaming phase left there.
+    const document = this.editor.document;
+    const lastLine = document.lineCount - 1;
+    const rangeToReplace = this.rangeReachesEndOfDocument
+      ? new vscode.Range(
+          this.range.start,
+          new vscode.Position(lastLine, document.lineAt(lastLine).text.length),
+        )
+      : this.range;
     await this.editor.edit((editBuilder) => {
-      editBuilder.replace(this.range, replaceContent),
+      editBuilder.replace(rangeToReplace, replaceContent),
         { undoStopAfter: false, undoStopBefore: false };
     });
 

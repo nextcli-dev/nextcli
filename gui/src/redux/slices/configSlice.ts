@@ -1,6 +1,7 @@
 import { ConfigResult, ConfigValidationError } from "@nextcli/config-yaml";
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import { BrowserSerializedContinueConfig } from "core";
+import { configNotLoadedMessage } from "core/config/chatModel";
 import { DEFAULT_CONTEXT_LENGTH } from "core/llm/constants";
 
 export type ConfigState = {
@@ -96,6 +97,33 @@ export const configSlice = createSlice({
     },
   },
 });
+
+/**
+ * Whether a config update from core should replace the GUI config.
+ * A result with a config always applies. A result without one applies only
+ * when it carries a fatal error (e.g. invalid config.yaml): core then has no
+ * models, and keeping the last good config would hide the error behind a
+ * stale model selection. Anything else (e.g. no current profile yet) is
+ * transient and is ignored.
+ */
+export function shouldApplyConfigResult(
+  result: ConfigResult<BrowserSerializedContinueConfig>,
+): boolean {
+  return !!result.config || !!result.errors?.some((e) => e.fatal);
+}
+
+/**
+ * The error to throw when the GUI has no chat model. When the config failed
+ * to load, name that failure instead of blaming the model selection.
+ */
+export function missingChatModelError(
+  configError: ConfigValidationError[] | undefined,
+): Error {
+  if (configError?.some((e) => e.fatal)) {
+    return new Error(configNotLoadedMessage(configError));
+  }
+  return new Error("No chat model selected");
+}
 
 export const { updateConfig, setConfigResult, setConfigLoading } =
   configSlice.actions;

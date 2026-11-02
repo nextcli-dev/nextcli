@@ -1,5 +1,10 @@
+import * as http from "http";
+import type { AddressInfo } from "net";
+
+import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { getMcpOAuthStoragePath } from "./mcpOAuth.js";
 import { MCPService } from "./MCPService.js";
 import type { AssistantConfig } from "./types.js";
 
@@ -21,13 +26,20 @@ vi.mock("@modelcontextprotocol/sdk/client/stdio.js", () => ({
   StdioClientTransport: vi.fn(),
 }));
 
-vi.mock("@modelcontextprotocol/sdk/client/sse.js", () => ({
+// Keep the real error classes (SseError, StreamableHTTPError) that
+// isAuthError checks against; only the transports are mocked.
+vi.mock("@modelcontextprotocol/sdk/client/sse.js", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   SSEClientTransport: vi.fn(),
 }));
 
-vi.mock("@modelcontextprotocol/sdk/client/streamableHttp.js", () => ({
-  StreamableHTTPClientTransport: vi.fn(),
-}));
+vi.mock(
+  "@modelcontextprotocol/sdk/client/streamableHttp.js",
+  async (importOriginal) => ({
+    ...(await importOriginal<object>()),
+    StreamableHTTPClientTransport: vi.fn(),
+  }),
+);
 
 vi.mock("https", () => ({
   Agent: vi.fn().mockImplementation(() => ({
@@ -417,6 +429,172 @@ describe("MCPService", () => {
         }),
       );
       expect(HttpsAgent).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("OAuth for remote servers", () => {
+    const oauthAssistant = (
+      server: Record<string, unknown> = {},
+    ): AssistantConfig =>
+      ({
+        name: "oauth-assistant",
+        version: "1.0.0",
+        mcpServers: [
+          {
+            name: "oauth-server",
+            type: "streamable-http",
+            url: "https://mcp.example.com/mcp",
+            ...server,
+          },
+        ],
+      }) as AssistantConfig;
+
+    let transports: Array<{ opts: any; finishAuth: ReturnType<typeof vi.fn> }>;
+
+    beforeEach(async () => {
+      const probe = http.createServer();
+      await new Promise<void>((r) => probe.listen(0, "127.0.0.1", r));
+      const { port } = probe.address() as AddressInfo;
+      await new Promise<void>((r) => probe.close(() => r()));
+      process.env.NEXTCLI_MCP_OAUTH_PORT = String(port);
+
+      const { StreamableHTTPClientTransport } = await import(
+        "@modelcontextprotocol/sdk/client/streamableHttp.js"
+      );
+      transports = [];
+      vi.mocked(StreamableHTTPClientTransport).mockImplementation(function (
+        this: any,
+        _url: URL,
+        opts: any,
+      ) {
+        this.opts = opts;
+        this.finishAuth = vi.fn(async () => {});
+        transports.push(this);
+      } as any);
+    });
+
+    afterEach(async () => {
+      const { StreamableHTTPClientTransport } = await import(
+        "@modelcontextprotocol/sdk/client/streamableHttp.js"
+      );
+      vi.mocked(StreamableHTTPClientTransport).mockReset();
+      mockClient.connect.mockReset();
+      delete process.env.NEXTCLI_MCP_OAUTH_PORT;
+      const fs = await import("fs");
+      fs.rmSync(getMcpOAuthStoragePath(), { force: true });
+    });
+
+    function hitCallback(query: string) {
+      return new Promise<void>((resolve, reject) => {
+        http
+          .get(
+            `http://127.0.0.1:${process.env.NEXTCLI_MCP_OAUTH_PORT}/oauth/callback?${query}`,
+            (res) => {
+              res.resume();
+              res.on("end", () => resolve());
+            },
+          )
+          .on("error", reject);
+      });
+    }
+
+    it("signs in through the browser instead of spawning mcp-remote", async () => {
+      const open = (await import("open")).default as unknown as ReturnType<
+        typeof vi.fn
+      >;
+      const { StdioClientTransport } = await import(
+        "@modelcontextprotocol/sdk/client/stdio.js"
+      );
+
+      let state = "";
+      // Simulate the browser completing sign-in as soon as it is opened.
+      open.mockImplementationOnce(async () => {
+        await hitCallback(`code=the-code&state=${state}`);
+      });
+      // First connect: the SDK starts OAuth and throws UnauthorizedError.
+      mockClient.connect.mockImplementationOnce(async (transport: any) => {
+        const provider = transport.opts.authProvider;
+        state = await provider.state();
+        await provider.redirectToAuthorization(
+          new URL("https://auth.example.com/authorize"),
+        );
+        throw new UnauthorizedError();
+      });
+      // Second connect (with tokens) succeeds.
+      mockClient.connect.mockResolvedValueOnce(undefined);
+
+      await mcpService.initialize(oauthAssistant(), true, false);
+
+      const conn = mcpService.getState().connections[0];
+      expect(conn.status).toBe("connected");
+      expect(conn.warnings).toEqual([]);
+      expect(open).toHaveBeenCalledWith("https://auth.example.com/authorize");
+      expect(transports[0].finishAuth).toHaveBeenCalledWith("the-code");
+      expect(transports).toHaveLength(2);
+      expect(transports[1].opts.authProvider).toBe(
+        transports[0].opts.authProvider,
+      );
+      expect(StdioClientTransport).not.toHaveBeenCalled();
+    });
+
+    it("fails with a sign-in message in headless mode without stored tokens", async () => {
+      const open = (await import("open")).default as unknown as ReturnType<
+        typeof vi.fn
+      >;
+      const { StdioClientTransport } = await import(
+        "@modelcontextprotocol/sdk/client/stdio.js"
+      );
+      const { StreamableHTTPError } = await import(
+        "@modelcontextprotocol/sdk/client/streamableHttp.js"
+      );
+      mockClient.connect.mockRejectedValueOnce(
+        new StreamableHTTPError(401, "Unauthorized"),
+      );
+
+      await expect(
+        mcpService.initialize(oauthAssistant(), false, true),
+      ).rejects.toThrow(/oauth-server.*requires OAuth sign-in/);
+      expect(transports[0].opts.authProvider).toBeUndefined();
+      expect(open).not.toHaveBeenCalled();
+      expect(StdioClientTransport).not.toHaveBeenCalled();
+    });
+
+    it("does not attach OAuth when an apiKey or Authorization header is set", async () => {
+      mockClient.connect.mockResolvedValue(undefined);
+
+      await mcpService.initialize(oauthAssistant({ apiKey: "key" }), true);
+      await mcpService.initialize(
+        oauthAssistant({
+          requestOptions: { headers: { authorization: "Bearer x" } },
+        }),
+        true,
+      );
+
+      expect(transports).toHaveLength(2);
+      for (const t of transports) {
+        expect(t.opts.authProvider).toBeUndefined();
+      }
+    });
+
+    it("does not treat unrelated errors mentioning 401 as auth errors", async () => {
+      const { SSEClientTransport } = await import(
+        "@modelcontextprotocol/sdk/client/sse.js"
+      );
+      mockClient.connect.mockRejectedValue(
+        new Error("connect ECONNREFUSED 127.0.0.1:4010"),
+      );
+
+      await mcpService.initialize(
+        oauthAssistant({ type: undefined }),
+        true,
+        false,
+      );
+
+      const conn = mcpService.getState().connections[0];
+      expect(conn.status).toBe("error");
+      expect(conn.error).toContain("ECONNREFUSED");
+      // HTTP attempt, then the normal SSE fallback; no OAuth wait.
+      expect(SSEClientTransport).toHaveBeenCalled();
     });
   });
 });

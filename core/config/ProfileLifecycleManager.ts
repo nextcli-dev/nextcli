@@ -97,6 +97,10 @@ export class ProfileLifecycleManager {
             config: undefined,
             configLoadInterrupted: true,
           };
+          // The loader only records errors when doLoadConfig returns, so
+          // record them here too, letting the profile selector show the
+          // failure.
+          this.profileLoader.description.errors = result.errors;
         }
 
         if (result.config) {

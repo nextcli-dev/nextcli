@@ -14,6 +14,7 @@ import ToggleDiv from "../../components/ToggleDiv";
 import { useAuth } from "../../context/Auth";
 import { IdeMessengerContext } from "../../context/IdeMessenger";
 import { useAppDispatch, useAppSelector } from "../../redux/hooks";
+import { CONFIG_NOT_LOADED_MESSAGE } from "core/config/chatModel";
 import { selectSelectedChatModel } from "../../redux/slices/configSlice";
 import { setDialogMessage, setShowDialog } from "../../redux/slices/uiSlice";
 import { streamResponseThunk } from "../../redux/thunks/streamResponse";
@@ -52,6 +53,10 @@ const StreamErrorDialog = ({ error }: StreamErrorProps) => {
   };
 
   const history = useAppSelector((store) => store.session.history);
+  const configError = useAppSelector((store) => store.config.configError);
+  const isConfigLoadError =
+    !!message?.includes(CONFIG_NOT_LOADED_MESSAGE) ||
+    (!selectedModel && !!configError?.some((e) => e.fatal));
 
   const checkKeysButton = apiKeyUrl ? (
     <GhostButton
@@ -131,6 +136,35 @@ const StreamErrorDialog = ({ error }: StreamErrorProps) => {
   );
 
   // Display components for specific errors
+  if (isConfigLoadError) {
+    errorContent = (
+      <div className="flex flex-col gap-2">
+        <span>
+          Your config failed to load, so no model is available. Fix the config
+          file and reload.
+        </span>
+        <div className="flex flex-row flex-wrap justify-start gap-3 py-2">
+          <GhostButton
+            className="flex items-center"
+            onClick={() =>
+              ideMessenger.post("config/openProfile", { profileId: undefined })
+            }
+          >
+            <Cog6ToothIcon className="mr-1.5 h-3.5 w-3.5" />
+            <span>Open config</span>
+          </GhostButton>
+          <GhostButton
+            className="flex items-center"
+            onClick={handleRefreshProfiles}
+          >
+            <ArrowPathIcon className="mr-1.5 h-3.5 w-3.5" />
+            <span>Reload config</span>
+          </GhostButton>
+        </div>
+      </div>
+    );
+  }
+
   if (statusCode === 429) {
     errorContent = (
       <div className="flex flex-col gap-2">
@@ -252,7 +286,7 @@ const StreamErrorDialog = ({ error }: StreamErrorProps) => {
     <div className="flex flex-col gap-4 px-3 pb-3 pt-3">
       {/* Concise error title */}
       <h3 className="text-error m-0 p-0 text-lg font-medium">
-        Error handling model response
+        {isConfigLoadError ? "Config failed to load" : "Error handling model response"}
       </h3>
 
       {errorContent}

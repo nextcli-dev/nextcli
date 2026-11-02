@@ -359,7 +359,9 @@ export class VsCodeMessenger {
       return ide.showLines(filepath, startLine, endLine);
     });
     this.onWebviewOrCore("showToast", (msg) => {
-      this.ide.showToast(...msg.data);
+      const [, , ...actions] = msg.data;
+      const selection = this.ide.showToast(...msg.data);
+      return actions.length > 0 ? selection : undefined;
     });
     this.onWebviewOrCore("saveFile", async (msg) => {
       return await ide.saveFile(msg.data.filepath);

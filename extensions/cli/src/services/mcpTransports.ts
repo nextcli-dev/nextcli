@@ -1,5 +1,6 @@
 import { Agent as HttpsAgent } from "https";
 
+import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -14,6 +15,7 @@ import { MCPConnectionInfo } from "./types.js";
 export function constructSseTransport(
   serverConfig: SseMcpServer,
   apiKey: string | undefined,
+  authProvider?: OAuthClientProvider,
 ): SSEClientTransport {
   const sseAgent =
     serverConfig.requestOptions?.verifySsl === false
@@ -43,12 +45,14 @@ export function constructSseTransport(
       headers,
       ...(sseAgent && { agent: sseAgent }),
     },
+    ...(authProvider && { authProvider }),
   });
 }
 
 export function constructHttpTransport(
   serverConfig: HttpMcpServer,
   apiKey: string | undefined,
+  authProvider?: OAuthClientProvider,
 ): StreamableHTTPClientTransport {
   const streamableAgent =
     serverConfig.requestOptions?.verifySsl === false
@@ -67,6 +71,7 @@ export function constructHttpTransport(
       headers,
       ...(streamableAgent && { agent: streamableAgent }),
     },
+    ...(authProvider && { authProvider }),
   });
 }
 

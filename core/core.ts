@@ -50,6 +50,7 @@ import {
 import { ConfigYaml } from "@nextcli/config-yaml";
 import { getDiffFn, GitDiffCache } from "./autocomplete/snippets/gitDiffCache";
 import { stringifyMcpPrompt } from "./commands/slash/mcpSlashCommand";
+import { getSelectedChatModelOrThrow } from "./config/chatModel";
 import { createNewAssistantFile } from "./config/createNewAssistantFile";
 import {
   isColocatedRulesFile,
@@ -572,11 +573,9 @@ export class Core {
     });
 
     on("llm/complete", async (msg) => {
-      const { config } = await this.configHandler.loadConfig();
-      const model = config?.selectedModelByRole.chat;
-      if (!model) {
-        throw new Error("No chat model selected");
-      }
+      const model = getSelectedChatModelOrThrow(
+        await this.configHandler.loadConfig(),
+      );
       const abortController = this.addMessageAbortController(msg.messageId);
 
       const completion = await model.complete(
@@ -590,12 +589,9 @@ export class Core {
 
     on("llm/compileChat", async (msg) => {
       const { messages, options } = msg.data;
-      const model = (await this.configHandler.loadConfig()).config
-        ?.selectedModelByRole.chat;
-
-      if (!model) {
-        throw new Error("No chat model selected");
-      }
+      const model = getSelectedChatModelOrThrow(
+        await this.configHandler.loadConfig(),
+      );
 
       return model.compileChatMessages(messages, options);
     });
@@ -609,23 +605,17 @@ export class Core {
     });
 
     on("chatDescriber/describe", async (msg) => {
-      const currentModel = (await this.configHandler.loadConfig()).config
-        ?.selectedModelByRole.chat;
-
-      if (!currentModel) {
-        throw new Error("No chat model selected");
-      }
+      const currentModel = getSelectedChatModelOrThrow(
+        await this.configHandler.loadConfig(),
+      );
 
       return await ChatDescriber.describe(currentModel, {}, msg.data.text);
     });
 
     on("conversation/compact", async (msg) => {
-      const currentModel = (await this.configHandler.loadConfig()).config
-        ?.selectedModelByRole.chat;
-
-      if (!currentModel) {
-        throw new Error("No chat model selected");
-      }
+      const currentModel = getSelectedChatModelOrThrow(
+        await this.configHandler.loadConfig(),
+      );
 
       try {
         await compactConversation({
