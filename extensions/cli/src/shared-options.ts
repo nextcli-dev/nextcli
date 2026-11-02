@@ -100,6 +100,10 @@ export function addCommonOptions(command: Command): Command {
     .option(
       "--max-cost <usd>",
       "Stop when one run has cost more than this many US dollars (off by default)",
+    )
+    .option(
+      "--effort <level>",
+      "Effort level for this run, for example low, medium or high (experimental; see /effort)",
     );
 }
 
@@ -127,6 +131,7 @@ export function mergeParentOptions(parentCommand: Command, options: any): any {
     "maxTurns",
     "maxSessionTokens",
     "maxCost",
+    "effort",
   ];
 
   for (const optName of inheritableOptions) {

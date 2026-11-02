@@ -1,4 +1,4 @@
-import type { ChatHistoryItem, ToolStatus } from "core/index.js";
+import type { ChatHistoryItem, Reasoning, ToolStatus } from "core/index.js";
 import { generateOpenAIToolCallId } from "core/tools/systemMessageTools/systemToolUtils.js";
 import { stripImages } from "core/util/messageContent.js";
 import { createHistoryItem } from "core/util/messageConversion.js";
@@ -34,6 +34,8 @@ interface HandleToolCallsOptions {
   callbacks: StreamCallbacks | undefined;
   isHeadless: boolean;
   usage?: any;
+  /** The model's reasoning for this response, kept so it can be sent back */
+  reasoning?: Reasoning;
   /** Aborted when the turn is interrupted; remaining tools are not run */
   signal?: AbortSignal;
 }
@@ -126,6 +128,7 @@ export async function handleToolCalls(
     callbacks,
     isHeadless,
     usage,
+    reasoning,
     signal,
   } = options;
   const chatHistorySvc = services.chatHistory;
@@ -135,7 +138,12 @@ export async function handleToolCalls(
     if (content) {
       if (useService) {
         // Service-driven: write assistant message via service
-        chatHistorySvc.addAssistantMessage(content, undefined, usage);
+        chatHistorySvc.addAssistantMessage(
+          content,
+          undefined,
+          usage,
+          reasoning,
+        );
       } else {
         // Fallback only when service is unavailable
         const message: any = {
@@ -145,7 +153,7 @@ export async function handleToolCalls(
         if (usage) {
           message.usage = usage;
         }
-        chatHistory.push(createHistoryItem(message));
+        chatHistory.push({ ...createHistoryItem(message), reasoning });
       }
     }
     return false;
@@ -201,13 +209,17 @@ export async function handleToolCalls(
       assistantMessage.content || "",
       assistantMessage.toolCalls,
       usage,
+      reasoning,
     );
   } else {
     // Fallback only when service is unavailable
     const messageWithUsage = usage
       ? { ...assistantMessage, usage }
       : assistantMessage;
-    chatHistory.push(createHistoryItem(messageWithUsage, [], toolCallStates));
+    chatHistory.push({
+      ...createHistoryItem(messageWithUsage, [], toolCallStates),
+      reasoning,
+    });
   }
 
   // Cancel calls that repeat the same tool with the same arguments, so a

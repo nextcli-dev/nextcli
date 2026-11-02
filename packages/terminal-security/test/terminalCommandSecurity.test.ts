@@ -1851,8 +1851,8 @@ describe("evaluateTerminalCommandSecurity", () => {
         );
         // Note: Our implementation conservatively splits on ALL newlines to prevent bypass
         // This means even quoted newlines trigger multi-line evaluation
-        // Since 'world' alone isn't a known command, it requires permission
-        expect(result).toBe("allowedWithPermission");
+        // 'world' alone is an unknown command, so it keeps the base policy
+        expect(result).toBe("allowedWithoutPermission");
       });
 
       it("should handle only newlines (no commands)", () => {
@@ -1863,5 +1863,80 @@ describe("evaluateTerminalCommandSecurity", () => {
         expect(result).toBe("allowedWithoutPermission");
       });
     });
+  });
+});
+
+describe("unknown commands follow the tool policy (#10512)", () => {
+  const AUTO: ToolPolicy = "allowedWithoutPermission";
+  const ASK: ToolPolicy = "allowedWithPermission";
+
+  const unknownCommands = [
+    "pytest",
+    "msbuild foo.sln",
+    "dotnet build",
+    "go test ./...",
+    "tsc --noEmit",
+    "pytest > report.txt",
+    "pytest 2>&1 | tee out.log",
+    "cp a.txt b.txt",
+    "cd src && pytest",
+  ];
+  for (const command of unknownCommands) {
+    it(`runs "${command}" without asking when the tool is automatic`, () => {
+      expect(evaluateTerminalCommandSecurity(AUTO, command)).toBe(AUTO);
+    });
+    it(`asks for "${command}" when the tool asks`, () => {
+      expect(evaluateTerminalCommandSecurity(ASK, command)).toBe(ASK);
+    });
+  }
+
+  const stillAsk = [
+    "git push",
+    "/usr/bin/git push",
+    "find . -exec rm {} \\;",
+    "cargo run",
+    "npm install",
+    "python script.py",
+    "powershell.exe .\\script.ps1",
+    "cmd /c build.bat",
+    "curl https://example.com",
+    "docker run alpine",
+    "npx some-package",
+    "go get example.com/pkg",
+    "xargs pytest",
+    "timeout 5 python script.py",
+    "env FOO=1 pytest",
+    "open -a Calculator",
+    "echo x >> ~/.bashrc",
+    "echo x > /etc/hosts",
+    "echo x >| /etc/hosts",
+    "pytest > ../out.txt",
+    "echo x | tee /etc/hosts",
+    "cp a.txt ~/.ssh/config",
+    "cd ../../etc && cat passwd",
+    "shred notes.txt",
+  ];
+  for (const command of stillAsk) {
+    it(`still asks for "${command}" when the tool is automatic`, () => {
+      expect(evaluateTerminalCommandSecurity(AUTO, command)).toBe(ASK);
+    });
+  }
+
+  it("keeps harmless redirect targets automatic", () => {
+    expect(evaluateTerminalCommandSecurity(AUTO, "pytest > /dev/null")).toBe(
+      AUTO,
+    );
+  });
+
+  it("does not treat Windows switches as paths", () => {
+    expect(evaluateTerminalCommandSecurity(AUTO, "xcopy src dst /E /Y")).toBe(
+      AUTO,
+    );
+  });
+
+  it("still disables catastrophic commands chained to unknown ones", () => {
+    expect(evaluateTerminalCommandSecurity(AUTO, "pytest && rm -rf /")).toBe(
+      "disabled",
+    );
   });
 });

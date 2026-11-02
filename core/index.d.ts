@@ -524,11 +524,32 @@ interface ToolCallState {
   mcpUiState?: McpUiState;
 }
 
-interface Reasoning {
+/**
+ * One structured reasoning item, in OpenRouter's `reasoning_details` shape:
+ * `reasoning.text` (with an optional `signature`), `reasoning.summary`, or
+ * `reasoning.encrypted` (`data`). Signed and encrypted items must be sent
+ * back unmodified.
+ */
+export interface ReasoningDetail {
+  type?: string;
+  text?: string;
+  summary?: string;
+  signature?: string;
+  data?: string;
+  id?: string;
+  index?: number;
+  [key: string]: unknown;
+}
+
+export interface Reasoning {
   active: boolean;
   text: string;
   startAt: number;
   endAt?: number;
+  /** Field the reasoning text arrived in, so it can be sent back the same way */
+  textField?: "reasoning_content" | "reasoning";
+  /** Structured reasoning (signatures, encrypted reasoning) to send back */
+  details?: ReasoningDetail[];
 }
 
 export interface ChatHistoryItem {

@@ -1,7 +1,11 @@
 import { streamSse } from "@nextcli/fetch";
-import { ChatCompletionChunk, Model } from "openai/resources/index";
+import {
+  ChatCompletionChunk,
+  ChatCompletionCreateParams,
+  Model,
+} from "openai/resources/index";
 import { DeepseekConfig } from "../types.js";
-import { chatChunk, customFetch } from "../util.js";
+import { addEmptyReasoningContent, chatChunk, customFetch } from "../util.js";
 import { OpenAIApi } from "./OpenAI.js";
 import { FimCreateParamsStreaming } from "./base.js";
 
@@ -13,6 +17,10 @@ export class DeepSeekApi extends OpenAIApi {
       provider: "openai",
       apiBase: config.apiBase ?? DEEPSEEK_API_BASE,
     });
+  }
+
+  modifyChatBody<T extends ChatCompletionCreateParams>(body: T): T {
+    return addEmptyReasoningContent(super.modifyChatBody(body));
   }
 
   async *fimStream(

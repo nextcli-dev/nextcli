@@ -65,3 +65,19 @@ describe("OpenAI reasoning model request bodies", () => {
     expect(older.top_p).toBeUndefined();
   });
 });
+
+describe("OpenAI request bodies and Anthropic-only controls", () => {
+  it("never sends the nextcli_ control fields", () => {
+    const api = new OpenAIApi({ provider: "openai", apiKey: "test-key" });
+    const result = api.modifyChatBody({
+      model: "gpt-4.1",
+      messages: [{ role: "user", content: "Hi" }],
+      nextcli_fast: true,
+      nextcli_show_thinking: true,
+      reasoning_effort: "low",
+    } as ChatCompletionCreateParams);
+    expect(result).not.toHaveProperty("nextcli_fast");
+    expect(result).not.toHaveProperty("nextcli_show_thinking");
+    expect(result.reasoning_effort).toBe("low");
+  });
+});

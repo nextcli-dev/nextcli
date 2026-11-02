@@ -41,7 +41,10 @@ function splitChatHistoryItem(
     return [item];
   }
 
-  return splitContentIntoHistoryItems(item, content, terminalWidth);
+  // Reasoning belongs above the reply, so only the first part shows it
+  return splitContentIntoHistoryItems(item, content, terminalWidth).map(
+    (part, index) => (index === 0 ? part : { ...part, reasoning: undefined }),
+  );
 }
 
 /**

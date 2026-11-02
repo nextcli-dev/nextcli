@@ -5,6 +5,7 @@ import { encode } from "gpt-tokenizer";
 import type { ChatCompletionTool } from "openai/resources/chat/completions.mjs";
 
 import { logger } from "./logger.js";
+import { getModelSettings } from "./modelSettings.js";
 
 const DEFAULT_MAX_TOKENS_RATIO = 0.35;
 const MAX_MAX_TOKENS = 64_000;
@@ -17,8 +18,11 @@ export const DEFAULT_CONTEXT_LENGTH = 200_000;
  * @returns The context length limit in tokens
  */
 export function getModelContextLimit(model: ModelConfig): number {
+  // A window chosen in the model menu takes precedence over the config
   return (
-    model.defaultCompletionOptions?.contextLength ?? DEFAULT_CONTEXT_LENGTH
+    getModelSettings(model).contextLength ??
+    model.defaultCompletionOptions?.contextLength ??
+    DEFAULT_CONTEXT_LENGTH
   );
 }
 
@@ -140,6 +144,12 @@ export function countChatHistoryItemTokens(
       tokenCount += encode(contextItem.content).length;
       tokenCount += encode(contextItem.name).length;
       tokenCount += 5; // Context item structure overhead
+    }
+
+    // Reasoning sent back with the message (#12246). Anthropic keeps earlier
+    // turns' thinking in context on newer models, so count it for every turn
+    if (historyItem.reasoning?.text) {
+      tokenCount += encode(historyItem.reasoning.text).length;
     }
 
     // Add tokens for tool call states (tool results/outputs)

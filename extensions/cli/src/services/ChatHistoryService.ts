@@ -1,4 +1,4 @@
-import type { ChatHistoryItem, ToolStatus } from "core/index.js";
+import type { ChatHistoryItem, Reasoning, ToolStatus } from "core/index.js";
 import { createHistoryItem } from "core/util/messageConversion.js";
 
 import { loadSessionById, updateSessionHistory } from "../session.js";
@@ -132,6 +132,7 @@ export class ChatHistoryService extends BaseService<ChatHistoryState> {
     content: string,
     toolCalls?: any[],
     usage?: any,
+    reasoning?: Reasoning,
   ): ChatHistoryItem {
     const message: any = {
       role: "assistant",
@@ -192,6 +193,9 @@ export class ChatHistoryService extends BaseService<ChatHistoryState> {
     });
 
     const newMessage = createHistoryItem(message, [], toolCallStates);
+    if (reasoning) {
+      newMessage.reasoning = reasoning;
+    }
     const newHistory = [...this.currentState.history, newMessage];
     this.setHistoryInternal(newHistory);
 

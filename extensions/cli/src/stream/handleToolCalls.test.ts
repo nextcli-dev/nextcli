@@ -492,4 +492,36 @@ describe("handleToolCalls - loop guards", () => {
       .calls[0][1] as { id: string }[];
     expect(stored.map((tc) => tc.id)).toEqual(ids);
   });
+
+  // #12246
+  it("stores the model's reasoning with the assistant message", async () => {
+    const reasoning = {
+      active: false,
+      text: "Look at a.ts",
+      startAt: 0,
+      textField: "reasoning_content" as const,
+    };
+
+    await handleToolCalls({
+      toolCalls: [call("call-9", { path: "a.ts" })],
+      chatHistory: [],
+      content: "",
+      callbacks: undefined,
+      isHeadless: true,
+      reasoning,
+    });
+    await handleToolCalls({
+      toolCalls: [],
+      chatHistory: [],
+      content: "Done",
+      callbacks: undefined,
+      isHeadless: true,
+      reasoning,
+    });
+
+    const calls = vi.mocked(services.chatHistory.addAssistantMessage).mock
+      .calls;
+    expect(calls[0][3]).toBe(reasoning);
+    expect(calls[1]).toEqual(["Done", undefined, undefined, reasoning]);
+  });
 });

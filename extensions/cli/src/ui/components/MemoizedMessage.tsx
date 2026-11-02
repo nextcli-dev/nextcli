@@ -4,6 +4,8 @@ import React, { memo } from "react";
 import { ToolCallTitle } from "src/tools/ToolCallTitle.js";
 
 import type { ChatHistoryItem } from "../../../../../core/index.js";
+import { services } from "../../services/index.js";
+import { shouldShowReasoning } from "../../util/modelSettings.js";
 import { MarkdownRenderer } from "../MarkdownRenderer.js";
 import { ToolResultSummary } from "../ToolResultSummary.js";
 
@@ -47,9 +49,35 @@ interface MemoizedMessageProps {
   hideBullet?: boolean;
 }
 
+/** Off when "Show thinking" is turned off in the model menu */
+function isReasoningShown(): boolean {
+  try {
+    return shouldShowReasoning(services.model?.getState()?.model);
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * The model's reasoning, shown dimmed above its reply. Models that return
+ * only a signature (no readable text) show nothing.
+ */
+function ReasoningBlock({ text }: { text?: string }) {
+  const trimmed = text?.trim();
+  if (!trimmed || !isReasoningShown()) return null;
+  return (
+    <Box flexDirection="column" marginBottom={1} paddingLeft={2}>
+      <Text color="dim" italic>
+        Thinking
+      </Text>
+      <Text color="dim">{trimmed}</Text>
+    </Box>
+  );
+}
+
 export const MemoizedMessage = memo<MemoizedMessageProps>(
   ({ item, index, hideBullet = false }) => {
-    const { message, toolCallStates, conversationSummary } = item;
+    const { message, toolCallStates, conversationSummary, reasoning } = item;
     const isUser = message.role === "user";
     const isSystem = message.role === "system";
     const isAssistant = message.role === "assistant";
@@ -84,6 +112,7 @@ export const MemoizedMessage = memo<MemoizedMessageProps>(
     if (toolCallStates && toolCallStates.length > 0) {
       return (
         <Box key={index} flexDirection="column">
+          <ReasoningBlock text={reasoning?.text} />
           {/* Render assistant message content if any */}
           {message.content && (
             <Box marginBottom={1}>
@@ -162,7 +191,7 @@ export const MemoizedMessage = memo<MemoizedMessageProps>(
     // Handle regular messages
     const isStreaming = isAssistant && !message.content && !toolCallStates;
 
-    return (
+    const reply = (
       <Box key={index} marginBottom={1}>
         <Text color={isUser ? "blue" : "white"}>{hideBullet ? " " : "●"}</Text>
         <Text> </Text>
@@ -176,6 +205,16 @@ export const MemoizedMessage = memo<MemoizedMessageProps>(
           />
         )}
         {isStreaming && <Text color="dim">▋</Text>}
+      </Box>
+    );
+
+    if (!isAssistant || !reasoning?.text?.trim() || !isReasoningShown()) {
+      return reply;
+    }
+    return (
+      <Box key={index} flexDirection="column">
+        <ReasoningBlock text={reasoning.text} />
+        {reply}
       </Box>
     );
   },
@@ -193,6 +232,7 @@ export const MemoizedMessage = memo<MemoizedMessageProps>(
       JSON.stringify(prevToolStates) === JSON.stringify(nextToolStates) &&
       prevProps.item.conversationSummary ===
         nextProps.item.conversationSummary &&
+      prevProps.item.reasoning?.text === nextProps.item.reasoning?.text &&
       prevProps.index === nextProps.index &&
       prevProps.hideBullet === nextProps.hideBullet
     );

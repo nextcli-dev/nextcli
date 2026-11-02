@@ -30,6 +30,11 @@ type ParsedToken = string | ShellOperator | GlobPattern | CommentToken;
  * This function uses shell-quote for proper tokenization, then implements
  * defense-in-depth security validation for terminal commands.
  *
+ * Critical commands are disabled, and high-risk or destructive commands, and
+ * risky forms of commands such as git or find, require permission. Commands
+ * the evaluator does not recognise keep the base policy, so a tool set to
+ * automatic runs them without asking.
+ *
  * @param basePolicy The base policy configured for the tool
  * @param command The command string to evaluate
  * @returns The security policy to apply: 'disabled', 'allowedWithPermission', or 'allowedWithoutPermission'
@@ -219,6 +224,7 @@ function evaluateTokens(
         const commandPolicy = evaluateSingleCommand(
           currentCommand,
           originalCommand,
+          basePolicy,
         );
         mostRestrictivePolicy = getMostRestrictive(
           mostRestrictivePolicy,
@@ -233,6 +239,29 @@ function evaluateTokens(
 
       // Reset for next command
       currentCommand = [];
+
+      // A redirection target is a file, not a command. Writing outside the
+      // workspace requires permission (echo x >> ~/.bashrc, > /var/log/syslog)
+      const op = (token as ShellOperator).op;
+      if (REDIRECT_OPERATORS.includes(op)) {
+        // `>|` is parsed as `>` followed by `|`
+        let targetIndex = i + 1;
+        const next = tokens[targetIndex];
+        if (op === ">" && next && isOperator(next) && next.op === "|") {
+          targetIndex++;
+        }
+        const target = tokens[targetIndex];
+        if (typeof target === "string") {
+          if (op !== "<" && op !== "<&" && isOutsideWorkspacePath(target)) {
+            mostRestrictivePolicy = getMostRestrictive(
+              mostRestrictivePolicy,
+              "allowedWithPermission",
+            );
+          }
+          i = targetIndex;
+        }
+        continue;
+      }
 
       // Handle pipe operator specially - check if piping to dangerous command
       if ((token as ShellOperator).op === "|") {
@@ -258,6 +287,7 @@ function evaluateTokens(
     const commandPolicy = evaluateSingleCommand(
       currentCommand,
       originalCommand,
+      basePolicy,
     );
     mostRestrictivePolicy = getMostRestrictive(
       mostRestrictivePolicy,
@@ -385,6 +415,7 @@ function evaluatePipeChain(
 function evaluateSingleCommand(
   commandTokens: string[],
   originalCommand: string,
+  basePolicy: ToolPolicy,
 ): ToolPolicy {
   if (commandTokens.length === 0) {
     return "allowedWithoutPermission";
@@ -415,8 +446,15 @@ function evaluateSingleCommand(
     return "allowedWithoutPermission";
   }
 
-  // Default: unknown commands require permission
-  return "allowedWithPermission";
+  // A command isSafeCommand inspects by its arguments, in a form it did not
+  // accept (git push, find -exec, cargo run, tar x...), requires permission
+  if (ARGUMENT_CHECKED_COMMANDS.includes(normalizeCommandName(baseCommand))) {
+    return "allowedWithPermission";
+  }
+
+  // Unknown commands (pytest, msbuild, dotnet...) are not known to be risky,
+  // so the policy the user chose for the tool decides (#10512)
+  return basePolicy;
 }
 
 /**
@@ -623,6 +661,9 @@ function isHighRiskPackageManager(
   if (packageManagers.includes(baseCommand)) {
     // Check for install/add subcommands
     const installCommands = ["install", "add", "i"];
+    if (baseCommand === "go") {
+      installCommands.push("get");
+    }
     if (args.length > 0 && installCommands.includes(args[0])) {
       return true;
     }
@@ -682,8 +723,12 @@ function isHighRiskScriptInterpreter(
     "tcl",
     "powershell",
     "pwsh",
+    "cmd",
+    "wscript",
+    "cscript",
   ];
 
+  baseCommand = baseCommand.replace(/\.exe$/, "");
   if (scriptInterpreters.includes(baseCommand)) {
     // Allow interpreter --help and --version
     if (
@@ -1002,9 +1047,159 @@ function isHighRiskCommand(
   if (isHighRiskHistoryManipulation(baseCommand, args)) return true;
   if (isHighRiskDNSTool(baseCommand)) return true;
   if (isHighRiskMacOSCommand(baseCommand, args)) return true;
+  if (isHighRiskPackageRunner(baseCommand)) return true;
+  if (isHighRiskCommandWrapper(baseCommand, args)) return true;
+  if (isHighRiskAppLauncher(baseCommand)) return true;
+  if (isHighRiskOutsideWorkspacePath(baseCommand, args)) return true;
 
   return false;
 }
+
+/**
+ * Checks if command downloads and runs a package (npx, bunx, uvx...)
+ */
+function isHighRiskPackageRunner(baseCommand: string): boolean {
+  return ["npx", "pnpx", "bunx", "uvx"].includes(baseCommand);
+}
+
+/**
+ * Checks if command runs its arguments as another command. The wrapped
+ * command is not evaluated on its own, so it requires permission.
+ */
+function isHighRiskCommandWrapper(
+  baseCommand: string,
+  args: string[],
+): boolean {
+  const wrappers = [
+    "xargs",
+    "env",
+    "nice",
+    "ionice",
+    "nohup",
+    "command",
+    "builtin",
+    "time",
+    "stdbuf",
+    "timeout",
+    "busybox",
+    "toybox",
+    "watch",
+    "setsid",
+    "parallel",
+    "script",
+  ];
+  return wrappers.includes(baseCommand) && args.length > 0;
+}
+
+/**
+ * Checks if command opens an application, file, or URL
+ */
+function isHighRiskAppLauncher(baseCommand: string): boolean {
+  return ["open", "xdg-open", "gnome-open", "start", "explorer"].includes(
+    baseCommand,
+  );
+}
+
+/**
+ * Checks if a command that writes files or changes directory points outside
+ * the workspace (cp x ~/.bashrc, tee /etc/hosts, cd ../../etc)
+ */
+function isHighRiskOutsideWorkspacePath(
+  baseCommand: string,
+  args: string[],
+): boolean {
+  if (baseCommand === "shred") {
+    return true;
+  }
+  const pathCommands = [
+    "cp",
+    "mv",
+    "ln",
+    "tee",
+    "install",
+    "touch",
+    "mkdir",
+    "truncate",
+    "chmod",
+    "chown",
+    "chgrp",
+    "rmdir",
+    "copy",
+    "move",
+    "xcopy",
+    "robocopy",
+    "ren",
+    "rename",
+    "cd",
+    "pushd",
+  ];
+  if (!pathCommands.includes(baseCommand)) {
+    return false;
+  }
+  // Windows commands take switches such as /Y or /E:x, which are not paths
+  const windowsCommands = [
+    "copy",
+    "move",
+    "xcopy",
+    "robocopy",
+    "ren",
+    "rename",
+  ];
+  return args.some(
+    (arg) =>
+      !arg.startsWith("-") &&
+      !(
+        windowsCommands.includes(baseCommand) && /^\/[a-z?]+(:\S*)?$/i.test(arg)
+      ) &&
+      isOutsideWorkspacePath(arg),
+  );
+}
+
+const REDIRECT_OPERATORS = [">", ">>", ">&", "<", "<&"];
+
+const HARMLESS_WRITE_TARGETS = ["/dev/null", "/dev/stdout", "/dev/stderr"];
+
+/**
+ * Checks if a path is absolute, in the home directory, or climbs out of the
+ * current directory with `..`
+ */
+function isOutsideWorkspacePath(path: string): boolean {
+  if (/^\d+$/.test(path) || path === "-") {
+    // A file descriptor (2>&1) or stdin/stdout
+    return false;
+  }
+  if (HARMLESS_WRITE_TARGETS.includes(path)) {
+    return false;
+  }
+  return (
+    path.startsWith("/") ||
+    path.startsWith("~") ||
+    /^\$\{?(HOME|USERPROFILE)\b/.test(path) ||
+    /^%(USERPROFILE|APPDATA|SYSTEMROOT|WINDIR)%/i.test(path) ||
+    /^[a-z]:[\\/]/i.test(path) ||
+    path.startsWith("\\\\") ||
+    /(^|[\\/])\.\.([\\/]|$)/.test(path)
+  );
+}
+
+/**
+ * Commands that isSafeCommand only accepts with certain arguments. Any other
+ * form of them requires permission, even when the tool policy is automatic.
+ */
+const ARGUMENT_CHECKED_COMMANDS = [
+  "grep",
+  "find",
+  "git",
+  "npm",
+  "yarn",
+  "pnpm",
+  "make",
+  "gradle",
+  "mvn",
+  "cargo",
+  "tar",
+  "zip",
+];
 
 /**
  * Checks if a command is safe and can be auto-approved

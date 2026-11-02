@@ -1,7 +1,11 @@
 import { streamSse } from "@nextcli/fetch";
-import { ChatCompletionChunk, Model } from "openai/resources/index";
+import {
+  ChatCompletionChunk,
+  ChatCompletionCreateParams,
+  Model,
+} from "openai/resources/index";
 import { MoonshotConfig } from "../types.js";
-import { chatChunk, customFetch } from "../util.js";
+import { addEmptyReasoningContent, chatChunk, customFetch } from "../util.js";
 import { OpenAIApi } from "./OpenAI.js";
 import { FimCreateParamsStreaming } from "./base.js";
 
@@ -12,6 +16,14 @@ export class MoonshotApi extends OpenAIApi {
       ...config,
       provider: "openai",
     });
+  }
+
+  modifyChatBody<T extends ChatCompletionCreateParams>(body: T): T {
+    body = super.modifyChatBody(body);
+    // Only Kimi models require reasoning_content (core: llms/Moonshot.ts)
+    return body.model.startsWith("kimi")
+      ? addEmptyReasoningContent(body)
+      : body;
   }
 
   async *fimStream(

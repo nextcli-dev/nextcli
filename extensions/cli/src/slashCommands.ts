@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from "uuid";
 import { getAllSlashCommands } from "./commands/commands.js";
 import { handleInit } from "./commands/init.js";
 import { handleInfoSlashCommand } from "./infoScreen.js";
+import { services } from "./services/index.js";
 import type { AssistantConfig } from "./services/types.js";
 import { getCurrentSession, updateSessionTitle } from "./session.js";
 import { telemetryService } from "./telemetry/telemetryService.js";
@@ -17,6 +18,12 @@ import {
   getSkillSlashCommandName,
   loadMarkdownSkills,
 } from "./util/loadMarkdownSkills.js";
+import {
+  effortLabel,
+  getModelControlsFor,
+  getModelSettings,
+  updateModelSettings,
+} from "./util/modelSettings.js";
 
 type CommandHandler = (
   args: string[],
@@ -254,6 +261,36 @@ function handleImport(args: string[]): SlashCommandResult {
   }
 }
 
+/**
+ * `/effort [level]`: shows or sets the current model's effort level
+ * (experimental). `/effort default` clears it.
+ */
+export function handleEffort(args: string[]): SlashCommandResult {
+  const model = services.model.getState()?.model;
+  if (!model) {
+    return { output: "No model is selected." };
+  }
+  const controls = getModelControlsFor(model);
+  const name = model.name || model.model;
+  if (controls.efforts.length === 0) {
+    return { output: `${name} has no effort levels.` };
+  }
+  const levels = ["default", ...controls.efforts].join(", ");
+  const requested = args[0]?.toLowerCase();
+  if (!requested) {
+    const current = getModelSettings(model).effort;
+    return {
+      output: `Effort for ${name}: ${effortLabel(current)}. Levels: ${levels}.`,
+    };
+  }
+  if (requested !== "default" && !controls.efforts.includes(requested)) {
+    return { output: `Unknown effort "${requested}". Levels: ${levels}.` };
+  }
+  const effort = requested === "default" ? undefined : requested;
+  updateModelSettings(model, { effort });
+  return { output: `Effort for ${name} set to ${effortLabel(effort)}.` };
+}
+
 const commandHandlers: Record<string, CommandHandler> = {
   help: handleHelp,
   clear: () => {
@@ -267,6 +304,7 @@ const commandHandlers: Record<string, CommandHandler> = {
   },
   info: handleInfoSlashCommand,
   model: () => ({ openModelSelector: true }),
+  effort: (args) => handleEffort(args),
   compact: () => {
     return { compact: true };
   },

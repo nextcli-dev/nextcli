@@ -94,3 +94,29 @@ describe("resolveEnvProviderConfig", () => {
     });
   });
 });
+
+describe("resolveEnvProviderConfig OneProvider", () => {
+  it("picks OneProvider from ONEPROVIDER_API_KEY", () => {
+    const result = resolveEnvProviderConfig({ ONEPROVIDER_API_KEY: "sk-one" });
+    expect(result?.providerId).toBe("oneprovider");
+    expect(result?.yaml).toContain("provider: oneprovider");
+    expect(result?.yaml).toContain("model: claude-sonnet-5-5");
+    expect(result?.yaml).toContain("model: deepseek-v4-pro");
+  });
+
+  it("accepts ONEPROVIDER_KEY, the name OneProvider's docs use", () => {
+    const result = resolveEnvProviderConfig({ ONEPROVIDER_KEY: "sk-one" });
+    expect(result?.providerId).toBe("oneprovider");
+    expect(result?.source).toBe("ONEPROVIDER_KEY");
+    expect(result?.yaml).toContain("apiKey: sk-one");
+  });
+
+  it("works with NEXTCLI_PROVIDER and a model", () => {
+    const result = resolveEnvProviderConfig({
+      NEXTCLI_PROVIDER: "oneprovider",
+      NEXTCLI_MODEL: "gpt-6.1-sol",
+      ONEPROVIDER_KEY: "sk-one",
+    });
+    expect(result?.yaml).toContain("model: gpt-6.1-sol");
+  });
+});

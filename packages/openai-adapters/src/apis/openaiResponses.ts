@@ -20,6 +20,7 @@ import {
   ResponseFunctionCallArgumentsDoneEvent,
   ResponseIncompleteEvent,
   ResponseInput,
+  ResponseInputItem,
   ResponseInputAudio,
   ResponseInputContent,
   ResponseInputFile,
@@ -27,6 +28,7 @@ import {
   ResponseInputText,
   ResponseOutputItem,
   ResponseOutputMessage,
+  ResponseReasoningItem,
   ResponseOutputRefusal,
   ResponseOutputText,
   ResponseReasoningSummaryTextDeltaEvent,
@@ -292,6 +294,49 @@ function resolveToolChoice(
   return undefined;
 }
 
+interface ReasoningDetailParam {
+  type?: string;
+  id?: string;
+  data?: string;
+  summary?: string;
+}
+
+/**
+ * Rebuilds reasoning items from `reasoning_details` sent back on an assistant
+ * message. Only items with encrypted content are sent: without it the server
+ * can't use them (core drops them the same way).
+ */
+function toReasoningInputItems(details: unknown): ResponseInputItem[] {
+  if (!Array.isArray(details)) {
+    return [];
+  }
+  const typed = details as ReasoningDetailParam[];
+  return typed
+    .filter(
+      (detail) =>
+        detail?.type === "reasoning.encrypted" && detail.id && detail.data,
+    )
+    .map((detail) => {
+      const summary = typed
+        .filter(
+          (other) =>
+            other?.type === "reasoning.summary" &&
+            other.id === detail.id &&
+            other.summary,
+        )
+        .map((other) => ({
+          type: "summary_text" as const,
+          text: other.summary!,
+        }));
+      return {
+        type: "reasoning",
+        id: detail.id!,
+        summary,
+        encrypted_content: detail.data!,
+      } as ResponseInputItem;
+    });
+}
+
 export function toResponsesInput(
   messages: ChatCompletionMessageParam[],
 ): ResponseInput {
@@ -340,6 +385,12 @@ export function toResponsesInput(
 
     if (message.role === "assistant") {
       const assistantMessage = message as ChatCompletionAssistantMessageParam;
+      // Earlier reasoning goes back first, before the output that followed it
+      inputItems.push(
+        ...toReasoningInputItems(
+          (message as { reasoning_details?: unknown }).reasoning_details,
+        ),
+      );
       const assistantContentParts = collectAssistantContentParts(
         assistantMessage.content,
         assistantMessage.refusal ?? null,
@@ -437,6 +488,22 @@ export function toResponsesParams(
     responsesParams.reasoning = {
       effort: params.reasoning_effort,
     };
+  }
+  if (isReasoningModel) {
+    // Encrypted reasoning comes back with each response, so it can be sent
+    // back with the next request (as core does)
+    responsesParams.include = ["reasoning.encrypted_content"];
+    // Readable summaries only when asked for: some organizations need to be
+    // verified to receive them
+    if ((params as { nextcli_show_thinking?: boolean }).nextcli_show_thinking) {
+      responsesParams.reasoning = {
+        ...responsesParams.reasoning,
+        summary: "auto",
+      };
+    }
+  }
+  if (params.service_tier) {
+    responsesParams.service_tier = params.service_tier;
   }
 
   // Remove undefined properties to avoid overriding server defaults
@@ -619,29 +686,33 @@ export function fromResponsesChunk(
       }
       return buildChunk(state, { content: event.delta });
     }
+    // Reasoning uses the same fields as OpenRouter: the text in `reasoning`,
+    // structured items in `reasoning_details`, keyed by output index
     case "response.reasoning_text.delta": {
       return buildChunk(state, {
-        reasoning: {
-          content: [
-            {
-              type: "reasoning_text",
-              text: event.delta,
-            },
-          ],
-        },
+        reasoning: event.delta,
+        reasoning_details: [
+          {
+            type: "reasoning.text",
+            text: event.delta,
+            id: event.item_id,
+            index: event.output_index,
+          },
+        ],
       } as any);
     }
     case "response.reasoning_summary_text.delta": {
       const summaryEvent = event as ResponseReasoningSummaryTextDeltaEvent;
       return buildChunk(state, {
-        reasoning: {
-          content: [
-            {
-              type: "reasoning_text",
-              text: summaryEvent.delta,
-            },
-          ],
-        },
+        reasoning: summaryEvent.delta,
+        reasoning_details: [
+          {
+            type: "reasoning.summary",
+            summary: summaryEvent.delta,
+            id: summaryEvent.item_id,
+            index: summaryEvent.output_index,
+          },
+        ],
       } as any);
     }
     case "response.refusal.delta": {
@@ -688,6 +759,24 @@ export function fromResponsesChunk(
       return undefined;
     }
     case "response.output_item.done": {
+      // The encrypted reasoning arrives with the finished reasoning item. It
+      // is sent back on later requests so the model keeps its reasoning
+      if (event.item.type === "reasoning") {
+        const reasoningItem = event.item as ResponseReasoningItem;
+        if (!reasoningItem.encrypted_content) {
+          return undefined;
+        }
+        return buildChunk(state, {
+          reasoning_details: [
+            {
+              type: "reasoning.encrypted",
+              id: reasoningItem.id,
+              data: reasoningItem.encrypted_content,
+              index: event.output_index,
+            },
+          ],
+        } as any);
+      }
       if (event.item.type === "function_call") {
         return buildChunk(state, {}, "tool_calls");
       }

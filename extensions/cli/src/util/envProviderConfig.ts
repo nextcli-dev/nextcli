@@ -1,6 +1,10 @@
 import { stringify } from "yaml";
 
-import { getProviderPreset, PROVIDER_PRESETS } from "./providerPresets.js";
+import {
+  getPresetApiKeyFromEnv,
+  getProviderPreset,
+  PROVIDER_PRESETS,
+} from "./providerPresets.js";
 
 export interface EnvProviderConfig {
   providerId: string;
@@ -22,10 +26,11 @@ export const SUPPORTED_ENV_VARS = [
  * config.yaml (e.g. `cn -p` in CI). The config only exists in memory.
  *
  * NEXTCLI_PROVIDER selects a provider explicitly (anthropic, openai, deepseek,
- * openrouter, openai-compatible, ollama), with NEXTCLI_MODEL,
+ * openrouter, oneprovider, openai-compatible, ollama), with NEXTCLI_MODEL,
  * NEXTCLI_MODEL_API_KEY and NEXTCLI_MODEL_BASE_URL. Otherwise the first of
- * ANTHROPIC_API_KEY, OPENAI_API_KEY, DEEPSEEK_API_KEY and OPENROUTER_API_KEY
- * picks the provider, and NEXTCLI_MODEL can still override its default model.
+ * ANTHROPIC_API_KEY, OPENAI_API_KEY, DEEPSEEK_API_KEY, OPENROUTER_API_KEY and
+ * ONEPROVIDER_API_KEY (or ONEPROVIDER_KEY) picks the provider, and
+ * NEXTCLI_MODEL can still override its default model.
  *
  * Throws when NEXTCLI_PROVIDER is set but incomplete, so a typo is not silently ignored.
  */
@@ -45,7 +50,7 @@ export function resolveEnvProviderConfig(
     }
     const apiKey =
       env.NEXTCLI_MODEL_API_KEY?.trim() ||
-      (preset.envKey ? env[preset.envKey]?.trim() : undefined) ||
+      getPresetApiKeyFromEnv(preset, env)?.value ||
       undefined;
     if (preset.needsApiKey && !apiKey) {
       throw new Error(
@@ -65,12 +70,12 @@ export function resolveEnvProviderConfig(
   }
 
   for (const preset of PROVIDER_PRESETS) {
-    const apiKey = preset.envKey ? env[preset.envKey]?.trim() : undefined;
-    if (apiKey) {
+    const found = getPresetApiKeyFromEnv(preset, env);
+    if (found) {
       return {
         providerId: preset.id,
-        source: preset.envKey!,
-        yaml: toConfigYaml(preset.models({ apiKey, model })),
+        source: found.name,
+        yaml: toConfigYaml(preset.models({ apiKey: found.value, model })),
       };
     }
   }

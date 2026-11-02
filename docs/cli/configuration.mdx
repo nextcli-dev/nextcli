@@ -28,9 +28,58 @@ Use `/config` inside a TUI session to switch between available configurations:
 
 This shows your available local configs. The selection is saved for next time.
 
+## Model settings
+
+`/model` opens the model menu (experimental): the current model and its settings. Rows a model doesn't support are hidden.
+
+| Setting | What it changes |
+| --- | --- |
+| Effort | Reasoning depth. Claude: `output_config.effort` (or a thinking budget on older models). OpenAI and OpenRouter: `reasoning_effort`. DeepSeek: `Off` turns thinking off. |
+| Show thinking | Requests readable reasoning and shows it dimmed above each reply. Reasoning is still kept and sent back when this is off. |
+| Fast | Claude Opus fast mode (`speed: "fast"`), OpenAI priority processing, or OpenRouter's highest-throughput provider. |
+| Context | The context window `cn` plans for when it compacts the conversation. |
+
+Settings are saved per model in `~/.continue/index/globalContext.json`. `/effort high` sets the effort directly, and `/effort default` clears it.
+
+For one run, including headless runs, pass `--effort`:
+
+```bash
+cn -p --effort low "Summarize the changes in this branch"
+```
+
+To set a default in `config.yaml`, use `reasoningEffort`. The flag and the menu take precedence over it:
+
+```yaml
+models:
+  - name: Claude Opus 5.5
+    provider: anthropic
+    model: claude-opus-5-5
+    apiKey: ${{ secrets.ANTHROPIC_API_KEY }}
+    defaultCompletionOptions:
+      reasoningEffort: high
+```
+
 ## `config.yaml`
 
 `cn` looks for `~/.continue/config.yaml`. This file uses the same format as the IDE extensions — see [config.yaml reference](/customize/deep-dives/configuration) for the full schema.
+
+### OneProvider
+
+`provider: oneprovider` uses one [OneProvider](https://oneprovider.dev) key for every model it serves. Claude models go through its Anthropic Messages API, so thinking, effort and fast mode work as they do with `provider: anthropic`. Other models go through its OpenAI-compatible API.
+
+```yaml
+models:
+  - name: Claude Sonnet 5.5
+    provider: oneprovider
+    model: claude-sonnet-5-5
+    apiKey: ${{ secrets.ONEPROVIDER_API_KEY }}
+  - name: DeepSeek V4 Pro
+    provider: oneprovider
+    model: deepseek-v4-pro
+    apiKey: ${{ secrets.ONEPROVIDER_API_KEY }}
+```
+
+Without a `config.yaml`, `cn` picks OneProvider up from `ONEPROVIDER_API_KEY` (or `ONEPROVIDER_KEY`). The VS Code extension doesn't support `provider: oneprovider` yet.
 
 ## CLI-specific flags
 

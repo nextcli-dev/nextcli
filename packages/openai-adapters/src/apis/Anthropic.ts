@@ -41,11 +41,17 @@ import {
 } from "./AnthropicCachingStrategies.js";
 import {
   addCacheControlToLastTwoUserMessages,
+  ANTHROPIC_FAST_MODE_BETA,
+  anthropicFastMode,
+  anthropicThinkingType,
+  anthropicThinksByDefault,
+  clampAnthropicEffort,
   getAnthropicHeaders,
   getAnthropicMediaTypeFromDataUrl,
   filterAnthropicSamplingParams,
   openAiToolChoiceToAnthropicToolChoice,
   openaiToolToAnthropicTool,
+  parseClaudeModelVersion,
 } from "./AnthropicUtils.js";
 import {
   BaseLlmApi,
@@ -53,6 +59,50 @@ import {
   FimCreateParamsStreaming,
   RerankCreateParams,
 } from "./base.js";
+
+/**
+ * Request fields beyond the OpenAI body that callers (the NextCLI CLI) set for
+ * Claude models. They are read here and never sent to the API as is.
+ */
+export interface AnthropicReasoningControls {
+  /** Thinking depth: low, medium, high, xhigh or max (clamped per model) */
+  reasoning_effort?: string;
+  /** Ask for readable (summarized) thinking text instead of omitting it */
+  nextcli_show_thinking?: boolean;
+  /** Fast mode (`speed: "fast"`) on models that support it */
+  nextcli_fast?: boolean;
+  /** Thinking budget for models that use `thinking.budget_tokens` */
+  nextcli_thinking_budget?: number;
+  top_k?: number;
+}
+
+type AnthropicThinking =
+  | { type: "adaptive"; display?: "summarized" | "omitted" }
+  | { type: "enabled"; budget_tokens: number };
+
+type AnthropicRequestBody = Omit<MessageCreateParams, "thinking"> & {
+  thinking?: AnthropicThinking;
+  output_config?: { effort: string };
+  speed?: "fast";
+};
+
+/** Thinking budgets used for effort levels on models without `effort` */
+const EFFORT_THINKING_BUDGETS: Record<string, number> = {
+  minimal: 1024,
+  low: 2048,
+  medium: 8192,
+  high: 16384,
+  xhigh: 32000,
+  max: 32000,
+};
+const MIN_THINKING_BUDGET = 1024;
+
+interface ReasoningDetailParam {
+  type?: string;
+  text?: string;
+  signature?: string;
+  data?: string;
+}
 
 export class AnthropicApi implements BaseLlmApi {
   apiBase: string = "https://api.anthropic.com/v1/";
@@ -93,14 +143,77 @@ export class AnthropicApi implements BaseLlmApi {
     return 32_000;
   }
 
+  /**
+   * Older Claude models keep temperature, top_p and top_k. While thinking is
+   * on they reject temperature and top_k and need a top_p of 0.95 to 1.
+   * Claude 4.7 and newer reject all three (filterAnthropicSamplingParams).
+   */
   private convertSamplingParams(
-    oaiBody: ChatCompletionCreateParams,
-  ): Pick<MessageCreateParams, "temperature" | "top_p"> {
-    const { temperature, topP } = filterAnthropicSamplingParams(oaiBody.model, {
-      temperature: oaiBody.temperature ?? undefined,
-      topP: oaiBody.top_p ?? undefined,
-    });
-    return { temperature, top_p: topP };
+    oaiBody: ChatCompletionCreateParams & AnthropicReasoningControls,
+    thinkingOn: boolean,
+  ): Pick<MessageCreateParams, "temperature" | "top_p" | "top_k"> {
+    if (thinkingOn) {
+      const { topP } = filterAnthropicSamplingParams(oaiBody.model, {
+        topP: oaiBody.top_p ?? undefined,
+      });
+      return { top_p: topP !== undefined && topP >= 0.95 ? topP : undefined };
+    }
+    const { temperature, topP, topK } = filterAnthropicSamplingParams(
+      oaiBody.model,
+      {
+        temperature: oaiBody.temperature ?? undefined,
+        topP: oaiBody.top_p ?? undefined,
+        topK: oaiBody.top_k ?? undefined,
+      },
+    );
+    return { temperature, top_p: topP, top_k: topK };
+  }
+
+  /**
+   * The `thinking` setting for the request, or undefined to keep the model's
+   * default. Claude 4.6 and newer use adaptive thinking: Claude 5 models
+   * think by default, so it is set only to choose whether the text is
+   * returned; Claude 4.6 to 4.8 think only when an effort is chosen. Older
+   * models use a token budget, from the effort level or an explicit budget.
+   */
+  private convertThinking(
+    oaiBody: ChatCompletionCreateParams & AnthropicReasoningControls,
+    maxTokens: number,
+  ): AnthropicThinking | undefined {
+    const model = oaiBody.model;
+    const effort = oaiBody.reasoning_effort;
+    const showThinking = oaiBody.nextcli_show_thinking;
+    const budget = oaiBody.nextcli_thinking_budget;
+
+    if (anthropicThinkingType(model) === "adaptive") {
+      const wanted = anthropicThinksByDefault(model)
+        ? showThinking !== undefined
+        : effort !== undefined || budget !== undefined;
+      if (!wanted) {
+        return undefined;
+      }
+      return {
+        type: "adaptive",
+        ...(showThinking !== undefined && {
+          display: showThinking ? "summarized" : "omitted",
+        }),
+      };
+    }
+
+    if (!parseClaudeModelVersion(model)) {
+      return undefined;
+    }
+    const requested =
+      budget ?? (effort ? EFFORT_THINKING_BUDGETS[effort] : undefined);
+    if (!requested) {
+      return undefined;
+    }
+    // budget_tokens must be at least 1024 and below max_tokens
+    const budgetTokens = Math.max(
+      MIN_THINKING_BUDGET,
+      Math.min(requested, maxTokens - MIN_THINKING_BUDGET),
+    );
+    return { type: "enabled", budget_tokens: budgetTokens };
   }
 
   public _convertToCleanAnthropicBody(
@@ -144,7 +257,32 @@ export class AnthropicApi implements BaseLlmApi {
       }
     }
 
-    const anthropicBody: MessageCreateParams = {
+    const controls = oaiBody as ChatCompletionCreateParams &
+      AnthropicReasoningControls;
+    let maxTokens = oaiBody.max_tokens ?? this.maxTokensForModel(oaiBody.model);
+    const thinking = this.convertThinking(controls, maxTokens);
+    if (thinking?.type === "enabled") {
+      maxTokens = Math.max(
+        maxTokens,
+        thinking.budget_tokens + MIN_THINKING_BUDGET,
+      );
+    }
+    const effort = controls.reasoning_effort
+      ? clampAnthropicEffort(oaiBody.model, controls.reasoning_effort)
+      : undefined;
+    let toolChoice = openAiToolChoiceToAnthropicToolChoice(
+      oaiBody.tool_choice,
+      oaiBody.model,
+    );
+    // Manual thinking only allows tool_choice auto or none
+    if (
+      thinking?.type === "enabled" &&
+      (toolChoice?.type === "any" || toolChoice?.type === "tool")
+    ) {
+      toolChoice = { type: "auto" };
+    }
+
+    const anthropicBody: AnthropicRequestBody = {
       messages: this._convertMessages(
         oaiBody.messages.filter((msg) => msg.role !== "system"),
       ),
@@ -157,19 +295,21 @@ export class AnthropicApi implements BaseLlmApi {
               },
             ]
           : systemMessage,
-      ...this.convertSamplingParams(oaiBody),
-      max_tokens: oaiBody.max_tokens ?? this.maxTokensForModel(oaiBody.model), // max_tokens is required
+      ...this.convertSamplingParams(controls, thinking !== undefined),
+      max_tokens: maxTokens, // max_tokens is required
       model: oaiBody.model,
       stop_sequences: stop,
       stream: oaiBody.stream ?? undefined,
       tools,
-      tool_choice: openAiToolChoiceToAnthropicToolChoice(
-        oaiBody.tool_choice,
-        oaiBody.model,
-      ),
+      tool_choice: toolChoice,
+      ...(thinking && { thinking }),
+      ...(effort && { output_config: { effort } }),
+      ...(controls.nextcli_fast &&
+        anthropicFastMode(oaiBody.model) && { speed: "fast" as const }),
     };
 
-    return anthropicBody;
+    // The SDK types predate adaptive thinking, effort and speed
+    return anthropicBody as MessageCreateParams;
   }
 
   private convertToolCallsToBlocks(
@@ -264,9 +404,15 @@ export class AnthropicApi implements BaseLlmApi {
       case "user":
         return this.convertMessageContentToBlocks(message.content);
       case "assistant":
-        const blocks: ContentBlockParam[] = message.content
-          ? this.convertMessageContentToBlocks(message.content)
-          : [];
+        const blocks: ContentBlockParam[] = [
+          // Thinking blocks go first, unmodified, so they verify (#12246)
+          ...this.convertReasoningDetailsToBlocks(
+            (message as { reasoning_details?: unknown }).reasoning_details,
+          ),
+          ...(message.content
+            ? this.convertMessageContentToBlocks(message.content)
+            : []),
+        ];
         // If any tool calls are present, always put them last
         // Loses order vs what was originally sent, but they typically come last
         for (const toolCall of message.tool_calls ?? []) {
@@ -284,6 +430,37 @@ export class AnthropicApi implements BaseLlmApi {
       default:
         return [];
     }
+  }
+
+  /**
+   * Turns `reasoning_details` sent back on an assistant message into the
+   * thinking blocks Claude produced: `reasoning.text` items with a signature
+   * become `thinking` blocks, `reasoning.encrypted` items become
+   * `redacted_thinking` blocks. Unsigned items can't be verified and are
+   * dropped.
+   */
+  private convertReasoningDetailsToBlocks(
+    details: unknown,
+  ): ContentBlockParam[] {
+    if (!Array.isArray(details)) {
+      return [];
+    }
+    const blocks: ContentBlockParam[] = [];
+    for (const detail of details as ReasoningDetailParam[]) {
+      if (detail?.type === "reasoning.text" && detail.signature) {
+        blocks.push({
+          type: "thinking",
+          thinking: detail.text ?? "",
+          signature: detail.signature,
+        } as ContentBlockParam);
+      } else if (detail?.type === "reasoning.encrypted" && detail.data) {
+        blocks.push({
+          type: "redacted_thinking",
+          data: detail.data,
+        } as ContentBlockParam);
+      }
+    }
+    return blocks;
   }
 
   private _convertMessages(
@@ -329,7 +506,7 @@ export class AnthropicApi implements BaseLlmApi {
       new URL("messages", this.apiBase),
       {
         method: "POST",
-        headers: this.getHeaders(),
+        headers: this.getHeaders(body),
         body: JSON.stringify(this._convertBody(body)),
         signal,
       },
@@ -340,6 +517,7 @@ export class AnthropicApi implements BaseLlmApi {
     }
 
     const completion = await response.json();
+    const reasoning = this.reasoningFromContentBlocks(completion.content);
 
     const usage: Record<string, number> | undefined = completion.usage;
     return {
@@ -369,6 +547,7 @@ export class AnthropicApi implements BaseLlmApi {
               .map((block: any) => block.text)
               .join(""),
             refusal: null,
+            ...reasoning,
           },
           index: 0,
         },
@@ -395,6 +574,23 @@ export class AnthropicApi implements BaseLlmApi {
           if (blockStartEvent.content_block.type === "tool_use") {
             lastToolUseId = blockStartEvent.content_block.id;
             lastToolUseName = blockStartEvent.content_block.name;
+          } else if (
+            (blockStartEvent.content_block.type as string) ===
+            "redacted_thinking"
+          ) {
+            yield chatChunkFromDelta({
+              model,
+              delta: {
+                reasoning_details: [
+                  {
+                    type: "reasoning.encrypted",
+                    data: (blockStartEvent.content_block as { data?: string })
+                      .data,
+                    index: blockStartEvent.index,
+                  },
+                ],
+              } as ChatCompletionChunk.Choice.Delta,
+            });
           }
           break;
         case "message_start":
@@ -416,6 +612,11 @@ export class AnthropicApi implements BaseLlmApi {
         case "content_block_delta":
           // https://docs.anthropic.com/en/api/messages-streaming#delta-types
           const blockDeltaEvent = rawEvent as RawContentBlockDeltaEvent;
+          const reasoningDelta = this.reasoningFromDelta(blockDeltaEvent);
+          if (reasoningDelta) {
+            yield chatChunkFromDelta({ model, delta: reasoningDelta });
+            break;
+          }
           switch (blockDeltaEvent.delta.type) {
             case "text_delta":
               yield chatChunk({
@@ -464,6 +665,73 @@ export class AnthropicApi implements BaseLlmApi {
     });
   }
 
+  /**
+   * Thinking deltas become OpenAI-style reasoning: the text in `reasoning`,
+   * and the block (with its signature) in `reasoning_details`, keyed by the
+   * content block index so separate thinking blocks stay separate.
+   */
+  private reasoningFromDelta(
+    event: RawContentBlockDeltaEvent,
+  ): ChatCompletionChunk.Choice.Delta | undefined {
+    const delta = event.delta as {
+      type: string;
+      thinking?: string;
+      signature?: string;
+    };
+    if (delta.type === "thinking_delta") {
+      if (!delta.thinking) {
+        return undefined;
+      }
+      return {
+        reasoning: delta.thinking,
+        reasoning_details: [
+          { type: "reasoning.text", text: delta.thinking, index: event.index },
+        ],
+      } as ChatCompletionChunk.Choice.Delta;
+    }
+    if (delta.type === "signature_delta" && delta.signature) {
+      return {
+        reasoning_details: [
+          {
+            type: "reasoning.text",
+            signature: delta.signature,
+            index: event.index,
+          },
+        ],
+      } as ChatCompletionChunk.Choice.Delta;
+    }
+    return undefined;
+  }
+
+  /** The same reasoning fields, from a non-streamed response's blocks */
+  private reasoningFromContentBlocks(content: unknown): {
+    reasoning?: string;
+    reasoning_details?: ReasoningDetailParam[];
+  } {
+    if (!Array.isArray(content)) {
+      return {};
+    }
+    let text = "";
+    const details: (ReasoningDetailParam & { index: number })[] = [];
+    content.forEach((block: any, index: number) => {
+      if (block?.type === "thinking") {
+        text += block.thinking ?? "";
+        details.push({
+          type: "reasoning.text",
+          text: block.thinking ?? "",
+          signature: block.signature,
+          index,
+        });
+      } else if (block?.type === "redacted_thinking") {
+        details.push({ type: "reasoning.encrypted", data: block.data, index });
+      }
+    });
+    return {
+      ...(text && { reasoning: text }),
+      ...(details.length > 0 && { reasoning_details: details }),
+    };
+  }
+
   async *chatCompletionStream(
     body: ChatCompletionCreateParamsStreaming,
     signal: AbortSignal,
@@ -472,7 +740,7 @@ export class AnthropicApi implements BaseLlmApi {
       new URL("messages", this.apiBase),
       {
         method: "POST",
-        headers: this.getHeaders(),
+        headers: this.getHeaders(body),
         body: JSON.stringify(this._convertBody(body)),
         signal,
       },
@@ -480,9 +748,26 @@ export class AnthropicApi implements BaseLlmApi {
     yield* this.handleStreamResponse(response, body.model);
   }
 
-  private getHeaders(): Record<string, string> {
+  private getHeaders(
+    body?: ChatCompletionCreateParams,
+  ): Record<string, string> {
     const enableCaching = this.config?.cachingStrategy !== "none";
-    return getAnthropicHeaders(this.config.apiKey, enableCaching, this.apiBase);
+    const headers = getAnthropicHeaders(
+      this.config.apiKey,
+      enableCaching,
+      this.apiBase,
+    );
+    // Fast mode on Opus 5 and Opus 4.8 is a research preview behind a beta
+    const controls = body as AnthropicReasoningControls | undefined;
+    if (controls?.nextcli_fast && anthropicFastMode(body?.model) === "beta") {
+      headers["anthropic-beta"] = [
+        headers["anthropic-beta"],
+        ANTHROPIC_FAST_MODE_BETA,
+      ]
+        .filter(Boolean)
+        .join(",");
+    }
+    return headers;
   }
 
   async completionNonStream(

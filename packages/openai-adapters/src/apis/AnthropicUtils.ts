@@ -182,6 +182,105 @@ export function anthropicThinkingType(
   return version && isAtLeast(version, 4, 6) ? "adaptive" : "enabled";
 }
 
+export type AnthropicEffort = "low" | "medium" | "high" | "xhigh" | "max";
+
+const EFFORT_ORDER: AnthropicEffort[] = [
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+];
+
+/**
+ * Effort levels (`output_config.effort`) a Claude model accepts, lowest first.
+ * Opus 4.5 takes low to high; Opus/Sonnet 4.6 add max; Opus 4.7, 4.8 and every
+ * 5.x model also take xhigh. Older models and Haiku/Sonnet 4.5 have no effort
+ * parameter (an empty list), so a thinking budget is used instead.
+ */
+export function anthropicEffortLevels(
+  model: string | undefined,
+): AnthropicEffort[] {
+  const version = parseClaudeModelVersion(model);
+  if (!version) {
+    return [];
+  }
+  if (isAtLeast(version, 4, 7)) {
+    return [...EFFORT_ORDER];
+  }
+  if (
+    isAtLeast(version, 4, 6) &&
+    (version.family === "opus" || version.family === "sonnet")
+  ) {
+    return ["low", "medium", "high", "max"];
+  }
+  if (version.family === "opus" && isAtLeast(version, 4, 5)) {
+    return ["low", "medium", "high"];
+  }
+  return [];
+}
+
+/**
+ * Maps a requested effort onto the levels the model accepts: the requested
+ * level if supported, otherwise the nearest lower one. "minimal" (an OpenAI
+ * level) maps to "low". Returns undefined when the model has no effort levels.
+ */
+export function clampAnthropicEffort(
+  model: string | undefined,
+  effort: string,
+): AnthropicEffort | undefined {
+  const levels = anthropicEffortLevels(model);
+  if (levels.length === 0) {
+    return undefined;
+  }
+  const requested = effort === "minimal" ? "low" : effort;
+  const index = EFFORT_ORDER.indexOf(requested as AnthropicEffort);
+  if (index === -1) {
+    return undefined;
+  }
+  for (let i = index; i >= 0; i--) {
+    if (levels.includes(EFFORT_ORDER[i])) {
+      return EFFORT_ORDER[i];
+    }
+  }
+  return levels[0];
+}
+
+/**
+ * Fast mode (`speed: "fast"`): generally available on Opus 5.5, and in
+ * research preview on Opus 5 and Opus 4.8, where it needs the
+ * `fast-mode-2026-02-01` beta header. Other models reject it.
+ */
+export function anthropicFastMode(
+  model: string | undefined,
+): "available" | "beta" | undefined {
+  const version = parseClaudeModelVersion(model);
+  if (version?.family !== "opus") {
+    return undefined;
+  }
+  if (version.major === 5 && version.minor === 5) {
+    return "available";
+  }
+  if (
+    (version.major === 5 && version.minor === 0) ||
+    (version.major === 4 && version.minor === 8)
+  ) {
+    return "beta";
+  }
+  return undefined;
+}
+
+export const ANTHROPIC_FAST_MODE_BETA = "fast-mode-2026-02-01";
+
+/**
+ * Claude 5 models think by default and return the thinking text only when
+ * `display: "summarized"` is requested. Earlier models think only when asked.
+ */
+export function anthropicThinksByDefault(model: string | undefined): boolean {
+  const version = parseClaudeModelVersion(model);
+  return !!version && version.major >= 5;
+}
+
 /**
  * Claude 4.6 and newer reject a conversation that ends with an assistant
  * message ("does not support assistant message prefill"). Haiku 4.5 and older

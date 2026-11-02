@@ -4,13 +4,14 @@ import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import {
-  HttpMcpServer,
-  SseMcpServer,
-  StdioMcpServer,
-} from "node_modules/@nextcli/config-yaml/dist/schemas/mcp/index.js";
+import type { MCPServer } from "@nextcli/config-yaml";
 
 import { MCPConnectionInfo } from "./types.js";
+
+// The package root exports only the MCPServer union, so derive the variants
+type StdioMcpServer = Extract<MCPServer, { command: string }>;
+type SseMcpServer = Extract<MCPServer, { url: string }>;
+type HttpMcpServer = SseMcpServer;
 
 export function constructSseTransport(
   serverConfig: SseMcpServer,

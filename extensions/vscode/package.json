@@ -2,7 +2,7 @@
   "name": "nextcli",
   "icon": "media/icon.png",
   "author": "NextCLI",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "repository": {
     "type": "git",
     "url": "https://github.com/nextcli-dev/nextcli"
@@ -326,12 +326,6 @@
         "command": "continue.docsReIndex",
         "category": "NextCLI",
         "title": "Docs Force Re-Index",
-        "group": "NextCLI"
-      },
-      {
-        "command": "continue.focusContinueInput",
-        "category": "NextCLI",
-        "title": "Focus NextCLI Chat",
         "group": "NextCLI"
       },
       {

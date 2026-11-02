@@ -5,6 +5,7 @@ export type ProviderId =
   | "openai"
   | "deepseek"
   | "openrouter"
+  | "oneprovider"
   | "openai-compatible"
   | "ollama";
 
@@ -19,6 +20,8 @@ export interface ProviderPreset {
   label: string;
   /** Environment variable that holds the key, checked in this table's order */
   envKey?: string;
+  /** Other names the same key is accepted under */
+  envKeyAliases?: string[];
   needsApiKey: boolean;
   /** openai-compatible needs a base URL and a model name */
   needsApiBaseAndModel: boolean;
@@ -158,6 +161,41 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     ],
   },
   {
+    // https://oneprovider.dev: Claude through its Anthropic Messages API,
+    // every other model through its OpenAI-compatible API, with one key
+    id: "oneprovider",
+    label: "OneProvider (Claude, GPT, DeepSeek, Gemini and more)",
+    envKey: "ONEPROVIDER_API_KEY",
+    envKeyAliases: ["ONEPROVIDER_KEY"],
+    needsApiKey: true,
+    needsApiBaseAndModel: false,
+    defaultModel: "claude-sonnet-5-5",
+    validateApiKey: requirePrefix("sk-"),
+    models: ({ apiKey, model }) =>
+      model
+        ? [customModel("oneprovider", model, apiKey, "OneProvider")]
+        : [
+            {
+              name: "OneProvider Claude Sonnet 5.5",
+              provider: "oneprovider",
+              model: "claude-sonnet-5-5",
+              apiKey,
+              roles: CHAT_ROLES,
+              defaultCompletionOptions: {
+                contextLength: 1000000,
+                maxTokens: 64000,
+              },
+              capabilities: ["tool_use", "image_input"],
+            },
+            customModel(
+              "oneprovider",
+              "deepseek-v4-pro",
+              apiKey,
+              "OneProvider",
+            ),
+          ],
+  },
+  {
     id: "openai-compatible",
     label: "OpenAI-compatible gateway",
     needsApiKey: true,
@@ -197,6 +235,21 @@ function customModel(
     roles: CHAT_ROLES,
     capabilities: ["tool_use"],
   };
+}
+
+/**
+ * The preset's API key from the environment, under its name or an alias,
+ * with the variable it came from
+ */
+export function getPresetApiKeyFromEnv(
+  preset: ProviderPreset,
+  env: NodeJS.ProcessEnv,
+): { name: string; value: string } | undefined {
+  for (const name of [preset.envKey, ...(preset.envKeyAliases ?? [])]) {
+    const value = name ? env[name]?.trim() : undefined;
+    if (name && value) return { name, value };
+  }
+  return undefined;
 }
 
 export function getProviderPreset(id: string): ProviderPreset | undefined {
