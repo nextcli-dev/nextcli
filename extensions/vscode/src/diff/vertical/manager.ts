@@ -210,6 +210,7 @@ export class VerticalDiffManager {
     instant: boolean,
     streamId: string,
     toolCallId?: string,
+    destructiveCheckSuggestedCode?: string,
   ) {
     vscode.commands.executeCommand("setContext", "continue.diffVisible", true);
 
@@ -239,7 +240,7 @@ export class VerticalDiffManager {
       endLine,
       {
         instant,
-        onStatusUpdate: (status, numDiffs, fileContent) =>
+        onStatusUpdate: (status, numDiffs, fileContent, destructiveWarning) =>
           void this.webviewProtocol.request("updateApplyState", {
             streamId,
             status,
@@ -247,8 +248,10 @@ export class VerticalDiffManager {
             fileContent,
             filepath: fileUri,
             toolCallId,
+            destructiveWarning,
           }),
         streamId,
+        destructiveCheckSuggestedCode,
       },
     );
 
@@ -446,7 +449,7 @@ export class VerticalDiffManager {
       {
         instant: isFastApplyModel(llm),
         input,
-        onStatusUpdate: (status, numDiffs, fileContent) =>
+        onStatusUpdate: (status, numDiffs, fileContent, destructiveWarning) =>
           streamId &&
           void this.webviewProtocol.request("updateApplyState", {
             streamId,
@@ -455,8 +458,10 @@ export class VerticalDiffManager {
             fileContent,
             filepath: fileUri,
             toolCallId,
+            destructiveWarning,
           }),
         streamId,
+        destructiveCheckSuggestedCode: isApply ? (newCode ?? "") : undefined,
       },
     );
 

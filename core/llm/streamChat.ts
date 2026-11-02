@@ -1,5 +1,6 @@
 import { fetchwithRequestOptions } from "@nextcli/fetch";
 import { ChatMessage, IDE, PromptLog } from "..";
+import { configNotLoadedMessage } from "../config/chatModel";
 import { ConfigHandler } from "../config/ConfigHandler";
 import { FromCoreProtocol, ToCoreProtocol } from "../protocol";
 import { IMessenger, Message } from "../protocol/messenger";
@@ -13,9 +14,10 @@ export async function* llmStreamChat(
   ide: IDE,
   messenger: IMessenger<ToCoreProtocol, FromCoreProtocol>,
 ): AsyncGenerator<ChatMessage, PromptLog> {
-  const { config } = await configHandler.loadConfig();
+  const configResult = await configHandler.loadConfig();
+  const { config } = configResult;
   if (!config) {
-    throw new Error("Config not loaded");
+    throw new Error(configNotLoadedMessage(configResult.errors));
   }
 
   // Stop TTS on new StreamChat

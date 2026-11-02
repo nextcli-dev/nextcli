@@ -458,6 +458,50 @@ export async function* removeTrailingWhitespace(
 }
 
 /**
+ * Removes a leading inline reasoning block (`<think>…</think>`), as emitted by
+ * e.g. Qwen3 or DeepSeek-R1 when reasoning arrives as plain content.
+ *
+ * Only a block that starts before any other content is removed. Text after
+ * `</think>` on the closing line is kept. If the block is never closed,
+ * nothing after `<think>` is yielded.
+ */
+export async function* filterLeadingThinkBlock(lines: LineStream): LineStream {
+  let state: "start" | "thinking" | "done" = "start";
+  for await (const line of lines) {
+    if (state === "done") {
+      yield line;
+      continue;
+    }
+
+    let thinkingText = line;
+    if (state === "start") {
+      const trimmed = line.trimStart();
+      if (trimmed === "") {
+        continue;
+      }
+      if (!trimmed.startsWith("<think>")) {
+        state = "done";
+        yield line;
+        continue;
+      }
+      state = "thinking";
+      thinkingText = trimmed.slice("<think>".length);
+    }
+
+    // state === "thinking"
+    const closeIndex = thinkingText.indexOf("</think>");
+    if (closeIndex === -1) {
+      continue;
+    }
+    state = "done";
+    const rest = thinkingText.slice(closeIndex + "</think>".length);
+    if (rest.trim() !== "") {
+      yield rest.trimStart();
+    }
+  }
+}
+
+/**
  * Filters out English explanations at the start of a code block.
  *
  * @param {LineStream} lines - The input stream of lines.

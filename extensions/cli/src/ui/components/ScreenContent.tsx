@@ -13,7 +13,7 @@ import type {
 } from "../hooks/useChat.types.js";
 import { JobsSelector } from "../JobsSelector.js";
 import { MCPSelector } from "../MCPSelector.js";
-import { ModelSelector } from "../ModelSelector.js";
+import { ModelMenu } from "../ModelMenu.js";
 import type { ConfigOption, ModelOption } from "../types/selectorTypes.js";
 import { UpdateSelector } from "../UpdateSelector.js";
 
@@ -115,8 +115,8 @@ export const ScreenContent: React.FC<ScreenContentProps> = ({
   // Model selector
   if (isScreenActive("model")) {
     return (
-      <ModelSelector
-        onSelect={handleModelSelect}
+      <ModelMenu
+        onSelectModel={handleModelSelect}
         onCancel={closeCurrentScreen}
       />
     );

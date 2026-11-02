@@ -37,6 +37,9 @@ export async function* recursiveStream(
   // let whiteSpaceAtEndOfBuffer = buffer.match(/\s*$/)?.[0] ?? ""; // attempts at fixing whitespace bug with recursive boundaries
 
   const injectApplyToken = type === "apply" && shouldInjectApplyToken(llm);
+  if (typeof prompt === "string" && !llm.supportsCompletions()) {
+    prompt = [{ role: "user", content: prompt }];
+  }
   if (typeof prompt === "string") {
     const finalPrompt = injectApplyToken ? prompt + APPLY_UNIQUE_TOKEN : prompt;
 
@@ -55,21 +58,6 @@ export async function* recursiveStream(
         throw new Error(
           "Token limit reached. File/range likely too large for this edit",
         );
-        // const continuationPrompt = `${RECURSIVE_PROMPT}:\n\n${buffer}`;
-
-        // await generator.return(DUD_PROMPT_LOG); // kill the previous generator
-
-        // // TODO - Prediction capabilities lost because of partial input
-        // yield* recursiveStream(
-        //   llm,
-        //   abortController,
-        //   continuationPrompt,
-        //   undefined,
-        //   buffer,
-        //   true,
-        // ); // Recursively stream the continuation
-
-        // return;
       }
     }
   } else {
@@ -93,28 +81,6 @@ export async function* recursiveStream(
         throw new Error(
           "Token limit reached. File/range likely too large for this edit",
         );
-        // const continuationPrompt: ChatMessage[] = [
-        //   ...(isContinuation ? prompt.slice(0, -2) : prompt),
-        //   {
-        //     role: "assistant",
-        //     content: buffer,
-        //   },
-        //   {
-        //     role: "user",
-        //     content: RECURSIVE_PROMPT,
-        //   },
-        // ];
-
-        // await generator.return(DUD_PROMPT_LOG);
-        // yield* recursiveStream(
-        //   llm,
-        //   abortController,
-        //   continuationPrompt,
-        //   undefined,
-        //   buffer,
-        //   true,
-        // );
-        // return;
       }
     }
   }

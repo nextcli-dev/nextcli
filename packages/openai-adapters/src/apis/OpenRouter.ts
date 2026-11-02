@@ -16,6 +16,26 @@ export const OPENROUTER_HEADERS: Record<string, string> = {
   "X-OpenRouter-Categories": "ide-extension",
 };
 
+/**
+ * OpenRouter's unified reasoning settings: effort goes in `reasoning.effort`,
+ * and `reasoning.exclude` keeps the reasoning out of the response.
+ */
+function applyOpenRouterControls(
+  body: ChatCompletionCreateParams,
+  controls: { showThinking?: boolean },
+): void {
+  const target = body as ChatCompletionCreateParams & {
+    reasoning?: Record<string, unknown>;
+  };
+  if (body.reasoning_effort) {
+    target.reasoning = { ...target.reasoning, effort: body.reasoning_effort };
+    delete target.reasoning_effort;
+  }
+  if (controls.showThinking === false) {
+    target.reasoning = { ...target.reasoning, exclude: true };
+  }
+}
+
 export class OpenRouterApi extends OpenAIApi {
   constructor(config: OpenRouterConfig) {
     super({
@@ -40,7 +60,11 @@ export class OpenRouterApi extends OpenAIApi {
   }
 
   override modifyChatBody<T extends ChatCompletionCreateParams>(body: T): T {
+    // Read the model menu controls before the base class drops nextcli_* fields
+    const showThinking = (body as T & { nextcli_show_thinking?: boolean })
+      .nextcli_show_thinking;
     const modifiedBody = super.modifyChatBody(body);
+    applyOpenRouterControls(modifiedBody, { showThinking });
 
     if (!this.isAnthropicModel(modifiedBody.model)) {
       return modifiedBody;

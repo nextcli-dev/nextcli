@@ -23,6 +23,7 @@ import {
   isResponsesModel,
   responseToChatCompletion,
   toResponsesInput,
+  toResponsesParams,
 } from "../apis/openaiResponses.js";
 
 describe("toResponsesInput", () => {
@@ -394,15 +395,125 @@ describe("fromResponsesChunk", () => {
     const chunks = collectChunks([reasoningAdded, reasoningDelta]);
     expect(chunks).toHaveLength(1);
     expect(chunks[0].choices[0].delta).toMatchObject({
-      reasoning: {
-        content: [
+      reasoning: "First, inspect the repository structure.",
+      reasoning_details: [
+        {
+          type: "reasoning.text",
+          text: "First, inspect the repository structure.",
+          id: "reason_1",
+          index: 0,
+        },
+      ],
+    });
+  });
+
+  // #12246: reasoning is kept so it can be sent back
+  it("emits summaries and the encrypted reasoning item", () => {
+    const summaryDelta = {
+      type: "response.reasoning_summary_text.delta",
+      sequence_number: 1,
+      item_id: "rs_1",
+      output_index: 0,
+      summary_index: 0,
+      delta: "Check the tests.",
+    } as any;
+    const reasoningDone = {
+      type: "response.output_item.done",
+      sequence_number: 2,
+      output_index: 0,
+      item: {
+        id: "rs_1",
+        type: "reasoning",
+        summary: [],
+        encrypted_content: "enc-1",
+      },
+    } as any;
+
+    const chunks = collectChunks([summaryDelta, reasoningDone]);
+    expect(chunks.map((chunk) => chunk.choices[0].delta)).toEqual([
+      expect.objectContaining({
+        reasoning: "Check the tests.",
+        reasoning_details: [
           {
-            type: "reasoning_text",
-            text: "First, inspect the repository structure.",
+            type: "reasoning.summary",
+            summary: "Check the tests.",
+            id: "rs_1",
+            index: 0,
           },
         ],
-      },
+      }),
+      expect.objectContaining({
+        reasoning_details: [
+          { type: "reasoning.encrypted", id: "rs_1", data: "enc-1", index: 0 },
+        ],
+      }),
+    ]);
+  });
+});
+
+describe("Responses reasoning round trip", () => {
+  it("sends encrypted reasoning back before the output that followed it", () => {
+    const params = toResponsesParams({
+      model: "gpt-5.5",
+      messages: [
+        { role: "user", content: "Fix it" },
+        {
+          role: "assistant",
+          content: "",
+          tool_calls: [
+            {
+              id: "call_1",
+              type: "function",
+              function: { name: "read", arguments: "{}" },
+            },
+          ],
+          reasoning_details: [
+            { type: "reasoning.summary", summary: "Read first.", id: "rs_1" },
+            { type: "reasoning.encrypted", id: "rs_1", data: "enc-1" },
+            { type: "reasoning.encrypted", id: "rs_2" },
+          ],
+        } as any,
+        { role: "tool", tool_call_id: "call_1", content: "file" },
+      ],
     });
+    const input = params.input as any[];
+    expect(input[1]).toEqual({
+      type: "reasoning",
+      id: "rs_1",
+      summary: [{ type: "summary_text", text: "Read first." }],
+      encrypted_content: "enc-1",
+    });
+    expect(input[2]).toMatchObject({
+      type: "function_call",
+      call_id: "call_1",
+    });
+    expect(input.filter((item) => item.type === "reasoning")).toHaveLength(1);
+  });
+
+  it("asks for encrypted reasoning, and summaries only to show them", () => {
+    const base = {
+      model: "gpt-5.5",
+      messages: [{ role: "user" as const, content: "Hi" }],
+      reasoning_effort: "low" as const,
+    };
+    expect(toResponsesParams(base)).toMatchObject({
+      include: ["reasoning.encrypted_content"],
+      reasoning: { effort: "low" },
+    });
+    expect(toResponsesParams(base).reasoning).not.toHaveProperty("summary");
+    expect(
+      toResponsesParams({ ...base, nextcli_show_thinking: true } as any)
+        .reasoning,
+    ).toEqual({ effort: "low", summary: "auto" });
+  });
+
+  it("does not ask for reasoning on non-reasoning models", () => {
+    expect(
+      toResponsesParams({
+        model: "gpt-4.1",
+        messages: [{ role: "user", content: "Hi" }],
+      }),
+    ).not.toHaveProperty("include");
   });
 });
 

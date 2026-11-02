@@ -12,6 +12,8 @@ import type {
   ChatMessage,
   ContextItemWithId,
   MessageContent,
+  Reasoning,
+  ReasoningDetail,
   ToolCall,
   ToolCallState,
   ToolStatus,
@@ -298,18 +300,75 @@ export function convertToUnifiedHistory(
   return historyItems;
 }
 
+export interface ConvertHistoryOptions {
+  /** The model the request goes to, used for the Claude reasoning guard */
+  model?: string;
+}
+
+function isSignedReasoningDetail(detail: ReasoningDetail): boolean {
+  return !!(detail.signature || detail.data || detail.encrypted_content);
+}
+
+function addReasoningFields(
+  message: ChatCompletionMessageParam,
+  reasoning: Reasoning,
+  isCurrentTurn: boolean,
+  options: ConvertHistoryOptions,
+): void {
+  const details = (reasoning.details ?? []).filter(
+    (detail) => isCurrentTurn || isSignedReasoningDetail(detail),
+  );
+
+  if (
+    options.model?.toLowerCase().includes("claude") &&
+    !details.some(isSignedReasoningDetail)
+  ) {
+    return;
+  }
+  const target = message as unknown as Record<string, unknown>;
+  if (isCurrentTurn && reasoning.textField && reasoning.text) {
+    target[reasoning.textField] = reasoning.text;
+  }
+  if (details.length > 0) {
+    target.reasoning_details = details;
+  }
+}
+
 /**
  * Convert ChatHistoryItem array to ChatCompletionMessageParam array
  */
+/** An assistant reply with reasoning but no text and no tool calls */
+function isReasoningOnlyReply(item: ChatHistoryItem): boolean {
+  const { message } = item;
+  if (message.role !== "assistant" || !item.reasoning) return false;
+  return message.content.length === 0 && !message.toolCalls?.length;
+}
+
 export function convertFromUnifiedHistory(
   historyItems: ChatHistoryItem[],
+  options: ConvertHistoryOptions = {},
 ): ChatCompletionMessageParam[] {
   const messages: ChatCompletionMessageParam[] = [];
   // OpenAI and Anthropic reject a history where a tool call id repeats (#12626)
   const seenToolCallIds = new Set<string>();
+  let lastUserIndex = -1;
+  historyItems.forEach((item, index) => {
+    if (item.message.role === "user") lastUserIndex = index;
+  });
 
-  for (const item of historyItems) {
+  for (const [index, item] of historyItems.entries()) {
+    if (isReasoningOnlyReply(item)) {
+      continue;
+    }
     const baseMessage = convertFromUnifiedMessage(item.message);
+    if (baseMessage.role === "assistant" && item.reasoning) {
+      addReasoningFields(
+        baseMessage,
+        item.reasoning,
+        index > lastUserIndex,
+        options,
+      );
+    }
     const itemToolCallIds = new Set<string>();
     if (baseMessage.role === "assistant" && baseMessage.tool_calls?.length) {
       const toolCalls = baseMessage.tool_calls.filter((tc) => {
@@ -375,6 +434,7 @@ export function convertFromUnifiedHistory(
 export function convertFromUnifiedHistoryWithSystemMessage(
   historyItems: ChatHistoryItem[],
   systemMessage: string,
+  options: ConvertHistoryOptions = {},
 ): ChatCompletionMessageParam[] {
   const messages: ChatCompletionMessageParam[] = [];
 
@@ -385,7 +445,7 @@ export function convertFromUnifiedHistoryWithSystemMessage(
   });
 
   // Convert the rest of the history
-  const convertedMessages = convertFromUnifiedHistory(historyItems);
+  const convertedMessages = convertFromUnifiedHistory(historyItems, options);
   messages.push(...convertedMessages);
 
   return messages;

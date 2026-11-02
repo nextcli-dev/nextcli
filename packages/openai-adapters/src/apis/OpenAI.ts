@@ -50,6 +50,14 @@ export class OpenAIApi implements BaseLlmApi {
     });
   }
   modifyChatBody<T extends ChatCompletionCreateParams>(body: T): T {
+    // Controls meant for the Anthropic adapter (see AnthropicReasoningControls)
+    // are never sent: OpenAI rejects unknown request arguments
+    for (const key of Object.keys(body)) {
+      if (key.startsWith("nextcli_")) {
+        delete (body as unknown as Record<string, unknown>)[key];
+      }
+    }
+
     // Add stream_options to include usage in streaming responses
     if (body.stream) {
       (body as any).stream_options = { include_usage: true };

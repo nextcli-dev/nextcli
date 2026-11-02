@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 
 import { setExitMessageCallback, shouldShowExitMessage } from "../../index.js";
 import type { PermissionMode } from "../../permissions/types.js";
+import { modelStatusLabel } from "../../util/modelSettings.js";
 import type { NavigationScreen } from "../context/NavigationContext.js";
 import { UpdateNotification } from "../UpdateNotification.js";
 
@@ -46,6 +47,7 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
   }, []);
 
   const showingExitMessage = shouldShowExitMessage();
+  const model = _services?.model?.model;
 
   return (
     <Box flexDirection="row" justifyContent="space-between" alignItems="center">
@@ -74,6 +76,17 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
               •{" "}
             </Text>
             <ContextPercentageDisplay percentage={contextPercentage} />
+          </React.Fragment>
+        )}
+        {model && (
+          <React.Fragment>
+            <Text key="model-separator" color="dim">
+              {" "}
+              •{" "}
+            </Text>
+            <Text key="model-display" color="dim" wrap="truncate-end">
+              {modelStatusLabel(model)}
+            </Text>
           </React.Fragment>
         )}
         {isVerboseMode && totalCost !== undefined && totalCost > 0 && (

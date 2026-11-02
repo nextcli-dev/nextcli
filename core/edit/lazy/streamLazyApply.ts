@@ -1,6 +1,7 @@
 import {
   filterLeadingAndTrailingNewLineInsertion,
   filterLeadingNewline,
+  filterLeadingThinkBlock,
   removeTrailingWhitespace,
 } from "../../autocomplete/filtering/streamTransforms/lineStream.js";
 import { streamDiff } from "../../diff/streamDiff.js";
@@ -44,6 +45,7 @@ export async function* streamLazyApply(
   }
 
   let lazyCompletionLines = streamLines(lazyCompletion, true);
+  lazyCompletionLines = filterLeadingThinkBlock(lazyCompletionLines);
 
   lazyCompletionLines = stopAtLinesWithMarkdownSupport(
     lazyCompletionLines,

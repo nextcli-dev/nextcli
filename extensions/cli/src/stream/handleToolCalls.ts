@@ -1,4 +1,4 @@
-import type { ChatHistoryItem, ToolStatus } from "core/index.js";
+import type { ChatHistoryItem, Reasoning, ToolStatus } from "core/index.js";
 import { generateOpenAIToolCallId } from "core/tools/systemMessageTools/systemToolUtils.js";
 import { stripImages } from "core/util/messageContent.js";
 import { createHistoryItem } from "core/util/messageConversion.js";
@@ -34,8 +34,14 @@ interface HandleToolCallsOptions {
   callbacks: StreamCallbacks | undefined;
   isHeadless: boolean;
   usage?: any;
+  /** The model's reasoning for this response, kept so it can be sent back */
+  reasoning?: Reasoning;
   /** Aborted when the turn is interrupted; remaining tools are not run */
   signal?: AbortSignal;
+}
+
+function hasReasoning(reasoning: Reasoning | undefined): boolean {
+  return !!reasoning?.text || !!reasoning?.details?.length;
 }
 
 function parseToolArguments(args: string | undefined): unknown {
@@ -126,16 +132,24 @@ export async function handleToolCalls(
     callbacks,
     isHeadless,
     usage,
+    reasoning,
     signal,
   } = options;
   const chatHistorySvc = services.chatHistory;
   const useService =
     typeof chatHistorySvc?.isReady === "function" && chatHistorySvc.isReady();
   if (toolCalls.length === 0) {
-    if (content) {
+    // A reply can be reasoning only. It's stored so it shows and survives
+    // /resume; it isn't sent back (see convertFromUnifiedHistory)
+    if (content || hasReasoning(reasoning)) {
       if (useService) {
         // Service-driven: write assistant message via service
-        chatHistorySvc.addAssistantMessage(content, undefined, usage);
+        chatHistorySvc.addAssistantMessage(
+          content,
+          undefined,
+          usage,
+          reasoning,
+        );
       } else {
         // Fallback only when service is unavailable
         const message: any = {
@@ -145,7 +159,7 @@ export async function handleToolCalls(
         if (usage) {
           message.usage = usage;
         }
-        chatHistory.push(createHistoryItem(message));
+        chatHistory.push({ ...createHistoryItem(message), reasoning });
       }
     }
     return false;
@@ -201,13 +215,17 @@ export async function handleToolCalls(
       assistantMessage.content || "",
       assistantMessage.toolCalls,
       usage,
+      reasoning,
     );
   } else {
     // Fallback only when service is unavailable
     const messageWithUsage = usage
       ? { ...assistantMessage, usage }
       : assistantMessage;
-    chatHistory.push(createHistoryItem(messageWithUsage, [], toolCallStates));
+    chatHistory.push({
+      ...createHistoryItem(messageWithUsage, [], toolCallStates),
+      reasoning,
+    });
   }
 
   // Cancel calls that repeat the same tool with the same arguments, so a

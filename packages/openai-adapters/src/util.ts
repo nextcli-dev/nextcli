@@ -211,3 +211,22 @@ export function customFetch(
     }
   };
 }
+
+/**
+ * Sets an empty `reasoning_content` on assistant messages that lack it.
+ * DeepSeek (and Moonshot Kimi) reject a request whose earlier assistant
+ * tool-call messages have no `reasoning_content` ("Missing reasoning_content
+ * field", 400). Callers that don't keep the model's reasoning, such as the
+ * CLI, would otherwise fail on the second turn of every tool call (#12246).
+ * Core does the same in `core/llm/openaiTypeConverters.ts`.
+ */
+export function addEmptyReasoningContent<
+  T extends { messages: Array<{ role: string }> },
+>(body: T): T {
+  for (const message of body.messages) {
+    if (message.role === "assistant" && !("reasoning_content" in message)) {
+      (message as { reasoning_content?: string }).reasoning_content = "";
+    }
+  }
+  return body;
+}

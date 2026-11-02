@@ -107,6 +107,9 @@ export async function* streamLines(
 
   try {
     for await (const update of streamCompletion) {
+      if (typeof update !== "string" && update.role === "thinking") {
+        continue;
+      }
       const chunk =
         typeof update === "string" ? update : renderChatMessage(update);
       buffer += chunk;
@@ -116,11 +119,6 @@ export async function* streamLines(
         yield line;
         allLines.push(line);
       }
-
-      // if (buffer === "" && chunk.endsWith("\n")) {
-      //   yield "";
-      //   allLines.push("");
-      // }
     }
     if (buffer.length > 0) {
       yield buffer;

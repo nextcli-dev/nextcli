@@ -189,6 +189,24 @@ describe("ChatHistoryService", () => {
       expect(message.toolCallStates![0].toolCallId).toBe("tool-123");
       expect(message.toolCallStates![0].status).toBe("generated");
     });
+
+    it("should keep the model's reasoning on the message", () => {
+      const reasoning = {
+        active: false,
+        text: "Read it first",
+        startAt: 1,
+        textField: "reasoning_content" as const,
+      };
+      const message = service.addAssistantMessage(
+        "Reading",
+        undefined,
+        undefined,
+        reasoning,
+      );
+
+      expect(message.reasoning).toEqual(reasoning);
+      expect(service.getHistory().at(-1)?.reasoning).toEqual(reasoning);
+    });
   });
 
   describe("addSystemMessage", () => {

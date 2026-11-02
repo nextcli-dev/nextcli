@@ -4,7 +4,10 @@ import { InputModifiers } from "core";
 
 import { v4 as uuidv4 } from "uuid";
 import { resolveEditorContent } from "../../components/mainInput/TipTapEditor/utils/resolveEditorContent";
-import { selectSelectedChatModel } from "../slices/configSlice";
+import {
+  missingChatModelError,
+  selectSelectedChatModel,
+} from "../slices/configSlice";
 import {
   resetNextCodeBlockToApplyIndex,
   submitEditorAndInitAtIndex,
@@ -33,7 +36,7 @@ export const streamResponseThunk = createAsyncThunk<
         const inputIndex = index ?? state.session.history.length; // Either given index or concat to end
 
         if (!selectedChatModel) {
-          throw new Error("No chat model selected");
+          throw missingChatModelError(state.config.configError);
         }
         dispatch(
           submitEditorAndInitAtIndex({ index: inputIndex, editorState }),

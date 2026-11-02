@@ -44,7 +44,12 @@ export const SYSTEM_SLASH_COMMANDS: SystemCommand[] = [
   },
   {
     name: "model",
-    description: "Switch between available chat models",
+    description: "Switch models and change model settings (experimental)",
+    category: "system",
+  },
+  {
+    name: "effort",
+    description: "Show or set the model's effort level (experimental)",
     category: "system",
   },
   {

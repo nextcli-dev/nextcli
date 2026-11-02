@@ -1,10 +1,11 @@
 import { ModelConfig } from "@nextcli/config-yaml";
-import type { ChatHistoryItem } from "core/index.js";
+import type { ChatHistoryItem, Reasoning } from "core/index.js";
 import { getAdjustedTokenCountFromModel } from "core/llm/getAdjustedTokenCount.js";
 import { encode } from "gpt-tokenizer";
 import type { ChatCompletionTool } from "openai/resources/chat/completions.mjs";
 
 import { logger } from "./logger.js";
+import { getModelSettings } from "./modelSettings.js";
 
 const DEFAULT_MAX_TOKENS_RATIO = 0.35;
 const MAX_MAX_TOKENS = 64_000;
@@ -17,8 +18,11 @@ export const DEFAULT_CONTEXT_LENGTH = 200_000;
  * @returns The context length limit in tokens
  */
 export function getModelContextLimit(model: ModelConfig): number {
+  // A window chosen in the model menu takes precedence over the config
   return (
-    model.defaultCompletionOptions?.contextLength ?? DEFAULT_CONTEXT_LENGTH
+    getModelSettings(model).contextLength ??
+    model.defaultCompletionOptions?.contextLength ??
+    DEFAULT_CONTEXT_LENGTH
   );
 }
 
@@ -103,6 +107,32 @@ function countToolOutputTokens(
  * @param historyItem The ChatHistoryItem to count tokens for
  * @returns The estimated token count
  */
+/**
+ * Tokens for reasoning sent back with a message. Structured details hold
+ * everything sent: readable text and summaries, plus signatures and
+ * encrypted data, which are estimated at 4 characters per token. Without
+ * details, only the text is sent.
+ */
+export function countReasoningTokens(reasoning: Reasoning): number {
+  if (!reasoning.details?.length) {
+    return reasoning.text ? encode(reasoning.text).length : 0;
+  }
+  let tokens = 0;
+  for (const detail of reasoning.details) {
+    for (const readable of [detail.text, detail.summary]) {
+      if (typeof readable === "string" && readable) {
+        tokens += encode(readable).length;
+      }
+    }
+    for (const opaque of [detail.signature, detail.data]) {
+      if (typeof opaque === "string" && opaque) {
+        tokens += Math.ceil(opaque.length / 4);
+      }
+    }
+  }
+  return tokens;
+}
+
 export function countChatHistoryItemTokens(
   historyItem: ChatHistoryItem,
   model: ModelConfig,
@@ -140,6 +170,12 @@ export function countChatHistoryItemTokens(
       tokenCount += encode(contextItem.content).length;
       tokenCount += encode(contextItem.name).length;
       tokenCount += 5; // Context item structure overhead
+    }
+
+    // Reasoning sent back with the message (#12246). Anthropic keeps earlier
+    // turns' thinking in context on newer models, so count it for every turn
+    if (historyItem.reasoning) {
+      tokenCount += countReasoningTokens(historyItem.reasoning);
     }
 
     // Add tokens for tool call states (tool results/outputs)

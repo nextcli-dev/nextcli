@@ -1,7 +1,10 @@
 import React, { useCallback } from "react";
 
 import type { ChatHistoryItem } from "../../../../../core/index.js";
-import { MemoizedMessage } from "../components/MemoizedMessage.js";
+import {
+  MemoizedMessage,
+  isReasoningShown,
+} from "../components/MemoizedMessage.js";
 
 export function useMessageRenderer() {
   const renderMessage = useCallback(
@@ -31,6 +34,7 @@ export function useMessageRenderer() {
           item={item}
           index={index}
           hideBullet={isContinuation}
+          showReasoning={isReasoningShown()}
         />
       );
     },

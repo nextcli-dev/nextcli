@@ -262,6 +262,7 @@ export class ApplyManager {
           true, // Apply instantly since we accumulated all content
           streamId,
           toolCallId,
+          text, // LLM output: check that it didn't destroy the file
         );
       }
     }

@@ -484,4 +484,35 @@ describe("sessionSlice streamUpdate", () => {
       expect(newState.history[1].toolCallStates).toHaveLength(1);
     });
   });
+  describe("updateApplyState", () => {
+    it("keeps the destructive warning on later updates", () => {
+      let state = sessionSlice.reducer(
+        createInitialState(),
+        sessionSlice.actions.updateApplyState({
+          streamId: "s1",
+          status: "streaming",
+        }),
+      );
+      state = sessionSlice.reducer(
+        state,
+        sessionSlice.actions.updateApplyState({
+          streamId: "s1",
+          status: "done",
+          destructiveWarning: "Most of the file was replaced",
+        }),
+      );
+      state = sessionSlice.reducer(
+        state,
+        sessionSlice.actions.updateApplyState({
+          streamId: "s1",
+          status: "closed",
+        }),
+      );
+
+      expect(state.codeBlockApplyStates.states[0]).toMatchObject({
+        status: "closed",
+        destructiveWarning: "Most of the file was replaced",
+      });
+    });
+  });
 });

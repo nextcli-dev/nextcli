@@ -13,6 +13,7 @@ import {
   filterEnglishLinesAtEnd,
   filterEnglishLinesAtStart,
   filterLeadingAndTrailingNewLineInsertion,
+  filterLeadingThinkBlock,
   removeTrailingWhitespace,
   skipLines,
   stopAtLines,
@@ -50,10 +51,17 @@ function constructApplyPrompt(
   llm: ILLM,
 ) {
   const template = llm.promptTemplates?.apply ?? defaultApplyPrompt;
-  const rendered = llm.renderPromptTemplate(template, [], {
-    original_code: originalCode,
-    new_code: newCode,
-  });
+  // A prefill-capable provider keeps the chat format; others get the prompt
+  // without a prefill, so it is never flattened into a raw completion
+  const rendered = llm.renderPromptTemplate(
+    template,
+    [],
+    {
+      original_code: originalCode,
+      new_code: newCode,
+    },
+    llm.supportsPrefill(),
+  );
 
   return rendered;
 }
@@ -166,6 +174,7 @@ export async function* streamDiffLines(
 
   let lines = streamLines(completion);
 
+  lines = filterLeadingThinkBlock(lines);
   lines = filterEnglishLinesAtStart(lines);
   lines = filterCodeBlockLines(lines);
   lines = stopAtLines(lines, () => {});

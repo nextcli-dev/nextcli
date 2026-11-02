@@ -1,6 +1,6 @@
 import { ModelConfig } from "@nextcli/config-yaml";
 import { BaseLlmApi } from "@nextcli/openai-adapters";
-import type { ChatHistoryItem } from "core/index.js";
+import type { ChatHistoryItem, Reasoning } from "core/index.js";
 import { convertFromUnifiedHistoryWithSystemMessage } from "core/util/messageConversion.js";
 import * as dotenv from "dotenv";
 import type {
@@ -28,19 +28,19 @@ import {
   takeUsageSnapshot,
 } from "./agentLoopLimits.js";
 import { getRequestTools, handleToolCalls } from "./handleToolCalls.js";
+import { ReasoningAccumulator } from "./reasoning.js";
+import { processChunk } from "./streamChatResponse.chunk.js";
 import {
   handleNormalAutoCompaction,
   handlePostToolValidation,
   handlePreApiCompaction,
 } from "./streamChatResponse.compactionHelpers.js";
 import {
-  processChunkContent,
-  processToolCallDelta,
   recordStreamTelemetry,
   trackFirstTokenTime,
 } from "./streamChatResponse.helpers.js";
 import {
-  getDefaultCompletionOptions,
+  getCompletionOptions,
   StreamCallbacks,
 } from "./streamChatResponse.types.js";
 
@@ -133,60 +133,6 @@ function handleAutoContinuation(
   return { shouldAutoContinue: true, chatHistory };
 }
 
-// Helper function to process a single chunk
-interface ProcessChunkOptions {
-  chunk: any;
-  aiResponse: string;
-  toolCallsMap: Map<string, ToolCall>;
-  indexToIdMap: Map<number, string>;
-  callbacks?: StreamCallbacks;
-  isHeadless?: boolean;
-}
-
-function processChunk(options: ProcessChunkOptions): {
-  aiResponse: string;
-  shouldContinue: boolean;
-} {
-  const {
-    chunk,
-    aiResponse,
-    toolCallsMap,
-    indexToIdMap,
-    callbacks,
-    isHeadless,
-  } = options;
-  // Safety check: ensure chunk has the expected structure
-  if (!chunk.choices || !chunk.choices[0]) {
-    return { aiResponse, shouldContinue: true };
-  }
-
-  const choice = chunk.choices[0];
-  if (!choice.delta) {
-    return { aiResponse, shouldContinue: true };
-  }
-
-  let updatedResponse = aiResponse;
-
-  // Handle content streaming
-  if (choice.delta.content) {
-    updatedResponse = processChunkContent(
-      choice.delta.content,
-      aiResponse,
-      callbacks,
-      isHeadless,
-    );
-  }
-
-  // Handle tool calls
-  if (choice.delta.tool_calls) {
-    for (const toolCallDelta of choice.delta.tool_calls) {
-      processToolCallDelta(toolCallDelta, toolCallsMap, indexToIdMap);
-    }
-  }
-
-  return { aiResponse: updatedResponse, shouldContinue: true };
-}
-
 interface ProcessStreamingResponseOptions {
   chatHistory: ChatHistoryItem[];
   model: ModelConfig;
@@ -208,6 +154,7 @@ export async function processStreamingResponse(
   toolCalls: ToolCall[];
   shouldContinue: boolean;
   usage?: any;
+  reasoning?: Reasoning;
 }> {
   const {
     model,
@@ -259,6 +206,7 @@ export async function processStreamingResponse(
   const openaiChatHistory = convertFromUnifiedHistoryWithSystemMessage(
     chatHistory,
     systemMessage,
+    { model: model.model },
   ) as ChatCompletionMessageParam[];
   const requestStartTime = Date.now();
 
@@ -275,7 +223,7 @@ export async function processStreamingResponse(
         messages: openaiChatHistory,
         stream: true,
         tools,
-        ...getDefaultCompletionOptions(model.defaultCompletionOptions),
+        ...getCompletionOptions(model),
       },
       retryAbortSignal,
     );
@@ -289,6 +237,7 @@ export async function processStreamingResponse(
   let inputTokens = 0;
   let outputTokens = 0;
   let fullUsage: any = null;
+  const reasoning = new ReasoningAccumulator();
 
   try {
     const streamWithBackoff = withExponentialBackoff(
@@ -331,6 +280,7 @@ export async function processStreamingResponse(
         indexToIdMap,
         callbacks,
         isHeadless,
+        reasoning,
       });
       aiResponse = result.aiResponse;
       if (!result.shouldContinue) break;
@@ -384,6 +334,7 @@ export async function processStreamingResponse(
         toolCalls: [],
         shouldContinue: false,
         usage: fullUsage,
+        reasoning: reasoning.result(),
       };
     }
 
@@ -421,6 +372,7 @@ export async function processStreamingResponse(
     toolCalls: validToolCalls,
     shouldContinue: validToolCalls.length > 0,
     usage: fullUsage,
+    reasoning: reasoning.result(),
   };
 }
 
@@ -497,7 +449,7 @@ export async function streamChatResponse(
       });
 
       // Get response from LLM
-      const { content, toolCalls, shouldContinue, usage } =
+      const { content, toolCalls, shouldContinue, usage, reasoning } =
         await processStreamingResponse({
           isHeadless,
           chatHistory,
@@ -534,6 +486,7 @@ export async function streamChatResponse(
         callbacks,
         isHeadless,
         usage,
+        reasoning,
         signal: abortController.signal,
       });
 

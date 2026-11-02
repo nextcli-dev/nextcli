@@ -1851,7 +1851,7 @@ describe("evaluateTerminalCommandSecurity", () => {
         );
         // Note: Our implementation conservatively splits on ALL newlines to prevent bypass
         // This means even quoted newlines trigger multi-line evaluation
-        // Since 'world' alone isn't a known command, it requires permission
+        // 'world' alone is an unknown command, so it requires permission
         expect(result).toBe("allowedWithPermission");
       });
 
@@ -1863,5 +1863,161 @@ describe("evaluateTerminalCommandSecurity", () => {
         expect(result).toBe("allowedWithoutPermission");
       });
     });
+  });
+});
+
+describe("build and test commands follow the tool policy (#10512)", () => {
+  const AUTO: ToolPolicy = "allowedWithoutPermission";
+  const ASK: ToolPolicy = "allowedWithPermission";
+
+  const unknownCommands = [
+    "pytest",
+    "msbuild foo.sln",
+    "dotnet build",
+    "dotnet test",
+    "go test ./...",
+    "go build ./cmd/app",
+    "tsc --noEmit",
+    "vitest run",
+    "jest --ci",
+    "FOO=1 pytest",
+    "pytest > report.txt",
+    "pytest 2>&1 | tee out.log",
+    "cp a.txt b.txt",
+    "cd src && pytest",
+  ];
+  for (const command of unknownCommands) {
+    it(`runs "${command}" without asking when the tool is automatic`, () => {
+      expect(evaluateTerminalCommandSecurity(AUTO, command)).toBe(AUTO);
+    });
+    it(`asks for "${command}" when the tool asks`, () => {
+      expect(evaluateTerminalCommandSecurity(ASK, command)).toBe(ASK);
+    });
+  }
+
+  const stillAsk = [
+    "git push",
+    "/usr/bin/git push",
+    "find . -exec rm {} \\;",
+    "cargo run",
+    "npm install",
+    "python script.py",
+    "powershell.exe .\\script.ps1",
+    "cmd /c build.bat",
+    "curl https://example.com",
+    "docker run alpine",
+    "npx some-package",
+    "go get example.com/pkg",
+    "xargs pytest",
+    "timeout 5 python script.py",
+    "env FOO=1 pytest",
+    "open -a Calculator",
+    "echo x >> ~/.bashrc",
+    "echo x > /etc/hosts",
+    "echo x >| /etc/hosts",
+    "pytest > ../out.txt",
+    "echo x | tee /etc/hosts",
+    "cp a.txt ~/.ssh/config",
+    "cd ../../etc && cat passwd",
+    "shred notes.txt",
+    // Unknown commands ask
+    "some-unknown-tool --flag",
+    "env",
+    "printenv",
+    "awk 'BEGIN{system(\"id\")}'",
+    "osascript -e x",
+    "sed -i s/a/b/ ~/.bashrc",
+    "dd if=/dev/zero of=x",
+    "truncate -s 0 x",
+    "gh api user",
+    "base64 ~/.ssh/id_rsa",
+    "python3.11 x.py",
+    "tsx x.ts",
+    "ts-node x.ts",
+    "vite-node x.ts",
+    "lua5.4 x.lua",
+    "java -jar x.jar",
+    "go run .",
+    "dotnet run",
+    "uv run x.py",
+    "poetry run x",
+    "bundle exec rake",
+    // Leading variable assignments don't hide the command
+    "FOO=1 curl https://example.com",
+    "FOO=1 python script.py",
+    "FOO=1 ./payload",
+    "FOO=1 node x.js",
+    "FOO=1 git push --force",
+    "FOO=1 npx evil",
+    "FOO=1 docker run alpine",
+    "FOO=1 kill 1",
+    'FOO=1 bash -c "curl x"',
+    "FOO=1 cp a ~/.bashrc",
+    "PATH=/tmp:$PATH ls",
+    "LD_PRELOAD=/tmp/x.so ls",
+    "DYLD_INSERT_LIBRARIES=x.dylib ls",
+    "NODE_OPTIONS=--require=./x.js tsc",
+    // Programs named by their path
+    "/usr/bin/curl https://example.com",
+    "/usr/bin/python3 x.py",
+    "/bin/bash x.sh",
+    "/usr/bin/npx evil",
+    "/tmp/x",
+    "/tmp/x arg",
+    "bin/payload",
+    "build/app",
+    "scripts/build",
+    "payload.exe",
+    ".\\payload.exe",
+    // Every rm
+    "rm file.txt",
+    "rm -rf build",
+    "rm -rf .git",
+    "rm -fr build",
+    "rm -rf ~/.ssh/keys",
+    "rm -rf ~/Documents/work",
+    "rm -rf /opt/app/data",
+    // Writes into .git can plant code git runs later
+    "echo x > .git/hooks/pre-commit",
+    "echo x >> .git/config",
+    "cp hook.sh .git/hooks/pre-commit",
+  ];
+  for (const command of stillAsk) {
+    it(`still asks for "${command}" when the tool is automatic`, () => {
+      expect(evaluateTerminalCommandSecurity(AUTO, command)).toBe(ASK);
+    });
+  }
+
+  it("keeps harmless redirect targets automatic", () => {
+    expect(evaluateTerminalCommandSecurity(AUTO, "pytest > /dev/null")).toBe(
+      AUTO,
+    );
+  });
+
+  it("does not treat Windows switches as paths", () => {
+    expect(evaluateTerminalCommandSecurity(AUTO, "xcopy src dst /E /Y")).toBe(
+      AUTO,
+    );
+  });
+
+  it("disables privileged commands behind variable assignments", () => {
+    expect(evaluateTerminalCommandSecurity(AUTO, "FOO=1 sudo ls")).toBe(
+      "disabled",
+    );
+    expect(evaluateTerminalCommandSecurity(AUTO, "FOO=1 eval ls")).toBe(
+      "disabled",
+    );
+  });
+
+  it("does not treat .gitignore as a .git path", () => {
+    expect(evaluateTerminalCommandSecurity(AUTO, "touch .gitignore")).toBe(
+      AUTO,
+    );
+  });
+
+  it("still disables catastrophic commands chained to unknown ones", () => {
+    expect(evaluateTerminalCommandSecurity(AUTO, "pytest && rm -rf /")).toBe(
+      "disabled",
+    );
   });
 });

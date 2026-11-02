@@ -56,3 +56,23 @@ describe("messageHistorySplitting", () => {
     });
   });
 });
+
+describe("splitChatHistory reasoning", () => {
+  it("keeps the reasoning only on the first part of a split message", () => {
+    const long = Array.from({ length: 80 }, (_, i) => `Paragraph ${i}.`).join(
+      "\n\n",
+    );
+    const item = {
+      ...createMockChatHistoryItem(long),
+      reasoning: { active: false, text: "plan", startAt: 0 },
+    } as ChatHistoryItem;
+
+    const parts = splitChatHistory([item], 80);
+
+    expect(parts.length).toBeGreaterThan(1);
+    expect(parts[0].reasoning?.text).toBe("plan");
+    expect(parts.slice(1).every((part) => part.reasoning === undefined)).toBe(
+      true,
+    );
+  });
+});

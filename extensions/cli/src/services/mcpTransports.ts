@@ -1,19 +1,22 @@
 import { Agent as HttpsAgent } from "https";
 
+import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import {
-  HttpMcpServer,
-  SseMcpServer,
-  StdioMcpServer,
-} from "node_modules/@nextcli/config-yaml/dist/schemas/mcp/index.js";
+import type { MCPServer } from "@nextcli/config-yaml";
 
 import { MCPConnectionInfo } from "./types.js";
+
+// The package root exports only the MCPServer union, so derive the variants
+type StdioMcpServer = Extract<MCPServer, { command: string }>;
+type SseMcpServer = Extract<MCPServer, { url: string }>;
+type HttpMcpServer = SseMcpServer;
 
 export function constructSseTransport(
   serverConfig: SseMcpServer,
   apiKey: string | undefined,
+  authProvider?: OAuthClientProvider,
 ): SSEClientTransport {
   const sseAgent =
     serverConfig.requestOptions?.verifySsl === false
@@ -43,12 +46,14 @@ export function constructSseTransport(
       headers,
       ...(sseAgent && { agent: sseAgent }),
     },
+    ...(authProvider && { authProvider }),
   });
 }
 
 export function constructHttpTransport(
   serverConfig: HttpMcpServer,
   apiKey: string | undefined,
+  authProvider?: OAuthClientProvider,
 ): StreamableHTTPClientTransport {
   const streamableAgent =
     serverConfig.requestOptions?.verifySsl === false
@@ -67,6 +72,7 @@ export function constructHttpTransport(
       headers,
       ...(streamableAgent && { agent: streamableAgent }),
     },
+    ...(authProvider && { authProvider }),
   });
 }
 

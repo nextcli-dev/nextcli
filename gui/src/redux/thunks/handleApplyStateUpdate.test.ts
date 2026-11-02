@@ -163,6 +163,70 @@ describe("handleApplyStateUpdate", () => {
     });
   });
 
+  describe("auto-accept for tools allowed without permission", () => {
+    function setup() {
+      const toolCallState = {
+        ...UNUSED_TOOL_CALL_PARAMS,
+        toolCallId: "test-tool-call",
+        status: "calling",
+        toolCall: {
+          ...UNUSED_TOOL_CALL_PARAMS.toolCall,
+          function: { name: "edit_existing_file", arguments: "{}" },
+        },
+      } as unknown as ToolCallState;
+      vi.mocked(findToolCallById).mockReturnValue(toolCallState);
+      mockGetState.mockReturnValue({
+        session: { history: [] },
+        ui: {
+          toolSettings: { edit_existing_file: "allowedWithoutPermission" },
+        },
+      });
+    }
+
+    it("auto-accepts a normal result", async () => {
+      setup();
+      const applyState: ApplyState = {
+        streamId: "chat-stream",
+        toolCallId: "test-tool-call",
+        status: "done",
+        filepath: "config.yaml",
+      };
+
+      await handleApplyStateUpdate(applyState)(
+        mockDispatch,
+        mockGetState,
+        mockExtra,
+      );
+
+      expect(mockExtra.ideMessenger.post).toHaveBeenCalledWith("acceptDiff", {
+        streamId: "chat-stream",
+        filepath: "config.yaml",
+      });
+    });
+
+    it("does not auto-accept a result flagged as destructive", async () => {
+      setup();
+      const applyState: ApplyState = {
+        streamId: "chat-stream",
+        toolCallId: "test-tool-call",
+        status: "done",
+        filepath: "config.yaml",
+        destructiveWarning: "looks destructive",
+      };
+
+      await handleApplyStateUpdate(applyState)(
+        mockDispatch,
+        mockGetState,
+        mockExtra,
+      );
+
+      expect(mockExtra.ideMessenger.post).not.toHaveBeenCalledWith(
+        "acceptDiff",
+        expect.anything(),
+      );
+    });
+  });
+
   describe("closed status handling", () => {
     it("should handle accepted tool call closure", async () => {
       const toolCallState: ToolCallState = {
@@ -214,6 +278,51 @@ describe("handleApplyStateUpdate", () => {
       expect(streamResponseAfterToolCall).toHaveBeenCalledWith({
         toolCallId: "test-tool-call",
       });
+    });
+
+    it("tells the model when the user keeps a destructive-looking edit", async () => {
+      const toolCallState: ToolCallState = {
+        toolCallId: "test-tool-call",
+        status: "done",
+        ...UNUSED_TOOL_CALL_PARAMS,
+      };
+      // The warning was stored on the "done" update; "closed" doesn't repeat it
+      const newApplyState = {
+        streamId: "chat-stream",
+        destructiveWarning: "Most of the file was replaced",
+      };
+
+      vi.mocked(findToolCallById).mockReturnValue(toolCallState);
+      mockGetState.mockReturnValue({
+        session: {
+          history: [],
+          codeBlockApplyStates: { states: [newApplyState] },
+        },
+        config: { config: {} },
+      });
+
+      await handleApplyStateUpdate({
+        streamId: "chat-stream",
+        toolCallId: "test-tool-call",
+        status: "closed",
+        filepath: "test.txt",
+      })(mockDispatch, mockGetState, mockExtra);
+
+      expect(updateToolCallOutput).toHaveBeenCalledWith({
+        toolCallId: "test-tool-call",
+        contextItems: [
+          expect.objectContaining({
+            name: "Edit May Be Destructive",
+            hidden: false,
+            content: expect.stringContaining("Most of the file was replaced"),
+          }),
+        ],
+      });
+      expect(updateToolCallOutput).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          contextItems: [expect.objectContaining({ name: "Edit Success" })],
+        }),
+      );
     });
 
     it("should handle canceled tool call closure", async () => {

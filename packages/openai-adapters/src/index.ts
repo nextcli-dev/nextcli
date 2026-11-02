@@ -23,6 +23,7 @@ import { RelaceApi } from "./apis/Relace.js";
 import { VertexAIApi } from "./apis/VertexAI.js";
 import { WatsonXApi } from "./apis/WatsonX.js";
 import { BaseLlmApi } from "./apis/base.js";
+import { OneProviderApi } from "./apis/OneProvider.js";
 import { LLMConfig, OpenAIConfigSchema } from "./types.js";
 import { appendPathToUrlIfNotPresent } from "./util/appendPathToUrl.js";
 
@@ -109,6 +110,8 @@ export function constructLlmApi(config: LLMConfig): BaseLlmApi | undefined {
       return new AskSageApi(config);
     case "anthropic":
       return new AnthropicApi(config);
+    case "oneprovider":
+      return new OneProviderApi(config);
     case "gemini":
       return new GeminiApi(config);
     case "jina":
@@ -237,7 +240,10 @@ export {
   addCacheControlToLastTwoUserMessages,
   anthropicSupportsForcedToolChoice,
   anthropicSupportsPrefill,
+  anthropicEffortLevels,
+  anthropicFastMode,
   anthropicThinkingType,
+  clampAnthropicEffort,
   filterAnthropicSamplingParams,
   getAnthropicErrorMessage,
   getAnthropicHeaders,
@@ -246,5 +252,18 @@ export {
 } from "./apis/AnthropicUtils.js";
 
 export { isResponsesModel } from "./apis/openaiResponses.js";
+export {
+  buildModelControlFields,
+  clampEffort,
+  getControlsFormat,
+  getModelControls,
+} from "./modelControls.js";
+export type {
+  ControlsFormat,
+  ModelControls,
+  ModelControlSettings,
+  ModelIdentity,
+} from "./modelControls.js";
+export { ONEPROVIDER_API_BASE } from "./apis/OneProvider.js";
 export { OPENROUTER_HEADERS } from "./apis/OpenRouter.js";
 export { extractBase64FromDataUrl, parseDataUrl } from "./util/url.js";

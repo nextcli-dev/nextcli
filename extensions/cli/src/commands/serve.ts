@@ -34,6 +34,7 @@ import { gracefulExit, updateAgentMetadata } from "../util/exit.js";
 import { formatError } from "../util/formatError.js";
 import { getGitDiffSnapshot } from "../util/git.js";
 import { logger } from "../util/logger.js";
+import { setSessionEffort } from "../util/modelSettings.js";
 import { readStdinSync } from "../util/stdin.js";
 
 import { ExtendedCommandOptions } from "./BaseCommandOptions.js";
@@ -76,6 +77,7 @@ export async function serve(prompt?: string, options: ServeOptions = {}) {
   // Set agent ID for error reporting if provided
   setAgentId(options.id);
   configureAgentLoopLimits(options);
+  setSessionEffort(options.effort?.toLowerCase());
 
   // Check if prompt should come from stdin instead of parameter
   let actualPrompt = prompt;

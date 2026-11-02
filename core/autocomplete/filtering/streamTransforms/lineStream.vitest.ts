@@ -33,6 +33,50 @@ describe("lineStream", () => {
     mockFullStop = vi.fn();
   });
 
+  describe("filterLeadingThinkBlock", () => {
+    async function run(lines: string[]) {
+      const out: string[] = [];
+      for await (const line of lineStream.filterLeadingThinkBlock(
+        await getLineGenerator(lines),
+      )) {
+        out.push(line);
+      }
+      return out;
+    }
+
+    it("removes a leading multi-line think block", async () => {
+      expect(
+        await run([
+          "",
+          "<think>",
+          "The user wants",
+          "</think>",
+          "a: 1",
+          "b: 2",
+        ]),
+      ).toEqual(["a: 1", "b: 2"]);
+    });
+
+    it("keeps text after the closing tag on the same line", async () => {
+      expect(await run(["<think>reasoning</think>a: 1", "b: 2"])).toEqual([
+        "a: 1",
+        "b: 2",
+      ]);
+    });
+
+    it("drops everything from an unterminated think block", async () => {
+      expect(await run(["<think>", "still thinking"])).toEqual([]);
+    });
+
+    it("leaves output without a leading think block untouched", async () => {
+      expect(await run(["a: 1", "<think>", "b"])).toEqual([
+        "a: 1",
+        "<think>",
+        "b",
+      ]);
+    });
+  });
+
   describe("noTopLevelKeywordsMidline", () => {
     it.todo("Need some sample inputs to properly test this");
   });

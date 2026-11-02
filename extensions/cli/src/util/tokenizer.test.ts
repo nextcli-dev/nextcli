@@ -13,6 +13,7 @@ import {
   DEFAULT_CONTEXT_LENGTH,
   calculateContextUsagePercentage,
   countChatHistoryItemTokens,
+  countReasoningTokens,
   countChatHistoryTokens,
   countToolDefinitionTokens,
   getModelContextLimit,
@@ -797,5 +798,26 @@ describe("tokenizer", () => {
         expect(tokenCount).toBeGreaterThan(80);
       });
     });
+  });
+});
+
+describe("countReasoningTokens", () => {
+  it("counts the text when there are no details", () => {
+    expect(
+      countReasoningTokens({ active: false, startAt: 0, text: "hello world" }),
+    ).toBeGreaterThan(0);
+  });
+
+  it("counts signatures and encrypted data that have no text", () => {
+    const tokens = countReasoningTokens({
+      active: false,
+      startAt: 0,
+      text: "",
+      details: [
+        { type: "reasoning.text", signature: "s".repeat(400) },
+        { type: "reasoning.encrypted", data: "e".repeat(800) },
+      ],
+    });
+    expect(tokens).toBe(300);
   });
 });

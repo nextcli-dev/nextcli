@@ -117,6 +117,20 @@ describe.skip("matchLine", () => {
 });
 
 describe("streamLines", () => {
+  it("should skip thinking chunks", async () => {
+    async function* streamCompletion(): AsyncGenerator<ChatMessage> {
+      yield { role: "thinking", content: "The user wants me to apply\n" };
+      yield { role: "assistant", content: "a: 1\nb: 2" };
+    }
+
+    const resultLines: string[] = [];
+    for await (const line of streamLines(streamCompletion())) {
+      resultLines.push(line);
+    }
+
+    expect(resultLines).toEqual(["a: 1", "b: 2"]);
+  });
+
   it("should split chunks into lines correctly", async () => {
     async function* streamCompletion(): AsyncGenerator<string> {
       yield "line1\nline";

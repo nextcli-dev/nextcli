@@ -822,6 +822,8 @@ export const sessionSlice = createSlice({
         applyState.fileContent = payload.fileContent ?? applyState.fileContent;
         applyState.originalFileContent =
           payload.originalFileContent ?? applyState.originalFileContent;
+        applyState.destructiveWarning =
+          payload.destructiveWarning ?? applyState.destructiveWarning;
       }
 
       if (payload.status === "done") {

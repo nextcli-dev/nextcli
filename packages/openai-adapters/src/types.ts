@@ -213,6 +213,12 @@ export const AnthropicConfigSchema = OpenAIConfigSchema.extend({
 });
 export type AnthropicConfig = z.infer<typeof AnthropicConfigSchema>;
 
+export const OneProviderConfigSchema = OpenAIConfigSchema.extend({
+  provider: z.literal("oneprovider"),
+  apiKey: z.string(),
+});
+export type OneProviderConfig = z.infer<typeof OneProviderConfigSchema>;
+
 export const WatsonXConfigSchema = BasePlusConfig.extend({
   provider: z.literal("watsonx"),
   apiKey: z.string(),
@@ -257,6 +263,7 @@ export type AiSdkConfig = z.infer<typeof AiSdkConfigSchema>;
 // Discriminated union
 export const LLMConfigSchema = z.discriminatedUnion("provider", [
   OpenAIConfigSchema,
+  OneProviderConfigSchema,
   BedrockConfigSchema,
   MoonshotConfigSchema,
   DeepseekConfigSchema,

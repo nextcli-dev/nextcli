@@ -4,7 +4,10 @@ import { getRuleId } from "core/llm/rules/getSystemMessageWithRules";
 import { ToCoreProtocol } from "core/protocol";
 import { BUILT_IN_GROUP_NAME } from "core/tools/builtIn";
 import { selectActiveTools } from "../selectors/selectActiveTools";
-import { selectSelectedChatModel } from "../slices/configSlice";
+import {
+  missingChatModelError,
+  selectSelectedChatModel,
+} from "../slices/configSlice";
 import {
   abortStream,
   addPromptCompletionPair,
@@ -100,7 +103,7 @@ export const streamNormalInput = createAsyncThunk<
     const selectedChatModel = selectSelectedChatModel(state);
 
     if (!selectedChatModel) {
-      throw new Error("No chat model selected");
+      throw missingChatModelError(state.config.configError);
     }
 
     // Get tools and apply model-level overrides (disabled, description, etc.)

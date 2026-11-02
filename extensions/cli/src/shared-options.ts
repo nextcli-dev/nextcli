@@ -1,4 +1,26 @@
-import { Command } from "commander";
+import { Command, InvalidArgumentError } from "commander";
+
+/** Every effort level any model accepts; each model supports a subset */
+export const EFFORT_LEVELS = [
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+];
+
+/** Parses --effort: a known level, in any case */
+export function parseEffortOption(value: string): string {
+  const level = value.trim().toLowerCase();
+  if (!EFFORT_LEVELS.includes(level)) {
+    throw new InvalidArgumentError(
+      `Unknown effort "${value}". Use one of: ${EFFORT_LEVELS.join(", ")}.`,
+    );
+  }
+  return level;
+}
 
 // Function to add common options to any command
 export function addCommonOptions(command: Command): Command {
@@ -100,6 +122,11 @@ export function addCommonOptions(command: Command): Command {
     .option(
       "--max-cost <usd>",
       "Stop when one run has cost more than this many US dollars (off by default)",
+    )
+    .option(
+      "--effort <level>",
+      "Effort level for this run, for example low, medium or high (experimental; see /effort)",
+      parseEffortOption,
     );
 }
 
@@ -127,6 +154,7 @@ export function mergeParentOptions(parentCommand: Command, options: any): any {
     "maxTurns",
     "maxSessionTokens",
     "maxCost",
+    "effort",
   ];
 
   for (const optName of inheritableOptions) {

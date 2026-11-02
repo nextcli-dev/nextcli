@@ -1,4 +1,4 @@
-import { PromptTemplateFunction } from "../../..";
+import { ChatMessage, PromptTemplateFunction } from "../../..";
 import { dedent } from "../../../util";
 
 const gptInsertionEditPrompt: PromptTemplateFunction = (_, otherData) => {
@@ -76,7 +76,7 @@ export const defaultApplyPrompt: PromptTemplateFunction = (
   _history,
   otherData,
 ) => {
-  return [
+  const messages: ChatMessage[] = [
     {
       role: "user",
       content: dedent`
@@ -95,9 +95,9 @@ export const defaultApplyPrompt: PromptTemplateFunction = (
         - Leave existing comments in place unless changes require modifying them.
         - Preserve all unchanged code exactly as-is.`,
     },
-    {
-      role: "assistant",
-      content: `\`\`\`\n`,
-    },
   ];
+  if (otherData.supportsPrefill === "false") {
+    return messages;
+  }
+  return [...messages, { role: "assistant", content: `\`\`\`\n` }];
 };

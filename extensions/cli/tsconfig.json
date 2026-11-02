@@ -21,8 +21,8 @@
     "sourceMap": true,
     "inlineSources": true,
     "jsx": "react",
-    "baseUrl": ".",
     "paths": {
+      "src/*": ["./src/*"],
       "core/*": ["../../core/dist/*"],
       "core": ["../../core/dist/index.js"]
     }
