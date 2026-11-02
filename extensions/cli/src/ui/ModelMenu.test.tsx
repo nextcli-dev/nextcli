@@ -30,6 +30,9 @@ vi.mock("../services/index.js", async (importOriginal) => ({
   },
 }));
 
+// Generous timeout: ink renders slowly when the whole suite runs in parallel
+const waitFor = (check: () => void) => vi.waitFor(check, { timeout: 5000 });
+
 const DOWN = "\u001B[B";
 const ENTER = "\r";
 
@@ -71,22 +74,35 @@ describe("ModelMenu", () => {
     expect(frame).not.toContain("Show thinking");
   });
 
+  it("says when thinking needs an effort (Claude 4.6 to 4.8)", () => {
+    state.model = {
+      name: "Sonnet",
+      provider: "anthropic",
+      model: "claude-sonnet-4-6",
+    };
+    updateModelSettings(state.model, { effort: undefined });
+    const { lastFrame } = render(
+      <ModelMenu onSelectModel={vi.fn()} onCancel={vi.fn()} />,
+    );
+    expect(lastFrame()).toContain("Needs effort");
+  });
+
   it("sets the effort from the submenu", async () => {
     const { stdin, lastFrame } = render(
       <ModelMenu onSelectModel={vi.fn()} onCancel={vi.fn()} />,
     );
-    await vi.waitFor(() => expect(lastFrame()).toContain("➤ Model"));
+    await waitFor(() => expect(lastFrame()).toContain("➤ Model"));
     stdin.write(DOWN); // Model -> Effort
-    await vi.waitFor(() => expect(lastFrame()).toContain("➤ Effort"));
+    await waitFor(() => expect(lastFrame()).toContain("➤ Effort"));
     stdin.write(ENTER);
-    await vi.waitFor(() => expect(lastFrame()).toContain("Effort for Opus"));
+    await waitFor(() => expect(lastFrame()).toContain("Effort for Opus"));
     stdin.write(DOWN); // Default -> Low
-    await vi.waitFor(() => expect(lastFrame()).toContain("➤ Low"));
+    await waitFor(() => expect(lastFrame()).toContain("➤ Low"));
     stdin.write(ENTER);
-    await vi.waitFor(() =>
+    await waitFor(() =>
       expect(getModelSettings(state.model).effort).toBe("low"),
     );
-    await vi.waitFor(() =>
+    await waitFor(() =>
       expect(lastFrame()).toContain("Model settings (experimental)"),
     );
   });
@@ -95,15 +111,13 @@ describe("ModelMenu", () => {
     const { stdin, lastFrame } = render(
       <ModelMenu onSelectModel={vi.fn()} onCancel={vi.fn()} />,
     );
-    await vi.waitFor(() => expect(lastFrame()).toContain("➤ Model"));
+    await waitFor(() => expect(lastFrame()).toContain("➤ Model"));
     for (const row of ["Effort", "Show thinking", "Fast"]) {
       stdin.write(DOWN);
-      await vi.waitFor(() => expect(lastFrame()).toContain(`➤ ${row}`));
+      await waitFor(() => expect(lastFrame()).toContain(`➤ ${row}`));
     }
     stdin.write(ENTER);
-    await vi.waitFor(() =>
-      expect(getModelSettings(state.model).fast).toBe(true),
-    );
+    await waitFor(() => expect(getModelSettings(state.model).fast).toBe(true));
   });
 });
 

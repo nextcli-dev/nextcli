@@ -47,10 +47,12 @@ interface MemoizedMessageProps {
   item: ChatHistoryItem;
   index: number;
   hideBullet?: boolean;
+  /** Show the model's reasoning. Defaults to the model menu's setting */
+  showReasoning?: boolean;
 }
 
 /** Off when "Show thinking" is turned off in the model menu */
-function isReasoningShown(): boolean {
+export function isReasoningShown(): boolean {
   try {
     return shouldShowReasoning(services.model?.getState()?.model);
   } catch {
@@ -64,7 +66,7 @@ function isReasoningShown(): boolean {
  */
 function ReasoningBlock({ text }: { text?: string }) {
   const trimmed = text?.trim();
-  if (!trimmed || !isReasoningShown()) return null;
+  if (!trimmed) return null;
   return (
     <Box flexDirection="column" marginBottom={1} paddingLeft={2}>
       <Text color="dim" italic>
@@ -76,8 +78,9 @@ function ReasoningBlock({ text }: { text?: string }) {
 }
 
 export const MemoizedMessage = memo<MemoizedMessageProps>(
-  ({ item, index, hideBullet = false }) => {
+  ({ item, index, hideBullet = false, showReasoning }) => {
     const { message, toolCallStates, conversationSummary, reasoning } = item;
+    const reasoningShown = showReasoning ?? isReasoningShown();
     const isUser = message.role === "user";
     const isSystem = message.role === "system";
     const isAssistant = message.role === "assistant";
@@ -112,7 +115,7 @@ export const MemoizedMessage = memo<MemoizedMessageProps>(
     if (toolCallStates && toolCallStates.length > 0) {
       return (
         <Box key={index} flexDirection="column">
-          <ReasoningBlock text={reasoning?.text} />
+          {reasoningShown && <ReasoningBlock text={reasoning?.text} />}
           {/* Render assistant message content if any */}
           {message.content && (
             <Box marginBottom={1}>
@@ -189,7 +192,19 @@ export const MemoizedMessage = memo<MemoizedMessageProps>(
     }
 
     // Handle regular messages
-    const isStreaming = isAssistant && !message.content && !toolCallStates;
+    const isReasoningOnly =
+      isAssistant && !message.content && !toolCallStates && !!reasoning;
+    const isStreaming =
+      isAssistant && !message.content && !toolCallStates && !reasoning;
+
+    if (isReasoningOnly) {
+      // A reply with only reasoning (or only a signature): no empty bullet
+      return reasoningShown && reasoning.text?.trim() ? (
+        <Box key={index} flexDirection="column">
+          <ReasoningBlock text={reasoning.text} />
+        </Box>
+      ) : null;
+    }
 
     const reply = (
       <Box key={index} marginBottom={1}>
@@ -208,7 +223,7 @@ export const MemoizedMessage = memo<MemoizedMessageProps>(
       </Box>
     );
 
-    if (!isAssistant || !reasoning?.text?.trim() || !isReasoningShown()) {
+    if (!isAssistant || !reasoning?.text?.trim() || !reasoningShown) {
       return reply;
     }
     return (
@@ -234,7 +249,8 @@ export const MemoizedMessage = memo<MemoizedMessageProps>(
         nextProps.item.conversationSummary &&
       prevProps.item.reasoning?.text === nextProps.item.reasoning?.text &&
       prevProps.index === nextProps.index &&
-      prevProps.hideBullet === nextProps.hideBullet
+      prevProps.hideBullet === nextProps.hideBullet &&
+      prevProps.showReasoning === nextProps.showReasoning
     );
   },
 );

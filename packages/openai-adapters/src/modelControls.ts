@@ -1,6 +1,7 @@
 import {
   anthropicEffortLevels,
   anthropicFastMode,
+  anthropicThinksByDefault,
   parseClaudeModelVersion,
 } from "./apis/AnthropicUtils.js";
 import { isResponsesModel } from "./apis/openaiResponses.js";
@@ -24,6 +25,11 @@ export interface ModelControls {
   efforts: string[];
   /** Whether the model can return readable reasoning to show */
   canShowThinking: boolean;
+  /**
+   * True when the model only thinks once an effort is set (Claude 4.6 to
+   * 4.8), so Show thinking alone has no effect
+   */
+  thinkingNeedsEffort: boolean;
   /** Whether a fast or priority mode exists */
   fast: boolean;
   /** Largest context window known for the model, if known */
@@ -56,6 +62,12 @@ function baseModelName(model: string): string {
 
 function isClaude(model: string): boolean {
   return baseModelName(model).startsWith("claude");
+}
+
+/** Chat models that accept `service_tier: "priority"` */
+function supportsOpenAIPriority(model: string): boolean {
+  const name = baseModelName(model);
+  return isResponsesModel(name) || /^gpt-4(o|\.1)/.test(name);
 }
 
 function isOfficialOpenAI(apiBase: string | undefined): boolean {
@@ -105,6 +117,11 @@ export function getModelControls(identity: ModelIdentity): ModelControls {
         efforts:
           levels.length > 0 ? levels : version ? ["low", "medium", "high"] : [],
         canShowThinking: !!version,
+        thinkingNeedsEffort:
+          !!version &&
+          version.major === 4 &&
+          version.minor >= 6 &&
+          !anthropicThinksByDefault(model),
         fast: !!anthropicFastMode(model),
         maxContextLength: version
           ? version.major > 4 || (version.major === 4 && version.minor >= 6)
@@ -120,24 +137,34 @@ export function getModelControls(identity: ModelIdentity): ModelControls {
         format,
         efforts: reasoning ? ["minimal", "low", "medium", "high"] : [],
         canShowThinking: reasoning,
-        fast: true,
+        thinkingNeedsEffort: false,
+        fast: supportsOpenAIPriority(model),
         experimental: false,
       };
     }
-    case "openrouter":
+    case "openrouter": {
+      // OpenRouter maps the effort to each vendor's own setting. For Claude
+      // the model's levels are known; for other models they're a best guess.
+      const claudeLevels = isClaude(model)
+        ? anthropicEffortLevels(baseModelName(model))
+        : [];
       return {
         format,
-        efforts: ["low", "medium", "high"],
+        efforts:
+          claudeLevels.length > 0 ? claudeLevels : ["low", "medium", "high"],
         canShowThinking: true,
-        fast: true,
-        experimental: false,
+        thinkingNeedsEffort: false,
+        fast: false,
+        experimental: claudeLevels.length === 0,
       };
+    }
     case "deepseek":
       return {
         format,
         // DeepSeek's only control turns thinking off
         efforts: ["off"],
         canShowThinking: true,
+        thinkingNeedsEffort: false,
         fast: false,
         experimental: false,
       };
@@ -146,6 +173,7 @@ export function getModelControls(identity: ModelIdentity): ModelControls {
         format,
         efforts: [],
         canShowThinking: true,
+        thinkingNeedsEffort: false,
         fast: false,
         experimental: false,
       };
@@ -154,10 +182,31 @@ export function getModelControls(identity: ModelIdentity): ModelControls {
         format,
         efforts: ["low", "medium", "high"],
         canShowThinking: true,
+        thinkingNeedsEffort: false,
         fast: false,
         experimental: true,
       };
   }
+}
+
+const EFFORT_ORDER = ["minimal", "low", "medium", "high", "xhigh", "max"];
+
+/**
+ * The supported level closest to the requested one: the highest supported
+ * level at or below it, else the lowest supported level. `off` and unknown
+ * levels are used only when the model lists them.
+ */
+export function clampEffort(
+  efforts: string[],
+  effort: string | undefined,
+): string | undefined {
+  if (!effort) return undefined;
+  if (efforts.includes(effort)) return effort;
+  const index = EFFORT_ORDER.indexOf(effort);
+  const ordered = EFFORT_ORDER.filter((level) => efforts.includes(level));
+  if (index === -1 || ordered.length === 0) return undefined;
+  const below = ordered.filter((level) => EFFORT_ORDER.indexOf(level) <= index);
+  return below.length > 0 ? below[below.length - 1] : ordered[0];
 }
 
 /**
@@ -170,10 +219,7 @@ export function buildModelControlFields(
   settings: ModelControlSettings,
 ): Record<string, unknown> {
   const controls = getModelControls(identity);
-  const effort =
-    settings.effort && controls.efforts.includes(settings.effort)
-      ? settings.effort
-      : undefined;
+  const effort = clampEffort(controls.efforts, settings.effort);
   const fields: Record<string, unknown> = {};
 
   switch (controls.format) {
@@ -191,11 +237,7 @@ export function buildModelControlFields(
         fields.nextcli_show_thinking = settings.showThinking;
       }
       if (settings.fast && controls.fast) {
-        if (controls.format === "openai") {
-          fields.service_tier = "priority";
-        } else {
-          fields.nextcli_fast = true;
-        }
+        fields.service_tier = "priority";
       }
       break;
     case "deepseek":

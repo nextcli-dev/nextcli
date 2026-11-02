@@ -96,6 +96,18 @@ describe("convertFromUnifiedHistory reasoning", () => {
     expect(messages[1]).not.toHaveProperty("reasoning_details");
   });
 
+  it("does not send a reply that is reasoning only", () => {
+    const messages = convertFromUnifiedHistory([
+      user("Hi"),
+      assistant(
+        "",
+        reasoning({ details: [{ type: "reasoning.text", signature: "sig" }] }),
+      ),
+      user("Again"),
+    ]);
+    expect(messages.map((m) => m.role)).toEqual(["user", "user"]);
+  });
+
   it("leaves assistant messages without reasoning unchanged", () => {
     const messages = convertFromUnifiedHistory([
       user("Hi"),

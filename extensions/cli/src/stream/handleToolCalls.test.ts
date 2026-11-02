@@ -524,4 +524,35 @@ describe("handleToolCalls - loop guards", () => {
     expect(calls[0][3]).toBe(reasoning);
     expect(calls[1]).toEqual(["Done", undefined, undefined, reasoning]);
   });
+
+  it("stores a reply that is reasoning only", async () => {
+    const reasoning = {
+      active: false,
+      text: "",
+      startAt: 0,
+      details: [{ type: "reasoning.text" as const, signature: "sig" }],
+    };
+    vi.mocked(services.chatHistory.addAssistantMessage).mockClear();
+
+    await handleToolCalls({
+      toolCalls: [],
+      chatHistory: [],
+      content: "",
+      callbacks: undefined,
+      isHeadless: true,
+      reasoning,
+    });
+    await handleToolCalls({
+      toolCalls: [],
+      chatHistory: [],
+      content: "",
+      callbacks: undefined,
+      isHeadless: true,
+    });
+
+    const calls = vi.mocked(services.chatHistory.addAssistantMessage).mock
+      .calls;
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toEqual(["", undefined, undefined, reasoning]);
+  });
 });

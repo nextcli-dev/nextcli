@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildModelControlFields,
+  clampEffort,
   getControlsFormat,
   getModelControls,
 } from "./modelControls.js";
@@ -47,6 +48,7 @@ describe("getModelControls", () => {
       format: "anthropic",
       efforts: ["low", "medium", "high", "xhigh", "max"],
       canShowThinking: true,
+      thinkingNeedsEffort: false,
       fast: true,
       maxContextLength: 1_000_000,
       experimental: false,
@@ -57,6 +59,53 @@ describe("getModelControls", () => {
       efforts: ["low", "medium", "high"],
       fast: false,
       maxContextLength: 200_000,
+    });
+  });
+
+  it("marks Claude 4.6 to 4.8 thinking as needing an effort", () => {
+    expect(
+      getModelControls({ provider: "anthropic", model: "claude-sonnet-4-6" })
+        .thinkingNeedsEffort,
+    ).toBe(true);
+    expect(
+      getModelControls({ provider: "anthropic", model: "claude-opus-4-8" })
+        .thinkingNeedsEffort,
+    ).toBe(true);
+    expect(
+      getModelControls({ provider: "anthropic", model: "claude-haiku-4-5" })
+        .thinkingNeedsEffort,
+    ).toBe(false);
+  });
+
+  it("offers OpenAI priority only for models that support it", () => {
+    expect(
+      getModelControls({ provider: "openai", model: "gpt-5.5" }).fast,
+    ).toBe(true);
+    expect(getModelControls({ provider: "openai", model: "gpt-4o" }).fast).toBe(
+      true,
+    );
+    expect(
+      getModelControls({ provider: "openai", model: "gpt-3.5-turbo" }).fast,
+    ).toBe(false);
+  });
+
+  it("uses Claude's own levels on OpenRouter and has no fast mode", () => {
+    expect(
+      getModelControls({
+        provider: "openrouter",
+        model: "anthropic/claude-opus-5-5",
+      }),
+    ).toMatchObject({
+      efforts: ["low", "medium", "high", "xhigh", "max"],
+      fast: false,
+      experimental: false,
+    });
+    expect(
+      getModelControls({ provider: "openrouter", model: "qwen/qwen3-max" }),
+    ).toMatchObject({
+      efforts: ["low", "medium", "high"],
+      fast: false,
+      experimental: true,
     });
   });
 
@@ -99,6 +148,30 @@ describe("buildModelControlFields", () => {
     ).toEqual({ reasoning_effort: "low", service_tier: "priority" });
   });
 
+  it("never sends priority to models without it", () => {
+    expect(
+      buildModelControlFields(
+        { provider: "openai", model: "gpt-3.5-turbo" },
+        { fast: true },
+      ),
+    ).toEqual({});
+  });
+
+  it("clamps a level the model lacks to the nearest one", () => {
+    expect(
+      buildModelControlFields(
+        { provider: "anthropic", model: "claude-sonnet-4-6" },
+        { effort: "xhigh" },
+      ),
+    ).toEqual({ reasoning_effort: "high" });
+    expect(
+      buildModelControlFields(
+        { provider: "openrouter", model: "qwen/qwen3-max" },
+        { effort: "minimal" },
+      ),
+    ).toEqual({ reasoning_effort: "low" });
+  });
+
   it("turns DeepSeek thinking off", () => {
     expect(
       buildModelControlFields(
@@ -121,5 +194,20 @@ describe("buildModelControlFields", () => {
         { effort: "high" },
       ),
     ).toEqual({});
+  });
+});
+
+describe("clampEffort", () => {
+  it("keeps supported levels and steps down to the nearest one", () => {
+    expect(clampEffort(["low", "medium", "high"], "medium")).toBe("medium");
+    expect(clampEffort(["low", "medium", "high"], "max")).toBe("high");
+    expect(clampEffort(["low", "medium", "high"], "minimal")).toBe("low");
+  });
+
+  it("uses off and unknown levels only when listed", () => {
+    expect(clampEffort(["off"], "off")).toBe("off");
+    expect(clampEffort(["low", "high"], "off")).toBeUndefined();
+    expect(clampEffort(["low", "high"], "turbo")).toBeUndefined();
+    expect(clampEffort([], "high")).toBeUndefined();
   });
 });

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { getCompletionOptions } from "../stream/streamChatResponse.types.js";
 
 import {
+  effectiveEffort,
   getContextOptions,
   getModelSettings,
   modelStatusLabel,
@@ -42,6 +43,14 @@ describe("model settings", () => {
       showThinking: true,
       effort: undefined,
     });
+  });
+
+  it("leaves readable thinking off by default on OpenAI", () => {
+    // Reasoning summaries need a verified organization
+    expect(getModelSettings(gpt).showThinking).toBe(false);
+    updateModelSettings(gpt, { showThinking: true });
+    expect(getModelSettings(gpt).showThinking).toBe(true);
+    updateModelSettings(gpt, { showThinking: undefined });
   });
 
   it("saves settings per model", () => {
@@ -93,6 +102,13 @@ describe("model settings", () => {
     updateModelSettings(opus, { effort: "high", fast: true });
     expect(modelStatusLabel(opus)).toBe("claude-opus-5-5 · High · Fast");
   });
+
+  it("shows the level actually sent when the model lacks the chosen one", () => {
+    const sonnet = model({ provider: "anthropic", model: "claude-sonnet-4-6" });
+    setSessionEffort("xhigh");
+    expect(effectiveEffort(sonnet)).toBe("high");
+    expect(modelStatusLabel(sonnet)).toBe("claude-sonnet-4-6 · High");
+  });
 });
 
 describe("getCompletionOptions", () => {
@@ -126,5 +142,7 @@ describe("getCompletionOptions", () => {
       service_tier: "priority",
     });
     expect(options).not.toHaveProperty("top_k");
+    // No reasoning summary unless the user turns Show thinking on
+    expect(options.nextcli_show_thinking).not.toBe(true);
   });
 });

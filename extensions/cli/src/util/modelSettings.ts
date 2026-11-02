@@ -1,5 +1,7 @@
 import type { ModelConfig } from "@nextcli/config-yaml";
 import {
+  clampEffort,
+  getControlsFormat,
   getModelControls,
   type ModelControls,
   type ModelIdentity,
@@ -12,7 +14,10 @@ import { logger } from "./logger.js";
 export interface CliModelSettings {
   /** Effort level, or undefined for the provider default */
   effort?: string;
-  /** Request and show readable reasoning. On unless turned off */
+  /**
+   * Request and show readable reasoning. On unless turned off, except for
+   * OpenAI, where readable summaries can need a verified organization
+   */
   showThinking?: boolean;
   /** Fast or priority mode, where the model has one */
   fast?: boolean;
@@ -71,6 +76,14 @@ export function resetModelSettingsCache(): void {
 }
 
 /**
+ * Show thinking is on by default, except on OpenAI: its reasoning summaries
+ * fail for organizations that aren't verified, so they're opt-in there.
+ */
+function defaultShowThinking(model: ModelConfig): boolean {
+  return getControlsFormat(modelIdentity(model)) !== "openai";
+}
+
+/**
  * The effective settings for a model: the --effort flag, then the model
  * menu, then the config's `reasoningEffort` (or `reasoning: true`, which
  * means medium).
@@ -84,7 +97,7 @@ export function getModelSettings(model: ModelConfig): CliModelSettings {
       stored.effort ??
       model.defaultCompletionOptions?.reasoningEffort ??
       (model.defaultCompletionOptions?.reasoning ? "medium" : undefined),
-    showThinking: stored.showThinking ?? true,
+    showThinking: stored.showThinking ?? defaultShowThinking(model),
   };
 }
 
@@ -110,6 +123,17 @@ export function updateModelSettings(
     sessionEffort = undefined;
   }
   return getModelSettings(model);
+}
+
+/**
+ * The effort level actually sent: the chosen level, or the nearest level the
+ * model supports
+ */
+export function effectiveEffort(model: ModelConfig): string | undefined {
+  return clampEffort(
+    getModelControlsFor(model).efforts,
+    getModelSettings(model).effort,
+  );
 }
 
 /** Whether reasoning should be shown for the model */
@@ -160,8 +184,9 @@ export function modelStatusLabel(model: ModelConfig): string {
   const settings = getModelSettings(model);
   const controls = getModelControlsFor(model);
   const parts = [model.name || model.model];
-  if (settings.effort && controls.efforts.includes(settings.effort)) {
-    parts.push(effortLabel(settings.effort));
+  const effort = effectiveEffort(model);
+  if (effort) {
+    parts.push(effortLabel(effort));
   }
   if (settings.fast && controls.fast) {
     parts.push("Fast");

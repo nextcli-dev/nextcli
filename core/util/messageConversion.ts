@@ -346,6 +346,13 @@ function addReasoningFields(
 /**
  * Convert ChatHistoryItem array to ChatCompletionMessageParam array
  */
+/** An assistant reply with reasoning but no text and no tool calls */
+function isReasoningOnlyReply(item: ChatHistoryItem): boolean {
+  const { message } = item;
+  if (message.role !== "assistant" || !item.reasoning) return false;
+  return message.content.length === 0 && !message.toolCalls?.length;
+}
+
 export function convertFromUnifiedHistory(
   historyItems: ChatHistoryItem[],
   options: ConvertHistoryOptions = {},
@@ -359,6 +366,11 @@ export function convertFromUnifiedHistory(
   });
 
   for (const [index, item] of historyItems.entries()) {
+    if (isReasoningOnlyReply(item)) {
+      // Kept in the history for display and /resume, but a turn with only
+      // thinking in it isn't valid to send back
+      continue;
+    }
     const baseMessage = convertFromUnifiedMessage(item.message);
     if (baseMessage.role === "assistant" && item.reasoning) {
       addReasoningFields(

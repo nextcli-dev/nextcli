@@ -254,6 +254,7 @@ export {
 export { isResponsesModel } from "./apis/openaiResponses.js";
 export {
   buildModelControlFields,
+  clampEffort,
   getControlsFormat,
   getModelControls,
 } from "./modelControls.js";

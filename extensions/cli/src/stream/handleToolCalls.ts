@@ -40,6 +40,10 @@ interface HandleToolCallsOptions {
   signal?: AbortSignal;
 }
 
+function hasReasoning(reasoning: Reasoning | undefined): boolean {
+  return !!reasoning?.text || !!reasoning?.details?.length;
+}
+
 function parseToolArguments(args: string | undefined): unknown {
   try {
     return JSON.parse(args || "{}");
@@ -135,7 +139,9 @@ export async function handleToolCalls(
   const useService =
     typeof chatHistorySvc?.isReady === "function" && chatHistorySvc.isReady();
   if (toolCalls.length === 0) {
-    if (content) {
+    // A reply can be reasoning only. It's stored so it shows and survives
+    // /resume; it isn't sent back (see convertFromUnifiedHistory)
+    if (content || hasReasoning(reasoning)) {
       if (useService) {
         // Service-driven: write assistant message via service
         chatHistorySvc.addAssistantMessage(

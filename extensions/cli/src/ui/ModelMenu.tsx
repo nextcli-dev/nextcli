@@ -4,6 +4,7 @@ import React, { useState } from "react";
 
 import { services } from "../services/index.js";
 import {
+  effectiveEffort,
   effortLabel,
   formatContextLength,
   getContextOptions,
@@ -55,19 +56,21 @@ function buildRows(model: ModelConfig | null): MenuRow[] {
     rows.push({
       id: "effort",
       name: "Effort",
-      value: effortLabel(
-        settings.effort && controls.efforts.includes(settings.effort)
-          ? settings.effort
-          : undefined,
-      ),
+      value: effortLabel(effectiveEffort(model)),
       opensSubmenu: true,
     });
   }
   if (controls.canShowThinking) {
+    // Claude 4.6 to 4.8 only think once an effort is set
+    const needsEffort = controls.thinkingNeedsEffort && !effectiveEffort(model);
     rows.push({
-      id: "thinking",
+      id: needsEffort ? "thinking-needs-effort" : "thinking",
       name: "Show thinking",
-      value: settings.showThinking === false ? "Off" : "On",
+      value: needsEffort
+        ? "Needs effort"
+        : settings.showThinking === false
+          ? "Off"
+          : "On",
       opensSubmenu: false,
     });
   }
@@ -216,6 +219,9 @@ export function ModelMenu({ onSelectModel, onCancel }: ModelMenuProps) {
         break;
       case "context":
         openSubmenu("context", contextOptions(model), currentContext);
+        break;
+      case "thinking-needs-effort":
+        openSubmenu("effort", effortOptions(model), currentEffort);
         break;
       case "thinking":
         updateModelSettings(model, {

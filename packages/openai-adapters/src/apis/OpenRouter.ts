@@ -18,16 +18,14 @@ export const OPENROUTER_HEADERS: Record<string, string> = {
 
 /**
  * OpenRouter's unified reasoning settings: effort goes in `reasoning.effort`,
- * `reasoning.exclude` keeps the reasoning out of the response, and fast mode
- * routes to the provider with the highest throughput.
+ * and `reasoning.exclude` keeps the reasoning out of the response.
  */
 function applyOpenRouterControls(
   body: ChatCompletionCreateParams,
-  controls: { fast?: boolean; showThinking?: boolean },
+  controls: { showThinking?: boolean },
 ): void {
   const target = body as ChatCompletionCreateParams & {
     reasoning?: Record<string, unknown>;
-    provider?: Record<string, unknown>;
   };
   if (body.reasoning_effort) {
     target.reasoning = { ...target.reasoning, effort: body.reasoning_effort };
@@ -35,9 +33,6 @@ function applyOpenRouterControls(
   }
   if (controls.showThinking === false) {
     target.reasoning = { ...target.reasoning, exclude: true };
-  }
-  if (controls.fast) {
-    target.provider = { ...target.provider, sort: "throughput" };
   }
 }
 
@@ -66,14 +61,10 @@ export class OpenRouterApi extends OpenAIApi {
 
   override modifyChatBody<T extends ChatCompletionCreateParams>(body: T): T {
     // Read the model menu controls before the base class drops nextcli_* fields
-    const controls = body as T & {
-      nextcli_fast?: boolean;
-      nextcli_show_thinking?: boolean;
-    };
-    const fast = controls.nextcli_fast;
-    const showThinking = controls.nextcli_show_thinking;
+    const showThinking = (body as T & { nextcli_show_thinking?: boolean })
+      .nextcli_show_thinking;
     const modifiedBody = super.modifyChatBody(body);
-    applyOpenRouterControls(modifiedBody, { fast, showThinking });
+    applyOpenRouterControls(modifiedBody, { showThinking });
 
     if (!this.isAnthropicModel(modifiedBody.model)) {
       return modifiedBody;
