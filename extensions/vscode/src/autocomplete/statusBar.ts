@@ -48,29 +48,29 @@ const statusBarItemText = (
   error?: boolean,
 ) => {
   if (error) {
-    return "$(alert) Continue (config error)";
+    return "$(alert) NextCLI (config error)";
   }
 
   let text: string;
   switch (status) {
     case undefined:
       if (loading) {
-        text = "$(loading~spin) Continue";
+        text = "$(loading~spin) NextCLI";
       } else {
-        text = "Continue";
+        text = "NextCLI";
       }
       break;
     case StatusBarStatus.Disabled:
-      text = "$(circle-slash) Continue";
+      text = "$(circle-slash) NextCLI";
       break;
     case StatusBarStatus.Enabled:
-      text = "$(check) Continue";
+      text = "$(check) NextCLI";
       break;
     case StatusBarStatus.Paused:
-      text = "$(debug-pause) Continue";
+      text = "$(debug-pause) NextCLI";
       break;
     default:
-      text = "Continue";
+      text = "NextCLI";
   }
 
   // Append Next Edit indicator if enabled.
