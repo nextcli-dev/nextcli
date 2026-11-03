@@ -17,7 +17,7 @@
   "homepage": "https://nextcli.dev",
   "qna": "https://github.com/nextcli-dev/nextcli/issues/new/choose",
   "license": "Apache-2.0",
-  "displayName": "NextCLI - open-source AI code agent",
+  "displayName": "NextCLI: Bring Your Own Model AI Agent",
   "pricing": "Free",
   "description": "The open-source AI coding agent. Your model and API key. No account.",
   "publisher": "nextcli",
