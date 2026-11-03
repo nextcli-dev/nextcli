@@ -64,6 +64,17 @@ function isClaude(model: string): boolean {
   return baseModelName(model).startsWith("claude");
 }
 
+/** Claude 4.6 to 4.8 think only once an effort is set; Claude 5 by default */
+function claudeThinkingNeedsEffort(model: string): boolean {
+  const version = parseClaudeModelVersion(model);
+  return (
+    !!version &&
+    version.major === 4 &&
+    version.minor >= 6 &&
+    !anthropicThinksByDefault(model)
+  );
+}
+
 /** Chat models that accept `service_tier: "priority"` */
 function supportsOpenAIPriority(model: string): boolean {
   const name = baseModelName(model);
@@ -117,11 +128,7 @@ export function getModelControls(identity: ModelIdentity): ModelControls {
         efforts:
           levels.length > 0 ? levels : version ? ["low", "medium", "high"] : [],
         canShowThinking: !!version,
-        thinkingNeedsEffort:
-          !!version &&
-          version.major === 4 &&
-          version.minor >= 6 &&
-          !anthropicThinksByDefault(model),
+        thinkingNeedsEffort: claudeThinkingNeedsEffort(model),
         fast: !!anthropicFastMode(model),
         maxContextLength: version
           ? version.major > 4 || (version.major === 4 && version.minor >= 6)
@@ -153,7 +160,9 @@ export function getModelControls(identity: ModelIdentity): ModelControls {
         efforts:
           claudeLevels.length > 0 ? claudeLevels : ["low", "medium", "high"],
         canShowThinking: true,
-        thinkingNeedsEffort: false,
+        // Without `reasoning`, OpenRouter runs Claude 4.6 to 4.8 with no thinking
+        thinkingNeedsEffort:
+          isClaude(model) && claudeThinkingNeedsEffort(baseModelName(model)),
         fast: false,
         experimental: claudeLevels.length === 0,
       };

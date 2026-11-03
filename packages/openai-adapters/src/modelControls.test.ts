@@ -109,6 +109,17 @@ describe("getModelControls", () => {
     });
   });
 
+  it("marks Claude 4.6 to 4.8 thinking on OpenRouter as needing an effort", () => {
+    const needsEffort = (model: string) =>
+      getModelControls({ provider: "openrouter", model }).thinkingNeedsEffort;
+    expect(needsEffort("anthropic/claude-sonnet-4.6")).toBe(true);
+    expect(needsEffort("anthropic/claude-sonnet-4-6")).toBe(true);
+    expect(needsEffort("anthropic/claude-opus-4.8")).toBe(true);
+    expect(needsEffort("anthropic/claude-opus-5-5")).toBe(false);
+    expect(needsEffort("anthropic/claude-haiku-4.5")).toBe(false);
+    expect(needsEffort("deepseek/deepseek-v4-pro")).toBe(false);
+  });
+
   it("offers OpenAI effort only for reasoning models", () => {
     expect(
       getModelControls({ provider: "openai", model: "gpt-5.5" }).efforts,

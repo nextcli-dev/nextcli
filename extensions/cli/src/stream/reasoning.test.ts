@@ -63,6 +63,49 @@ describe("ReasoningAccumulator", () => {
   });
 });
 
+describe("ReasoningAccumulator with OpenRouter Claude chunks", () => {
+  it("keeps the text and one signed detail", () => {
+    const acc = new ReasoningAccumulator();
+    const chunk = (text: string) => ({
+      content: "",
+      reasoning: text,
+      reasoning_details: [
+        {
+          type: "reasoning.text",
+          text,
+          format: "anthropic-claude-v1",
+          index: 0,
+        },
+      ],
+    });
+    acc.add(chunk("I'm checking"));
+    acc.add(chunk(" x"));
+    acc.add({
+      reasoning_details: [
+        {
+          type: "reasoning.text",
+          signature: "sig",
+          format: "anthropic-claude-v1",
+          index: 0,
+        },
+      ],
+    });
+    expect(acc.result()).toMatchObject({
+      text: "I'm checking x",
+      textField: "reasoning",
+      details: [
+        {
+          type: "reasoning.text",
+          text: "I'm checking x",
+          signature: "sig",
+          format: "anthropic-claude-v1",
+          index: 0,
+        },
+      ],
+    });
+  });
+});
+
 describe("mergeReasoningDetailDeltas", () => {
   it("keeps blocks with different indexes separate", () => {
     const merged = mergeReasoningDetailDeltas(

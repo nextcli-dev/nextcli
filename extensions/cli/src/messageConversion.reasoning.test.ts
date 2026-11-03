@@ -96,6 +96,60 @@ describe("convertFromUnifiedHistory reasoning", () => {
     expect(messages[1]).not.toHaveProperty("reasoning_details");
   });
 
+  it("sends OpenRouter Claude reasoning back with its tool call", () => {
+    const thinking = {
+      type: "reasoning.text",
+      text: "Read the file first",
+      signature: "sig",
+      format: "anthropic-claude-v1",
+      index: 0,
+    };
+    const claudeReasoning = reasoning({
+      text: "Read the file first",
+      textField: "reasoning",
+      details: [thinking],
+    });
+    const toolCall = {
+      id: "call_1",
+      type: "function" as const,
+      function: { name: "Read", arguments: '{"path":"a.ts"}' },
+    };
+    const toolTurn: ChatHistoryItem = {
+      message: { role: "assistant", content: "", toolCalls: [toolCall] },
+      contextItems: [],
+      reasoning: claudeReasoning,
+      toolCallStates: [
+        {
+          toolCallId: "call_1",
+          toolCall,
+          status: "done",
+          parsedArgs: {},
+          output: [{ name: "Tool Result", description: "", content: "x" }],
+        },
+      ],
+    };
+    const model = { model: "anthropic/claude-opus-5-5" };
+
+    const current = convertFromUnifiedHistory(
+      [user("Read a.ts"), toolTurn],
+      model,
+    );
+    expect(current[1]).toMatchObject({
+      role: "assistant",
+      reasoning: "Read the file first",
+      reasoning_details: [thinking],
+      tool_calls: [{ id: "call_1" }],
+    });
+    expect(current[2]).toMatchObject({ role: "tool", tool_call_id: "call_1" });
+
+    const later = convertFromUnifiedHistory(
+      [user("Read a.ts"), toolTurn, user("Now b.ts")],
+      model,
+    );
+    expect(later[1]).not.toHaveProperty("reasoning");
+    expect((later[1] as any).reasoning_details).toEqual([thinking]);
+  });
+
   it("does not send a reply that is reasoning only", () => {
     const messages = convertFromUnifiedHistory([
       user("Hi"),
