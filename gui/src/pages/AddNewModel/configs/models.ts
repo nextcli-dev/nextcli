@@ -1327,10 +1327,52 @@ export const models: { [key: string]: ModelPackage } = {
     icon: "openai.png",
     isOpenSource: false,
   },
+  claude55Opus: {
+    title: "Claude Opus 5.5",
+    description:
+      "Anthropic's current Opus model for complex reasoning, coding and agentic tasks.",
+    params: {
+      model: "claude-opus-5-5",
+      contextLength: 1_000_000,
+      title: "Claude Opus 5.5",
+      apiKey: "",
+    },
+    providerOptions: ["anthropic"],
+    icon: "anthropic.png",
+    isOpenSource: false,
+  },
+  claude55Sonnet: {
+    title: "Claude Sonnet 5.5",
+    description:
+      "Anthropic's current Sonnet model, balancing speed and capability for everyday coding and agent work.",
+    params: {
+      model: "claude-sonnet-5-5",
+      contextLength: 1_000_000,
+      title: "Claude Sonnet 5.5",
+      apiKey: "",
+    },
+    providerOptions: ["anthropic"],
+    icon: "anthropic.png",
+    isOpenSource: false,
+  },
+  claude55Haiku: {
+    title: "Claude Haiku 5.5",
+    description:
+      "Anthropic's fastest and lowest-cost current model, for quick responses and autocomplete-style tasks.",
+    params: {
+      model: "claude-haiku-5-5",
+      contextLength: 1_000_000,
+      title: "Claude Haiku 5.5",
+      apiKey: "",
+    },
+    providerOptions: ["anthropic"],
+    icon: "anthropic.png",
+    isOpenSource: false,
+  },
   claude46Sonnet: {
     title: "Claude Sonnet 4.6",
     description:
-      "Anthropic's latest and most capable Sonnet model with exceptional coding, reasoning, and multilingual performance.",
+      "Previous generation Sonnet model with strong coding, reasoning, and multilingual performance.",
     params: {
       model: "claude-sonnet-4-6",
       contextLength: 200_000,
@@ -1344,7 +1386,7 @@ export const models: { [key: string]: ModelPackage } = {
   claude46Opus: {
     title: "Claude Opus 4.6",
     description:
-      "Anthropic's most intelligent model with the highest level of capability for complex reasoning and agentic tasks.",
+      "Previous generation Opus model for complex reasoning and agentic tasks.",
     params: {
       model: "claude-opus-4-6",
       contextLength: 200_000,

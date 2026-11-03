@@ -5,9 +5,11 @@
  * when making sequential requests with the same prefix to the Anthropic API.
  *
  * Guarded by ANTHROPIC_API_KEY env var — skipped if not set.
- * Uses claude-haiku-4-5-20251001 to minimize cost.
+ * Uses claude-haiku-5-5, the cheapest current Claude model. Set
+ * ANTHROPIC_BASE_URL to run against an Anthropic-compatible gateway.
  *
- * IMPORTANT: Haiku 4.5 requires a minimum of 4096 tokens for caching.
+ * Haiku 5.5 caches prompts of 512 tokens or more. The prompts here are
+ * larger (over 4096 tokens), which also covers models with higher minimums.
  * The system message + tools in this test are sized to exceed that threshold.
  *
  * Run: ANTHROPIC_API_KEY=sk-ant-... npx vitest packages/openai-adapters/src/test/anthropic-caching.live.test.ts
@@ -17,7 +19,7 @@ import { describe, expect, test } from "vitest";
 import { constructLlmApi } from "../index.js";
 
 const API_KEY = process.env.ANTHROPIC_API_KEY;
-const MODEL = "claude-haiku-4-5-20251001";
+const MODEL = "claude-haiku-5-5";
 
 // Realistic tool definitions mimicking CLI's builtin tools
 const REALISTIC_TOOLS = [
@@ -181,7 +183,7 @@ const REALISTIC_TOOLS = [
   },
 ];
 
-// System message sized to exceed Haiku 4.5's 4096-token caching minimum.
+// System message sized to exceed the 4096-token caching minimum of older models.
 // The system message + tools together must be > 4096 tokens.
 // This realistic message mimics the CLI's baseSystemMessage with extensive
 // directory listings and detailed instructions.
@@ -553,6 +555,7 @@ describe.skipIf(!API_KEY)("Anthropic Prompt Caching - Live API", () => {
   const api = constructLlmApi({
     provider: "anthropic",
     apiKey: API_KEY!,
+    apiBase: process.env.ANTHROPIC_BASE_URL,
     // Default cachingStrategy is "systemAndTools"
   })!;
 
