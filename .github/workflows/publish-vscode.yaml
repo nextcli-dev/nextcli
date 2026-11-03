@@ -100,10 +100,15 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     strategy:
+      # Report every target instead of cancelling the rest on the first
+      # failure. Publishing still needs all of them to succeed.
+      fail-fast: false
       matrix:
         include:
-          - { os: windows-latest, platform: win32, arch: x64, npm_config_arch: x64 }
-          - { os: windows-latest, platform: win32, arch: arm64, npm_config_arch: arm }
+          # sqlite3 is compiled with node-gyp 8, which doesn't recognise the
+          # Visual Studio 2026 on windows-latest (windows-2025-vs2026).
+          - { os: windows-2022, platform: win32, arch: x64, npm_config_arch: x64 }
+          - { os: windows-2022, platform: win32, arch: arm64, npm_config_arch: arm }
           - { os: ubuntu-latest, platform: linux, arch: x64, npm_config_arch: x64 }
           - { os: ubuntu-latest, platform: linux, arch: arm64, npm_config_arch: arm64 }
           - { os: ubuntu-latest, platform: linux, arch: armhf, npm_config_arch: arm }
