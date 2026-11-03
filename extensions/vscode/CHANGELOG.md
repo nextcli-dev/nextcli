@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.3](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.4.2...vscode-v1.4.3) (2026-11-03)
+
+
+### Bug Fixes
+
+* **vscode:** rename the extension to "NextCLI: Bring Your Own Model AI Agent" for the Marketplace ([#22](https://github.com/nextcli-dev/nextcli/issues/22)) ([812d34e](https://github.com/nextcli-dev/nextcli/commit/812d34eb636b2dd22dc47b124e417a551dc46f90))
+
 ## [1.4.2](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.4.1...vscode-v1.4.2) (2026-11-03)
 
 
