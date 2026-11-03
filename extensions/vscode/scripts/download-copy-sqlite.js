@@ -37,6 +37,9 @@ async function downloadFile(url, outputPath) {
   fs.writeFileSync(outputPath, Buffer.from(buffer));
 }
 
+// Keep in sync with the sqlite3 version in core/package.json.
+const SQLITE3_VERSION = "6.0.1";
+
 /**
  *
  * @param {string} target platform specific target
@@ -44,12 +47,12 @@ async function downloadFile(url, outputPath) {
  */
 async function downloadSqlite(target, targetDir) {
   const downloadUrl =
-    // node-sqlite3 doesn't have a pre-built binary for win32-arm64
+    // node-sqlite3 doesn't have a pre-built binary for win32-arm64.
+    // TODO: this binary was built from sqlite3 5.1.7. Rebuild it from
+    // SQLITE3_VERSION on a windows-11-arm runner (node-gyp 12, Python 3.13).
     target === "win32-arm64"
       ? "https://continue-server-binaries.s3.us-west-1.amazonaws.com/win32-arm64/node_sqlite3.tar.gz"
-      : `https://github.com/TryGhost/node-sqlite3/releases/download/v5.1.7/sqlite3-v5.1.7-napi-v6-${
-          target
-        }.tar.gz`;
+      : `https://github.com/TryGhost/node-sqlite3/releases/download/v${SQLITE3_VERSION}/sqlite3-v${SQLITE3_VERSION}-napi-v6-${target}.tar.gz`;
   await downloadFile(downloadUrl, targetDir);
 }
 

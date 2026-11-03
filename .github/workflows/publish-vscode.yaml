@@ -105,8 +105,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # sqlite3 is compiled with node-gyp 8, which doesn't recognise the
-          # Visual Studio 2026 on windows-latest (windows-2025-vs2026).
+          # Pinned to windows-2022 because node-gyp 8 didn't recognise the
+          # Visual Studio 2026 on windows-latest (windows-2025-vs2026). sqlite3 6
+          # brings node-gyp 12, which does, so this can move back to
+          # windows-latest once a dry run passes there.
           - { os: windows-2022, platform: win32, arch: x64, npm_config_arch: x64 }
           - { os: windows-2022, platform: win32, arch: arm64, npm_config_arch: arm }
           - { os: ubuntu-latest, platform: linux, arch: x64, npm_config_arch: x64 }

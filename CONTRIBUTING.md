@@ -126,6 +126,13 @@ Then, install Vite globally
 npm i -g vite
 ```
 
+##### Native build prerequisites
+
+Native modules such as `sqlite3` normally install from prebuilt binaries. When no prebuilt binary matches your platform, npm builds them from source with node-gyp 12, which needs:
+
+- **Python 3.13.** The repo pins it in `.python-version`, and [uv](https://docs.astral.sh/uv/) installs it with `uv sync`. To make node-gyp use that interpreter, run `export npm_config_python="$(uv python find 3.13)"`.
+- **A C++ toolchain:** Xcode Command Line Tools on macOS, `build-essential` on Linux, or Visual Studio 2022/2026 with the "Desktop development with C++" workload on Windows.
+
 #### Fork the NextCLI Repository
 
 1. Go to the [NextCLI GitHub repository](https://github.com/nextcli-dev/nextcli) and fork it to your GitHub account.
