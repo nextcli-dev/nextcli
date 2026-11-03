@@ -29,3 +29,6 @@ server/exe/**
 # Do not ship esbuild in VSIX
 out/node_modules/esbuild/**
 out/node_modules/@esbuild/**
+
+# README demo media is loaded from GitHub, not shipped in the VSIX
+media/readme/**
