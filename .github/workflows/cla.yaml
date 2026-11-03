@@ -1,34 +1,207 @@
-name: "CLA Assistant"
+name: "CLA"
 
-# Contributors sign CLA.md by commenting on their pull request. Signatures are
-# stored on the `cla-signatures` branch, which the action creates on first use.
+# Contributors sign CLA.md by commenting on their pull request:
+#   I have read the CLA Document and I hereby sign the CLA
+# Signatures are stored in signatures/version2/cla.json on the
+# `cla-signatures` branch, which this workflow creates if it is missing.
+# The result is the commit status `CLA` on the pull request's head commit.
+# Comment `recheck` to evaluate it again.
+# pull_request_target is safe here: the workflow never checks out or runs code
+# from the pull request.
+#
+# The workflow acts as the NextCLI Automation GitHub App, not GITHUB_TOKEN:
+# the cla-enforcement ruleset lets only the maintainer and that app update the
+# cla-signatures branch.
 on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
   issue_comment:
     types: [created]
-  pull_request_target:
-    types: [opened, closed, synchronize]
 
-permissions:
-  actions: write
-  contents: write
-  pull-requests: write
-  statuses: write
+# Every API call uses the app token, so GITHUB_TOKEN needs no permissions.
+permissions: {}
+
+concurrency:
+  group: cla-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: false
 
 jobs:
-  CLAAssistant:
+  cla:
+    if: >-
+      github.repository == 'nextcli-dev/nextcli' &&
+      (github.event_name == 'pull_request_target' ||
+       (github.event.issue.pull_request &&
+        (contains(github.event.comment.body, 'I have read the CLA Document and I hereby sign the CLA') ||
+         contains(github.event.comment.body, 'recheck'))))
     runs-on: ubuntu-latest
-    if: github.repository == 'nextcli-dev/nextcli'
+    timeout-minutes: 5
     steps:
-      - name: "CLA Assistant"
-        if: (github.event.issue.pull_request && (contains(github.event.comment.body, 'recheck') || contains(github.event.comment.body, 'I have read the CLA Document and I hereby sign the CLA'))) || github.event_name == 'pull_request_target'
-        uses: contributor-assistant/github-action@v2.6.1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/create-github-app-token@v3
+        id: app-token
         with:
-          path-to-signatures: "signatures/version2/cla.json"
-          path-to-document: "https://github.com/nextcli-dev/nextcli/blob/main/CLA.md"
-          branch: cla-signatures
-          # Maintainers and bots. Everyone else signs once by commenting.
-          allowlist: lmolotii,dependabot[bot],github-actions[bot],nextcli-automation[bot]
-          signed-commit-message: "CLA signed in $pullRequestNo"
-          lock-pullrequest-aftermerge: false
+          client-id: ${{ vars.NEXTCLI_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NEXTCLI_APP_PRIVATE_KEY }}
+          permission-contents: write # commit signatures to the cla-signatures branch
+          permission-pull-requests: write # comment on the pull request
+          permission-statuses: write # set the CLA commit status
+
+      - uses: actions/github-script@v9
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const PHRASE = "I have read the CLA Document and I hereby sign the CLA";
+            const BRANCH = "cla-signatures";
+            const PATH = "signatures/version2/cla.json";
+            const DOC = "https://github.com/nextcli-dev/nextcli/blob/main/CLA.md";
+            const MARKER = "<!-- nextcli-cla -->";
+            // Maintainers and bots. Everyone else signs once by commenting.
+            const ALLOWLIST = new Set([
+              "lmolotii",
+              "dependabot[bot]",
+              "github-actions[bot]",
+              "nextcli-automation[bot]",
+            ]);
+
+            const { owner, repo } = context.repo;
+            const number = context.payload.pull_request?.number ?? context.payload.issue.number;
+            const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: number });
+
+            // Commit authors. A commit whose email isn't linked to a GitHub
+            // account can't be matched to a signature.
+            const commits = await github.paginate(github.rest.pulls.listCommits, {
+              owner, repo, pull_number: number, per_page: 100,
+            });
+            const committers = new Map();
+            const unlinked = new Set();
+            for (const c of commits) {
+              if (c.author?.login) committers.set(c.author.login, c.author.id);
+              else unlinked.add(c.commit.author?.name || "unknown author");
+            }
+
+            async function ensureBranch() {
+              try {
+                await github.rest.repos.getBranch({ owner, repo, branch: BRANCH });
+                return;
+              } catch (e) {
+                if (e.status !== 404) throw e;
+              }
+              // An orphan branch that holds only the signatures file.
+              const { data: tree } = await github.rest.git.createTree({
+                owner, repo,
+                tree: [{
+                  path: PATH, mode: "100644", type: "blob",
+                  content: JSON.stringify({ signedContributors: [] }, null, 2) + "\n",
+                }],
+              });
+              const { data: commit } = await github.rest.git.createCommit({
+                owner, repo, message: "Create CLA signatures file", tree: tree.sha, parents: [],
+              });
+              await github.rest.git.createRef({ owner, repo, ref: `refs/heads/${BRANCH}`, sha: commit.sha });
+              core.info(`Created branch ${BRANCH}.`);
+            }
+
+            async function loadSignatures() {
+              await ensureBranch();
+              try {
+                const { data } = await github.rest.repos.getContent({ owner, repo, path: PATH, ref: BRANCH });
+                return { file: JSON.parse(Buffer.from(data.content, "base64").toString()), sha: data.sha };
+              } catch (e) {
+                if (e.status !== 404) throw e;
+                return { file: { signedContributors: [] }, sha: undefined };
+              }
+            }
+
+            const isSigned = (file, login, id) =>
+              file.signedContributors.some((s) => s.id === id || s.name === login);
+
+            let { file, sha } = await loadSignatures();
+
+            // Record a signature from a committer who posted the phrase.
+            const comment = context.payload.comment;
+            if (comment && comment.body.includes(PHRASE)) {
+              const login = comment.user.login;
+              const id = comment.user.id;
+              if (!committers.has(login)) {
+                core.info(`${login} signed but has no commits in this pull request; nothing to record.`);
+              } else if (!isSigned(file, login, id) && !ALLOWLIST.has(login)) {
+                for (let attempt = 1; ; attempt++) {
+                  file.signedContributors.push({
+                    name: login,
+                    id,
+                    comment_id: comment.id,
+                    created_at: comment.created_at,
+                    repoId: context.payload.repository.id,
+                    pullRequestNo: number,
+                  });
+                  try {
+                    await github.rest.repos.createOrUpdateFileContents({
+                      owner, repo, path: PATH, branch: BRANCH, sha,
+                      message: `@${login} signed the CLA in #${number}`,
+                      content: Buffer.from(JSON.stringify(file, null, 2) + "\n").toString("base64"),
+                    });
+                    core.info(`Recorded the signature of ${login}.`);
+                    break;
+                  } catch (e) {
+                    // Another pull request wrote the file first; reload and retry.
+                    if (e.status !== 409 || attempt >= 3) throw e;
+                    ({ file, sha } = await loadSignatures());
+                    if (isSigned(file, login, id)) break;
+                  }
+                }
+              }
+            }
+
+            const unsigned = [...committers]
+              .filter(([login, id]) => !ALLOWLIST.has(login) && !isSigned(file, login, id))
+              .map(([login]) => login);
+            const ok = unsigned.length === 0 && unlinked.size === 0;
+
+            await github.rest.repos.createCommitStatus({
+              owner, repo, sha: pr.head.sha, context: "CLA",
+              state: ok ? "success" : "failure",
+              description: ok
+                ? "All committers have signed the CLA."
+                : `Waiting for: ${[...unsigned.map((l) => "@" + l), ...unlinked].join(", ")}`.slice(0, 140),
+              target_url: DOC,
+            });
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number: number, per_page: 100,
+            });
+            const existing = comments.find((c) => c.body?.includes(MARKER));
+
+            let body;
+            if (ok) {
+              body = `${MARKER}\nAll committers have signed the [CLA](${DOC}). Thank you!`;
+            } else {
+              const lines = [
+                MARKER,
+                `Thank you for your contribution. Before it can be merged, every committer needs to sign the [Contributor Licence Agreement](${DOC}).`,
+                "",
+                "To sign, read the agreement and post this exact comment on this pull request:",
+                "",
+                "```text",
+                PHRASE,
+                "```",
+                "",
+              ];
+              if (unsigned.length) lines.push(`Not signed yet: ${unsigned.map((l) => "@" + l).join(", ")}`);
+              if (unlinked.size) {
+                lines.push(
+                  `Commits by ${[...unlinked].join(", ")} use an email address that isn't linked to a GitHub account. ` +
+                  "Add that email to your GitHub account, or amend the commits with a linked email, then comment `recheck`.",
+                );
+              }
+              body = lines.join("\n");
+            }
+
+            if (existing) {
+              if (existing.body !== body) {
+                await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+              }
+            } else if (!ok) {
+              // No comment on pull requests that pass on the first run.
+              await github.rest.issues.createComment({ owner, repo, issue_number: number, body });
+            }
+
+            core.info(ok ? "CLA: all committers have signed." : `CLA: waiting for ${[...unsigned, ...unlinked].join(", ")}.`);
