@@ -330,7 +330,10 @@ export class ContinueCompletionProvider
 
       // Determine why this method was triggered.
       const isJumping = this.jumpManager.isJumpInProgress();
-      let chainExists = this.nextEditProvider.chainExists();
+      // Autocomplete never uses a chain. Treating one as existing would send
+      // this request down the accepting path below, which returns nothing.
+      let chainExists =
+        this.isNextEditActive && this.nextEditProvider.chainExists();
       const processedCount = this.prefetchQueue.processedCount;
       const unprocessedCount = this.prefetchQueue.unprocessedCount;
       // console.debug("isJumping:", isJumping, "/ chainExists:", chainExists);
@@ -437,7 +440,9 @@ export class ContinueCompletionProvider
       } else {
         // Case 1: Typing (chain does not exist).
         // if resetChainInFullFileDiff is true then we are Rebuilding next edit chain after clearing empty queues in full file diff mode
-        this.nextEditProvider.startChain();
+        if (this.isNextEditActive) {
+          this.nextEditProvider.startChain();
+        }
 
         const input: AutocompleteInput = {
           pos,
