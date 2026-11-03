@@ -42,7 +42,19 @@ runs:
     - uses: actions/setup-node@v7
       with:
         node-version-file: ".nvmrc"
-        
+
+    # node-gyp 8 compiles sqlite3 where no prebuilt binary exists (macOS) and
+    # imports distutils, which Python 3.12+ no longer ships. The macOS runners
+    # default to a newer Python, so pin one that still has it.
+    - uses: actions/setup-python@v7
+      id: python
+      with:
+        python-version: "3.11"
+
+    - name: Use the pinned Python for node-gyp
+      shell: bash
+      run: echo "npm_config_python=${{ steps.python.outputs.python-path }}" >> "$GITHUB_ENV"
+
     - name: Set target variable
       id: set-target
       shell: bash
