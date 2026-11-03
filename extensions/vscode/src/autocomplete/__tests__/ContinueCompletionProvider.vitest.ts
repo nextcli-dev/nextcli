@@ -158,7 +158,101 @@ describe("ContinueCompletionProvider triggering logic", () => {
   });
 });
 
-function buildProvider(options: { usingFullFileDiff?: boolean } = {}) {
+describe("ContinueCompletionProvider in autocomplete mode", () => {
+  const autocompleteOutcome = { completion: "false;" } as any;
+
+  function buildAutocompleteProvider() {
+    const provider = buildProvider({
+      nextEdit: false,
+      usingFullFileDiff: false,
+    });
+    const completionProvider = (provider as any).completionProvider;
+    completionProvider.provideInlineCompletionItems.mockResolvedValue(
+      autocompleteOutcome,
+    );
+    return { provider, completionProvider };
+  }
+
+  it("does not start a next edit chain", async () => {
+    const document = createDocument();
+    const position = createPosition(1, 9);
+    setActiveEditor(document, position);
+
+    const { provider, completionProvider } = buildAutocompleteProvider();
+
+    const result = await provider.provideInlineCompletionItems(
+      document,
+      position,
+      createContext(),
+      createToken(),
+    );
+
+    expect(result).toHaveLength(1);
+    expect(mockNextEditProvider.startChain).not.toHaveBeenCalled();
+    expect(
+      completionProvider.provideInlineCompletionItems,
+    ).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns a completion for each consecutive request", async () => {
+    // Keep chain state like the real NextEditProvider does.
+    let chain = false;
+    mockNextEditProvider.chainExists.mockImplementation(() => chain);
+    mockNextEditProvider.startChain.mockImplementation(() => {
+      chain = true;
+    });
+    mockNextEditProvider.deleteChain.mockImplementation(async () => {
+      chain = false;
+    });
+
+    const document = createDocument();
+    const position = createPosition(1, 9);
+    setActiveEditor(document, position);
+
+    const { provider, completionProvider } = buildAutocompleteProvider();
+
+    for (let i = 0; i < 2; i++) {
+      const result = await provider.provideInlineCompletionItems(
+        document,
+        position,
+        createContext(),
+        createToken(),
+      );
+      expect(result).toHaveLength(1);
+    }
+    expect(
+      completionProvider.provideInlineCompletionItems,
+    ).toHaveBeenCalledTimes(2);
+  });
+
+  it("ignores a chain left over from next edit", async () => {
+    mockNextEditProvider.chainExists.mockReturnValue(true);
+
+    const document = createDocument();
+    const position = createPosition(1, 9);
+    setActiveEditor(document, position);
+
+    const { provider, completionProvider } = buildAutocompleteProvider();
+
+    const result = await provider.provideInlineCompletionItems(
+      document,
+      position,
+      createContext(),
+      createToken(),
+    );
+
+    expect(result).toHaveLength(1);
+    expect(mockNextEditProvider.deleteChain).not.toHaveBeenCalled();
+    expect(mockPrefetchQueue.dequeueProcessed).not.toHaveBeenCalled();
+    expect(
+      completionProvider.provideInlineCompletionItems,
+    ).toHaveBeenCalledTimes(1);
+  });
+});
+
+function buildProvider(
+  options: { usingFullFileDiff?: boolean; nextEdit?: boolean } = {},
+) {
   const usingFullFileDiff = options.usingFullFileDiff ?? true;
   const configHandler = {
     loadConfig: vi.fn(async () => ({
@@ -175,7 +269,9 @@ function buildProvider(options: { usingFullFileDiff?: boolean } = {}) {
     webviewProtocol,
     usingFullFileDiff,
   );
-  provider.activateNextEdit();
+  if (options.nextEdit ?? true) {
+    provider.activateNextEdit();
+  }
   return provider;
 }
 
