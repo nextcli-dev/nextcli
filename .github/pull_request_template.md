@@ -4,7 +4,7 @@
 
 ## Checklist
 
-- [ ] I've read the [contributing guide](https://github.com/nextcli-dev/nextcli/blob/main/CONTRIBUTING.md)
+- [ ] I've read the [Contributing Guide](https://github.com/nextcli-dev/nextcli/blob/main/CONTRIBUTING.md)
 - [ ] I have read and agree to the [Contributor License Agreement](https://github.com/nextcli-dev/nextcli/blob/main/CLA.md)
 - [ ] The relevant docs, if any, have been updated or created
 - [ ] The relevant tests, if any, have been updated or created

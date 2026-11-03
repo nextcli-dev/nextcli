@@ -1,0 +1,46 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/v17.6.0/schemas/config.json",
+  "bootstrap-sha": "3291e6d365c500c438e2920c4c7b7d7bfd059976",
+  "release-type": "simple",
+  "include-component-in-tag": true,
+  "include-v-in-tag": true,
+  "separate-pull-requests": true,
+  "label": "autorelease: pending,release: cli",
+  "release-label": "autorelease: tagged,release: cli",
+  "packages": {
+    ".": {
+      "component": "cli",
+      "package-name": "@nextcli/cli",
+      "bump-minor-pre-major": true,
+      "changelog-path": "extensions/cli/CHANGELOG.md",
+      "exclude-paths": [
+        "extensions/vscode",
+        "gui",
+        "binary",
+        "docs",
+        "docs-site",
+        "eval",
+        "actions",
+        "scripts",
+        ".github",
+        ".continue",
+        ".claude",
+        ".husky",
+        ".idea",
+        ".vscode"
+      ],
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "extensions/cli/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "extensions/cli/package-lock.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    }
+  }
+}

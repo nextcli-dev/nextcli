@@ -1,0 +1,563 @@
+name: CI
+
+# Deterministic checks for pull requests to main. The final `ci` job is the
+# only required status check.
+#
+# Jobs run only when the change can affect them. scripts/ci/affected.mjs makes
+# that decision; its reasoning is in the run summary. To run everything:
+#   - add the `ci:full` label to the pull request and push, or
+#   - run this workflow manually on the branch (Actions > CI > Run workflow).
+# A weekly scheduled run on main runs everything as a safety net for the narrowed test selection.
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * 1"
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      full: ${{ steps.affected.outputs.full }}
+      core: ${{ steps.affected.outputs.core }}
+      gui: ${{ steps.affected.outputs.gui }}
+      vscode: ${{ steps.affected.outputs.vscode }}
+      vscode_e2e: ${{ steps.affected.outputs.vscode_e2e }}
+      cli: ${{ steps.affected.outputs.cli }}
+      cli_cross_os: ${{ steps.affected.outputs.cli_cross_os }}
+      binary: ${{ steps.affected.outputs.binary }}
+      packages: ${{ steps.affected.outputs.packages }}
+      base_sha: ${{ steps.affected.outputs.base_sha }}
+      core_jest_args: ${{ steps.affected.outputs.core_jest_args }}
+      core_vitest_args: ${{ steps.affected.outputs.core_vitest_args }}
+      gui_vitest_args: ${{ steps.affected.outputs.gui_vitest_args }}
+      vscode_vitest_args: ${{ steps.affected.outputs.vscode_vitest_args }}
+      cli_vitest_args: ${{ steps.affected.outputs.cli_vitest_args }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: ".nvmrc"
+      - name: Decide which jobs to run
+        id: affected
+        env:
+          EVENT: ${{ github.event_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          FULL_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'ci:full') }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then
+            node scripts/ci/affected.mjs --full "$EVENT" --github-output --explain
+          elif [ "$FULL_LABEL" = "true" ]; then
+            node scripts/ci/affected.mjs --full "label ci:full" --github-output --explain
+          elif [[ "$HEAD_REF" == release-please--* ]]; then
+            node scripts/ci/affected.mjs --full "release PR" --github-output --explain
+          else
+            node scripts/ci/affected.mjs --base "$BASE_SHA" --head "$HEAD_SHA" --github-output --explain
+          fi
+
+  prettier:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: changes
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: ".nvmrc"
+      - uses: actions/cache@v6
+        id: root-cache
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-root-node-modules-${{ hashFiles('package-lock.json') }}
+      - name: Install root dependencies
+        if: steps.root-cache.outputs.cache-hit != 'true'
+        run: npm ci
+      - name: Check formatting
+        env:
+          FULL: ${{ needs.changes.outputs.full }}
+          BASE_SHA: ${{ needs.changes.outputs.base_sha }}
+        run: |
+          if [ "$FULL" = "true" ]; then
+            npx prettier --check "**/*.{js,jsx,ts,tsx,json,css,md}" --ignore-path .gitignore --ignore-path .prettierignore
+            exit 0
+          fi
+          git diff --name-only -z --diff-filter=d "$BASE_SHA"...HEAD -- \
+            '*.js' '*.jsx' '*.ts' '*.tsx' '*.json' '*.css' '*.md' > "$RUNNER_TEMP/changed"
+          if [ ! -s "$RUNNER_TEMP/changed" ]; then
+            echo "No formattable files changed."
+            exit 0
+          fi
+          xargs -0 npx prettier --check --ignore-path .gitignore --ignore-path .prettierignore \
+            --no-error-on-unmatched-pattern < "$RUNNER_TEMP/changed"
+
+  pr-title:
+    # Squash merges use the pull request title as the commit message, and
+    # release-please reads those messages to version and write changelogs.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+    steps:
+      - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  core:
+    needs: changes
+    if: needs.changes.outputs.core == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Setup packages
+        uses: ./.github/actions/setup-packages
+      - name: Setup core component
+        uses: ./.github/actions/setup-component
+        with:
+          component: core
+          include-root: true
+      - name: Check if LLM-related files changed
+        id: llm-changes
+        uses: ./.github/actions/check-llm-changes
+        with:
+          is_fork: ${{ github.event.pull_request.head.repo.fork == true }}
+          is_dependabot: ${{ github.actor == 'dependabot[bot]' }}
+      - name: Type check and lint
+        working-directory: core
+        run: |
+          npx tsc --noEmit
+          npm run lint
+      - name: Run tests
+        working-directory: core
+        run: |
+          npm test -- $JEST_ARGS
+          npm run vitest -- $VITEST_ARGS
+        env:
+          JEST_ARGS: ${{ needs.changes.outputs.core_jest_args }}
+          VITEST_ARGS: ${{ needs.changes.outputs.core_vitest_args }}
+          IGNORE_API_KEY_TESTS: ${{ steps.llm-changes.outputs.ignore_api_tests }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+          RELACE_API_KEY: ${{ secrets.RELACE_API_KEY }}
+          INCEPTION_API_KEY: ${{ secrets.INCEPTION_API_KEY }}
+
+  gui:
+    needs: changes
+    if: needs.changes.outputs.gui == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Setup packages
+        uses: ./.github/actions/setup-packages
+      - name: Setup core component
+        uses: ./.github/actions/setup-component
+        with:
+          component: core
+          include-root: true
+      - name: Setup gui component
+        uses: ./.github/actions/setup-component
+        with:
+          component: gui
+          include-packages: false
+      - name: Type check and lint
+        working-directory: gui
+        run: |
+          npx tsc --noEmit
+          npm run lint
+      - name: Run tests
+        working-directory: gui
+        run: npm test -- $VITEST_ARGS
+        env:
+          VITEST_ARGS: ${{ needs.changes.outputs.gui_vitest_args }}
+
+  binary:
+    needs: changes
+    if: needs.changes.outputs.binary == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup packages
+        uses: ./.github/actions/setup-packages
+      - name: Setup core component
+        uses: ./.github/actions/setup-component
+        with:
+          component: core
+          include-root: true
+      - name: Setup binary component
+        uses: ./.github/actions/setup-component
+        with:
+          component: binary
+          include-packages: false
+      - name: Type check
+        working-directory: binary
+        run: npx tsc --noEmit
+
+  vscode:
+    needs: changes
+    if: needs.changes.outputs.vscode == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Setup packages
+        uses: ./.github/actions/setup-packages
+      - name: Setup core component
+        uses: ./.github/actions/setup-component
+        with:
+          component: core
+          include-root: true
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.NEXTCLI_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NEXTCLI_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+      - name: Setup vscode component
+        uses: ./.github/actions/setup-component
+        with:
+          component: vscode
+          include-packages: false
+        env:
+          # @vscode/ripgrep reads a public GitHub release. The default token cannot.
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+      - name: Type check and lint
+        working-directory: extensions/vscode
+        run: |
+          npm run write-build-timestamp
+          npx tsc --noEmit
+          npm run lint
+      - name: Run vitest tests
+        working-directory: extensions/vscode
+        run: npm run vitest -- $VITEST_ARGS
+        env:
+          VITEST_ARGS: ${{ needs.changes.outputs.vscode_vitest_args }}
+
+  packages:
+    needs: changes
+    if: needs.changes.outputs.packages != '[]' && needs.changes.outputs.packages != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJson(needs.changes.outputs.packages) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Setup packages
+        uses: ./.github/actions/setup-packages
+      - name: Check if LLM-related files changed
+        id: llm-changes
+        uses: ./.github/actions/check-llm-changes
+        with:
+          is_fork: ${{ github.event.pull_request.head.repo.fork == true }}
+          is_dependabot: ${{ github.actor == 'dependabot[bot]' }}
+      - name: Test ${{ matrix.package }}
+        working-directory: packages/${{ matrix.package }}
+        run: |
+          npm ci
+          npm test
+        env:
+          IGNORE_API_KEY_TESTS: ${{ steps.llm-changes.outputs.ignore_api_tests }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+          RELACE_API_KEY: ${{ secrets.RELACE_API_KEY }}
+          INCEPTION_API_KEY: ${{ secrets.INCEPTION_API_KEY }}
+
+  vscode-e2e-matrix:
+    needs: changes
+    if: needs.changes.outputs.vscode_e2e == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      test_file_matrix: ${{ steps.files.outputs.test_file_matrix }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: ".nvmrc"
+      - name: Cache npm
+        uses: actions/cache@v6
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-cache-matrix-${{ hashFiles('core/package-lock.json', 'extensions/vscode/package-lock.json') }}
+      - name: Cache packages node_modules
+        uses: actions/cache@v6
+        with:
+          path: packages/*/node_modules
+          key: ${{ runner.os }}-packages-node-modules-${{ hashFiles('packages/*/package-lock.json') }}
+      - name: Cache core node modules
+        uses: actions/cache@v6
+        with:
+          path: core/node_modules
+          key: ${{ runner.os }}-core-node-modules-${{ hashFiles('core/package-lock.json') }}
+      - name: Cache vscode extension node modules
+        uses: actions/cache@v6
+        with:
+          path: extensions/vscode/node_modules
+          key: ${{ runner.os }}-vscode-node-modules-${{ hashFiles('extensions/vscode/package-lock.json') }}
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.NEXTCLI_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NEXTCLI_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+      - name: Build packages and list e2e test files
+        id: files
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          SKIP_SSH: ${{ github.event.pull_request.head.repo.fork == true || github.actor == 'dependabot[bot]' }}
+        run: |
+          node ./scripts/build-packages.js
+          cd extensions/vscode
+          npm ci
+          npm run e2e:compile
+          if [ "$SKIP_SSH" = "true" ]; then
+            FILES=$(ls -1 e2e/_output/tests/*.test.js | grep -v "SSH" | jq -R . | jq -s -c .)
+          else
+            FILES=$(ls -1 e2e/_output/tests/*.test.js | jq -R . | jq -s -c .)
+          fi
+          echo "test_file_matrix=$FILES" >> "$GITHUB_OUTPUT"
+          echo "Test files: $FILES"
+
+  vscode-build-linux:
+    needs: changes
+    if: needs.changes.outputs.vscode_e2e == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.NEXTCLI_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NEXTCLI_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+      - name: Build VS Code extension
+        uses: ./.github/actions/build-vscode-extension
+        with:
+          platform: linux
+          arch: x64
+          npm_config_arch: x64
+          pre-release: false
+          commit-sha: ${{ github.sha }}
+          github-token: ${{ steps.app-token.outputs.token }}
+      # run-vscode-e2e-test downloads this artifact by name.
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: vscode-extension-build-Linux
+          path: extensions/vscode/build
+      - name: Upload .vsix
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-x64-vsix
+          path: extensions/vscode/*.vsix
+          retention-days: 7
+
+  vscode-e2e:
+    name: e2e ${{ matrix.test_file }} (${{ matrix.command }})
+    needs: [vscode-e2e-matrix, vscode-build-linux]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        test_file: ${{ fromJson(needs.vscode-e2e-matrix.outputs.test_file_matrix) }}
+        command: ["e2e:ci:run", "e2e:ci:run-yaml"]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.NEXTCLI_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NEXTCLI_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+      - name: Run VS Code E2E test
+        uses: ./.github/actions/run-vscode-e2e-test
+        with:
+          test_file: ${{ matrix.test_file }}
+          command: ${{ matrix.command }}
+          ssh_key: ${{ secrets.GH_ACTIONS_SSH_TEST_KEY_PEM }}
+          ssh_host: ${{ secrets.GH_ACTIONS_SSH_TEST_DNS_NAME }}
+          is_fork: ${{ github.event.pull_request.head.repo.fork == true || github.actor == 'dependabot[bot]' }}
+          github_token: ${{ steps.app-token.outputs.token }}
+
+  cli-lint:
+    needs: changes
+    if: needs.changes.outputs.cli == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup packages
+        uses: ./.github/actions/setup-packages
+      - name: Setup core component
+        uses: ./.github/actions/setup-component
+        with:
+          component: core
+          include-root: true
+      - name: Build core
+        working-directory: core
+        run: npm run build
+      - name: Install CLI dependencies
+        working-directory: extensions/cli
+        run: npm ci --include=optional
+      - name: Lint
+        working-directory: extensions/cli
+        run: npm run lint
+
+  cli-test:
+    name: cli-test (${{ matrix.os }}, node ${{ matrix.node-version }})
+    needs: changes
+    if: needs.changes.outputs.cli == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        # The oldest supported version (package.json engines) and the newest LTS.
+        node-version: [20, 24]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/cli-test
+        with:
+          node-version: ${{ matrix.node-version }}
+          vitest-args: ${{ needs.changes.outputs.cli_vitest_args }}
+
+  cli-test-cross-os:
+    name: cli-test (${{ matrix.os }}, node 22)
+    needs: changes
+    # Windows and macOS runs are slow, so they run only when the CLI's own
+    # files change, or on a full run.
+    if: needs.changes.outputs.cli_cross_os == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/cli-test
+        with:
+          node-version: 22
+          # e2e tests fail on Windows, likely because of stdout flushing.
+          run-e2e: ${{ matrix.os != 'windows-latest' }}
+
+  cli-smoke-api:
+    needs: changes
+    # Needs repository secrets, so it doesn't run for pull requests from forks.
+    if: >-
+      needs.changes.outputs.cli == 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup packages
+        uses: ./.github/actions/setup-packages
+      - name: Setup core component
+        uses: ./.github/actions/setup-component
+        with:
+          component: core
+          include-root: true
+      - name: Build core
+        working-directory: core
+        run: npm run build
+      - name: Build CLI
+        working-directory: extensions/cli
+        run: |
+          npm ci --include=optional
+          npm run build
+      - name: Run smoke API tests
+        working-directory: extensions/cli
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          NEXTCLI_API_KEY: ${{ secrets.NEXTCLI_API_KEY }}
+        run: npm run test:smoke-api
+
+  ci-scripts:
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: ".nvmrc"
+      - name: Test scripts/ci
+        run: node --test scripts/ci/affected.test.mjs
+
+  # The only required status check. Every job above must pass or be skipped
+  # because the change doesn't affect it.
+  ci:
+    if: always()
+    needs:
+      - changes
+      - prettier
+      - pr-title
+      - core
+      - gui
+      - binary
+      - vscode
+      - packages
+      - vscode-e2e-matrix
+      - vscode-build-linux
+      - vscode-e2e
+      - cli-lint
+      - cli-test
+      - cli-test-cross-os
+      - cli-smoke-api
+      - ci-scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Decide whether the needed jobs succeeded or failed
+        uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35 # v1.3.0
+        with:
+          allowed-skips: >-
+            pr-title, core, gui, binary, vscode, packages, vscode-e2e-matrix,
+            vscode-build-linux, vscode-e2e, cli-lint, cli-test,
+            cli-test-cross-os, cli-smoke-api
+          jobs: ${{ toJSON(needs) }}

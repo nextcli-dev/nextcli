@@ -1,6 +1,6 @@
 # Maintaining NextCLI
 
-NextCLI is a community continuation of [Continue](https://github.com/continuedev/continue). This checkout keeps the full Continue history. `upstream` is Continue and cannot be pushed to. `origin` is [nextcli-dev/nextcli](https://github.com/nextcli-dev/nextcli). Nothing in the rebrand has been committed yet.
+NextCLI is a community continuation of [Continue](https://github.com/continuedev/continue). This checkout keeps the full Continue history. `upstream` is Continue and cannot be pushed to. `origin` is [nextcli-dev/nextcli](https://github.com/nextcli-dev/nextcli).
 
 The checks companion lives in the sibling `nextcli-checks` directory and tracks [continuedev/checks](https://github.com/continuedev/checks) the same way. Its origin is [nextcli-dev/nextcli-checks](https://github.com/nextcli-dev/nextcli-checks).
 
@@ -42,54 +42,85 @@ NextCLI does not call Continue-hosted services unless you opt in with your own e
 
 ## CI
 
-Active workflows, adapted only where they named the Continue repository:
+`.github/workflows/ci.yml` runs on pull requests to `main`. Its last job, `ci`, is the only required status check. Nothing reruns after a merge: `main` requires pull requests to be up to date and squash-merged, so the merged commit is the tree CI already tested.
 
-- `.github/workflows/pr-checks.yaml`
-- `.github/workflows/cli-pr-checks.yml`
-- `.github/workflows/main-build.yaml`
-- `.github/workflows/pr-build-upload-vsix.yaml`
-- `delete-stale-branches.yaml`, `label-merged-prs.yml`, `stale-issue-helper.yaml`
+CI runs only the jobs a change can affect. `scripts/ci/affected.mjs` maps changed files to areas (`core`, `gui`, `vscode`, `cli`, `binary`, each package under `packages/`) and adds every area that depends on them, using the `file:` links and local package names in each `package.json`. Its reasoning is in the run summary. To see it for your branch:
 
-`release-cli.yml` is manual on purpose (`workflow_dispatch` with a version input). The four library releases are also manual: each takes a `patch`, `minor`, or `major` bump and reads the current version from npm. Extension preview workflows stay on `workflow_dispatch`, with their original triggers commented at the top of each file.
+```bash
+node scripts/ci/affected.mjs --base origin/main --explain
+```
 
-Removed because they existed for Continue's own operations: CLA assistant, Continue agents, auto-fix-failed-tests, Snyk agent, metrics, similar-issues, auto-assign, the weekly tidy-up agent, and Runloop blueprint upload.
+- A docs-only change runs formatting and the PR title check only.
+- An area whose own files changed, with no changed dependencies, runs only the tests related to the changed files (`jest --changedSince`, `vitest --changed`). Every other affected area runs its full suite.
+- The CLI's Windows and macOS jobs run only when `extensions/cli/` changes.
+- Lockfiles, `.nvmrc`, `.github/actions/`, `ci.yml` and `scripts/ci/` force a full run.
 
-## Releasing the CLI
+For a full run on a pull request, add the `ci:full` label and push, or run the CI workflow manually on the branch. A scheduled full run on `main` every Monday catches anything the narrowed selection misses. Release PRs always get a full run.
 
-`@nextcli/cli` is published by `.github/workflows/release-cli.yml` (`CLI Release` in the Actions tab). The source version stays `0.0.0-dev`. The workflow stamps the version you pass in, packs the tarball, and checks that a global install of that tarball prints the same version.
+Pull request titles must follow [Conventional Commits](https://www.conventionalcommits.org/) (`fix(cli): ...`, `feat(vscode): ...`). The squash commit uses the title, and release-please reads it.
 
-Run it from `main`. The first run should use `dry_run: true`. That packs and runs `npm publish --dry-run` without tagging. A second run with `dry_run: false` publishes and creates the `cli-vX.Y.Z` tag and GitHub release.
+Other workflows:
 
-Trusted publishing on npm is tied to the workflow file name. Configure it only after this file is on `main`, and name the workflow `release-cli.yml`.
+| Workflow                     | Runs                               | Does                                                                  |
+| ---------------------------- | ---------------------------------- | --------------------------------------------------------------------- |
+| `ai-checks.yml`              | `ai-review` label, or manually     | AI checks from `.checks/` via nextcli-checks, one job per check       |
+| `release-please.yml`         | push to `main`                     | Keeps the Release PRs up to date and creates releases when they merge |
+| `publish-vscode.yaml`        | VS Code release, or manually       | Builds 8 targets, publishes to Open VSX and the Marketplace           |
+| `release-cli.yml`            | CLI release, or manually (dry run) | Publishes `@nextcli/cli` to npm                                       |
+| `cla.yaml`                   | PR opened or updated, PR comments  | CLA signatures, stored on the `cla-signatures` branch                 |
+| `stale-issue-helper.yaml`    | daily                              | Marks and closes inactive issues and PRs                              |
+| `delete-stale-branches.yaml` | weekdays                           | Deletes branches inactive for 60 days, except `backup/*`              |
 
-The first publish has to use a token, because trusted publishing can only be turned on after the package exists:
+Upstream workflows that NextCLI doesn't use yet are parked in `.github/workflows-archive/`, which GitHub does not run. Its README says what each needs to be revived.
 
-1. Create a short-lived granular npm token scoped to the `nextcli` organization and store it as the `NPM_TOKEN` secret.
-2. Publish with `dry_run: false`.
-3. On npmjs.com, add a trusted publisher for repository `nextcli-dev/nextcli` and workflow `release-cli.yml`.
-4. Delete the `NPM_TOKEN` secret and revoke the token. Later releases leave `NPM_TOKEN` unset and use the workflow's OIDC token.
+## Releasing
+
+Versions and changelogs come from merged pull request titles. [release-please](https://github.com/googleapis/release-please) keeps one Release PR per product open on `main`:
+
+- `chore(main): release vscode X.Y.Z` bumps `extensions/vscode/package.json` and `extensions/vscode/CHANGELOG.md`.
+- `chore(main): release cli X.Y.Z` bumps `extensions/cli/package.json` and `extensions/cli/CHANGELOG.md`.
+
+A `fix:` or `feat:` title that touches a product's files, or the shared `core/` and `packages/`, adds to that product's Release PR. `docs:`, `chore:`, `ci:` and `test:` titles don't trigger a release. The configs are in `.github/release-please/`.
+
+### VS Code extension
+
+Even minor versions are stable, odd minor versions are pre-releases.
+
+**Stable.** Merge the vscode Release PR. release-please creates the tag `vscode-vX.Y.Z` and its GitHub release, and `publish-vscode.yaml` builds all 8 targets. Approve the `production` deployment, and the job publishes to Open VSX and the Visual Studio Marketplace. The vscode Release PR only bumps the patch version. To start the next stable minor, merge a pull request whose squash commit body contains:
+
+```text
+Release-As: 1.6.0
+```
+
+**Pre-release.** In Actions, run Publish VS Code Extension on `main` with channel `pre-release`. It builds the next version on the odd minor above the current stable one (stable 1.4.x gives 1.5.0, then 1.5.1, ...), creates the tag and GitHub pre-release, and publishes in the `staging` environment. The pre-release version is not committed.
+
+**Test build.** Run the same workflow with channel `dry-run` and any ref. It builds all 8 `.vsix` files as workflow artifacts and publishes nothing.
+
+Publishing uses trusted publishing (OIDC), with no stored tokens:
+
+- Open VSX: one trusted publisher for `nextcli.nextcli`, workflow `publish-vscode.yaml`, environment blank.
+- Visual Studio Marketplace (publisher `nextcli`): workflow `publish-vscode.yaml` with environment `production`, and the same workflow with environment `staging`.
+
+Both registries bind to the workflow file name, so don't rename `publish-vscode.yaml`. Both publish steps skip versions that already exist, so a failed publish job can be re-run.
+
+### CLI
+
+Merge the cli Release PR. release-please creates `cli-vX.Y.Z` and its GitHub release, and `release-cli.yml` builds, tests, packs and installs the tarball, then waits for approval of the `production` deployment before publishing to npm. To check a build without publishing, run CLI Release manually: it stops after packing.
+
+npm trusted publishing is bound to `release-cli.yml`. Leave `NPM_TOKEN` unset to publish with the workflow's OIDC token.
+
+After a CLI release, update the `@nextcli/cli` version pinned in nextcli-checks (`scripts/install-agent.sh`, `action.yml`, README) and move its `v2` tag.
 
 `extensions/cli/LICENSE` and `extensions/cli/NOTICE` are copies of the repository root files. npm only packs files inside the package directory. Update both copies when the root files change.
 
-## Releasing the libraries
+### Libraries
 
-`@nextcli/fetch`, `@nextcli/config-yaml`, `@nextcli/llm-info`, and `@nextcli/openai-adapters` are published by the matching `release-*.yml` workflows. Each run takes `bump` (`patch`, `minor`, or `major`) and `dry_run` (default true). npm is the record of the current version. The workflow reads `npm view <name> version`, applies the bump, and publishes that version. It does not commit the new version back to git.
+`@nextcli/config-types`, `@nextcli/config-yaml`, `@nextcli/fetch`, `@nextcli/llm-info` and `@nextcli/openai-adapters` have no release workflow. The CLI and the extension build them from `packages/` and don't install them from npm. To publish them again, add each package to release-please as its own component.
 
-If the package is not on npm yet, the version in `package.json` is the starting point. Those values continue Continue's numbering: fetch `1.9.0`, config-yaml `1.42.0`, llm-info `1.8.0`, openai-adapters `1.37.0`. The first real publish with `bump: patch` is one patch above that.
+## Repository settings
 
-Run each workflow from `main`. Use `dry_run: true` first. A run with `dry_run: false` publishes and creates a GitHub release tagged `@nextcli/<name>@<version>` without marking it Latest.
-
-Publish `fetch`, `llm-info`, and `config-yaml` before `openai-adapters`. `openai-adapters` depends on `@nextcli/config-yaml` and `@nextcli/fetch`, and its lockfile still points at the old `@continuedev` tarballs until `npm install` is run in `packages/openai-adapters` and `packages/continue-sdk` after those two packages exist on npm.
-
-`SEMANTIC_RELEASE_NPM_TOKEN` is the npm token these four workflows use. The name is historical. They no longer run semantic-release.
-
-## Secrets needed before publishing
-
-- Open VSX trusted publishing: one registration for `nextcli.nextcli`, naming the workflow `publish-vscode.yaml` with the environment left blank. Its `publish-preview` job runs in the `staging` environment and its `publish-stable` job in `production`. Create both environments on `nextcli-dev/nextcli` with those exact names. No Open VSX secret has to live in either one.
-- `NPM_TOKEN` for the first `@nextcli/cli` publish only, then trusted publishing as above
-- `NEXTCLI_SENTRY_DSN` only if error reporting should be on
-- A docs host for `docs.nextcli.dev` if GitHub Pages (`docs-gh-pages.yml`) is re-enabled
-
-## What not to commit by accident
-
-`upstream` push is disabled. Review `git status` before the first commit. The rebrand, the disabled workflows, and this file are all local changes on `main`.
+- `main` ruleset: pull request required, status check `ci` required and branches must be up to date, no force pushes or deletion.
+- Merge button: squash only, PR title as the commit message, branches deleted after merge.
+- Environments: `production` requires a reviewer and only accepts `vscode-v*` and `cli-v*` tags; `staging` only accepts `main`.
+- The NextCLI Automation GitHub App (`NEXTCLI_APP_CLIENT_ID` variable, `NEXTCLI_APP_PRIVATE_KEY` secret) needs contents and pull request write access. release-please uses it so that Release PRs run CI and releases start the publish workflows.
+- `NEXTCLI_SENTRY_DSN` only if error reporting should be on.

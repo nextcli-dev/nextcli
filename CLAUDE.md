@@ -2,9 +2,15 @@
 
 ## Before you finish: run the CI checks locally
 
-After a change and before reporting it done or committing, run the checks CI runs (`.github/workflows/pr-checks.yaml`, `cli-pr-checks.yml`) for every area you touched. Report failures verbatim; don't call work done while one fails.
+After a change and before reporting it done or committing, run the checks CI runs (`.github/workflows/ci.yml`) for every area you touched. Report failures verbatim; don't call work done while one fails.
 
-Always, from the repo root (CI's `prettier-check` job):
+To see which areas CI will check for your branch, and why:
+
+```bash
+node scripts/ci/affected.mjs --base origin/main --explain
+```
+
+Always, from the repo root (CI's `prettier` job):
 
 ```bash
 npx prettier --write <changed files>

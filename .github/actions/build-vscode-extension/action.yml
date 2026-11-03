@@ -18,6 +18,10 @@ inputs:
     description: 'Commit SHA for version modification (optional, uses first 7 chars)'
     required: false
     default: ''
+  version:
+    description: 'Version to build, overriding package.json (optional; used for pre-releases, which are not committed)'
+    required: false
+    default: ''
   github-token:
     description: 'GitHub token for downloading ripgrep'
     required: true
@@ -123,6 +127,16 @@ runs:
       run: |
         cd extensions/vscode
         npm install -f esbuild
+
+    - name: Set package.json version
+      if: inputs.version != ''
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        cd extensions/vscode
+        npm version "$VERSION" --no-git-tag-version --allow-same-version
+        echo "Building version $(node -p "require('./package.json').version")"
 
     - name: Modify package.json version with commit SHA
       if: inputs.commit-sha != ''

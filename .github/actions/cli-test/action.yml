@@ -1,0 +1,66 @@
+name: "CLI tests"
+description: "Build core, then build and test extensions/cli on a given Node version"
+
+inputs:
+  node-version:
+    description: "Node version to run the CLI tests on"
+    required: true
+  vitest-args:
+    description: "Extra vitest arguments, for example to run only tests related to changed files"
+    required: false
+    default: ""
+  run-e2e:
+    description: "Whether to run the CLI e2e tests"
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    # Shared setup uses the repository Node version (.nvmrc).
+    - name: Setup packages
+      uses: ./.github/actions/setup-packages
+    - name: Setup core component
+      uses: ./.github/actions/setup-component
+      with:
+        component: core
+        include-root: true
+    - name: Build core
+      shell: bash
+      working-directory: core
+      run: npm run build
+
+    # Switch to the Node version under test only after the shared setup,
+    # because setup-packages selects the .nvmrc version.
+    - name: Setup Node.js ${{ inputs.node-version }}
+      uses: actions/setup-node@v7
+      with:
+        node-version: ${{ inputs.node-version }}
+    - name: Cache CLI node_modules
+      uses: actions/cache@v6
+      with:
+        path: extensions/cli/node_modules
+        key: ${{ runner.os }}-node${{ inputs.node-version }}-cli-modules-${{ hashFiles('extensions/cli/package-lock.json') }}
+    - name: Install dependencies
+      shell: bash
+      working-directory: extensions/cli
+      run: npm ci --include=optional
+    - name: Build
+      shell: bash
+      working-directory: extensions/cli
+      run: npm run build
+    - name: Smoke tests
+      shell: bash
+      working-directory: extensions/cli
+      run: npm run test:smoke
+    - name: Unit tests
+      shell: bash
+      working-directory: extensions/cli
+      env:
+        VITEST_ARGS: ${{ inputs.vitest-args }}
+      run: npm test -- $VITEST_ARGS
+    - name: e2e tests
+      if: inputs.run-e2e == 'true'
+      shell: bash
+      working-directory: extensions/cli
+      run: npm run test:e2e
