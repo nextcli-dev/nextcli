@@ -64,7 +64,7 @@ Other workflows:
 | Workflow                     | Runs                               | Does                                                                  |
 | ---------------------------- | ---------------------------------- | --------------------------------------------------------------------- |
 | `ai-checks.yml`              | `ai-review` label, or manually     | AI checks from `.checks/` via nextcli-checks, one job per check       |
-| `release-please.yml`         | push to `main`                     | Keeps the Release PRs up to date and creates releases when they merge |
+| `release-prs.yml`            | push to `main`                     | Keeps the Release PRs up to date and creates releases when they merge |
 | `publish-vscode.yaml`        | VS Code release, or manually       | Builds 8 targets, publishes to Open VSX and the Marketplace           |
 | `release-cli.yml`            | CLI release, or manually (dry run) | Publishes `@nextcli/cli` to npm                                       |
 | `cla.yaml`                   | PR opened or updated, PR comments  | CLA signatures, stored on the `cla-signatures` branch                 |

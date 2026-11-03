@@ -1,5 +1,6 @@
-name: Release Please
+name: Release PRs
 
+# Runs release-please (https://github.com/googleapis/release-please).
 # Keeps one Release PR per product open on main, built from the
 # conventional-commit titles of merged pull requests:
 #   - "chore(main): release vscode X.Y.Z" bumps extensions/vscode
@@ -21,14 +22,14 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: release-please
+  group: release-prs
   cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
-  release-please:
+  release-prs:
     if: github.repository == 'nextcli-dev/nextcli'
     runs-on: ubuntu-latest
     timeout-minutes: 10
