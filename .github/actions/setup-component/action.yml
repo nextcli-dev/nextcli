@@ -19,6 +19,14 @@ runs:
     - uses: actions/setup-node@v7
       with:
         node-version-file: ".nvmrc"
+    - uses: actions/setup-python@v7
+      id: setup-python
+      with:
+        # 3.13, shared with uv; used by node-gyp when a prebuilt native binary is missing.
+        python-version-file: ".python-version"
+    - name: Point node-gyp at the pinned Python
+      shell: bash
+      run: echo "npm_config_python=${{ steps.setup-python.outputs.python-path }}" >> "$GITHUB_ENV"
     - uses: actions/cache@v6
       with:
         path: ~/.npm

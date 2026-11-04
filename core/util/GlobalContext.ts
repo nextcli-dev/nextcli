@@ -31,9 +31,16 @@ export type GlobalContextType = {
     [profileId: string]: GlobalContextModelSelections;
   };
   cliSelectedModel?: string;
+  /**
+   * Model menu settings per `provider/model`, shared by the CLI and the IDE
+   * extensions (see core/llm/modelSettings.ts)
+   */
   cliModelSettings?: {
     [modelKey: string]: {
       effort?: string;
+      /** off, hidden or shown */
+      thinking?: "off" | "hidden" | "shown";
+      /** Older setting, read when thinking isn't set */
       showThinking?: boolean;
       fast?: boolean;
       contextLength?: number;

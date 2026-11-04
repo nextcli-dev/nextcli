@@ -5,11 +5,13 @@ import React, { useState } from "react";
 import { services } from "../services/index.js";
 import {
   effectiveEffort,
+  effectiveThinking,
   effortLabel,
   formatContextLength,
   getContextOptions,
   getModelControlsFor,
   getModelSettings,
+  thinkingLabel,
   updateModelSettings,
 } from "../util/modelSettings.js";
 import { DEFAULT_CONTEXT_LENGTH } from "../util/tokenizer.js";
@@ -27,7 +29,7 @@ interface ModelMenuProps {
   onCancel: () => void;
 }
 
-type MenuView = "main" | "models" | "effort" | "context";
+type MenuView = "main" | "models" | "effort" | "thinking" | "context";
 
 interface MenuRow extends SelectorOption {
   value: string;
@@ -60,18 +62,12 @@ function buildRows(model: ModelConfig | null): MenuRow[] {
       opensSubmenu: true,
     });
   }
-  if (controls.canShowThinking) {
-    // Claude 4.6 to 4.8 only think once an effort is set
-    const needsEffort = controls.thinkingNeedsEffort && !effectiveEffort(model);
+  if (controls.thinkingModes.length > 0) {
     rows.push({
-      id: needsEffort ? "thinking-needs-effort" : "thinking",
-      name: "Show thinking",
-      value: needsEffort
-        ? "Needs effort"
-        : settings.showThinking === false
-          ? "Off"
-          : "On",
-      opensSubmenu: false,
+      id: "thinking",
+      name: "Thinking",
+      value: thinkingLabel(effectiveThinking(model)),
+      opensSubmenu: true,
     });
   }
   if (controls.fast) {
@@ -109,6 +105,28 @@ function effortOptions(model: ModelConfig): SelectorOption[] {
       name: effortLabel(effort),
     })),
   ];
+}
+
+/** Off uses no thinking tokens; Hidden thinks without showing the text */
+function thinkingOptions(model: ModelConfig): SelectorOption[] {
+  const descriptions: Record<string, string> = {
+    off: " (no thinking tokens)",
+    hidden: " (thinks, text not shown)",
+    shown: "",
+  };
+  return getModelControlsFor(model).thinkingModes.map((mode) => ({
+    id: mode,
+    name: thinkingLabel(mode),
+    displaySuffix: descriptions[mode],
+  }));
+}
+
+/** Why some thinking modes are missing, for the submenu title */
+function missingThinkingModes(model: ModelConfig): string {
+  const { thinkingUnavailable } = getModelControlsFor(model);
+  return Object.entries(thinkingUnavailable)
+    .map(([mode, reason]) => `${thinkingLabel(mode as "off")}: ${reason}`)
+    .join(" ");
 }
 
 function contextOptions(model: ModelConfig): SelectorOption[] {
@@ -184,6 +202,28 @@ export function ModelMenu({ onSelectModel, onCancel }: ModelMenuProps) {
     );
   }
 
+  if (view === "thinking" && model) {
+    const missing = missingThinkingModes(model);
+    return (
+      <Selector
+        title={`Thinking for ${model.name || model.model}${missing ? ` (${missing})` : ""}`}
+        options={thinkingOptions(model)}
+        selectedIndex={subIndex}
+        loading={false}
+        error={null}
+        currentId={effectiveThinking(model) ?? ""}
+        onSelect={(option) => {
+          updateModelSettings(model, {
+            thinking: option.id as "off" | "hidden" | "shown",
+          });
+          backToMain();
+        }}
+        onCancel={backToMain}
+        onNavigate={setSubIndex}
+      />
+    );
+  }
+
   if (view === "context" && model) {
     return (
       <Selector
@@ -220,14 +260,12 @@ export function ModelMenu({ onSelectModel, onCancel }: ModelMenuProps) {
       case "context":
         openSubmenu("context", contextOptions(model), currentContext);
         break;
-      case "thinking-needs-effort":
-        openSubmenu("effort", effortOptions(model), currentEffort);
-        break;
       case "thinking":
-        updateModelSettings(model, {
-          showThinking: settings?.showThinking === false,
-        });
-        setVersion((version) => version + 1);
+        openSubmenu(
+          "thinking",
+          thinkingOptions(model),
+          effectiveThinking(model) ?? "",
+        );
         break;
       case "fast":
         updateModelSettings(model, { fast: !settings?.fast });

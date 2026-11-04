@@ -34,12 +34,14 @@ This shows your available local configs. The selection is saved for next time.
 
 | Setting | What it changes |
 | --- | --- |
-| Effort | Reasoning depth. Claude: `output_config.effort` (or a thinking budget on older models). OpenAI and OpenRouter: `reasoning_effort`. DeepSeek: `Off` turns thinking off. |
-| Show thinking | Requests readable reasoning and shows it dimmed above each reply. Reasoning is still kept and sent back when this is off. |
-| Fast | Claude Opus fast mode (`speed: "fast"`), OpenAI priority processing, or OpenRouter's highest-throughput provider. |
+| Effort | Reasoning depth. Claude: `output_config.effort` (or a thinking budget on older models). OpenAI, OpenRouter and xAI: `reasoning_effort`. Gemini: `thinkingLevel` (a thinking budget on Gemini 2.5). |
+| Thinking | `Off` turns thinking off, so no thinking tokens are used. `Hidden` lets the model think without showing the reasoning. `Shown` shows it dimmed above each reply. Modes a model can't use aren't listed, and the submenu title says why. |
+| Fast | Claude Opus fast mode (`speed: "fast"`) or OpenAI priority processing. |
 | Context | The context window `cn` plans for when it compacts the conversation. |
 
-Settings are saved per model in `~/.continue/index/globalContext.json`. `/effort high` sets the effort directly, and `/effort default` clears it.
+Which models can turn thinking off, and the effort levels each model takes, are listed in [Model settings](/ide-extensions/chat/model-settings). The CLI uses the same rules. On Bedrock, the CLI applies `Off` and the effort but doesn't turn thinking on yet. The VS Code extension does.
+
+Settings are saved per model in `~/.continue/index/globalContext.json` and shared with the model menu in the VS Code extension. `cn` reads them when it starts, so a change made in VS Code applies from the next run. `/effort high` sets the effort directly, and `/effort default` clears it. On models without effort levels, such as DeepSeek, `/effort off` sets Thinking to `Off`.
 
 For one run, including headless runs, pass `--effort`:
 

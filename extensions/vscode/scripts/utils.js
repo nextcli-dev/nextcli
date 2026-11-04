@@ -178,23 +178,9 @@ async function copyNodeModules() {
 async function downloadSqliteBinary(target) {
   console.log("[info] Downloading pre-built sqlite3 binary");
   rimrafSync("../../core/node_modules/sqlite3/build");
-  const downloadUrl = {
-    "darwin-arm64":
-      "https://github.com/TryGhost/node-sqlite3/releases/download/v5.1.7/sqlite3-v5.1.7-napi-v6-darwin-arm64.tar.gz",
-    "linux-arm64":
-      "https://github.com/TryGhost/node-sqlite3/releases/download/v5.1.7/sqlite3-v5.1.7-napi-v3-linux-arm64.tar.gz",
-    "win32-arm64":
-      "https://github.com/TryGhost/node-sqlite3/releases/download/v5.1.7/sqlite3-v5.1.7-napi-v6-win32-arm64.tar.gz",
-    "linux-x64":
-      "https://github.com/TryGhost/node-sqlite3/releases/download/v5.1.7/sqlite3-v5.1.7-napi-v3-linux-x64.tar.gz",
-    "darwin-x64":
-      "https://github.com/TryGhost/node-sqlite3/releases/download/v5.1.7/sqlite3-v5.1.7-napi-v6-darwin-x64.tar.gz",
-    "win32-x64":
-      "https://github.com/TryGhost/node-sqlite3/releases/download/v5.1.7/sqlite3-v5.1.7-napi-v3-win32-x64.tar.gz",
-  }[target];
-  execCmdSync(
-    `curl -L -o ../../core/node_modules/sqlite3/build.tar.gz ${downloadUrl}`,
-  );
+  // Single source of truth for sqlite3 prebuilt URLs (version + win32-arm64).
+  const { downloadSqlite } = require("./download-copy-sqlite");
+  await downloadSqlite(target, "../../core/node_modules/sqlite3/build.tar.gz");
   execCmdSync("cd ../../core/node_modules/sqlite3 && tar -xvzf build.tar.gz");
   fs.unlinkSync("../../core/node_modules/sqlite3/build.tar.gz");
 }

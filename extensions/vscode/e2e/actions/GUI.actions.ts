@@ -1,4 +1,5 @@
 import {
+  By,
   InputBox,
   Key,
   WebDriver,
@@ -83,6 +84,17 @@ export class GUIActions {
   ) => {
     const dropdownButton = await GUISelectors.getModelDropdownButton(view);
     await dropdownButton.click();
+
+    // Models with settings open on the settings view; the list is under Model
+    const modelRow = await TestUtils.waitForSuccess(async () => {
+      const menu = await view.findWebElement(
+        By.css('[data-testid="model-select-menu"]'),
+      );
+      return menu;
+    }).then(() => GUISelectors.getModelListRow(view));
+    if (modelRow.length > 0) {
+      await modelRow[0].click();
+    }
 
     const dropdownOption = await TestUtils.waitForSuccess(() => {
       return GUISelectors.getModelDropdownOption(view, option);

@@ -1,43 +1,27 @@
-import {
-  ArrowPathIcon,
-  ChevronDownIcon,
-  Cog6ToothIcon,
-  CubeIcon,
-  PlusIcon,
-} from "@heroicons/react/24/outline";
-import { useEffect, useRef, useState } from "react";
+import { ChevronDownIcon, NoSymbolIcon } from "@heroicons/react/24/outline";
+import { ModelDescription } from "core";
+import type { ModelSettingsPatch } from "core/llm/modelSettings";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { defaultBorderRadius, vscCommandCenterInactiveBorder } from "..";
 import { useAuth } from "../../context/Auth";
 import { AddModelForm } from "../../forms/AddModelForm";
 import { useAppDispatch, useAppSelector } from "../../redux/hooks";
-import { setDialogMessage, setShowDialog } from "../../redux/slices/uiSlice";
-import { updateSelectedModelByRole } from "../../redux/thunks/updateSelectedModelByRole";
-import { getMetaKeyLabel, isMetaEquivalentKeyPressed } from "../../util";
-import { CONFIG_ROUTES } from "../../util/navigation";
 import {
-  Button,
-  Listbox,
-  ListboxButton,
-  ListboxOption,
-  ListboxOptions,
-  useFontSize,
-} from "../ui";
-import { Divider } from "../ui/Divider";
+  modelSettingsKey,
+  selectModelSettings,
+} from "../../redux/slices/modelSettingsSlice";
+import { setDialogMessage, setShowDialog } from "../../redux/slices/uiSlice";
+import { updateModelSettings } from "../../redux/thunks/modelSettings";
+import { updateSelectedModelByRole } from "../../redux/thunks/updateSelectedModelByRole";
+import { isMetaEquivalentKeyPressed } from "../../util";
+import { CONFIG_ROUTES } from "../../util/navigation";
+import { Popover, PopoverButton, PopoverPanel, useFontSize } from "../ui";
+import { ModelList, ModelListOption } from "./ModelList";
+import { FastIcon, ModelSettingsMenu, SettingsView } from "./ModelSettingsMenu";
+import { effortLabel, visibleSettingRows } from "./modelMenuLabels";
 
-interface ModelOptionProps {
-  option: Option;
-  idx: number;
-  showMissingApiKeyMsg: boolean;
-  isSelected?: boolean;
-}
-
-interface Option {
-  value: string;
-  title: string;
-  apiKey?: string;
-  sourceFile?: string;
-  isAutoDetected?: boolean;
-}
+type MenuView = SettingsView | "models";
 
 function modelSelectTitle(model: any): string {
   if (model?.title) return model?.title;
@@ -50,88 +34,83 @@ function modelSelectTitle(model: any): string {
   return model?.class_name;
 }
 
-/**makeshift way to close the headlessui listbox due to absence of open state on the listbox */
-function closeDropDown(button: HTMLButtonElement | null) {
-  if (!button) return;
-  button.classList.add("hidden");
-  setTimeout(() => {
-    button.classList.remove("hidden");
-  });
+/** Alphabetical, with models missing an API key last */
+function sortOptions(models: ModelDescription[]): ModelListOption[] {
+  const options = models
+    .map((model) => ({
+      value: model.title,
+      title: modelSelectTitle(model),
+      apiKey: model.apiKey,
+      isAutoDetected: model.isFromAutoDetect,
+    }))
+    .sort((a, b) => a.title.localeCompare(b.title));
+  return [
+    ...options.filter((option) => option.apiKey !== ""),
+    ...options.filter((option) => option.apiKey === ""),
+  ];
 }
 
-function ModelOption({
-  option,
-  idx,
-  showMissingApiKeyMsg,
-  isSelected,
-}: ModelOptionProps) {
-  const navigate = useNavigate();
-
-  function handleOptionClick(e: any) {
-    if (showMissingApiKeyMsg) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-  }
-
-  function handleConfigureClick(e: React.MouseEvent) {
-    e.stopPropagation();
-    navigate(CONFIG_ROUTES.MODELS);
-  }
-
-  return (
-    <ListboxOption
-      key={idx}
-      disabled={showMissingApiKeyMsg}
-      value={option.value}
-      onClick={handleOptionClick}
-      className={`group ${isSelected ? "bg-list-active text-list-active-foreground" : ""}`}
-    >
-      <div className="flex w-full items-center justify-between gap-5">
-        <div className="flex items-center gap-2 py-0.5">
-          <CubeIcon className="h-3 w-3 flex-shrink-0" />
-          <span className="line-clamp-1">
-            {option.title}
-            {option.isAutoDetected && (
-              <span className="text-description-muted ml-1.5 text-[10px] italic">
-                (autodetected)
-              </span>
-            )}
-            {showMissingApiKeyMsg && (
-              <span className="ml-1.5 text-[10px] italic">
-                (Missing API key)
-              </span>
-            )}
-          </span>
-        </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-description-muted hover:enabled:text-foreground my-0 h-4 w-4 p-0 opacity-0 transition-opacity group-hover:opacity-100"
-          onClick={handleConfigureClick}
-        >
-          <Cog6ToothIcon className="h-3.5 w-3.5" />
-        </Button>
-      </div>
-    </ListboxOption>
+/** Moves focus between menu rows with the arrow keys */
+function moveFocus(panel: HTMLElement | null, step: number) {
+  if (!panel) return;
+  const items = Array.from(
+    panel.querySelectorAll<HTMLElement>("[data-menu-item]"),
   );
+  if (items.length === 0) return;
+  const index = items.indexOf(document.activeElement as HTMLElement);
+  const next =
+    index === -1
+      ? step > 0
+        ? 0
+        : items.length - 1
+      : (index + step + items.length) % items.length;
+  items[next].focus();
 }
 
+/** Focuses the selected row, else the first one, when a view opens */
+function FocusOnView({
+  view,
+  panelRef,
+}: {
+  view: MenuView;
+  panelRef: React.RefObject<HTMLDivElement>;
+}) {
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    // In a list, start on the current choice; in the settings, at the top
+    const target =
+      (view !== "root"
+        ? panel.querySelector<HTMLElement>(
+            "[data-menu-item][aria-checked='true']",
+          )
+        : null) ?? panel.querySelector<HTMLElement>("[data-menu-item]");
+    target?.focus({ preventScroll: true });
+  }, [view, panelRef]);
+  return null;
+}
+
+/**
+ * The model menu in the chat input. The trigger shows the model, its effort,
+ * fast mode and whether thinking is off. The menu shows the model's
+ * settings (Fast, Thinking, Effort, Context) and a Model row that opens the
+ * model list; in Edit mode it shows only the list. It stays open while
+ * settings change.
+ */
 function ModelSelect() {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
+  const { selectedProfile } = useAuth();
+  const menuFont = useFontSize(-3);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [view, setView] = useState<MenuView>("root");
 
   const isInEdit = useAppSelector((store) => store.session.isInEdit);
   const config = useAppSelector((state) => state.config.config);
   const isConfigLoading = useAppSelector((state) => state.config.loading);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const [options, setOptions] = useState<Option[]>([]);
-  const [sortedOptions, setSortedOptions] = useState<Option[]>([]);
-  const { selectedProfile } = useAuth();
-  const tinyFont = useFontSize(-4);
 
-  let selectedModel = null;
-  let allModels = null;
+  let selectedModel: ModelDescription | null = null;
+  let allModels: ModelDescription[] | null = null;
   if (isInEdit) {
     allModels = config.modelsByRole.edit;
     selectedModel = config.selectedModelByRole.edit;
@@ -143,30 +122,25 @@ function ModelSelect() {
     allModels = config.modelsByRole.chat;
   }
 
-  // Sort so that options without an API key are at the end
-  useEffect(() => {
-    const alphaSort = options.sort((a, b) => a.title.localeCompare(b.title));
-    const enabledOptions = alphaSort.filter((option) => option.apiKey !== "");
-    const disabledOptions = alphaSort.filter((option) => option.apiKey === "");
+  const settings = useAppSelector((state) =>
+    selectModelSettings(state, selectedModel),
+  );
+  const options = useMemo(() => sortOptions(allModels ?? []), [allModels]);
+  const controls = selectedModel?.controls;
+  const rows = visibleSettingRows(controls);
+  const hasSettings =
+    !isInEdit && (rows.fast || rows.thinking || rows.effort || rows.context);
 
-    const sorted = [...enabledOptions, ...disabledOptions];
-
-    setSortedOptions(sorted);
-  }, [options]);
-
-  useEffect(() => {
-    setOptions(
-      allModels.map((model) => {
-        return {
-          value: model.title,
-          title: modelSelectTitle(model),
-          apiKey: model.apiKey,
-          sourceFile: model.sourceFile,
-          isAutoDetected: model.isFromAutoDetect,
-        };
+  function selectModel(title: string) {
+    if (title === selectedModel?.title) return;
+    void dispatch(
+      updateSelectedModelByRole({
+        selectedProfile,
+        role: isInEdit ? "edit" : "chat",
+        modelTitle: title,
       }),
     );
-  }, [allModels]);
+  }
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -178,37 +152,36 @@ function ModelSelect() {
         if (!selectedProfile) {
           return;
         }
-
-        const direction = event.shiftKey ? -1 : 1;
-        const currentIndex = options.findIndex(
+        const enabled = options.filter((option) => option.apiKey !== "");
+        if (enabled.length === 0) return;
+        const currentIndex = enabled.findIndex(
           (option) => option.value === selectedModel?.title,
         );
-        let nextIndex = (currentIndex + 1 * direction) % options.length;
-        if (nextIndex < 0) nextIndex = options.length - 1;
-        const newModelTitle = options[nextIndex].value;
-
+        const next = enabled[(currentIndex + 1) % enabled.length];
         void dispatch(
           updateSelectedModelByRole({
             selectedProfile,
             role: "chat",
-            modelTitle: newModelTitle,
+            modelTitle: next.value,
           }),
         );
       }
     };
-
     window.addEventListener("keydown", handleKeyDown);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [options, selectedModel]);
+  }, [options, selectedModel, selectedProfile]);
 
-  function onClickAddModel(e: MouseEvent) {
-    e.stopPropagation();
-    e.preventDefault();
+  function changeSettings(patch: ModelSettingsPatch) {
+    if (!selectedModel) return;
+    void dispatch(
+      updateModelSettings({ key: modelSettingsKey(selectedModel), patch }),
+    );
+  }
 
-    closeDropDown(buttonRef.current);
-
+  function openAddModel(close: () => void) {
+    close();
     dispatch(setShowDialog(true));
     dispatch(
       setDialogMessage(
@@ -221,112 +194,145 @@ function ModelSelect() {
     );
   }
 
-  function onClickConfigureModels(e: React.MouseEvent) {
-    e.stopPropagation();
-    e.preventDefault();
-
-    closeDropDown(buttonRef.current);
-
+  function openConfig(close: () => void) {
+    close();
     navigate(CONFIG_ROUTES.MODELS);
   }
 
-  const hasNoModels = allModels?.length === 0;
+  const effort =
+    settings?.effort &&
+    !(settings.thinking === "off" && controls?.effortNeedsThinking)
+      ? settings.effort
+      : undefined;
+  const showListOnly = !hasSettings;
+  const currentView: MenuView = showListOnly ? "models" : view;
 
   return (
-    <Listbox
-      onChange={async (val: string) => {
-        if (val === selectedModel?.title) return;
-        void dispatch(
-          updateSelectedModelByRole({
-            selectedProfile,
-            role: isInEdit ? "edit" : "chat",
-            modelTitle: val,
-          }),
-        );
-      }}
-    >
-      <div className="relative flex">
-        <ListboxButton
-          data-testid="model-select-button"
-          ref={buttonRef}
-          className="text-description h-[18px] gap-1 border-none"
-        >
-          <span className="line-clamp-1 break-all hover:brightness-110">
-            {modelSelectTitle(selectedModel) || "Select model"}
-          </span>
-          <ChevronDownIcon
-            className="hidden h-2 w-2 flex-shrink-0 hover:brightness-110 min-[200px]:flex"
-            aria-hidden="true"
-          />
-        </ListboxButton>
-        <ListboxOptions className="min-w-[160px]">
-          <div className="flex items-center justify-between px-1.5 py-1">
-            <span className="text-description text-xs font-medium">Models</span>
-            <div className="flex items-center gap-0.5">
-              <Button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onClickConfigureModels(e);
-                }}
-                variant="ghost"
-                size="sm"
-                className="my-0 h-5 w-5 p-0"
+    <Popover className="relative flex">
+      {({ open }) => (
+        <>
+          <PopoverButton
+            data-testid="model-select-button"
+            onClick={() => setView("root")}
+            className="text-description m-0 flex h-[18px] min-w-0 cursor-pointer items-center gap-1 border-none bg-transparent px-1 py-0.5 text-left transition-colors duration-200"
+            style={{ fontSize: menuFont, borderRadius: defaultBorderRadius }}
+          >
+            <span className="line-clamp-1 min-w-0 break-all hover:brightness-110">
+              {modelSelectTitle(selectedModel) || "Select model"}
+            </span>
+            {!isInEdit && effort && (
+              <span
+                data-testid="model-select-effort"
+                className="text-description-muted whitespace-nowrap"
               >
-                <Cog6ToothIcon className="text-description h-3.5 w-3.5" />
-              </Button>
-            </div>
-          </div>
-
-          <div className="no-scrollbar max-h-[300px] overflow-y-auto">
-            {isConfigLoading ? (
-              <div className="text-description flex items-center gap-2 px-2 pb-2 pt-1 text-xs">
-                <ArrowPathIcon className="animate-spin-slow h-3 w-3" />
-                <span>Loading config</span>
-              </div>
-            ) : hasNoModels ? (
-              <div className="text-description-muted px-2 py-4 text-center text-sm">
-                No models configured
-              </div>
-            ) : (
-              sortedOptions.map((option, idx) => (
-                <ModelOption
-                  option={option}
-                  idx={idx}
-                  key={idx}
-                  showMissingApiKeyMsg={option.apiKey === ""}
-                  isSelected={option.value === selectedModel?.title}
-                />
-              ))
+                {effortLabel(effort)}
+              </span>
             )}
-          </div>
-
-          {!isConfigLoading && (
-            <>
-              <Divider className="!mb-0" />
-              <ListboxOption
-                key={options.length}
-                onClick={onClickAddModel}
-                value={"addModel" as any}
-                fontSizeModifier={-2}
-                className="px-2 py-2"
+            {!isInEdit && settings?.fast && (
+              <span data-testid="model-select-fast" aria-label="Fast mode on">
+                <FastIcon />
+              </span>
+            )}
+            {!isInEdit && settings?.thinking === "off" && (
+              <span
+                data-testid="model-select-thinking-off"
+                aria-label="Thinking off"
+                title="Thinking off"
               >
-                <span className="text-description text-2xs flex flex-row items-center">
-                  <PlusIcon className="mr-1.5 h-3.5 w-3.5" />
-                  Add Chat model
-                </span>
-              </ListboxOption>
-
-              <Divider className="!my-0" />
-              <div className="text-description flex items-center justify-start p-2">
-                <span className="block" style={{ fontSize: tinyFont }}>
-                  <code>{getMetaKeyLabel()}'</code> to toggle model
-                </span>
-              </div>
-            </>
+                <NoSymbolIcon className="text-description-muted h-2.5 w-2.5 flex-shrink-0" />
+              </span>
+            )}
+            <ChevronDownIcon
+              className="hidden h-2 w-2 flex-shrink-0 hover:brightness-110 min-[200px]:flex"
+              aria-hidden="true"
+            />
+          </PopoverButton>
+          {open && (
+            <PopoverPanel
+              ref={panelRef}
+              anchor="bottom start"
+              role="menu"
+              data-testid="model-select-menu"
+              className="bg-vsc-input-background flex w-max min-w-[160px] max-w-[240px] flex-col overflow-auto px-0 shadow-md"
+              style={{
+                border: `1px solid ${vscCommandCenterInactiveBorder}`,
+                fontSize: menuFont,
+                borderRadius: defaultBorderRadius,
+                zIndex: 200000,
+              }}
+            >
+              {({ close }) => (
+                <div
+                  onKeyDown={(e) => {
+                    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                      e.preventDefault();
+                      moveFocus(
+                        panelRef.current,
+                        e.key === "ArrowDown" ? 1 : -1,
+                      );
+                    } else if (e.key === "ArrowRight") {
+                      const row = (document.activeElement as HTMLElement | null)
+                        ?.dataset.row;
+                      if (row && row !== "fast" && currentView === "root") {
+                        e.preventDefault();
+                        (document.activeElement as HTMLElement).click();
+                      }
+                    } else if (
+                      e.key === "ArrowLeft" &&
+                      currentView !== "root"
+                    ) {
+                      if (!showListOnly) {
+                        e.preventDefault();
+                        setView("root");
+                      }
+                    } else if (
+                      e.key === "Escape" &&
+                      currentView !== "root" &&
+                      !showListOnly
+                    ) {
+                      // Escape goes back first; from the main view it closes
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setView("root");
+                    }
+                  }}
+                >
+                  <FocusOnView view={currentView} panelRef={panelRef} />
+                  {currentView === "models" ? (
+                    <ModelList
+                      options={options}
+                      selectedTitle={selectedModel?.title}
+                      isLoading={isConfigLoading}
+                      onBack={showListOnly ? undefined : () => setView("root")}
+                      onSelect={(title) => {
+                        selectModel(title);
+                        // Keep the menu open on the new model's settings
+                        if (showListOnly) close();
+                        else setView("root");
+                      }}
+                      onConfigure={() => openConfig(close)}
+                      onAddModel={() => openAddModel(close)}
+                    />
+                  ) : (
+                    controls &&
+                    selectedModel && (
+                      <ModelSettingsMenu
+                        modelTitle={modelSelectTitle(selectedModel)}
+                        controls={controls}
+                        settings={settings}
+                        view={currentView}
+                        onView={setView}
+                        onChange={changeSettings}
+                      />
+                    )
+                  )}
+                </div>
+              )}
+            </PopoverPanel>
           )}
-        </ListboxOptions>
-      </div>
-    </Listbox>
+        </>
+      )}
+    </Popover>
   );
 }
 

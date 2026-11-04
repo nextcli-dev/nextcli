@@ -37,6 +37,8 @@ const DEFAULT_MOCK_CORE_RESPONSES: MockResponses = {
     "file:///Users/user/workspace2",
   ],
   "history/list": [],
+  "modelSettings/getAll": {},
+  "modelSettings/update": {},
   "docs/getIndexedPages": [],
   "history/save": undefined,
   "config/getSerializedProfileInfo": {

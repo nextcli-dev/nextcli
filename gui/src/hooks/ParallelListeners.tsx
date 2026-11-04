@@ -18,15 +18,14 @@ import {
 import {
   addContextItemsAtIndex,
   newSession,
-  setHasReasoningEnabled,
   setIsSessionMetadataLoading,
   setMode,
 } from "../redux/slices/sessionSlice";
 import { setTTSActive } from "../redux/slices/uiSlice";
 
-import { modelSupportsReasoning } from "core/llm/autodetect";
 import { cancelStream } from "../redux/thunks/cancelStream";
 import { handleApplyStateUpdate } from "../redux/thunks/handleApplyStateUpdate";
+import { loadModelSettings } from "../redux/thunks/modelSettings";
 import { loadSession, refreshSessionMetadata } from "../redux/thunks/session";
 import { updateFileSymbolsFromHistory } from "../redux/thunks/updateFileSymbols";
 import {
@@ -45,9 +44,6 @@ function ParallelListeners() {
   const isInEdit = useAppSelector((store) => store.session.isInEdit);
   const selectedProfileId = useAppSelector(
     (store) => store.profiles.selectedProfileId,
-  );
-  const reasoningSettings = useAppSelector(
-    (store) => store.ui.reasoningSettings,
   );
   const hasDoneInitialConfigLoad = useRef(false);
 
@@ -89,22 +85,12 @@ function ParallelListeners() {
         document.body.style.fontSize = `${configResult.config.ui.fontSize}px`;
       }
 
-      const chatModel = configResult.config?.selectedModelByRole.chat;
-      const supportsReasoning = modelSupportsReasoning(chatModel);
-      const isReasoningDisabled =
-        chatModel?.completionOptions?.reasoning === false;
-      const wasReasoningPreviouslyEnabled = chatModel?.title
-        ? reasoningSettings[chatModel.title] !== false
-        : true;
-      dispatch(
-        setHasReasoningEnabled(
-          supportsReasoning &&
-            !isReasoningDisabled &&
-            wasReasoningPreviouslyEnabled,
-        ),
-      );
+      // Model menu settings (effort, thinking, fast, context) live in core
+      if (configResult.config) {
+        void dispatch(loadModelSettings());
+      }
     },
-    [dispatch, hasDoneInitialConfigLoad, selectedProfileId, reasoningSettings],
+    [dispatch, hasDoneInitialConfigLoad, selectedProfileId],
   );
 
   // Load config from the IDE

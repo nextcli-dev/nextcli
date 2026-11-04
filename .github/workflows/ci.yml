@@ -46,6 +46,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          # History without file contents: diffs need commits and trees only
+          filter: blob:none
       - uses: actions/setup-node@v7
         with:
           node-version-file: ".nvmrc"
@@ -76,6 +78,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          # History without file contents: diffs need commits and trees only
+          filter: blob:none
       - uses: actions/setup-node@v7
         with:
           node-version-file: ".nvmrc"
@@ -127,6 +131,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          # History without file contents: diffs need commits and trees only
+          filter: blob:none
       - name: Setup packages
         uses: ./.github/actions/setup-packages
       - name: Setup core component
@@ -171,6 +177,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          # History without file contents: diffs need commits and trees only
+          filter: blob:none
       - name: Setup packages
         uses: ./.github/actions/setup-packages
       - name: Setup core component
@@ -226,6 +234,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          # History without file contents: diffs need commits and trees only
+          filter: blob:none
       - name: Setup packages
         uses: ./.github/actions/setup-packages
       - name: Setup core component
@@ -273,6 +283,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          # History without file contents: diffs need commits and trees only
+          filter: blob:none
       - name: Setup packages
         uses: ./.github/actions/setup-packages
       - name: Check if LLM-related files changed
@@ -362,6 +374,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          # History without file contents: diffs need commits and trees only
+          filter: blob:none
       - name: Create GitHub App token
         id: app-token
         uses: actions/create-github-app-token@v3
@@ -460,6 +474,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          # History without file contents: diffs need commits and trees only
+          filter: blob:none
       - uses: ./.github/actions/cli-test
         with:
           node-version: ${{ matrix.node-version }}

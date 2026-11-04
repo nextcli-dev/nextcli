@@ -5,9 +5,11 @@
  * across tool use, long conversations, large payloads, and edge cases.
  *
  * Guarded by ANTHROPIC_API_KEY env var — skipped if not set.
- * Uses claude-haiku-4-5-20251001 to minimize cost.
+ * Uses claude-haiku-5-5, the cheapest current Claude model. Set
+ * ANTHROPIC_BASE_URL to run against an Anthropic-compatible gateway.
  *
- * IMPORTANT: Haiku 4.5 requires a minimum of 4096 tokens for caching.
+ * Haiku 5.5 caches prompts of 512 tokens or more. The prompts here are
+ * larger (over 4096 tokens), which also covers models with higher minimums.
  *
  * Run: ANTHROPIC_API_KEY=sk-ant-... npx vitest packages/openai-adapters/src/test/anthropic-caching-scenarios.live.test.ts
  */
@@ -16,7 +18,7 @@ import { describe, expect, test } from "vitest";
 import { constructLlmApi } from "../index.js";
 
 const API_KEY = process.env.ANTHROPIC_API_KEY;
-const MODEL = "claude-haiku-4-5-20251001";
+const MODEL = "claude-haiku-5-5";
 
 // ─── Shared fixtures ────────────────────────────────────────────────
 
@@ -146,7 +148,7 @@ const TOOLS = [
   },
 ];
 
-// System message large enough to exceed Haiku 4.5's 4096-token minimum
+// System message large enough to exceed the 4096-token minimum of older models
 // when combined with the tool definitions above.
 const SYSTEM_MESSAGE = `You are an AI coding assistant integrated into a developer's IDE. You help with software engineering tasks including writing code, debugging, explaining code, and more.
 
@@ -441,6 +443,7 @@ function makeApi() {
   return constructLlmApi({
     provider: "anthropic",
     apiKey: API_KEY!,
+    apiBase: process.env.ANTHROPIC_BASE_URL,
   })!;
 }
 

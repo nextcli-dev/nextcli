@@ -35,6 +35,7 @@ import { BedrockConfig } from "../types.js";
 import { chatChunk, chatChunkFromDelta, embedding, rerank } from "../util.js";
 import { safeParseArgs } from "../util/parseArgs.js";
 import { parseDataUrl } from "../util/url.js";
+import { anthropicControlParams } from "./anthropicControls.js";
 import { filterAnthropicSamplingParams } from "./AnthropicUtils.js";
 import {
   BaseLlmApi,
@@ -419,17 +420,31 @@ export class BedrockApi implements BaseLlmApi {
       body.toolConfig = toolConfig;
     }
 
-    // Add reasoning if needed
-    // TODO REASONING
-    // if (this.c) {
-    //   body.additionalModelRequestFields = {
-    //     thinking: {
-    //       type: "enabled",
-    //       budget_tokens:
-    //         oaiBody.additionalModelRequestFields.reasoningBudgetTokens,
-    //     },
-    //   };
-    // }
+    // Claude's thinking settings go in additionalModelRequestFields. Only
+    // turning thinking off and the effort level are applied here: thinking
+    // blocks aren't sent back on later turns yet, which Claude needs for
+    // tool use while thinking (core's Bedrock class does send them back).
+    const controls = oaiBody as ChatCompletionCreateParams & {
+      reasoning_effort?: string;
+      nextcli_thinking?: string;
+    };
+    if (oaiBody.model.toLowerCase().includes("claude")) {
+      const params = anthropicControlParams({
+        model: oaiBody.model,
+        effort: controls.reasoning_effort ?? undefined,
+        thinking: controls.nextcli_thinking === "off" ? "off" : undefined,
+        maxTokens: oaiBody.max_tokens ?? 4096,
+      });
+      const fields = {
+        ...(params.thinking?.type === "disabled" && {
+          thinking: params.thinking,
+        }),
+        ...(params.outputConfig && { output_config: params.outputConfig }),
+      };
+      if (Object.keys(fields).length > 0) {
+        body.additionalModelRequestFields = fields;
+      }
+    }
 
     return body;
   }

@@ -1,0 +1,55 @@
+---
+title: "Model Settings"
+---
+
+Click the model name in the chat input to open the model menu. It shows the settings the selected model supports, then **Model ›**, which opens the model list. Rows a model doesn't support are hidden. The menu stays open while you change settings.
+
+| Setting | What it changes |
+| --- | --- |
+| Fast | Claude Opus fast mode (`speed: "fast"`) or OpenAI priority processing (`service_tier: "priority"`). |
+| Thinking | `Off` turns thinking off, so no thinking tokens are used. `Hidden` lets the model think without showing the reasoning. `Shown` shows the reasoning above the reply. |
+| Effort | Reasoning depth, from the levels the model accepts. `Default` uses the provider's level. |
+| Context | The context window NextCLI fills before it trims older messages. The largest option is the model's limit. |
+
+The toolbar shows the chosen effort and a lightning icon when Fast is on, for example `Opus 5.5 High`. A crossed-out icon means thinking is off.
+
+## Thinking off
+
+A choice the model can't use is greyed out, and the reason is shown below it. With thinking off, answers to multi-step questions are less reliable.
+
+| Provider | How `Off` is sent |
+| --- | --- |
+| Anthropic, Bedrock | `thinking: { type: "disabled" }`. Effort still applies to the answer. |
+| OpenAI | `reasoning.effort: "none"` on GPT-5.1 to GPT-6. GPT-5, GPT-6.1 and o-series models can't turn reasoning off. |
+| Azure OpenAI | `reasoning_effort: "none"`, on the same models as OpenAI. Azure's Chat Completions API returns no reasoning, so there's no `Shown`. |
+| OpenRouter | `reasoning.enabled: false`. Not offered for Gemini 3+ Flash and Pro or Grok 4.5 and later, which OpenRouter requires to reason. |
+| DeepSeek | `thinking: { type: "disabled" }` |
+| Gemini | `thinkingBudget: 0` on Gemini 2.5 Flash and Flash-Lite and on Flash-Lite 3 and later. Other Gemini models always think. |
+| Kimi (Moonshot) | `thinking: { type: "disabled" }` on Kimi K3 models. `-thinking` models always think. |
+| xAI | `reasoning_effort: "none"` on grok-4.3. Later Grok reasoning models always reason. |
+
+For Ollama and other providers that only take an on/off reasoning flag, the menu offers `Off` and `Shown`.
+
+With thinking off, OpenAI, OpenRouter, Gemini, Kimi and xAI ignore the effort, so the Effort row shows **Needs thinking**.
+
+## Effort levels
+
+The Effort submenu lists only the levels the model accepts:
+
+| Models | Levels |
+| --- | --- |
+| GPT-5 | Minimal, Low, Medium, High |
+| GPT-5.1 | Low, Medium, High |
+| GPT-5.2 to GPT-5.5 | Low to Extra high |
+| GPT-5.6, GPT-6, GPT-6.1 | Low to Max |
+| Claude Opus 4.7 and later, Claude 5 | Low to Max |
+| grok-4.3 to grok-4.7 | Minimal to Extra high |
+| Kimi K3 | Low, High, Max (Max is the default) |
+
+grok-4.20 reasoning models and grok-build don't take an effort. On other OpenAI-compatible providers, such as Mistral, Groq or vLLM, Effort and Thinking appear only for models whose names mark them as reasoning models (for example `qwen3`, `magistral` or `-r1`), or when `config.yaml` sets `reasoning` or `reasoningEffort` for the model. Other models get the Context row only.
+
+## Defaults
+
+Until you choose a mode, Thinking is `Shown`, except on OpenAI, where it's `Hidden` because readable reasoning summaries can need a verified organization. `reasoning: false` in `config.yaml` makes the default `Off`, and `reasoningEffort` sets the default effort. See the [config.yaml reference](/reference#models).
+
+Settings are saved per model in `~/.continue/index/globalContext.json`, the same place the CLI's `/model` menu saves them, so both show the same values.

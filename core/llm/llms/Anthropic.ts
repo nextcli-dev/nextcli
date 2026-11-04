@@ -13,13 +13,15 @@ import {
 import { streamSse } from "@nextcli/fetch";
 import {
   addCacheControlToLastTwoUserMessages,
+  anthropicControlParams,
   anthropicSupportsForcedToolChoice,
   anthropicSupportsPrefill,
-  anthropicThinkingType,
+  anthropicThinkingOn,
   filterAnthropicSamplingParams,
   getAnthropicErrorMessage,
   getAnthropicHeaders,
   getAnthropicMediaTypeFromDataUrl,
+  withAnthropicBetas,
 } from "@nextcli/openai-adapters";
 import {
   ChatMessage,
@@ -62,54 +64,79 @@ class Anthropic extends BaseLLM {
     };
   }
 
-  private convertThinking(
-    options: CompletionOptions,
-  ): MessageCreateParams["thinking"] {
-    if (!options.reasoning) {
-      return undefined;
-    }
-    if (anthropicThinkingType(options.model) === "adaptive") {
-      // The installed SDK types predate adaptive thinking, which takes no budget
-      return { type: "adaptive" } as unknown as MessageCreateParams["thinking"];
-    }
-    return {
-      type: "enabled",
-      budget_tokens: options.reasoningBudgetTokens ?? DEFAULT_REASONING_TOKENS,
-    };
+  /** Chat requests honour the model menu settings */
+  protected supportsModelControls(): boolean {
+    return true;
+  }
+
+  /**
+   * Thinking, effort and fast mode for the request. The model menu's
+   * thinking mode wins; otherwise `reasoning: true` turns thinking on with a
+   * budget and `reasoning: false` turns it off.
+   */
+  private controlParams(options: CompletionOptions) {
+    return anthropicControlParams({
+      model: options.model,
+      effort: options.reasoningEffort,
+      thinking:
+        options.thinking ?? (options.reasoning === false ? "off" : undefined),
+      thinkingRequested: options.reasoning === true,
+      budgetTokens: options.reasoning
+        ? (options.reasoningBudgetTokens ?? DEFAULT_REASONING_TOKENS)
+        : undefined,
+      fast: options.fast,
+      maxTokens: options.maxTokens ?? 2048,
+    });
+  }
+
+  /** Beta flags the request needs, such as fast mode's research preview */
+  protected requestBetas(options: CompletionOptions): string[] {
+    return this.controlParams(options).betas;
   }
 
   // Public for use within VertexAI
   public convertArgs(
     options: CompletionOptions,
   ): Omit<MessageCreateParams, "messages"> {
+    const params = this.controlParams(options);
+    const thinkingOn = anthropicThinkingOn(params.thinking);
     const sampling = filterAnthropicSamplingParams(options.model, {
-      temperature: options.temperature,
-      topP: options.topP,
-      topK: options.topK,
+      // While thinking, Claude rejects temperature and top_k and needs a
+      // top_p of 0.95 to 1
+      temperature: thinkingOn ? undefined : options.temperature,
+      topP:
+        thinkingOn && (options.topP === undefined || options.topP < 0.95)
+          ? undefined
+          : options.topP,
+      topK: thinkingOn ? undefined : options.topK,
     });
     const finalOptions = {
       top_k: sampling.topK,
       top_p: sampling.topP,
       temperature: sampling.temperature,
-      max_tokens: options.maxTokens ?? 2048,
+      max_tokens: params.maxTokens,
       model: options.model === "claude-2" ? "claude-2.1" : options.model,
       stop_sequences: options.stop?.filter((x) => x.trim() !== ""),
       stream: options.stream ?? true,
       tools: options.tools?.map(this.convertToolToAnthropicTool),
-      thinking: this.convertThinking(options),
+      thinking: params.thinking,
       // Anthropic rejects forced tool use together with thinking, and newer models reject it outright
       tool_choice:
         options.toolChoice &&
-        !options.reasoning &&
+        !thinkingOn &&
         anthropicSupportsForcedToolChoice(options.model)
           ? {
               type: "tool" as const,
               name: options.toolChoice.function.name,
             }
           : undefined,
+      ...(params.outputConfig && { output_config: params.outputConfig }),
+      ...(params.speed && { speed: params.speed }),
     };
 
-    return finalOptions;
+    // The installed SDK types predate adaptive and disabled thinking, effort
+    // and speed
+    return finalOptions as unknown as Omit<MessageCreateParams, "messages">;
   }
 
   private convertMessageContentToBlocks(
@@ -500,6 +527,13 @@ class Anthropic extends BaseLLM {
       shouldCacheSystemMessage || shouldCachePrompt,
       this.apiBase,
     );
+    const betas = withAnthropicBetas(
+      headers["anthropic-beta"],
+      this.requestBetas(options),
+    );
+    if (betas) {
+      headers["anthropic-beta"] = betas;
+    }
 
     const body: MessageCreateParams = {
       ...this.convertArgs(options),

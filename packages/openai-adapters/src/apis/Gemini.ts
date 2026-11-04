@@ -34,6 +34,7 @@ import {
   GeminiToolFunctionDeclaration,
   mergeConsecutiveGeminiMessages,
 } from "../util/gemini-types.js";
+import { parseGeminiModelVersion } from "../modelControls.js";
 import { safeParseArgs } from "../util/parseArgs.js";
 import {
   BaseLlmApi,
@@ -63,6 +64,43 @@ interface GeminiToolDelta
       thought_signature?: string;
     };
   };
+}
+
+/** Thinking budgets for effort levels on Gemini 2.5, which has no thinking level */
+const GEMINI_EFFORT_BUDGETS: Record<string, number> = {
+  minimal: 512,
+  low: 1024,
+  medium: 8192,
+  high: 24576,
+};
+
+/**
+ * `generationConfig.thinkingConfig` for the chosen effort and thinking mode.
+ * Off sets a budget of 0 (Flash and Flash-Lite), hidden and shown set
+ * whether thought summaries come back. Gemini 3 and newer take the effort
+ * as `thinkingLevel`; Gemini 2.5 maps it to a token budget.
+ */
+export function geminiThinkingConfig(
+  model: string,
+  effort: string | undefined,
+  thinking: string | undefined,
+): Record<string, unknown> | undefined {
+  if (thinking === "off") {
+    return { thinkingBudget: 0 };
+  }
+  const config: Record<string, unknown> = {};
+  if (thinking === "shown" || thinking === "hidden") {
+    config.includeThoughts = thinking === "shown";
+  }
+  if (effort) {
+    const version = parseGeminiModelVersion(model);
+    if (version && version.major >= 3) {
+      config.thinkingLevel = effort;
+    } else if (GEMINI_EFFORT_BUDGETS[effort]) {
+      config.thinkingBudget = GEMINI_EFFORT_BUDGETS[effort];
+    }
+  }
+  return Object.keys(config).length > 0 ? config : undefined;
 }
 
 export class GeminiApi implements BaseLlmApi {
@@ -131,6 +169,17 @@ export class GeminiApi implements BaseLlmApi {
     if (oaiBody.stop) {
       const stop = Array.isArray(oaiBody.stop) ? oaiBody.stop : [oaiBody.stop];
       generationConfig.stopSequences = stop.filter((x) => x.trim() !== "");
+    }
+    const controls = oaiBody as ChatCompletionCreateParams & {
+      nextcli_thinking?: string;
+    };
+    const thinkingConfig = geminiThinkingConfig(
+      oaiBody.model,
+      oaiBody.reasoning_effort ?? undefined,
+      controls.nextcli_thinking,
+    );
+    if (thinkingConfig) {
+      generationConfig.thinkingConfig = thinkingConfig;
     }
 
     const toolCallIdToNameMap = new Map<string, string>();
@@ -355,6 +404,14 @@ export class GeminiApi implements BaseLlmApi {
               });
             }
 
+            if ((part as { thought?: boolean }).thought) {
+              // Thought summaries (includeThoughts) are reasoning, not answer text
+              yield chatChunkFromDelta({
+                model,
+                delta: { reasoning: part.text } as GeminiToolDelta,
+              });
+              continue;
+            }
             yield chatChunk({
               content: part.text,
               model,

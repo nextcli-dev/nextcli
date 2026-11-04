@@ -854,6 +854,9 @@
                 "anyOf": [
                   {
                     "enum": [
+                      "claude-opus-5-5",
+                      "claude-sonnet-5-5",
+                      "claude-haiku-5-5",
                       "claude-sonnet-4-6",
                       "claude-opus-4-6",
                       "claude-sonnet-4",
@@ -1618,6 +1621,9 @@
                       "codeup-13b",
                       "deepseek-7b",
                       "deepseek-33b",
+                      "claude-opus-5-5",
+                      "claude-sonnet-5-5",
+                      "claude-haiku-5-5",
                       "claude-sonnet-4-6",
                       "claude-opus-4-6",
                       "claude-sonnet-4",

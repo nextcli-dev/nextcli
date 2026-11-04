@@ -5,11 +5,13 @@ import { getCompletionOptions } from "../stream/streamChatResponse.types.js";
 
 import {
   effectiveEffort,
+  effectiveThinking,
   getContextOptions,
   getModelSettings,
   modelStatusLabel,
   resetModelSettingsCache,
   setSessionEffort,
+  shouldShowReasoning,
   updateModelSettings,
 } from "./modelSettings.js";
 import { getModelContextLimit } from "./tokenizer.js";
@@ -144,5 +146,59 @@ describe("getCompletionOptions", () => {
     expect(options).not.toHaveProperty("top_k");
     // No reasoning summary unless the user turns Show thinking on
     expect(options.nextcli_show_thinking).not.toBe(true);
+  });
+});
+
+describe("thinking mode", () => {
+  const sonnet46 = model({ provider: "anthropic", model: "claude-sonnet-4-6" });
+
+  beforeEach(() => {
+    resetModelSettingsCache();
+    for (const m of [opus, gpt, sonnet46]) {
+      updateModelSettings(m, {
+        effort: undefined,
+        fast: undefined,
+        showThinking: undefined,
+        thinking: undefined,
+      });
+    }
+  });
+
+  it("follows each model's default until a mode is chosen", () => {
+    expect(effectiveThinking(opus)).toBe("shown");
+    expect(effectiveThinking(gpt)).toBe("hidden");
+    expect(effectiveThinking(sonnet46)).toBe("off");
+    updateModelSettings(sonnet46, { effort: "high" });
+    expect(effectiveThinking(sonnet46)).toBe("shown");
+  });
+
+  it("reads the older show thinking setting", () => {
+    updateModelSettings(opus, { showThinking: false });
+    expect(effectiveThinking(opus)).toBe("hidden");
+    expect(shouldShowReasoning(opus)).toBe(false);
+    updateModelSettings(opus, { thinking: "shown" });
+    expect(effectiveThinking(opus)).toBe("shown");
+    expect(getModelSettings(opus).showThinking).toBe(true);
+  });
+
+  it("sends a chosen mode and keeps defaults as they were", () => {
+    expect(getCompletionOptions(opus)).toMatchObject({
+      nextcli_show_thinking: true,
+    });
+    expect(getCompletionOptions(opus)).not.toHaveProperty("nextcli_thinking");
+    updateModelSettings(opus, { thinking: "off", effort: "low" });
+    expect(getCompletionOptions(opus)).toMatchObject({
+      nextcli_thinking: "off",
+      reasoning_effort: "low",
+    });
+    updateModelSettings(gpt, { thinking: "off" });
+    expect(getCompletionOptions(gpt)).toMatchObject({
+      reasoning_effort: "none",
+    });
+  });
+
+  it("notes thinking off in the status label", () => {
+    updateModelSettings(opus, { thinking: "off" });
+    expect(modelStatusLabel(opus)).toContain("No thinking");
   });
 });

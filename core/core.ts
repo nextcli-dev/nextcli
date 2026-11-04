@@ -75,6 +75,11 @@ import { streamDiffLines } from "./edit/streamDiffLines";
 import { shouldIgnore } from "./indexing/shouldIgnore";
 import { walkDirCache } from "./indexing/walkDir";
 import { LLMLogger } from "./llm/logger";
+import {
+  readStoredModelSettings,
+  resolveSettingsForModels,
+  updateStoredModelSettings,
+} from "./llm/modelSettings";
 import { llmStreamChat } from "./llm/streamChat";
 import { BeforeAfterDiff } from "./nextEdit/context/diffFormatting";
 import { processSmallEdit } from "./nextEdit/context/processSmallEdit";
@@ -464,6 +469,17 @@ export class Core {
         "Selected model update (config/updateSelectedModel message)",
       );
       return newSelectedModels;
+    });
+
+    on("modelSettings/getAll", async () => this.resolveModelSettings());
+
+    on("modelSettings/update", async (msg) => {
+      updateStoredModelSettings(
+        this.globalContext,
+        msg.data.key,
+        msg.data.patch,
+      );
+      return this.resolveModelSettings();
     });
 
     on("mcp/reloadServer", async (msg) => {
@@ -1135,6 +1151,19 @@ export class Core {
         return [];
       }
     });
+  }
+
+  /** Model menu settings for the current chat and edit models */
+  private async resolveModelSettings() {
+    const { config } = await this.configHandler.loadConfig();
+    if (!config) {
+      return {};
+    }
+    return resolveSettingsForModels(
+      [...config.modelsByRole.chat, ...config.modelsByRole.edit],
+      readStoredModelSettings(this.globalContext),
+      { thinkingOnByDefault: true },
+    );
   }
 
   private async handleToolCall(toolCall: ToolCall) {
