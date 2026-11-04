@@ -1,4 +1,5 @@
 import { streamSse } from "@nextcli/fetch";
+import { supportsFimEndpoint } from "@nextcli/openai-adapters";
 import { CompletionOptions, LLMOptions } from "../../index.js";
 import { osModelsEditPrompt } from "../templates/edit.js";
 
@@ -11,7 +12,7 @@ class Deepseek extends OpenAI {
   protected supportsReasoningContentField = true;
   static defaultOptions: Partial<LLMOptions> = {
     apiBase: "https://api.deepseek.com/",
-    model: "deepseek-coder",
+    model: "deepseek-v4-pro",
     promptTemplates: {
       edit: osModelsEditPrompt,
     },
@@ -19,8 +20,12 @@ class Deepseek extends OpenAI {
   };
   maxStopWords: number | undefined = 16;
 
+  /**
+   * Only api.deepseek.com serves `/beta/completions`. Through a gateway such
+   * as OneProvider (404 "not_found_error") autocomplete uses chat instead.
+   */
   supportsFim(): boolean {
-    return true;
+    return supportsFimEndpoint("deepseek", this.apiBase);
   }
 
   async *_streamFim(

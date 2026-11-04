@@ -5,6 +5,24 @@ import { HelperVars } from "../util/HelperVars";
 import { GeneratorReuseManager } from "./GeneratorReuseManager";
 import { stopAfterMaxProcessingTime } from "./utils";
 
+/**
+ * Chat-based autocomplete shouldn't reason before every suggestion. Models
+ * that think by default (DeepSeek V4, for one) get thinking turned off when
+ * their controls allow it; models that can't turn it off (Opus 5.5 rejects
+ * `disabled`) are left alone.
+ */
+function thinkingOffForAutocomplete(
+  llm: ILLM,
+): Pick<CompletionOptions, "thinking"> {
+  try {
+    return llm.getModelControls?.().thinkingModes.includes("off")
+      ? { thinking: "off" }
+      : {};
+  } catch {
+    return {};
+  }
+}
+
 export class CompletionStreamer {
   private streamTransformPipeline = new StreamTransformPipeline();
   private generatorReuseManager: GeneratorReuseManager;
@@ -34,6 +52,7 @@ export class CompletionStreamer {
         const generator = llm.supportsFim()
           ? llm.streamFim(prefix, suffix, abortSignal, completionOptions)
           : llm.streamComplete(prompt, abortSignal, {
+              ...thinkingOffForAutocomplete(llm),
               ...completionOptions,
               raw: true,
             });

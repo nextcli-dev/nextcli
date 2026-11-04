@@ -7,20 +7,36 @@ import OpenAI from "../OpenAI.js";
 import Vllm from "../Vllm.js";
 
 // Test cases: [LLM class, model, expected supportsFim result, description]
-const testCases: [any, string, boolean, string][] = [
+const testCases: [any, string, boolean, string, string?][] = [
   [Vllm, "any-model", false, "Vllm"],
-  [Anthropic, "claude-3-5-sonnet-latest", false, "Anthropic"],
+  [Anthropic, "claude-sonnet-5-5", false, "Anthropic"],
   [FunctionNetwork, "any-model", false, "FunctionNetwork"],
   [OpenAI, "codestral", false, "OpenAI"],
-  [Mistral, "codestral", true, "Mistral"],
-  [Deepseek, "deepseek-chat", true, "Deepseek"],
+  [Mistral, "codestral-latest", true, "Mistral"],
+  [
+    Mistral,
+    "mistral-small-latest",
+    false,
+    "Mistral behind a gateway",
+    "https://gateway.example.com/v1/",
+  ],
+  [Deepseek, "deepseek-v4-pro", true, "Deepseek"],
+  // OneProvider has no beta/completions route (404 not_found_error)
+  [
+    Deepseek,
+    "deepseek-v4-pro",
+    false,
+    "Deepseek through OneProvider",
+    "https://api.oneprovider.dev",
+  ],
 ];
 
-testCases.forEach(([LLMClass, model, expectedResult, description]) => {
+testCases.forEach(([LLMClass, model, expectedResult, description, apiBase]) => {
   test(`supportsFim returns ${expectedResult} for ${description}`, () => {
     const llm = new LLMClass({
       model,
       apiKey: "test-key",
+      ...(apiBase ? { apiBase } : {}),
     });
 
     const result = llm.supportsFim();

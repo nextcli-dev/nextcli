@@ -1,3 +1,5 @@
+import { supportsFimEndpoint } from "@nextcli/openai-adapters";
+
 import { ChatMessage, LLMOptions } from "../../index.js";
 import { codestralEditPrompt } from "../templates/edit/codestral.js";
 
@@ -78,8 +80,9 @@ class Mistral extends OpenAI {
     return finalOptions;
   }
 
+  /** Only Mistral's own hosts serve `/v1/fim/completions` */
   supportsFim(): boolean {
-    return true;
+    return supportsFimEndpoint("mistral", this.apiBase);
   }
 }
 
