@@ -39,6 +39,10 @@ NextCLI is a community continuation of [Continue](https://github.com/continuedev
 
 ![Autocomplete](https://github.com/nextcli-dev/nextcli/raw/HEAD/extensions/vscode/media/readme/autocomplete.gif)
 
+## Stable and pre-release versions
+
+Stable versions use even minor numbers (1.6, 1.8). Pre-release versions use odd minor numbers (1.7, 1.9) and are published to the Visual Studio Marketplace only. To try them, open the extension in the Extensions view and choose **Switch to Pre-Release Version**.
+
 ## License
 
 Apache 2.0. Original work Copyright Continue Dev, Inc. Continuation Copyright 2026 NextCLI contributors. See [LICENSE.txt](./LICENSE.txt).
