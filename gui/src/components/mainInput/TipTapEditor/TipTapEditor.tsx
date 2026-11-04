@@ -216,7 +216,10 @@ function TipTapEditorInner(props: TipTapEditorProps) {
           ? "cursor-pointer"
           : "cursor-text"
       }
-      onClick={() => {
+      onClick={(event) => {
+        // React bubbles clicks from portalled menus (the model menu) up to
+        // here; focusing the editor then would close them
+        if (!event.currentTarget.contains(event.target as Node)) return;
         editor?.commands.focus();
       }}
       onDragOver={(event) => {
