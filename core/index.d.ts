@@ -572,6 +572,11 @@ export interface ChatHistoryItem {
   toolCallStates?: ToolCallState[];
   isGatheringContext?: boolean;
   reasoning?: Reasoning;
+  /**
+   * The model menu's Thinking mode was Hidden when this reasoning streamed,
+   * so its text isn't displayed (it's still kept and sent back)
+   */
+  thinkingHidden?: boolean;
   appliedRules?: RuleMetadata[];
   conversationSummary?: string;
 }

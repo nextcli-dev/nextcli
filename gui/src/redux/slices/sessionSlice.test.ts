@@ -78,6 +78,46 @@ describe("sessionSlice streamUpdate", () => {
     compactionLoading: {},
   });
 
+  describe("Hidden thinking", () => {
+    const thinking: ChatMessage = { role: "thinking", content: "Let me check" };
+
+    it("marks reasoning streamed while Thinking is Hidden", () => {
+      const reducer = sessionSlice.reducer;
+      let state = reducer(
+        createInitialState() as any,
+        sessionSlice.actions.setStreamThinkingHidden(true),
+      );
+      state = reducer(state, sessionSlice.actions.streamUpdate([thinking]));
+      const item = state.history.find((h) => h.message.role === "thinking");
+      expect(item?.thinkingHidden).toBe(true);
+    });
+
+    it("keeps an earlier turn's mark when a later stream is Shown", () => {
+      const reducer = sessionSlice.reducer;
+      let state = reducer(
+        createInitialState() as any,
+        sessionSlice.actions.setStreamThinkingHidden(false),
+      );
+      state = reducer(state, sessionSlice.actions.streamUpdate([thinking]));
+      const first = state.history.find((h) => h.message.role === "thinking");
+      expect(first?.thinkingHidden).toBe(false);
+      state = reducer(
+        state,
+        sessionSlice.actions.setStreamThinkingHidden(true),
+      );
+      state = reducer(
+        state,
+        sessionSlice.actions.streamUpdate([
+          { role: "assistant", content: "Done." },
+        ]),
+      );
+      expect(
+        state.history.find((h) => h.message.role === "thinking")
+          ?.thinkingHidden,
+      ).toBe(false);
+    });
+  });
+
   describe("Basic Chat Message", () => {
     it("should append assistant message to history", () => {
       const initialState = createInitialState();

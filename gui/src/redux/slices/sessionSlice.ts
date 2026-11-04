@@ -48,6 +48,22 @@ import { findChatHistoryItemByToolCallId, findToolCallById } from "../util";
  * We don't support multiple parallel apply calls - see tool definitions for
  * instructions we provide to models to prevent this behavior.
  */
+/**
+ * Marks the reasoning streamed in the current turn with the stream's
+ * Thinking mode, so it stays hidden or shown when the selected model or its
+ * settings change later. Earlier turns are already marked.
+ */
+function stampThinkingHidden(state: SessionState) {
+  for (let i = state.history.length - 1; i >= 0; i--) {
+    const item = state.history[i];
+    if (item.message.role === "user") break;
+    const hasReasoning = item.message.role === "thinking" || !!item.reasoning;
+    if (hasReasoning && item.thinkingHidden === undefined) {
+      item.thinkingHidden = !!state.streamThinkingHidden;
+    }
+  }
+}
+
 function filterMultipleEditToolCalls(
   toolCalls: ToolCallDelta[],
 ): ToolCallDelta[] {
@@ -219,6 +235,8 @@ type SessionState = {
   };
   newestToolbarPreviewForInput: Record<string, string>;
   isPruned?: boolean;
+  /** Whether the current stream's Thinking mode is Hidden */
+  streamThinkingHidden?: boolean;
   contextPercentage?: number;
   inlineErrorMessage?: InlineErrorMessageType;
   compactionLoading: Record<number, boolean>; // Track compaction loading by message index
@@ -684,7 +702,11 @@ export const sessionSlice = createSlice({
             );
           }
         }
+        stampThinkingHidden(state);
       }
+    },
+    setStreamThinkingHidden: (state, action: PayloadAction<boolean>) => {
+      state.streamThinkingHidden = action.payload;
     },
     newSession: (state, { payload }: PayloadAction<Session | undefined>) => {
       state.lastSessionId = state.id;
@@ -1091,6 +1113,7 @@ export const {
   setIsPruned,
   setContextPercentage,
   setCompactionLoading,
+  setStreamThinkingHidden,
 } = sessionSlice.actions;
 
 export const { selectIsGatheringContext } = sessionSlice.selectors;

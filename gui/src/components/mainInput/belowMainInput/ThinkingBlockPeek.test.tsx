@@ -6,50 +6,70 @@ import { renderWithProviders } from "../../../util/test/render";
 import ThinkingBlockPeek from "./ThinkingBlockPeek";
 
 const MODEL = {
-  title: "Opus 5.5",
-  provider: "anthropic",
-  underlyingProviderName: "anthropic",
-  model: "claude-opus-5-5",
+  title: "GPT-5.5",
+  provider: "openai",
+  underlyingProviderName: "openai",
+  model: "gpt-5.5",
 };
 
-async function renderWithThinking(thinking: "hidden" | "shown") {
-  const result = await renderWithProviders(
-    <ThinkingBlockPeek content="Secret plan" index={0} prevItem={null} />,
-  );
+/** Makes the selected chat model's Thinking mode Hidden */
+async function selectHiddenModel(store: any) {
   await act(async () => {
-    const config = result.store.getState().config.config;
-    result.store.dispatch(
+    const config = store.getState().config.config;
+    store.dispatch(
       updateConfig({
         ...config,
         selectedModelByRole: { ...config.selectedModelByRole, chat: MODEL },
       }),
     );
-    result.store.dispatch(
+    store.dispatch(
       setModelSettings({
-        "anthropic/claude-opus-5-5": {
-          key: "anthropic/claude-opus-5-5",
-          thinking,
+        "openai/gpt-5.5": {
+          key: "openai/gpt-5.5",
+          thinking: "hidden",
           fast: false,
-          contextLength: 200_000,
-          stored: { thinking },
+          contextLength: 400_000,
+          stored: {},
         },
       }),
     );
   });
-  return result;
 }
 
 describe("ThinkingBlockPeek", () => {
-  it("shows that the model thought, not what, when thinking is hidden", async () => {
-    const { user } = await renderWithThinking("hidden");
+  it("shows that the model thought, not what, for a hidden block", async () => {
+    const { user } = await renderWithProviders(
+      <ThinkingBlockPeek
+        content="Secret plan"
+        index={0}
+        prevItem={null}
+        hidden
+      />,
+    );
     const peek = screen.getByTestId("thinking-block-peek");
     expect(peek).toHaveTextContent("Thought");
     await user.click(peek);
     expect(screen.queryByText("Secret plan")).not.toBeInTheDocument();
   });
 
-  it("can be opened when thinking is shown", async () => {
-    await renderWithThinking("shown");
-    expect(screen.getByText("Secret plan")).toBeInTheDocument();
+  it("opens a shown block", async () => {
+    const { user } = await renderWithProviders(
+      <ThinkingBlockPeek content="Visible plan" index={0} prevItem={null} />,
+    );
+    await user.click(screen.getByTestId("thinking-block-peek"));
+    expect(screen.getByTestId("thinking-block-peek")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(screen.getByText("Visible plan")).toBeVisible();
+  });
+
+  it("keeps a shown block readable after switching to a Hidden model", async () => {
+    const { user, store } = await renderWithProviders(
+      <ThinkingBlockPeek content="Earlier plan" index={0} prevItem={null} />,
+    );
+    await selectHiddenModel(store);
+    await user.click(screen.getByTestId("thinking-block-peek"));
+    expect(screen.getByText("Earlier plan")).toBeInTheDocument();
   });
 });
