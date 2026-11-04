@@ -425,7 +425,14 @@ function openRouterControls(model: string): ModelControls {
       : true;
   return {
     format: "openrouter",
-    efforts: claudeLevels.length > 0 ? claudeLevels : ["low", "medium", "high"],
+    // OpenRouter accepts any level and maps it to the vendor's nearest one
+    // (checked 2026-11-04), so the menu lists the vendor's own levels
+    efforts:
+      claudeLevels.length > 0
+        ? claudeLevels
+        : native && native.efforts.length > 0
+          ? native.efforts
+          : ["low", "medium", "high"],
     thinkingModes: canTurnOff ? [...THINKING_MODES] : ["hidden", "shown"],
     thinkingUnavailable: canTurnOff
       ? {}
@@ -439,7 +446,9 @@ function openRouterControls(model: string): ModelControls {
     effortNeedsThinking: !claude || claudeLevels.length === 0,
     fast: false,
     maxContextLength: native?.maxContextLength,
-    experimental: claudeLevels.length === 0,
+    experimental:
+      claudeLevels.length === 0 &&
+      !(native && native.efforts.length > 0 && !native.experimental),
   };
 }
 

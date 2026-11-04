@@ -771,3 +771,49 @@ describe("Azure OpenAI", () => {
     ).toEqual({ reasoning_effort: "high" });
   });
 });
+
+// OpenRouter accepts every effort level and maps it (checked 2026-11-04)
+describe("OpenRouter effort levels per vendor", () => {
+  const efforts = (model: string) =>
+    getModelControls({ provider: "openrouter", model });
+
+  it("lists the vendor's own levels", () => {
+    expect(efforts("google/gemini-3.1-pro-preview").efforts).toEqual([
+      "low",
+      "high",
+    ]);
+    expect(efforts("moonshotai/kimi-k3.1-pro")).toMatchObject({
+      efforts: ["low", "high", "max"],
+      experimental: false,
+    });
+    expect(efforts("openai/gpt-5.5").efforts).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+    ]);
+    expect(efforts("x-ai/grok-4.7").efforts).toEqual([
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+    ]);
+  });
+
+  it("falls back to low, medium and high for other vendors", () => {
+    expect(efforts("qwen/qwen3.8-flash")).toMatchObject({
+      efforts: ["low", "medium", "high"],
+      experimental: true,
+    });
+  });
+
+  it("never sends a level the vendor lacks", () => {
+    expect(
+      buildModelControlFields(
+        { provider: "openrouter", model: "google/gemini-3.1-pro-preview" },
+        { effort: "medium" },
+      ),
+    ).toEqual({ reasoning_effort: "low" });
+  });
+});
