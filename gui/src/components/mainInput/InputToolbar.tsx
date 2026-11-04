@@ -1,21 +1,11 @@
-import {
-  AtSymbolIcon,
-  LightBulbIcon as LightBulbIconOutline,
-  PhotoIcon,
-} from "@heroicons/react/24/outline";
-import { LightBulbIcon as LightBulbIconSolid } from "@heroicons/react/24/solid";
+import { AtSymbolIcon, PhotoIcon } from "@heroicons/react/24/outline";
 import { InputModifiers } from "core";
-import {
-  modelSupportsImages,
-  modelSupportsReasoning,
-} from "core/llm/autodetect";
+import { modelSupportsImages } from "core/llm/autodetect";
 import { memo, useContext, useRef } from "react";
 import { IdeMessengerContext } from "../../context/IdeMessenger";
 import { useAppDispatch, useAppSelector } from "../../redux/hooks";
 import { selectUseActiveFile } from "../../redux/selectors";
 import { selectSelectedChatModel } from "../../redux/slices/configSlice";
-import { setHasReasoningEnabled } from "../../redux/slices/sessionSlice";
-import { setReasoningSetting } from "../../redux/slices/uiSlice";
 import { exitEdit } from "../../redux/thunks/edit";
 import { getMetaKeyLabel, isMetaEquivalentKeyPressed } from "../../util";
 import { ToolTip } from "../gui/Tooltip";
@@ -54,9 +44,6 @@ function InputToolbar(props: InputToolbarProps) {
   const useActiveFile = useAppSelector(selectUseActiveFile);
   const isInEdit = useAppSelector((store) => store.session.isInEdit);
   const codeToEdit = useAppSelector((store) => store.editModeState.codeToEdit);
-  const hasReasoningEnabled = useAppSelector(
-    (store) => store.session.hasReasoningEnabled,
-  );
   const isEnterDisabled =
     props.disabled || (isInEdit && codeToEdit.length === 0);
 
@@ -68,8 +55,6 @@ function InputToolbar(props: InputToolbarProps) {
       defaultModel.title,
       defaultModel.capabilities,
     );
-
-  const supportsReasoning = modelSupportsReasoning(defaultModel);
 
   const smallFont = useFontSize(-2);
   const tinyFont = useFontSize(-3);
@@ -134,36 +119,6 @@ function InputToolbar(props: InputToolbarProps) {
                   <AtSymbolIcon className="h-3 w-3 hover:brightness-125" />
                 </HoverItem>
               </ToolTip>
-            )}
-            {supportsReasoning && (
-              <HoverItem
-                onClick={() => {
-                  dispatch(setHasReasoningEnabled(!hasReasoningEnabled));
-                  if (defaultModel?.title) {
-                    dispatch(
-                      setReasoningSetting({
-                        modelTitle: defaultModel.title,
-                        enabled: !hasReasoningEnabled,
-                      }),
-                    );
-                  }
-                }}
-              >
-                <ToolTip
-                  place="top"
-                  content={
-                    hasReasoningEnabled
-                      ? "Disable model reasoning"
-                      : "Enable model reasoning"
-                  }
-                >
-                  {hasReasoningEnabled ? (
-                    <LightBulbIconSolid className="h-3 w-3 brightness-200 hover:brightness-150" />
-                  ) : (
-                    <LightBulbIconOutline className="h-3 w-3 hover:brightness-150" />
-                  )}
-                </ToolTip>
-              </HoverItem>
             )}
           </div>
         </div>

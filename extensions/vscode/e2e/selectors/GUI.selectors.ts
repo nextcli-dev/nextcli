@@ -106,7 +106,16 @@ export class GUISelectors {
 
   public static getModelDropdownOption(view: WebView, option: string) {
     return view.findWebElement(
-      By.xpath(`//*[@role="listbox"]//*[contains(text(), "${option}")]`),
+      By.xpath(
+        `//*[@data-testid="model-select-menu"]//*[contains(text(), "${option}")]`,
+      ),
+    );
+  }
+
+  /** The Model row of the model menu, which opens the model list */
+  public static getModelListRow(view: WebView) {
+    return view.findWebElements(
+      By.xpath(`//*[@data-testid="model-select-menu"]//*[@data-row="models"]`),
     );
   }
 

@@ -11,6 +11,7 @@ import editModeStateReducer, {
 import indexingReducer, {
   INITIAL_INDEXING_STATE,
 } from "../../redux/slices/indexingSlice";
+import modelSettingsReducer from "../../redux/slices/modelSettingsSlice";
 import {
   INITIAL_PROFILES_STATE,
   profilesReducer,
@@ -31,6 +32,7 @@ export const getEmptyRootState: () => RootState = () => {
     indexing: INITIAL_INDEXING_STATE,
     profiles: INITIAL_PROFILES_STATE,
     tabs: INITIAL_TABS_STATE,
+    modelSettings: { byKey: {} },
   };
   const { streamAborter, ...serializableSession } = INITIAL_SESSION_STATE;
   const sessionCopy = copyOf(serializableSession) as Omit<
@@ -69,6 +71,7 @@ export const createMockStore = (
       indexing: indexingReducer,
       tabs: tabsReducer,
       profiles: profilesReducer,
+      modelSettings: modelSettingsReducer,
     },
     preloadedState: {
       ...getEmptyRootState(),

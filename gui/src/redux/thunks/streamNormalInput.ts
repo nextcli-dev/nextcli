@@ -1,5 +1,6 @@
 import { createAsyncThunk, unwrapResult } from "@reduxjs/toolkit";
 import { LLMFullCompletionOptions, ModelDescription } from "core";
+import type { ResolvedModelSettings } from "core/llm/modelSettings";
 import { getRuleId } from "core/llm/rules/getSystemMessageWithRules";
 import { ToCoreProtocol } from "core/protocol";
 import { BUILT_IN_GROUP_NAME } from "core/tools/builtIn";
@@ -21,6 +22,7 @@ import {
   setToolGenerated,
   streamUpdate,
 } from "../slices/sessionSlice";
+import { selectModelSettings } from "../slices/modelSettingsSlice";
 import { ThunkApiType } from "../store";
 import { constructMessages } from "../util/constructMessages";
 
@@ -41,35 +43,29 @@ import { preprocessToolCalls } from "./preprocessToolCallArgs";
 import { streamResponseAfterToolCall } from "./streamResponseAfterToolCall";
 
 /**
- * Builds completion options with reasoning configuration based on session state and model capabilities.
- *
- * @param baseOptions - Base completion options to extend
- * @param hasReasoningEnabled - Whether reasoning is enabled in the session
- * @param model - The selected model with provider and completion options
- * @returns Completion options with reasoning configuration
+ * Adds the model menu settings to the completion options: effort, thinking
+ * mode, fast mode and a context window other than the model's own. Core
+ * turns them into each provider's request fields.
  */
-function buildReasoningCompletionOptions(
+export function buildModelControlOptions(
   baseOptions: LLMFullCompletionOptions,
-  hasReasoningEnabled: boolean | undefined,
+  settings: ResolvedModelSettings | undefined,
   model: ModelDescription,
 ): LLMFullCompletionOptions {
-  if (hasReasoningEnabled === undefined) {
+  if (!settings) {
     return baseOptions;
   }
-
-  const reasoningOptions: LLMFullCompletionOptions = {
+  const defaultContext = model.controls?.defaultContextLength;
+  return {
     ...baseOptions,
-    reasoning: !!hasReasoningEnabled,
+    ...(settings.thinking && { thinking: settings.thinking }),
+    ...(settings.effort && { reasoningEffort: settings.effort }),
+    ...(settings.fast && { fast: true }),
+    ...(defaultContext !== undefined &&
+      settings.contextLength !== defaultContext && {
+        contextLength: settings.contextLength,
+      }),
   };
-
-  // Add reasoning budget tokens if reasoning is enabled and provider supports it
-  if (hasReasoningEnabled && model.underlyingProviderName !== "ollama") {
-    // Ollama doesn't support limiting reasoning tokens at this point
-    reasoningOptions.reasoningBudgetTokens =
-      model.completionOptions?.reasoningBudgetTokens ?? 2048;
-  }
-
-  return reasoningOptions;
 }
 
 const MAX_AUTO_STREAM_DEPTH = 300;
@@ -138,9 +134,9 @@ export const streamNormalInput = createAsyncThunk<
       };
     }
 
-    completionOptions = buildReasoningCompletionOptions(
+    completionOptions = buildModelControlOptions(
       completionOptions,
-      state.session.hasReasoningEnabled,
+      selectModelSettings(state, selectedChatModel),
       selectedChatModel,
     );
 

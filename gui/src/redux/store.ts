@@ -18,6 +18,7 @@ import { IdeMessenger, IIdeMessenger } from "../context/IdeMessenger";
 import configReducer from "./slices/configSlice";
 import editModeStateReducer from "./slices/editState";
 import indexingReducer from "./slices/indexingSlice";
+import modelSettingsReducer from "./slices/modelSettingsSlice";
 import { profilesReducer } from "./slices/profilesSlice";
 import sessionReducer from "./slices/sessionSlice";
 import tabsReducer from "./slices/tabsSlice";
@@ -31,6 +32,7 @@ const rootReducer = combineReducers({
   indexing: indexingReducer,
   tabs: tabsReducer,
   profiles: profilesReducer,
+  modelSettings: modelSettingsReducer,
 });
 
 const saveSubsetFilters = [
@@ -59,6 +61,8 @@ const saveSubsetFilters = [
     "reasoningSettings",
   ]),
   createFilter("indexing", []),
+  // Saved on the host (shared with the CLI), so never persisted here
+  createFilter("modelSettings", []),
   createFilter("tabs", ["tabs"]),
   createFilter("profiles", ["preferencesByProfileId", "selectedProfileId"]),
 ];

@@ -15,6 +15,10 @@ export type ToolGroupPolicy = "include" | "exclude";
 export type ToolPolicies = { [toolName: string]: ToolPolicy };
 export type RulePolicies = { [ruleName: string]: RulePolicy };
 export type ToolGroupPolicies = { [toolGroupName: string]: ToolGroupPolicy };
+/**
+ * The old per-model lightbulb toggle. Read once to move it to the model
+ * menu's Thinking setting (see loadModelSettings), then cleared.
+ */
 export type ReasoningSettings = { [modelTitle: string]: boolean };
 
 type UIState = {
@@ -142,12 +146,10 @@ export const uiSlice = createSlice({
     setTTSActive: (state, { payload }: PayloadAction<boolean>) => {
       state.ttsActive = payload;
     },
-    setReasoningSetting: (
-      state,
-      action: PayloadAction<{ modelTitle: string; enabled: boolean }>,
-    ) => {
-      state.reasoningSettings[action.payload.modelTitle] =
-        action.payload.enabled;
+    clearReasoningSettings: (state, action: PayloadAction<string[]>) => {
+      for (const title of action.payload) {
+        delete state.reasoningSettings[title];
+      }
     },
   },
 });
@@ -165,7 +167,7 @@ export const {
   addRule,
   toggleRuleSetting,
   setTTSActive,
-  setReasoningSetting,
+  clearReasoningSettings,
 } = uiSlice.actions;
 
 export default uiSlice.reducer;

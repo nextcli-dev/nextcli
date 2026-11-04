@@ -5,6 +5,8 @@ import { ChatHistoryItem } from "core";
 import { useEffect, useState } from "react";
 import styled from "styled-components";
 
+import { useAppSelector } from "../../../redux/hooks";
+import { selectModelSettings } from "../../../redux/slices/modelSettingsSlice";
 import { AnimatedEllipsis } from "../../AnimatedEllipsis";
 import StyledMarkdownPreview from "../../StyledMarkdownPreview";
 import { Button } from "../../ui";
@@ -34,6 +36,12 @@ function ThinkingBlockPeek({
   tokens,
 }: ThinkingBlockPeekProps) {
   const [open, setOpen] = useState(false);
+  // Thinking → Hidden in the model menu: show that the model thought, not what
+  const hideContent = useAppSelector(
+    (state) =>
+      selectModelSettings(state, state.config.config.selectedModelByRole.chat)
+        ?.thinking === "hidden",
+  );
   const [startTime, setStartTime] = useState<number | null>(null);
   const [elapsedTime, setElapsedTime] = useState<string>("");
 
@@ -63,9 +71,16 @@ function ThinkingBlockPeek({
             variant="outline"
             className="text-description flex-0 border-border m-0 mb-2 flex min-w-0 cursor-pointer flex-row items-center gap-1.5 rounded-full border-[0.5px] border-solid px-3 text-xs transition-colors duration-200 ease-in-out hover:brightness-125"
             data-testid="thinking-block-peek"
-            aria-expanded={open}
-            aria-controls={`thinking-block-content-${index}`}
-            onClick={() => setOpen(!open)}
+            aria-expanded={hideContent ? undefined : open}
+            aria-controls={
+              hideContent ? undefined : `thinking-block-content-${index}`
+            }
+            title={
+              hideContent
+                ? "Thinking is hidden. Change it in the model menu."
+                : undefined
+            }
+            onClick={() => !hideContent && setOpen(!open)}
           >
             {inProgress ? (
               <span>
@@ -79,33 +94,35 @@ function ThinkingBlockPeek({
               (elapsedTime ? ` for ${elapsedTime}` : "") +
               (tokens ? ` (${tokens} tokens)` : "")
             )}
-            {open ? (
+            {hideContent ? null : open ? (
               <ChevronUpIcon className="h-3 w-3" />
             ) : (
               <ChevronDownIcon className="h-3 w-3" />
             )}
           </Button>
         </div>
-        <div
-          id={`thinking-block-content-${index}`}
-          className={`overflow-y-auto transition-all duration-300 ease-in-out ${
-            open ? "max-h-[50vh] opacity-100" : "max-h-0 opacity-0"
-          }`}
-        >
-          {redactedThinking ? (
-            <div className="text-description pl-5 text-xs italic">
-              Thinking content redacted due to safety reasons.
-            </div>
-          ) : (
-            <MarkdownWrapper>
-              <StyledMarkdownPreview
-                isRenderingInStepContainer
-                source={content}
-                itemIndex={index}
-              />
-            </MarkdownWrapper>
-          )}
-        </div>
+        {!hideContent && (
+          <div
+            id={`thinking-block-content-${index}`}
+            className={`overflow-y-auto transition-all duration-300 ease-in-out ${
+              open ? "max-h-[50vh] opacity-100" : "max-h-0 opacity-0"
+            }`}
+          >
+            {redactedThinking ? (
+              <div className="text-description pl-5 text-xs italic">
+                Thinking content redacted due to safety reasons.
+              </div>
+            ) : (
+              <MarkdownWrapper>
+                <StyledMarkdownPreview
+                  isRenderingInStepContainer
+                  source={content}
+                  itemIndex={index}
+                />
+              </MarkdownWrapper>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
