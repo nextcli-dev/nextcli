@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.4.5...vscode-v1.6.0) (2026-11-04)
+
+
+### Miscellaneous Chores
+
+* **vscode:** release 1.6.0 and publish pre-releases to the Marketplace only ([15f2e5f](https://github.com/nextcli-dev/nextcli/commit/15f2e5faaa162854593fbb0926e6b6a36c98669a))
+
 ## [1.4.5](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.4.4...vscode-v1.4.5) (2026-11-04)
 
 
