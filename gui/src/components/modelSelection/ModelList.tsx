@@ -16,9 +16,12 @@ export interface ModelListOption {
   isAutoDetected?: boolean;
 }
 
-/** Classes shared by every row in the model menu */
+/**
+ * Classes shared by every row in the model menu. Rows are buttons, which
+ * don't inherit the menu's font without Tailwind's preflight (off here)
+ */
 export const MENU_ITEM_CLASS =
-  "text-foreground flex w-full cursor-pointer select-none items-center gap-2 border-none bg-transparent px-2 py-1 text-left outline-none hover:bg-list-active hover:text-list-active-foreground focus-visible:bg-list-active focus-visible:text-list-active-foreground";
+  "[font:inherit] text-foreground flex w-full cursor-pointer select-none items-center gap-2 border-none bg-transparent px-2 py-1 text-left outline-none hover:bg-list-active hover:text-list-active-foreground focus-visible:bg-list-active focus-visible:text-list-active-foreground";
 
 interface ModelListProps {
   options: ModelListOption[];
@@ -141,7 +144,7 @@ export function ModelList({
             role="menuitem"
             data-menu-item
             onClick={onAddModel}
-            className={`${MENU_ITEM_CLASS} text-description text-2xs px-2 py-2`}
+            className={`${MENU_ITEM_CLASS} text-description px-2 py-2`}
           >
             <PlusIcon className="h-3.5 w-3.5" />
             Add Chat model

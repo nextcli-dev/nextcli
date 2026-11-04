@@ -293,6 +293,21 @@ describe("ModelSelect", () => {
     expect(within(stillOpen).getByText("Thinking")).toBeInTheDocument();
   });
 
+  it("uses the menu's font in every row, not the browser's button font", async () => {
+    const { user } = await setup(OPUS, {
+      "anthropic/claude-opus-5-5": resolved("anthropic/claude-opus-5-5", {}),
+    });
+    const menu = await openMenu(user);
+    const rows = () =>
+      Array.from(menu.querySelectorAll("button[data-menu-item]")).filter(
+        (b) => b.textContent,
+      );
+    expect(rows().length).toBeGreaterThan(0);
+    for (const row of rows()) expect(row).toHaveClass("[font:inherit]");
+    await user.click(within(menu).getByText("Model"));
+    for (const row of rows()) expect(row).toHaveClass("[font:inherit]");
+  });
+
   it("goes back with Escape before closing", async () => {
     const { user } = await setup(OPUS, {
       "anthropic/claude-opus-5-5": resolved("anthropic/claude-opus-5-5", {}),
