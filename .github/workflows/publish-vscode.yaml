@@ -123,7 +123,9 @@ jobs:
       - name: Build sqlite3 from source
         shell: bash
         run: |
-          version=$(node -p "require('./extensions/vscode/scripts/download-copy-sqlite.js').SQLITE3_VERSION")
+          # Read the version from the script; requiring it needs its dependencies
+          version=$(sed -n 's/^const SQLITE3_VERSION = "\(.*\)";/\1/p' extensions/vscode/scripts/download-copy-sqlite.js)
+          [ -n "$version" ] || { echo "::error::SQLITE3_VERSION not found in download-copy-sqlite.js"; exit 1; }
           echo "Building sqlite3 $version for $(node -p process.arch)"
           mkdir -p "$RUNNER_TEMP/sqlite3" && cd "$RUNNER_TEMP/sqlite3"
           npm init -y > /dev/null
