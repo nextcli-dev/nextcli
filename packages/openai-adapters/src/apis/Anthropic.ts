@@ -43,6 +43,7 @@ import type { ThinkingMode } from "../modelControls.js";
 import {
   type AnthropicThinking,
   anthropicControlParams,
+  anthropicSamplingParams,
   anthropicThinkingOn,
   withAnthropicBetas,
 } from "./anthropicControls.js";
@@ -51,7 +52,6 @@ import {
   anthropicFastMode,
   getAnthropicHeaders,
   getAnthropicMediaTypeFromDataUrl,
-  filterAnthropicSamplingParams,
   openAiToolChoiceToAnthropicToolChoice,
   openaiToolToAnthropicTool,
 } from "./AnthropicUtils.js";
@@ -144,19 +144,14 @@ export class AnthropicApi implements BaseLlmApi {
     oaiBody: ChatCompletionCreateParams & AnthropicReasoningControls,
     thinkingOn: boolean,
   ): Pick<MessageCreateParams, "temperature" | "top_p" | "top_k"> {
-    if (thinkingOn) {
-      const { topP } = filterAnthropicSamplingParams(oaiBody.model, {
-        topP: oaiBody.top_p ?? undefined,
-      });
-      return { top_p: topP !== undefined && topP >= 0.95 ? topP : undefined };
-    }
-    const { temperature, topP, topK } = filterAnthropicSamplingParams(
+    const { temperature, topP, topK } = anthropicSamplingParams(
       oaiBody.model,
       {
         temperature: oaiBody.temperature ?? undefined,
         topP: oaiBody.top_p ?? undefined,
         topK: oaiBody.top_k ?? undefined,
       },
+      thinkingOn,
     );
     return { temperature, top_p: topP, top_k: topK };
   }

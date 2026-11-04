@@ -91,6 +91,7 @@ export default function StepContainer(props: StepContainerProps) {
                 index={props.index}
                 prevItem={props.index > 0 ? props.item : null}
                 inProgress={!props.item.reasoning?.endAt}
+                hidden={props.item.thinkingHidden}
               />
             )}
 

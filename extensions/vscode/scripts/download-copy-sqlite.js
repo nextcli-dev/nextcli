@@ -46,14 +46,31 @@ const SQLITE3_VERSION = "6.0.1";
  * @param {string} targetDir the directory to download into
  */
 async function downloadSqlite(target, targetDir) {
-  const downloadUrl =
-    // node-sqlite3 doesn't have a pre-built binary for win32-arm64.
-    // TODO: this binary was built from sqlite3 5.1.7. Rebuild it from
-    // SQLITE3_VERSION on a windows-11-arm runner (node-gyp 12, Python 3.13).
-    target === "win32-arm64"
-      ? "https://continue-server-binaries.s3.us-west-1.amazonaws.com/win32-arm64/node_sqlite3.tar.gz"
-      : `https://github.com/TryGhost/node-sqlite3/releases/download/v${SQLITE3_VERSION}/sqlite3-v${SQLITE3_VERSION}-napi-v6-${target}.tar.gz`;
-  await downloadFile(downloadUrl, targetDir);
+  if (target === "win32-arm64") {
+    // node-sqlite3 publishes no win32-arm64 binary. publish-vscode.yaml
+    // builds one from SQLITE3_VERSION on a windows-11-arm runner and passes
+    // its tarball (build/Release/node_sqlite3.node) here.
+    const tarball = process.env.SQLITE3_WIN32_ARM64_TARBALL;
+    if (tarball) {
+      fs.copyFileSync(tarball, targetDir);
+      return;
+    }
+    if (process.env.SQLITE3_ALLOW_OLD_WIN32_ARM64 !== "1") {
+      throw new Error(
+        `win32-arm64 needs a sqlite3 ${SQLITE3_VERSION} binary: set SQLITE3_WIN32_ARM64_TARBALL to a tarball built from source on Windows ARM. ` +
+          "Set SQLITE3_ALLOW_OLD_WIN32_ARM64=1 to use the old sqlite3 5.1.7 binary instead (not for releases).",
+      );
+    }
+    await downloadFile(
+      "https://continue-server-binaries.s3.us-west-1.amazonaws.com/win32-arm64/node_sqlite3.tar.gz",
+      targetDir,
+    );
+    return;
+  }
+  await downloadFile(
+    `https://github.com/TryGhost/node-sqlite3/releases/download/v${SQLITE3_VERSION}/sqlite3-v${SQLITE3_VERSION}-napi-v6-${target}.tar.gz`,
+    targetDir,
+  );
 }
 
 async function installAndCopySqlite(target) {
@@ -145,6 +162,7 @@ async function copyEsbuild(target) {
 }
 
 module.exports = {
+  SQLITE3_VERSION,
   downloadSqlite,
   copySqlite,
   copyEsbuild,

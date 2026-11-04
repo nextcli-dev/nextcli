@@ -5,8 +5,6 @@ import { ChatHistoryItem } from "core";
 import { useEffect, useState } from "react";
 import styled from "styled-components";
 
-import { useAppSelector } from "../../../redux/hooks";
-import { selectModelSettings } from "../../../redux/slices/modelSettingsSlice";
 import { AnimatedEllipsis } from "../../AnimatedEllipsis";
 import StyledMarkdownPreview from "../../StyledMarkdownPreview";
 import { Button } from "../../ui";
@@ -25,6 +23,8 @@ interface ThinkingBlockPeekProps {
   inProgress?: boolean;
   signature?: string;
   tokens?: number;
+  /** The Thinking mode was Hidden when this block streamed */
+  hidden?: boolean;
 }
 
 function ThinkingBlockPeek({
@@ -34,14 +34,12 @@ function ThinkingBlockPeek({
   prevItem,
   inProgress,
   tokens,
+  hidden,
 }: ThinkingBlockPeekProps) {
   const [open, setOpen] = useState(false);
-  // Thinking → Hidden in the model menu: show that the model thought, not what
-  const hideContent = useAppSelector(
-    (state) =>
-      selectModelSettings(state, state.config.config.selectedModelByRole.chat)
-        ?.thinking === "hidden",
-  );
+  // Thinking was Hidden when this streamed: show that the model thought,
+  // not what. Judged per block, so changing models doesn't change it
+  const hideContent = !!hidden;
   const [startTime, setStartTime] = useState<number | null>(null);
   const [elapsedTime, setElapsedTime] = useState<string>("");
 

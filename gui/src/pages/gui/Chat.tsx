@@ -348,6 +348,7 @@ export function Chat() {
               prevItem={index > 0 ? history[index - 1] : null}
               inProgress={index === history.length - 1 && isStreaming}
               signature={message.signature}
+              hidden={item.thinkingHidden}
             />
           </div>
         );

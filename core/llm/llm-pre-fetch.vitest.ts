@@ -78,6 +78,7 @@ describe("LLM Pre-fetch", () => {
     >("@nextcli/openai-adapters");
     for (const name of [
       "anthropicControlParams",
+      "anthropicSamplingParams",
       "anthropicThinkingOn",
       "anthropicThinkingType",
       "withAnthropicBetas",

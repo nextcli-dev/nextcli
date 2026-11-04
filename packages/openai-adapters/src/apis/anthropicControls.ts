@@ -1,5 +1,7 @@
 import type { ThinkingMode } from "../modelControls.js";
 import {
+  type AnthropicSamplingParams,
+  filterAnthropicSamplingParams,
   ANTHROPIC_FAST_MODE_BETA,
   anthropicFastMode,
   anthropicThinkingType,
@@ -131,6 +133,25 @@ export function anthropicControlParams(
     // Fast mode on Opus 5 and Opus 4.8 is a research preview behind a beta
     betas: fastMode === "beta" ? [ANTHROPIC_FAST_MODE_BETA] : [],
   };
+}
+
+/**
+ * Sampling parameters Claude accepts: while thinking it rejects temperature
+ * and top_k and needs top_p between 0.95 and 1. Claude 4.7 and newer reject
+ * all three (filterAnthropicSamplingParams).
+ */
+export function anthropicSamplingParams(
+  model: string | undefined,
+  params: AnthropicSamplingParams,
+  thinkingOn: boolean,
+): AnthropicSamplingParams {
+  if (thinkingOn) {
+    const { topP } = filterAnthropicSamplingParams(model, {
+      topP: params.topP,
+    });
+    return { topP: topP !== undefined && topP >= 0.95 ? topP : undefined };
+  }
+  return filterAnthropicSamplingParams(model, params);
 }
 
 /** Whether the request thinks, so sampling and tool_choice limits apply */

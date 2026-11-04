@@ -61,13 +61,30 @@ export const updateModelSettings = createAsyncThunk<
   void,
   { key: string; patch: ModelSettingsPatch },
   ThunkApiType
->("modelSettings/update", async ({ key, patch }, { dispatch, extra }) => {
-  dispatch(applyModelSettingsPatch({ key, patch }));
-  const response = await extra.ideMessenger.request("modelSettings/update", {
-    key,
-    patch,
-  });
-  if (response.status === "success") {
-    dispatch(setModelSettings(response.content));
-  }
-});
+>(
+  "modelSettings/update",
+  async ({ key, patch }, { dispatch, extra, getState }) => {
+    const before = getState().modelSettings.byKey;
+    dispatch(applyModelSettingsPatch({ key, patch }));
+    let error: string | undefined;
+    try {
+      const response = await extra.ideMessenger.request(
+        "modelSettings/update",
+        { key, patch },
+      );
+      if (response.status === "success") {
+        dispatch(setModelSettings(response.content));
+        return;
+      }
+      error = response.error;
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e);
+    }
+    // Not saved: put the menu back and say so
+    dispatch(setModelSettings(before));
+    extra.ideMessenger.post("showToast", [
+      "error",
+      `Couldn't save the model setting: ${error ?? "unknown error"}`,
+    ]);
+  },
+);

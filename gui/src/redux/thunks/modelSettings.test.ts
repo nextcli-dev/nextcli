@@ -164,3 +164,29 @@ describe("loadModelSettings", () => {
     expect(state.ui.reasoningSettings).toEqual({ "Removed model": false });
   });
 });
+
+describe("updateModelSettings when saving fails", () => {
+  it("restores the previous settings and reports the error", async () => {
+    const messenger = new MockIdeMessenger();
+    messenger.responseHandlers["modelSettings/update"] = async () => {
+      throw new Error("disk full");
+    };
+    const posts: unknown[] = [];
+    messenger.post = ((type: string, data: unknown) => {
+      posts.push([type, data]);
+    }) as any;
+    const store = createMockStore(undefined, messenger);
+    const before = {
+      [KEY]: { key: KEY, fast: false, contextLength: 200_000, stored: {} },
+    };
+    store.dispatch(setModelSettings(before));
+    await store.dispatch(
+      updateModelSettings({ key: KEY, patch: { fast: true } }) as any,
+    );
+    expect((store.getState() as any).modelSettings.byKey).toEqual(before);
+    expect(posts).toContainEqual([
+      "showToast",
+      ["error", "Couldn't save the model setting: disk full"],
+    ]);
+  });
+});

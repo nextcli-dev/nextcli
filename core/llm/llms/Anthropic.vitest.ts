@@ -798,3 +798,42 @@ describe("Anthropic model menu settings", () => {
     expect(controls.contextOptions.at(-1)).toBe(1_000_000);
   });
 });
+
+describe("Anthropic configured thinking budget", () => {
+  const llm = new Anthropic({ apiKey: "test-api-key", model: "unused" });
+
+  test("uses reasoningBudgetTokens whenever a thinking mode is on", () => {
+    expect(
+      llm.convertArgs({
+        model: "claude-sonnet-4-5",
+        thinking: "shown",
+        reasoningBudgetTokens: 6000,
+        maxTokens: 16000,
+      }).thinking,
+    ).toEqual({ type: "enabled", budget_tokens: 6000 });
+    expect(
+      llm.convertArgs({
+        model: "claude-sonnet-4-5",
+        thinking: "off",
+        reasoningBudgetTokens: 6000,
+      }).thinking,
+    ).toEqual({ type: "disabled" });
+    // Adaptive models take no budget
+    expect(
+      llm.convertArgs({
+        model: "claude-opus-5-5",
+        thinking: "shown",
+        reasoningBudgetTokens: 6000,
+      }).thinking,
+    ).toEqual({ type: "adaptive", display: "summarized" });
+  });
+
+  test("doesn't turn thinking on from a budget alone", () => {
+    expect(
+      llm.convertArgs({
+        model: "claude-sonnet-4-5",
+        reasoningBudgetTokens: 6000,
+      }).thinking,
+    ).toBeUndefined();
+  });
+});
