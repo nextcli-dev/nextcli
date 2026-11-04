@@ -694,7 +694,7 @@ describe("Anthropic model menu settings", () => {
 
   test("sends disabled thinking for Off and keeps the effort", () => {
     const args = llm.convertArgs({
-      model: "claude-opus-5-5",
+      model: "claude-sonnet-5",
       thinking: "off",
       reasoningEffort: "low",
       reasoning: true,
@@ -703,10 +703,22 @@ describe("Anthropic model menu settings", () => {
     expect(args.output_config).toEqual({ effort: "low" });
   });
 
+  test("sends between_tools for Off on Sonnet 5.5, which rejects disabled", () => {
+    const args = llm.convertArgs({
+      model: "claude-sonnet-5-5",
+      thinking: "off",
+      reasoningEffort: "low",
+    }) as any;
+    expect(args.thinking).toEqual({ type: "between_tools" });
+  });
+
   test("turns reasoning: false into thinking off", () => {
     expect(
       llm.convertArgs({ model: "claude-sonnet-5-5", reasoning: false })
         .thinking,
+    ).toEqual({ type: "between_tools" });
+    expect(
+      llm.convertArgs({ model: "claude-haiku-5-5", reasoning: false }).thinking,
     ).toEqual({ type: "disabled" });
   });
 
@@ -791,11 +803,27 @@ describe("Anthropic model menu settings", () => {
     }).getModelControls();
     expect(controls).toMatchObject({
       format: "anthropic",
-      thinkingModes: ["off", "hidden", "shown"],
+      // Opus 5.5 rejects `thinking: disabled`, so there's no Off row
+      thinkingModes: ["hidden", "shown"],
       fast: true,
       maxContextLength: 1_000_000,
     });
     expect(controls.contextOptions.at(-1)).toBe(1_000_000);
+    expect(
+      new Anthropic({
+        apiKey: "k",
+        model: "claude-sonnet-5-5",
+      }).getModelControls().thinkingModes,
+    ).toEqual(["off", "hidden", "shown"]);
+  });
+
+  test("never sends disabled thinking to Opus 5.5", () => {
+    const args = llm.convertArgs({
+      model: "claude-opus-5-5",
+      thinking: "off",
+      reasoningEffort: "low",
+    }) as any;
+    expect(args.thinking?.type).not.toBe("disabled");
   });
 });
 

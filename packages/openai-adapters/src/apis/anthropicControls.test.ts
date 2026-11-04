@@ -8,10 +8,45 @@ import {
 } from "./anthropicControls.js";
 
 describe("anthropicControlParams", () => {
+  // Rules below were checked live against api.anthropic.com on 2026-11-04
+  it("turns Sonnet 5.5 thinking off with between_tools up to high effort", () => {
+    for (const effort of ["low", "high"]) {
+      expect(
+        anthropicControlParams({
+          model: "claude-sonnet-5-5",
+          thinking: "off",
+          effort,
+          maxTokens: 8000,
+        }).thinking,
+      ).toEqual({ type: "between_tools" });
+    }
+    // "effort 'xhigh' is not supported when thinking is disabled"
+    expect(
+      anthropicControlParams({
+        model: "claude-sonnet-5-5",
+        thinking: "off",
+        effort: "xhigh",
+        maxTokens: 8000,
+      }).thinking,
+    ).toEqual({ type: "adaptive", display: "omitted" });
+  });
+
+  it("never turns Fable 5.x thinking off (adaptive only)", () => {
+    for (const model of ["claude-fable-5-1", "claude-fable-5"]) {
+      expect(
+        anthropicControlParams({
+          model,
+          thinking: "off",
+          maxTokens: 8000,
+        }).thinking?.type,
+      ).toBe("adaptive");
+    }
+  });
+
   it("turns thinking off with disabled and keeps the effort", () => {
     expect(
       anthropicControlParams({
-        model: "claude-opus-5-5",
+        model: "claude-sonnet-5",
         thinking: "off",
         effort: "low",
         maxTokens: 8000,
@@ -22,6 +57,39 @@ describe("anthropicControlParams", () => {
       maxTokens: 8000,
       betas: [],
     });
+  });
+
+  it("never sends disabled to Opus 5.5, which rejects it", () => {
+    const params = anthropicControlParams({
+      model: "claude-opus-5-5",
+      thinking: "off",
+      effort: "low",
+      maxTokens: 8000,
+    });
+    expect(params.thinking).toEqual({ type: "adaptive", display: "omitted" });
+  });
+
+  it("never sends disabled to Haiku 5.5 or Opus 5 at xhigh or max", () => {
+    for (const model of ["claude-haiku-5-5", "claude-opus-5"]) {
+      for (const effort of ["xhigh", "max"]) {
+        expect(
+          anthropicControlParams({
+            model,
+            thinking: "off",
+            effort,
+            maxTokens: 8000,
+          }).thinking?.type,
+        ).not.toBe("disabled");
+      }
+      expect(
+        anthropicControlParams({
+          model,
+          thinking: "off",
+          effort: "low",
+          maxTokens: 8000,
+        }).thinking,
+      ).toEqual({ type: "disabled" });
+    }
   });
 
   it("picks summarized or omitted text for the chosen mode", () => {

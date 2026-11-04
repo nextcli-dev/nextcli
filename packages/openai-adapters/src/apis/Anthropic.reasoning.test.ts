@@ -265,11 +265,20 @@ describe("AnthropicApi thinking round trip (#12246)", () => {
 
 describe("Thinking modes from a model menu", () => {
   it("sends disabled thinking for Off and keeps effort and sampling", () => {
-    const body = convert("claude-opus-5-5", {
+    const body = convert("claude-sonnet-5", {
       nextcli_thinking: "off",
       reasoning_effort: "low",
     });
     expect(body.thinking).toEqual({ type: "disabled" });
+    expect(body.output_config).toEqual({ effort: "low" });
+  });
+
+  it("sends between_tools for Off on Sonnet 5.5, which rejects disabled", () => {
+    const body = convert("claude-sonnet-5-5", {
+      nextcli_thinking: "off",
+      reasoning_effort: "low",
+    });
+    expect(body.thinking).toEqual({ type: "between_tools" });
     expect(body.output_config).toEqual({ effort: "low" });
   });
 

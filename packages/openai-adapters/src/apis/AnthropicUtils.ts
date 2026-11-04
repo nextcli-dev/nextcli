@@ -281,6 +281,49 @@ export function anthropicThinksByDefault(model: string | undefined): boolean {
   return !!version && version.major >= 5;
 }
 
+/** The `thinking` value that turns thinking off on a model */
+export type AnthropicThinkingOffType = "disabled" | "between_tools";
+
+/**
+ * How thinking is turned off, per the Anthropic API (checked live against
+ * /v1/models `capabilities.thinking.types` and /v1/messages, 2026-11-04):
+ * - Opus 5.5 and Fable 5 / 5.1 can't turn it off at all (only `adaptive`).
+ * - Sonnet 5.5 rejects `disabled` and uses `between_tools` instead: no
+ *   thinking before answering, short updates between tool calls.
+ * - Sonnet 5.5, Haiku 5.5 and Opus 5 accept off only at effort `high` or
+ *   below ("effort 'xhigh' is not supported when thinking is disabled").
+ * - Every other Claude model (and unknown names) uses `disabled`.
+ * Returns undefined where off isn't possible for that model and effort.
+ */
+export function anthropicThinkingOffType(
+  model: string | undefined,
+  effort?: string,
+): AnthropicThinkingOffType | undefined {
+  const version = parseClaudeModelVersion(model);
+  if (!version) {
+    return "disabled";
+  }
+  const { family, major, minor } = version;
+  const is = (f: typeof family, ma: number, mi: number) =>
+    family === f && major === ma && minor === mi;
+  if (is("opus", 5, 5) || (family === "fable" && major >= 5)) {
+    return undefined;
+  }
+  const effortLimited =
+    is("sonnet", 5, 5) || is("haiku", 5, 5) || is("opus", 5, 0);
+  if (effortLimited && (effort === "xhigh" || effort === "max")) {
+    return undefined;
+  }
+  return is("sonnet", 5, 5) ? "between_tools" : "disabled";
+}
+
+/** Whether the model can turn thinking off at some effort level */
+export function anthropicCanDisableThinking(
+  model: string | undefined,
+): boolean {
+  return anthropicThinkingOffType(model, "low") !== undefined;
+}
+
 /**
  * Claude 4.6 and newer reject a conversation that ends with an assistant
  * message ("does not support assistant message prefill"). Haiku 4.5 and older

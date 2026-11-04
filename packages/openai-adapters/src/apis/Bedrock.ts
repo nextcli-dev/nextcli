@@ -436,7 +436,8 @@ export class BedrockApi implements BaseLlmApi {
         maxTokens: oaiBody.max_tokens ?? 4096,
       });
       const fields = {
-        ...(params.thinking?.type === "disabled" && {
+        ...((params.thinking?.type === "disabled" ||
+          params.thinking?.type === "between_tools") && {
           thinking: params.thinking,
         }),
         ...(params.outputConfig && { output_config: params.outputConfig }),

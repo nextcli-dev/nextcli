@@ -3,6 +3,7 @@ import {
   type AnthropicSamplingParams,
   filterAnthropicSamplingParams,
   ANTHROPIC_FAST_MODE_BETA,
+  anthropicThinkingOffType,
   anthropicFastMode,
   anthropicThinkingType,
   anthropicThinksByDefault,
@@ -13,7 +14,9 @@ import {
 export type AnthropicThinking =
   | { type: "adaptive"; display?: "summarized" | "omitted" }
   | { type: "enabled"; budget_tokens: number }
-  | { type: "disabled" };
+  | { type: "disabled" }
+  // Sonnet 5.5's way to turn thinking off (it rejects "disabled")
+  | { type: "between_tools" };
 
 /** Thinking budgets used for effort levels on models without `effort` */
 export const EFFORT_THINKING_BUDGETS: Record<string, number> = {
@@ -75,16 +78,26 @@ export interface AnthropicControlParams {
 export function anthropicControlParams(
   input: AnthropicControlInput,
 ): AnthropicControlParams {
-  const { model, thinking: mode, showThinking } = input;
+  const { model, showThinking } = input;
   let maxTokens = input.maxTokens;
   const known = !!parseClaudeModelVersion(model);
   const effort = input.effort
     ? clampAnthropicEffort(model, input.effort)
     : undefined;
+  // Where off isn't possible (Opus 5.5 and Fable 5.x; Sonnet 5.5, Haiku 5.5
+  // and Opus 5 at xhigh/max), thinking off keeps thinking and hides its text
+  const offType =
+    input.thinking === "off"
+      ? anthropicThinkingOffType(model, effort)
+      : undefined;
+  const mode: ThinkingMode | undefined =
+    input.thinking === "off" && offType === undefined
+      ? "hidden"
+      : input.thinking;
 
   let thinking: AnthropicThinking | undefined;
   if (mode === "off") {
-    thinking = known ? { type: "disabled" } : undefined;
+    thinking = known && offType ? { type: offType } : undefined;
   } else if (anthropicThinkingType(model) === "adaptive") {
     const display =
       mode !== undefined
@@ -158,7 +171,11 @@ export function anthropicSamplingParams(
 export function anthropicThinkingOn(
   thinking: AnthropicThinking | undefined,
 ): boolean {
-  return thinking !== undefined && thinking.type !== "disabled";
+  return (
+    thinking !== undefined &&
+    thinking.type !== "disabled" &&
+    thinking.type !== "between_tools"
+  );
 }
 
 /** Adds beta flags to an `anthropic-beta` header value */

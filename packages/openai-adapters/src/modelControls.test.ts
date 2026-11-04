@@ -9,6 +9,7 @@ import {
   getContextOptions,
   getControlsFormat,
   getModelControls,
+  looksLikeReasoningModel,
   parseGeminiModelVersion,
 } from "./modelControls.js";
 
@@ -52,8 +53,11 @@ describe("getModelControls", () => {
     ).toEqual({
       format: "anthropic",
       efforts: ["low", "medium", "high", "xhigh", "max"],
-      thinkingModes: ["off", "hidden", "shown"],
-      thinkingUnavailable: {},
+      // Opus 5.5 rejects `thinking: disabled`
+      thinkingModes: ["hidden", "shown"],
+      thinkingUnavailable: {
+        off: "This model always thinks; it can't be turned off.",
+      },
       defaultThinking: "shown",
       canShowThinking: true,
       thinkingNeedsEffort: false,
@@ -141,7 +145,32 @@ describe("getModelControls", () => {
   it("marks gateway levels as experimental", () => {
     expect(
       getModelControls({ provider: "oneprovider", model: "deepseek-v4-pro" }),
-    ).toMatchObject({ format: "generic", experimental: true });
+    ).toMatchObject({ format: "deepseek", experimental: false });
+  });
+});
+
+describe("Claude thinking off", () => {
+  it("doesn't offer Off for Opus 5.5, which always thinks", () => {
+    for (const provider of ["anthropic", "oneprovider"]) {
+      const controls = getModelControls({ provider, model: "claude-opus-5-5" });
+      expect(controls.thinkingModes).toEqual(["hidden", "shown"]);
+      expect(controls.thinkingUnavailable.off).toBeDefined();
+    }
+  });
+
+  it("doesn't offer Off for Fable 5.x either", () => {
+    for (const model of ["claude-fable-5-1", "claude-fable-5"]) {
+      expect(
+        getModelControls({ provider: "anthropic", model }).thinkingModes,
+      ).toEqual(["hidden", "shown"]);
+    }
+  });
+
+  it("still offers Off for Sonnet 5.5", () => {
+    expect(
+      getModelControls({ provider: "anthropic", model: "claude-sonnet-5-5" })
+        .thinkingModes,
+    ).toContain("off");
   });
 });
 
@@ -237,7 +266,7 @@ describe("thinking modes", () => {
     getModelControls({ provider, model }).thinkingModes;
 
   it("offers Off where the provider can turn thinking off", () => {
-    expect(modes("anthropic", "claude-opus-5-5")).toEqual([
+    expect(modes("anthropic", "claude-sonnet-5-5")).toEqual([
       "off",
       "hidden",
       "shown",
@@ -280,7 +309,7 @@ describe("thinking modes", () => {
         .thinkingUnavailable.off,
     ).toBeDefined();
     expect(
-      getModelControls({ provider: "xAI", model: "grok-code-fast-1" })
+      getModelControls({ provider: "xAI", model: "grok-build-0.1" })
         .thinkingUnavailable.off,
     ).toMatch(/always reasons/);
   });
@@ -290,12 +319,6 @@ describe("thinking modes", () => {
     expect(modes("gemini", "gemini-2.0-flash")).toEqual([]);
     expect(modes("xAI", "grok-4-fast-non-reasoning")).toEqual([]);
     expect(modes("anthropic", "my-custom-model")).toEqual([]);
-    expect(modes("anthropic", "claude-3-5-sonnet-latest")).toEqual([]);
-    expect(modes("anthropic", "claude-3-7-sonnet-latest")).toEqual([
-      "off",
-      "hidden",
-      "shown",
-    ]);
   });
 
   it("knows each model's default", () => {
@@ -354,7 +377,7 @@ describe("Gemini, Bedrock and xAI controls", () => {
     ).toMatchObject({
       format: "bedrock",
       efforts: ["low", "medium", "high", "xhigh", "max"],
-      thinkingModes: ["off", "hidden", "shown"],
+      thinkingModes: ["hidden", "shown"],
       fast: false,
     });
     expect(
@@ -363,20 +386,18 @@ describe("Gemini, Bedrock and xAI controls", () => {
     ).toEqual([]);
   });
 
-  it("gives grok-3-mini a low or high effort", () => {
+  it("gives grok-build no effort and treats it as known", () => {
     expect(
-      getModelControls({ provider: "xAI", model: "grok-3-mini" }),
-    ).toMatchObject({ format: "xai", efforts: ["low", "high"] });
-    expect(
-      getModelControls({ provider: "xAI", model: "grok-code-fast-1" }),
-    ).toMatchObject({ efforts: [], maxContextLength: 256_000 });
+      getModelControls({ provider: "xAI", model: "grok-build-0.1" }),
+    ).toMatchObject({ format: "xai", efforts: [], experimental: false });
   });
 });
 
 describe("chosen and effective thinking mode", () => {
+  // A Claude 5 model that thinks by default and can still turn it off
   const opus = getModelControls({
     provider: "anthropic",
-    model: "claude-opus-5-5",
+    model: "claude-sonnet-5-5",
   });
   const sonnet46 = getModelControls({
     provider: "anthropic",
@@ -417,7 +438,7 @@ describe("buildModelControlFields thinking modes", () => {
   it("sends the chosen Claude mode for the adapter", () => {
     expect(
       buildModelControlFields(
-        { provider: "anthropic", model: "claude-opus-5-5" },
+        { provider: "anthropic", model: "claude-sonnet-5-5" },
         { thinking: "off", effort: "low" },
       ),
     ).toEqual({ reasoning_effort: "low", nextcli_thinking: "off" });
@@ -515,18 +536,37 @@ describe("context options", () => {
 });
 
 describe("DeepSeek", () => {
-  it("has thinking modes, no effort and a 128K context floor", () => {
+  it("has thinking modes, no effort and a 1M context window", () => {
     expect(
       getModelControls({ provider: "deepseek", model: "deepseek-v4-pro" }),
     ).toMatchObject({
       efforts: [],
       thinkingModes: ["off", "hidden", "shown"],
       fast: false,
-      maxContextLength: 128_000,
+      maxContextLength: 1_000_000,
     });
-    expect(getContextOptions(128_000, 64_000)).toEqual([64_000, 128_000]);
+    expect(getContextOptions(1_000_000, 64_000)).toEqual([
+      64_000, 128_000, 200_000, 256_000, 400_000, 1_000_000,
+    ]);
     // A larger configured window is still offered
-    expect(getContextOptions(128_000, 1_000_000).at(-1)).toBe(1_000_000);
+    expect(getContextOptions(1_000_000, 1_000_000).at(-1)).toBe(1_000_000);
+  });
+
+  it("uses a 1M context window for DeepSeek V4 Flash too", () => {
+    for (const model of ["deepseek-v4-flash", "deepseek-v4.1-flash"]) {
+      expect(
+        getModelControls({ provider: "deepseek", model }).maxContextLength,
+      ).toBe(1_000_000);
+    }
+  });
+
+  it("routes OneProvider DeepSeek through the deepseek case", () => {
+    expect(
+      getModelControls({ provider: "oneprovider", model: "deepseek-v4-pro" }),
+    ).toMatchObject({
+      format: "deepseek",
+      maxContextLength: 1_000_000,
+    });
   });
 
   it("sends nothing for Hidden and Shown", () => {
@@ -565,7 +605,7 @@ describe("Kimi", () => {
       getModelControls({ provider: "moonshot", model: "kimi-k2-thinking" })
         .thinkingModes,
     ).toEqual(["hidden", "shown"]);
-    for (const model of ["moonshot-v1-8k", "kimi-k2-instruct"]) {
+    for (const model of ["kimi-k2-instruct"]) {
       expect(
         getModelControls({ provider: "moonshot", model }).thinkingModes,
       ).toEqual([]);
@@ -721,7 +761,7 @@ describe("generic providers", () => {
   it("offers reasoning rows only for reasoning models", () => {
     expect(generic("mistral-large-latest").efforts).toEqual([]);
     expect(generic("mistral-large-latest").thinkingModes).toEqual([]);
-    expect(generic("magistral-medium-latest").efforts).toEqual([
+    expect(generic("phi-4-reasoning").efforts).toEqual([
       "low",
       "medium",
       "high",
@@ -730,6 +770,23 @@ describe("generic providers", () => {
       "hidden",
       "shown",
     ]);
+  });
+
+  it("recognises current reasoning families but not retired ones", () => {
+    for (const model of [
+      "deepseek-v4-pro",
+      "claude-sonnet-4-5",
+      "grok-4.7",
+      "gemini-2.5-pro",
+      "o3",
+      // Open-weight, still hosted by third parties
+      "deepseek-v3.2",
+    ]) {
+      expect(looksLikeReasoningModel(model)).toBe(true);
+    }
+    for (const model of ["grok-3", "claude-3-7-sonnet", "deepseek-v3"]) {
+      expect(looksLikeReasoningModel(model)).toBe(false);
+    }
   });
 
   it("trusts a config that marks the model as reasoning", () => {
