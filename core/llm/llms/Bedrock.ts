@@ -18,8 +18,9 @@ import {
 import { fromNodeProviderChain } from "@aws-sdk/credential-providers";
 import {
   anthropicControlParams,
+  anthropicSamplingParams,
   anthropicSupportsPrefill,
-  filterAnthropicSamplingParams,
+  anthropicThinkingOn,
 } from "@nextcli/openai-adapters";
 
 import type { CompletionOptions } from "../../index.js";
@@ -67,9 +68,14 @@ class Bedrock extends BaseLLM {
       thinking:
         options.thinking ?? (options.reasoning === false ? "off" : undefined),
       thinkingRequested: options.reasoning === true,
-      budgetTokens: options.reasoning
-        ? (options.reasoningBudgetTokens ?? DEFAULT_REASONING_TOKENS)
-        : undefined,
+      // A configured budget applies whenever thinking is on: the model menu
+      // sends a mode, not `reasoning`. reasoning: true keeps its default
+      budgetTokens:
+        options.reasoning === true ||
+        (options.thinking !== undefined && options.thinking !== "off")
+          ? (options.reasoningBudgetTokens ??
+            (options.reasoning ? DEFAULT_REASONING_TOKENS : undefined))
+          : undefined,
       maxTokens: options.maxTokens ?? 4096,
     });
   }
@@ -366,10 +372,12 @@ class Bedrock extends BaseLLM {
       messages: convertedMessages,
       inferenceConfig: {
         maxTokens: controls?.thinking ? controls.maxTokens : options.maxTokens,
-        ...filterAnthropicSamplingParams(options.model, {
-          temperature: options.temperature,
-          topP: options.topP,
-        }),
+        // While thinking, Claude rejects temperature and a top_p below 0.95
+        ...anthropicSamplingParams(
+          options.model,
+          { temperature: options.temperature, topP: options.topP },
+          anthropicThinkingOn(controls?.thinking),
+        ),
         // TODO: The current approach selects the first 4 items from the list to comply with Bedrock's requirement
         // of having at most 4 stop sequences, as per the AWS documentation:
         // https://docs.aws.amazon.com/bedrock/latest/APIReference/API_agent_InferenceConfiguration.html

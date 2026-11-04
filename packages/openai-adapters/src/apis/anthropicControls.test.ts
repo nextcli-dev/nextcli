@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   anthropicControlParams,
+  anthropicSamplingParams,
   anthropicThinkingOn,
   withAnthropicBetas,
 } from "./anthropicControls.js";
@@ -161,5 +162,34 @@ describe("helpers", () => {
   it("merges beta flags without duplicates", () => {
     expect(withAnthropicBetas("a,b", ["b", "c"])).toBe("a,b,c");
     expect(withAnthropicBetas(undefined, [])).toBeUndefined();
+  });
+});
+
+describe("anthropicSamplingParams", () => {
+  it("drops temperature, top_k and a low top_p while thinking", () => {
+    expect(
+      anthropicSamplingParams(
+        "claude-sonnet-4-6",
+        { temperature: 0.2, topP: 0.5, topK: 40 },
+        true,
+      ),
+    ).toEqual({ topP: undefined });
+    expect(
+      anthropicSamplingParams("claude-sonnet-4-6", { topP: 0.98 }, true),
+    ).toEqual({ topP: 0.98 });
+  });
+
+  it("keeps them without thinking, except where the model rejects them", () => {
+    expect(
+      anthropicSamplingParams("claude-sonnet-4-6", { temperature: 0.2 }, false)
+        .temperature,
+    ).toBe(0.2);
+    expect(
+      anthropicSamplingParams("claude-sonnet-4-6", { topP: 0.5 }, false).topP,
+    ).toBe(0.5);
+    expect(
+      anthropicSamplingParams("claude-opus-4-7", { temperature: 0.2 }, false)
+        .temperature,
+    ).toBeUndefined();
   });
 });

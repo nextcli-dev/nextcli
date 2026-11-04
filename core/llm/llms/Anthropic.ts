@@ -14,10 +14,10 @@ import { streamSse } from "@nextcli/fetch";
 import {
   addCacheControlToLastTwoUserMessages,
   anthropicControlParams,
+  anthropicSamplingParams,
   anthropicSupportsForcedToolChoice,
   anthropicSupportsPrefill,
   anthropicThinkingOn,
-  filterAnthropicSamplingParams,
   getAnthropicErrorMessage,
   getAnthropicHeaders,
   getAnthropicMediaTypeFromDataUrl,
@@ -81,9 +81,14 @@ class Anthropic extends BaseLLM {
       thinking:
         options.thinking ?? (options.reasoning === false ? "off" : undefined),
       thinkingRequested: options.reasoning === true,
-      budgetTokens: options.reasoning
-        ? (options.reasoningBudgetTokens ?? DEFAULT_REASONING_TOKENS)
-        : undefined,
+      // A configured budget applies whenever thinking is on: the model menu
+      // sends a mode, not `reasoning`. reasoning: true keeps its default
+      budgetTokens:
+        options.reasoning === true ||
+        (options.thinking !== undefined && options.thinking !== "off")
+          ? (options.reasoningBudgetTokens ??
+            (options.reasoning ? DEFAULT_REASONING_TOKENS : undefined))
+          : undefined,
       fast: options.fast,
       maxTokens: options.maxTokens ?? 2048,
     });
@@ -100,16 +105,15 @@ class Anthropic extends BaseLLM {
   ): Omit<MessageCreateParams, "messages"> {
     const params = this.controlParams(options);
     const thinkingOn = anthropicThinkingOn(params.thinking);
-    const sampling = filterAnthropicSamplingParams(options.model, {
-      // While thinking, Claude rejects temperature and top_k and needs a
-      // top_p of 0.95 to 1
-      temperature: thinkingOn ? undefined : options.temperature,
-      topP:
-        thinkingOn && (options.topP === undefined || options.topP < 0.95)
-          ? undefined
-          : options.topP,
-      topK: thinkingOn ? undefined : options.topK,
-    });
+    const sampling = anthropicSamplingParams(
+      options.model,
+      {
+        temperature: options.temperature,
+        topP: options.topP,
+        topK: options.topK,
+      },
+      thinkingOn,
+    );
     const finalOptions = {
       top_k: sampling.topK,
       top_p: sampling.topP,

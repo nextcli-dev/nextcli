@@ -277,6 +277,7 @@ export type {
 } from "./modelControls.js";
 export {
   anthropicControlParams,
+  anthropicSamplingParams,
   anthropicThinkingOn,
   withAnthropicBetas,
 } from "./apis/anthropicControls.js";
