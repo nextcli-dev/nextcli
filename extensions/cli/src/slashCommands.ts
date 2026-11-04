@@ -272,6 +272,16 @@ export function handleEffort(args: string[]): SlashCommandResult {
   }
   const controls = getModelControlsFor(model);
   const name = model.name || model.model;
+  const requestedLevel = args[0]?.toLowerCase();
+  // "off" turns thinking off (DeepSeek's only control used to be effort off)
+  if (
+    requestedLevel === "off" &&
+    !controls.efforts.includes("off") &&
+    controls.thinkingModes.includes("off")
+  ) {
+    updateModelSettings(model, { thinking: "off" });
+    return { output: `Thinking for ${name} turned off.` };
+  }
   if (controls.efforts.length === 0) {
     return { output: `${name} has no effort levels.` };
   }

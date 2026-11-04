@@ -6,7 +6,7 @@ import type { ChatCompletionCreateParamsStreaming } from "openai/resources.mjs";
 import { ToolCallPreview } from "../tools/types.js";
 import {
   getModelControlsFor,
-  getModelSettings,
+  requestControlSettings,
   modelIdentity,
 } from "../util/modelSettings.js";
 
@@ -49,6 +49,9 @@ export function getCompletionOptions(
       opts?.reasoningBudgetTokens !== undefined && {
         nextcli_thinking_budget: opts.reasoningBudgetTokens,
       }),
-    ...buildModelControlFields(modelIdentity(model), getModelSettings(model)),
+    ...buildModelControlFields(
+      modelIdentity(model),
+      requestControlSettings(model),
+    ),
   } as Partial<ChatCompletionCreateParamsStreaming>;
 }

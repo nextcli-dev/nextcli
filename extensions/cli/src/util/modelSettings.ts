@@ -1,10 +1,16 @@
 import type { ModelConfig } from "@nextcli/config-yaml";
 import {
   clampEffort,
+  effectiveThinkingMode,
+  effortLabel,
+  formatContextLength,
+  getContextOptions as contextOptionsFor,
   getControlsFormat,
   getModelControls,
   type ModelControls,
   type ModelIdentity,
+  thinkingLabel,
+  type ThinkingMode,
 } from "@nextcli/openai-adapters";
 import { GlobalContext } from "core/util/GlobalContext.js";
 
@@ -14,6 +20,11 @@ import { logger } from "./logger.js";
 export interface CliModelSettings {
   /** Effort level, or undefined for the provider default */
   effort?: string;
+  /**
+   * Thinking mode: off (no thinking tokens), hidden or shown. Shared with
+   * the IDE extensions' model menu
+   */
+  thinking?: ThinkingMode;
   /**
    * Request and show readable reasoning. On unless turned off, except for
    * OpenAI, where readable summaries can need a verified organization
@@ -37,6 +48,9 @@ export function modelIdentity(model: ModelConfig): ModelIdentity {
     provider: model.provider,
     model: model.model,
     apiBase: model.apiBase,
+    reasoningConfigured:
+      model.defaultCompletionOptions?.reasoning !== undefined ||
+      !!model.defaultCompletionOptions?.reasoningEffort,
   };
 }
 
@@ -97,7 +111,42 @@ export function getModelSettings(model: ModelConfig): CliModelSettings {
       stored.effort ??
       model.defaultCompletionOptions?.reasoningEffort ??
       (model.defaultCompletionOptions?.reasoning ? "medium" : undefined),
-    showThinking: stored.showThinking ?? defaultShowThinking(model),
+    showThinking:
+      stored.thinking === undefined
+        ? (stored.showThinking ?? defaultShowThinking(model))
+        : stored.thinking === "shown",
+  };
+}
+
+/**
+ * The thinking mode a request runs with: the one chosen in a model menu,
+ * else the model's default (Claude before 5 thinks once an effort is set)
+ */
+export function effectiveThinking(
+  model: ModelConfig,
+): ThinkingMode | undefined {
+  const stored = readStoredSettings(model);
+  return effectiveThinkingMode(getModelControlsFor(model), {
+    effort: getModelSettings(model).effort,
+    thinking: stored.thinking,
+    // Only a saved value: the filled-in default isn't a choice
+    showThinking: stored.showThinking,
+  });
+}
+
+/**
+ * Settings for buildModelControlFields: the thinking mode only when one was
+ * chosen, so requests for untouched models keep the provider's default
+ */
+export function requestControlSettings(model: ModelConfig): CliModelSettings {
+  const settings = getModelSettings(model);
+  const chosen = readStoredSettings(model).thinking;
+  return {
+    effort: settings.effort,
+    fast: settings.fast,
+    ...(chosen === undefined
+      ? { showThinking: settings.showThinking }
+      : { thinking: chosen }),
   };
 }
 
@@ -138,30 +187,11 @@ export function effectiveEffort(model: ModelConfig): string | undefined {
 
 /** Whether reasoning should be shown for the model */
 export function shouldShowReasoning(model: ModelConfig | null | undefined) {
-  return !model || getModelSettings(model).showThinking !== false;
+  // Off sends nothing to show, and a configured budget can still think
+  return !model || effectiveThinking(model) !== "hidden";
 }
 
-const EFFORT_LABELS: Record<string, string> = {
-  off: "Off",
-  minimal: "Minimal",
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  xhigh: "Extra high",
-  max: "Max",
-};
-
-export function effortLabel(effort: string | undefined): string {
-  return effort ? (EFFORT_LABELS[effort] ?? effort) : "Default";
-}
-
-export function formatContextLength(tokens: number): string {
-  return tokens >= 1_000_000
-    ? `${tokens / 1_000_000}M`
-    : `${Math.round(tokens / 1000)}K`;
-}
-
-const CONTEXT_STEPS = [64_000, 128_000, 200_000, 256_000, 400_000, 1_000_000];
+export { effortLabel, formatContextLength, thinkingLabel };
 
 /**
  * Context windows to offer: standard steps up to the largest one known for
@@ -171,12 +201,10 @@ export function getContextOptions(
   model: ModelConfig,
   defaultContextLength: number,
 ): number[] {
-  const max = Math.max(
-    getModelControlsFor(model).maxContextLength ?? 0,
+  return contextOptionsFor(
+    getModelControlsFor(model).maxContextLength,
     model.defaultCompletionOptions?.contextLength ?? defaultContextLength,
   );
-  const steps = CONTEXT_STEPS.filter((step) => step < max);
-  return [...steps, max];
 }
 
 /** Short label for the status bar, for example "claude-opus-5-5 · High" */
@@ -190,6 +218,9 @@ export function modelStatusLabel(model: ModelConfig): string {
   }
   if (settings.fast && controls.fast) {
     parts.push("Fast");
+  }
+  if (readStoredSettings(model).thinking === "off") {
+    parts.push("No thinking");
   }
   return parts.join(" · ");
 }
