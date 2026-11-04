@@ -137,7 +137,7 @@ describe("OpenAI", () => {
   test("streamChat should send a valid request", async () => {
     const openai = new OpenAI({
       apiKey: "test-api-key",
-      model: "gpt-4",
+      model: "gpt-4o",
       apiBase: "https://api.openai.com/v1/",
     });
 
@@ -157,10 +157,10 @@ describe("OpenAI", () => {
           "api-key": "test-api-key",
         },
         body: {
-          model: "gpt-4",
+          model: "gpt-4o",
           messages: [{ role: "user", content: "hello" }],
           stream: true,
-          max_tokens: 2048,
+          max_tokens: 4096,
         },
       },
       mockStream: [
@@ -173,7 +173,7 @@ describe("OpenAI", () => {
   test("chat should send a valid request", async () => {
     const openai = new OpenAI({
       apiKey: "test-api-key",
-      model: "gpt-4",
+      model: "gpt-4o",
       apiBase: "https://api.openai.com/v1/",
     });
 
@@ -193,10 +193,10 @@ describe("OpenAI", () => {
           "api-key": "test-api-key",
         },
         body: {
-          model: "gpt-4",
+          model: "gpt-4o",
           messages: [{ role: "user", content: "hello" }],
           stream: true,
-          max_tokens: 2048,
+          max_tokens: 4096,
         },
       },
       mockStream: [
@@ -209,7 +209,7 @@ describe("OpenAI", () => {
   test("streamComplete should send a valid request", async () => {
     const openai = new OpenAI({
       apiKey: "test-api-key",
-      model: "gpt-4",
+      model: "gpt-4o",
       apiBase: "https://api.openai.com/v1/",
     });
 
@@ -226,10 +226,10 @@ describe("OpenAI", () => {
           "api-key": "test-api-key",
         },
         body: {
-          model: "gpt-4",
+          model: "gpt-4o",
           messages: [{ role: "user", content: "Hello" }],
           stream: true,
-          max_tokens: 2048,
+          max_tokens: 4096,
         },
       },
       mockStream: [
@@ -242,7 +242,7 @@ describe("OpenAI", () => {
   test("complete should send a valid request", async () => {
     const openai = new OpenAI({
       apiKey: "test-api-key",
-      model: "gpt-4",
+      model: "gpt-4o",
       apiBase: "https://api.openai.com/v1/",
     });
 
@@ -259,10 +259,10 @@ describe("OpenAI", () => {
           "api-key": "test-api-key",
         },
         body: {
-          model: "gpt-4",
+          model: "gpt-4o",
           messages: [{ role: "user", content: "Hello" }],
           stream: true,
-          max_tokens: 2048,
+          max_tokens: 4096,
         },
       },
       mockStream: [
@@ -309,7 +309,7 @@ describe("OpenAI", () => {
   test("should handle tools", async () => {
     const openai = new OpenAI({
       apiKey: "test-api-key",
-      model: "gpt-4",
+      model: "gpt-4o",
       apiBase: "https://api.openai.com/v1/",
     });
 
@@ -341,10 +341,10 @@ describe("OpenAI", () => {
           "api-key": "test-api-key",
         },
         body: {
-          model: "gpt-4",
+          model: "gpt-4o",
           messages: [{ role: "user", content: "hello" }],
           stream: true,
-          max_tokens: 2048,
+          max_tokens: 4096,
           tools: [
             {
               type: "function",
@@ -364,7 +364,7 @@ describe("OpenAI", () => {
   test("should handle custom max tokens", async () => {
     const openai = new OpenAI({
       apiKey: "test-api-key",
-      model: "gpt-4",
+      model: "gpt-4o",
       apiBase: "https://api.openai.com/v1/",
     });
 
@@ -385,7 +385,7 @@ describe("OpenAI", () => {
           "api-key": "test-api-key",
         },
         body: {
-          model: "gpt-4",
+          model: "gpt-4o",
           messages: [{ role: "user", content: "hello" }],
           stream: true,
           max_tokens: 500,

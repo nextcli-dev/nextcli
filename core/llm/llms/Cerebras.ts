@@ -59,18 +59,6 @@ class Cerebras extends OpenAI {
     const filteredMessages = this.filterThinkingFromMessages(messages);
     return super._convertArgs(options, filteredMessages);
   }
-
-  private static modelConversion: { [key: string]: string } = {
-    "qwen-3-coder-480b-free": "qwen-3-coder-480b", // Maps free version to base model
-    "qwen-3-coder-480b": "qwen-3-coder-480b",
-    "qwen-3-235b-a22b-instruct-2507": "qwen-3-235b-a22b-instruct-2507",
-    "llama-3.3-70b": "llama-3.3-70b",
-    "qwen-3-32b": "qwen-3-32b",
-    "qwen-3-235b-a22b-thinking-2507": "qwen-3-235b-a22b-thinking-2507",
-  };
-  protected _convertModelName(model: string): string {
-    return Cerebras.modelConversion[model] ?? model;
-  }
 }
 
 export default Cerebras;

@@ -146,7 +146,7 @@ export interface OpenAISubclassConfig {
 function getExpectedUrl(
   config: OpenAISubclassConfig,
   endpoint: string,
-  model: string = "gpt-4",
+  model: string = "gpt-4o",
 ) {
   let baseUrl = config.defaultApiBase || "https://api.openai.com/v1/";
   if (config.providerName === "azure") {
@@ -181,7 +181,7 @@ export const createOpenAISubclassTests = (
     test("streamChat should send a valid request", async () => {
       const provider = new ProviderClass({
         apiKey: "test-api-key",
-        model: "gpt-4",
+        model: "gpt-4o",
         apiBase: config.defaultApiBase || "https://api.openai.com/v1/",
       });
 
@@ -201,10 +201,10 @@ export const createOpenAISubclassTests = (
             "api-key": "test-api-key",
           },
           body: {
-            model: "gpt-4",
+            model: "gpt-4o",
             messages: [{ role: "user", content: "hello" }],
             stream: true,
-            max_tokens: 2048,
+            max_tokens: 4096,
             ...config.customBodyOptions,
           },
         },
@@ -218,7 +218,7 @@ export const createOpenAISubclassTests = (
     test("chat should send a valid request", async () => {
       const provider = new ProviderClass({
         apiKey: "test-api-key",
-        model: "gpt-4",
+        model: "gpt-4o",
         apiBase: config.defaultApiBase || "https://api.openai.com/v1/",
       });
 
@@ -238,10 +238,10 @@ export const createOpenAISubclassTests = (
             "api-key": "test-api-key",
           },
           body: {
-            model: "gpt-4",
+            model: "gpt-4o",
             messages: [{ role: "user", content: "hello" }],
             stream: true,
-            max_tokens: 2048,
+            max_tokens: 4096,
             ...config.customBodyOptions,
           },
         },
@@ -255,7 +255,7 @@ export const createOpenAISubclassTests = (
     test("streamComplete should send a valid request", async () => {
       const provider = new ProviderClass({
         apiKey: "test-api-key",
-        model: "gpt-4",
+        model: "gpt-4o",
         apiBase: config.defaultApiBase || "https://api.openai.com/v1/",
       });
 
@@ -277,17 +277,17 @@ export const createOpenAISubclassTests = (
           body:
             config.customStreamCompleteEndpoint === "completions"
               ? {
-                  model: "gpt-4",
+                  model: "gpt-4o",
                   prompt: "Hello",
                   stream: true,
-                  max_tokens: 2048,
+                  max_tokens: 4096,
                   ...config.customBodyOptions,
                 }
               : {
-                  model: "gpt-4",
+                  model: "gpt-4o",
                   messages: [{ role: "user", content: "Hello" }],
                   stream: true,
-                  max_tokens: 2048,
+                  max_tokens: 4096,
                   ...config.customBodyOptions,
                 },
         },
@@ -301,7 +301,7 @@ export const createOpenAISubclassTests = (
     test("complete should send a valid request", async () => {
       const provider = new ProviderClass({
         apiKey: "test-api-key",
-        model: "gpt-4",
+        model: "gpt-4o",
         apiBase: config.defaultApiBase || "https://api.openai.com/v1/",
       });
 
@@ -318,10 +318,10 @@ export const createOpenAISubclassTests = (
             "api-key": "test-api-key",
           },
           body: {
-            model: "gpt-4",
+            model: "gpt-4o",
             messages: [{ role: "user", content: "Hello" }],
             stream: true,
-            max_tokens: 2048,
+            max_tokens: 4096,
             ...config.customBodyOptions,
           },
         },
