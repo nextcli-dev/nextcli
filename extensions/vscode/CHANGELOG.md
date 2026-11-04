@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.6.1](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.0...vscode-v1.6.1) (2026-11-04)
+
+
+### Bug Fixes
+
+* **vscode:** keep the model menu open when opening Model, Thinking or Effort, so the model can be switched ([4a1aeeb](https://github.com/nextcli-dev/nextcli/commit/4a1aeeb395ca863cd2d235cfb361eca613aff691))
+* **vscode:** show the model menu in the same font size as the rest of the chat input ([4a1aeeb](https://github.com/nextcli-dev/nextcli/commit/4a1aeeb395ca863cd2d235cfb361eca613aff691))
+
 ## [1.6.0](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.4.5...vscode-v1.6.0) (2026-11-04)
 
 
