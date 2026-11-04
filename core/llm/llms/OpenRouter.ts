@@ -13,7 +13,7 @@ class OpenRouter extends OpenAI {
   protected supportsReasoningDetailsField = true;
   static defaultOptions: Partial<LLMOptions> = {
     apiBase: "https://openrouter.ai/api/v1/",
-    model: "gpt-4o-mini",
+    model: "openrouter/auto",
     promptTemplates: {
       edit: osModelsEditPrompt,
     },

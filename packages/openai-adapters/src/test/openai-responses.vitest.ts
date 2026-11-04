@@ -608,12 +608,12 @@ describe("isResponsesModel", () => {
     "gpt-6.1-terra",
     "gpt-10",
     "o3",
-    "o4-mini",
+    "o3-pro",
   ])("uses the Responses API for %s", (model) => {
     expect(isResponsesModel(model)).toBe(true);
   });
 
-  it.each(["gpt-4o", "gpt-4.1-mini", "gpt-3.5-turbo", "claude-sonnet-5-5", ""])(
+  it.each(["gpt-4o", "gpt-4.1-mini", "o1", "o4-mini", "claude-sonnet-5-5", ""])(
     "uses Chat Completions for %s",
     (model) => {
       expect(isResponsesModel(model)).toBe(false);

@@ -32,6 +32,37 @@ export interface LlmInfo {
 
   /** Any additional parameters required to configure the model */
   extraParameters?: Parameter[];
+
+  /**
+   * Set when the vendor has announced the model's shutdown. The entry stays so
+   * existing configs keep working, but presets and defaults must not use it.
+   */
+  deprecation?: LlmDeprecation;
+}
+
+export interface LlmDeprecation {
+  /**
+   * The vendor's shutdown date as YYYY-MM-DD, or "unscheduled" when the model
+   * is deprecated without a date (e.g. a legacy alias)
+   */
+  shutdownDate: string;
+  /** The model id the vendor recommends moving to */
+  replacement?: string;
+}
+
+/**
+ * True when the model has a shutdown date that is on or before `today`.
+ * Models without a deprecation, or with an unscheduled one, are not retired.
+ */
+export function isRetired(
+  info: Pick<LlmInfo, "deprecation"> | undefined,
+  today: Date = new Date(),
+): boolean {
+  const date = info?.deprecation?.shutdownDate;
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return false;
+  }
+  return new Date(`${date}T00:00:00Z`).getTime() <= today.getTime();
 }
 
 export type LlmInfoWithProvider = LlmInfo & {

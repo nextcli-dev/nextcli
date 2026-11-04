@@ -288,5 +288,6 @@ export type {
 } from "./apis/anthropicControls.js";
 export { geminiThinkingConfig } from "./apis/Gemini.js";
 export { ONEPROVIDER_API_BASE } from "./apis/OneProvider.js";
+export { supportsFimEndpoint } from "./fimEndpoints.js";
 export { OPENROUTER_HEADERS } from "./apis/OpenRouter.js";
 export { extractBase64FromDataUrl, parseDataUrl } from "./util/url.js";

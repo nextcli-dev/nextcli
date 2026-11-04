@@ -36,8 +36,9 @@ import {
   ResponseUsage,
 } from "openai/resources/responses/responses.js";
 
-// GPT-5 and later (gpt-5.5, gpt-6-sol, gpt-10) and the o-series
-const RESPONSES_MODEL_REGEX = /^(?:gpt-(?:[5-9]|[1-9][0-9])|o[0-9])/i;
+// GPT-5 and later (gpt-5.5, gpt-6-sol, gpt-10) and o3 (o1, o3-mini and
+// o4-mini are retired)
+const RESPONSES_MODEL_REGEX = /^(?:gpt-(?:[5-9]|[1-9][0-9])|o3)/i;
 
 export function isResponsesModel(model: string): boolean {
   return !!model && RESPONSES_MODEL_REGEX.test(model);

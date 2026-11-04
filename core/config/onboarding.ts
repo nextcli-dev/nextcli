@@ -15,7 +15,7 @@ type OnboardingModel = NonNullable<ConfigYaml["models"]>[number];
 // via `uses:` slugs. Since Hub/slug resolution has been removed, we reproduce
 // the exact block contents here, with `apiKey` substituted for the block's
 // `${{ inputs.*_API_KEY }}` placeholder. Keep these in sync with the Hub blocks.
-// Keep in sync with extensions/cli/src/util/providerPresets.ts (ids checked 2026-11-01)
+// Keep in sync with extensions/cli/src/util/providerPresets.ts (ids checked 2026-11-04)
 const ANTHROPIC_ONBOARDING_MODELS = (apiKey: string): OnboardingModel[] => [
   {
     name: "Claude Sonnet 5.5",
@@ -60,21 +60,19 @@ const OPENAI_ONBOARDING_MODELS = (apiKey: string): OnboardingModel[] => [
 
 const GEMINI_ONBOARDING_MODELS = (apiKey: string): OnboardingModel[] => [
   {
-    name: "Gemini 3 Pro Preview",
+    name: "Gemini 4 Argon",
     provider: "gemini",
-    model: "gemini-3-pro-preview",
+    model: "gemini-4-argon",
     apiKey,
     roles: ["chat", "edit", "apply"],
-    defaultCompletionOptions: { contextLength: 1048576, maxTokens: 65536 },
     capabilities: ["tool_use", "image_input"],
   },
   {
-    name: "Gemini 3 Flash Preview",
+    name: "Gemini 3.8 Flash",
     provider: "gemini",
-    model: "gemini-3-flash-preview",
+    model: "gemini-3.8-flash",
     apiKey,
     roles: ["chat", "edit", "apply"],
-    defaultCompletionOptions: { contextLength: 1048576, maxTokens: 65536 },
     capabilities: ["tool_use", "image_input"],
   },
 ];

@@ -137,13 +137,8 @@ const PROVIDER_SUPPORTS_IMAGES: string[] = [
 
 const MODEL_SUPPORTS_IMAGES: RegExp[] = [
   /llava/,
-  /gpt-4-turbo/,
   /gpt-4o/,
   /gpt-4o-mini/,
-  /claude-3/,
-  /gemini-ultra/,
-  /gemini-1\.5-pro/,
-  /gemini-1\.5-flash/,
   /sonnet/,
   /opus/,
   /haiku/,
@@ -196,16 +191,7 @@ function modelSupportsReasoning(
     // Reasoning support is forced at the config level. Model might not necessarily support it though!
     return model.completionOptions.reasoning;
   }
-  // Seems our current way of disabling reasoning is not working for grok code so results in useless lightbulb
-  // if (model.model.includes("grok-code")) {
-  //   return true;
-  // }
-  // do not turn reasoning on by default for claude 3 models
-  if (
-    model.model.includes("claude") &&
-    !model.model.includes("-3-") &&
-    !model.model.includes("-3.5-")
-  ) {
+  if (model.model.includes("claude")) {
     return true;
   }
   if (model.model.includes("command-a-reasoning")) {
@@ -214,14 +200,11 @@ function modelSupportsReasoning(
   if (model.model.includes("deepseek-r")) {
     return true;
   }
-  // o-series reasoning models
-  if (/^o[134]/.test(model.model)) {
+  // o-series reasoning models (o1/o3-mini/o4-mini are retired)
+  if (/^o3/.test(model.model)) {
     return true;
   }
   if (model.model.includes("codex")) {
-    return true;
-  }
-  if (model.model.includes("magistral")) {
     return true;
   }
   if (model.model.includes("grok-4")) {
@@ -270,11 +253,9 @@ function isProviderHandlesTemplatingOrNoTemplateTypeRequired(
     modelName.includes("gpt") ||
     modelName.includes("command") ||
     modelName.includes("aya") ||
-    modelName.includes("chat-bison") ||
     modelName.includes("pplx") ||
     modelName.includes("gemini") ||
     modelName.includes("grok") ||
-    modelName.includes("moonshot") ||
     modelName.includes("kimi") ||
     modelName.includes("mercury") ||
     modelName.includes("glm") ||

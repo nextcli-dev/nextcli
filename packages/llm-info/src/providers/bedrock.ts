@@ -2,11 +2,25 @@ import { ModelProvider } from "../types.js";
 
 export const Bedrock: ModelProvider = {
   models: [
+    // docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-5-5.html
+    // Use the geo (us./eu./au.) or global. inference profile; there is no in-Region endpoint
+    {
+      model: "anthropic.claude-sonnet-5-5",
+      displayName: "Claude Sonnet 5.5",
+      contextLength: 1000000,
+      maxCompletionTokens: 128000,
+      regex: /anthropic\.claude-sonnet-5-5/,
+    },
     {
       model: "anthropic.claude-sonnet-4-5-20250929-v1:0",
       displayName: "Claude Sonnet 4.5",
       contextLength: 200000,
       maxCompletionTokens: 64000,
+      // Bedrock end of life (Legacy stage), per the AWS model card
+      deprecation: {
+        shutdownDate: "2027-04-08",
+        replacement: "anthropic.claude-sonnet-5-5",
+      },
     },
     {
       model: "anthropic.claude-opus-4-6-v1",

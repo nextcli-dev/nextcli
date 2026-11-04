@@ -15,7 +15,11 @@ export async function* streamResponse(
   }
 
   if (response.status !== 200) {
-    throw new Error(await response.text());
+    // Name the URL so a 404 reads as a missing route, not a missing model
+    const where = response.url ? ` from ${response.url}` : "";
+    throw new Error(
+      `HTTP ${response.status}${where}: ${await response.text()}`,
+    );
   }
 
   if (!response.body) {

@@ -6,24 +6,6 @@ export const CometAPI: ModelProvider = {
   models: [
     // GPT Series
     {
-      model: "gpt-5-chat-latest",
-      displayName: "GPT-5 Chat Latest",
-      contextLength: 200000,
-      maxCompletionTokens: 8192,
-      description:
-        "Latest GPT-5 model optimized for chat conversations with enhanced reasoning capabilities.",
-      recommendedFor: ["chat"],
-    },
-    {
-      model: "chatgpt-4o-latest",
-      displayName: "ChatGPT-4o Latest",
-      contextLength: 128000,
-      maxCompletionTokens: 4096,
-      description:
-        "Latest ChatGPT-4o model with improved performance and updated training data.",
-      recommendedFor: ["chat"],
-    },
-    {
       model: "gpt-5-mini",
       displayName: "GPT-5 Mini",
       contextLength: 128000,
@@ -31,6 +13,7 @@ export const CometAPI: ModelProvider = {
       description:
         "Efficient version of GPT-5 with faster response times while maintaining high quality.",
       recommendedFor: ["chat"],
+      deprecation: { shutdownDate: "2026-12-11" },
     },
     {
       model: "gpt-5-nano",
@@ -40,6 +23,7 @@ export const CometAPI: ModelProvider = {
       description:
         "Ultra-fast GPT-5 variant optimized for quick responses and simple tasks.",
       recommendedFor: ["chat"],
+      deprecation: { shutdownDate: "2026-12-11" },
     },
     {
       model: "gpt-5",
@@ -49,6 +33,7 @@ export const CometAPI: ModelProvider = {
       description:
         "Advanced GPT-5 model with state-of-the-art language understanding and generation.",
       recommendedFor: ["chat"],
+      deprecation: { shutdownDate: "2026-12-11" },
     },
     {
       model: "gpt-4o-mini",
@@ -58,15 +43,7 @@ export const CometAPI: ModelProvider = {
       description:
         "Compact version of GPT-4o with excellent performance for most use cases.",
       recommendedFor: ["chat"],
-    },
-    {
-      model: "o4-mini-2025-04-16",
-      displayName: "o4 Mini (2025-04-16)",
-      contextLength: 128000,
-      maxCompletionTokens: 4096,
-      description:
-        "Optimized o4 mini model with April 2025 training improvements.",
-      recommendedFor: ["chat"],
+      deprecation: { shutdownDate: "unscheduled" },
     },
     {
       model: "o3-pro-2025-06-10",
@@ -76,6 +53,8 @@ export const CometAPI: ModelProvider = {
       description:
         "Professional-grade o3 model with enhanced reasoning and problem-solving capabilities.",
       recommendedFor: ["chat"],
+      // OpenAI retires o3 and o3-pro snapshots on this date
+      deprecation: { shutdownDate: "2026-12-11" },
     },
 
     // Claude Series
@@ -105,6 +84,10 @@ export const CometAPI: ModelProvider = {
       description:
         "Previous generation Sonnet model with strong performance in reasoning and multilingual tasks.",
       recommendedFor: ["chat"],
+      deprecation: {
+        shutdownDate: "2026-11-30",
+        replacement: "claude-sonnet-5-5",
+      },
     },
     {
       model: "claude-haiku-4-5-20251001",
@@ -114,60 +97,7 @@ export const CometAPI: ModelProvider = {
       description:
         "Anthropic's fastest model with near-frontier intelligence, ideal for quick and accurate responses.",
       recommendedFor: ["chat"],
-    },
-    {
-      model: "claude-opus-4-1-20250805",
-      displayName: "Claude Opus 4.1 (2025-08-05)",
-      contextLength: 200000,
-      maxCompletionTokens: 8192,
-      description:
-        "Most capable Claude model with exceptional reasoning, analysis, and creative capabilities.",
-      recommendedFor: ["chat"],
-    },
-    {
-      model: "claude-opus-4-1-20250805-thinking",
-      displayName: "Claude Opus 4.1 Thinking (2025-08-05)",
-      contextLength: 200000,
-      maxCompletionTokens: 8192,
-      description:
-        "Claude Opus with enhanced thinking process for complex problem-solving tasks.",
-      recommendedFor: ["chat"],
-    },
-    {
-      model: "claude-sonnet-4-20250514",
-      displayName: "Claude Sonnet 4 (2025-05-14)",
-      contextLength: 200000,
-      maxCompletionTokens: 8192,
-      description:
-        "Balanced Claude model offering excellent performance across various tasks.",
-      recommendedFor: ["chat"],
-    },
-    {
-      model: "claude-sonnet-4-20250514-thinking",
-      displayName: "Claude Sonnet 4 Thinking (2025-05-14)",
-      contextLength: 200000,
-      maxCompletionTokens: 8192,
-      description:
-        "Claude Sonnet with enhanced reasoning capabilities for analytical tasks.",
-      recommendedFor: ["chat"],
-    },
-    {
-      model: "claude-3-7-sonnet-latest",
-      displayName: "Claude 3.7 Sonnet Latest",
-      contextLength: 200000,
-      maxCompletionTokens: 4096,
-      description:
-        "Latest Claude 3.7 Sonnet with improved instruction following and safety.",
-      recommendedFor: ["chat"],
-    },
-    {
-      model: "claude-3-5-haiku-latest",
-      displayName: "Claude 3.5 Haiku Latest",
-      contextLength: 200000,
-      maxCompletionTokens: 4096,
-      description:
-        "Fast and efficient Claude model optimized for quick responses.",
-      recommendedFor: ["chat"],
+      deprecation: { shutdownDate: "2026-10-15" },
     },
 
     // Gemini Series
@@ -188,6 +118,7 @@ export const CometAPI: ModelProvider = {
       description:
         "Advanced Gemini model with extensive context window and multimodal capabilities.",
       recommendedFor: ["chat"],
+      deprecation: { shutdownDate: "2026-12-01" },
     },
     {
       model: "gemini-2.5-flash",
@@ -197,6 +128,7 @@ export const CometAPI: ModelProvider = {
       description:
         "Fast Gemini model with large context window optimized for speed.",
       recommendedFor: ["chat"],
+      deprecation: { shutdownDate: "2026-12-01" },
     },
     {
       model: "gemini-2.5-flash-lite",
@@ -207,62 +139,8 @@ export const CometAPI: ModelProvider = {
         "Lightweight version of Gemini Flash for efficient processing.",
       recommendedFor: ["chat"],
     },
-    {
-      model: "gemini-2.0-flash",
-      displayName: "Gemini 2.0 Flash",
-      contextLength: 1000000,
-      maxCompletionTokens: 8192,
-      description:
-        "High-performance Gemini model with excellent speed-quality balance.",
-      recommendedFor: ["chat"],
-    },
 
     // Grok Series
-    {
-      model: "grok-4-1-fast-reasoning",
-      displayName: "Grok 4.1 Fast Reasoning",
-      contextLength: 256000,
-      maxCompletionTokens: 4096,
-      description:
-        "Latest Grok model with faster and improved reasoning and conversational abilities.",
-      recommendedFor: ["chat"],
-    },
-    {
-      model: "grok-4-0709",
-      displayName: "Grok 4 (07-09)",
-      contextLength: 256000,
-      maxCompletionTokens: 4096,
-      description:
-        "Latest Grok model with improved reasoning and conversational abilities.",
-      recommendedFor: ["chat"],
-    },
-    {
-      model: "grok-3",
-      displayName: "Grok 3",
-      contextLength: 128000,
-      maxCompletionTokens: 4096,
-      description:
-        "Advanced Grok model with enhanced understanding and generation capabilities.",
-      recommendedFor: ["chat"],
-    },
-    {
-      model: "grok-3-mini",
-      displayName: "Grok 3 Mini",
-      contextLength: 64000,
-      maxCompletionTokens: 2048,
-      description:
-        "Compact Grok model optimized for efficiency and quick responses.",
-      recommendedFor: ["chat"],
-    },
-    {
-      model: "grok-2-image-1212",
-      displayName: "Grok 2 Image (12-12)",
-      contextLength: 128000,
-      maxCompletionTokens: 4096,
-      description:
-        "Grok model with enhanced image understanding and multimodal capabilities.",
-      recommendedFor: ["chat"],
-    },
 
     // DeepSeek Series
     {
@@ -290,24 +168,6 @@ export const CometAPI: ModelProvider = {
       maxCompletionTokens: 4096,
       description:
         "DeepSeek reasoning model optimized for complex problem-solving tasks.",
-      recommendedFor: ["chat"],
-    },
-    {
-      model: "deepseek-chat",
-      displayName: "DeepSeek Chat",
-      contextLength: 128000,
-      maxCompletionTokens: 4096,
-      description:
-        "DeepSeek model specifically optimized for conversational interactions.",
-      recommendedFor: ["chat"],
-    },
-    {
-      model: "deepseek-reasoner",
-      displayName: "DeepSeek Reasoner",
-      contextLength: 128000,
-      maxCompletionTokens: 4096,
-      description:
-        "DeepSeek model with enhanced reasoning capabilities for analytical tasks.",
       recommendedFor: ["chat"],
     },
 

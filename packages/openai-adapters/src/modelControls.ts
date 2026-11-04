@@ -1,4 +1,5 @@
 import {
+  anthropicCanDisableThinking,
   anthropicEffortLevels,
   anthropicFastMode,
   anthropicThinksByDefault,
@@ -95,6 +96,10 @@ function baseModelName(model: string): string {
 
 function isClaude(model: string): boolean {
   return baseModelName(model).includes("claude");
+}
+
+function isDeepSeek(model: string): boolean {
+  return baseModelName(model).startsWith("deepseek");
 }
 
 /** Claude 4.6 to 4.8 think only once an effort is set; Claude 5 by default */
@@ -304,14 +309,10 @@ function xaiControls(model: string): ModelControls {
   const canTurnOff = minor === 3;
   const known =
     (minor !== undefined && minor >= 3 && minor <= 7) ||
-    /^grok-(4\.20|build|3-mini|code-fast)/.test(name);
+    /^grok-(4\.20|build)/.test(name);
   return {
     format: "xai",
-    efforts: takesEffort
-      ? ["minimal", "low", "medium", "high", "xhigh"]
-      : name.startsWith("grok-3-mini")
-        ? ["low", "high"]
-        : [],
+    efforts: takesEffort ? ["minimal", "low", "medium", "high", "xhigh"] : [],
     thinkingModes: canTurnOff ? [...THINKING_MODES] : ["hidden", "shown"],
     thinkingUnavailable: canTurnOff
       ? {}
@@ -323,7 +324,6 @@ function xaiControls(model: string): ModelControls {
     thinkingNeedsEffort: false,
     effortNeedsThinking: true,
     fast: false,
-    maxContextLength: name.startsWith("grok-code-fast") ? 256_000 : undefined,
     experimental: !known,
   };
 }
@@ -339,12 +339,12 @@ export function looksLikeReasoningModel(model: string): boolean {
       name,
     ) ||
     /^(o\d|gpt-5|gpt-6|gpt-oss)/.test(name) ||
-    /qwen3|magistral|phi-4-reasoning|minimax-m\d|kimi-k\d|grok-[34]/.test(
-      name,
-    ) ||
+    /qwen3|phi-4-reasoning|minimax-m\d|kimi-k\d|grok-4/.test(name) ||
+    // V3.1/V3.2 are retired on DeepSeek's API but still open-weight and
+    // hosted elsewhere (Bedrock, self-hosted), where they reason
     /deepseek-(v3\.[1-9]|v[4-9])/.test(name) ||
     /glm-(4\.[5-9]|[5-9])/.test(name) ||
-    /claude-(3-7|(opus|sonnet|haiku|fable)-[4-9])/.test(name) ||
+    /claude-(opus|sonnet|haiku|fable)-[4-9]/.test(name) ||
     /gemini-(2\.5|[3-9])/.test(name)
   );
 }
@@ -355,11 +355,11 @@ export function looksLikeReasoningModel(model: string): boolean {
  * `thinking: { type: "disabled" }` stops it (0 reasoning tokens), and
  * `reasoning_effort` takes low, high or max (max is the default; the API
  * lists these in GET /models). They have a 1M-token context window.
- * `-thinking` models always think; moonshot-v1 and instruct models don't.
+ * `-thinking` models always think; instruct models don't.
  */
 function moonshotControls(model: string): ModelControls {
   const name = baseModelName(model);
-  if (name.startsWith("moonshot-v1") || name.includes("instruct")) {
+  if (name.includes("instruct")) {
     return noControls("moonshot");
   }
   if (name.startsWith("kimi-k3")) {
@@ -478,21 +478,19 @@ function claudeControls(
   if (!version) {
     return noControls(format, true);
   }
-  // Extended thinking starts with Claude 3.7; older models only get context
-  if (version.major < 3 || (version.major === 3 && version.minor < 7)) {
-    return {
-      ...noControls(format),
-      maxContextLength: 200_000,
-    };
-  }
   const levels = anthropicEffortLevels(name);
   const needsEffort = claudeThinkingNeedsEffort(name);
+  const canTurnOff = anthropicCanDisableThinking(name);
   return {
     format,
     // Models without an effort parameter map levels to thinking budgets
     efforts: levels.length > 0 ? levels : ["low", "medium", "high"],
-    thinkingModes: [...THINKING_MODES],
-    thinkingUnavailable: {},
+    thinkingModes: canTurnOff
+      ? [...THINKING_MODES]
+      : THINKING_MODES.filter((mode) => mode !== "off"),
+    thinkingUnavailable: canTurnOff
+      ? {}
+      : { off: "This model always thinks; it can't be turned off." },
     // Claude 5 thinks by default; earlier models only when asked
     defaultThinking: anthropicThinksByDefault(name) ? "shown" : "off",
     canShowThinking: true,
@@ -522,8 +520,11 @@ export function getControlsFormat({
     case "anthropic":
       return "anthropic";
     case ONEPROVIDER_PROVIDER:
-      // Claude goes through OneProvider's Anthropic Messages endpoint
-      return isClaude(model) ? "anthropic" : "generic";
+      // Claude goes through OneProvider's Anthropic Messages endpoint;
+      // DeepSeek models go through its OpenAI-compatible endpoint but still
+      // use DeepSeek's own thinking controls and context window
+      if (isClaude(model)) return "anthropic";
+      return isDeepSeek(model) ? "deepseek" : "generic";
     case "openai":
       return isOfficialOpenAI(apiBase) ? "openai" : "generic";
     case "openrouter":
@@ -586,9 +587,11 @@ export function getModelControls(identity: ModelIdentity): ModelControls {
         thinkingNeedsEffort: false,
         effortNeedsThinking: false,
         fast: false,
-        // deepseek-chat and deepseek-reasoner; a larger configured context
-        // length is still offered
-        maxContextLength: 128_000,
+        // DeepSeek V4 (Pro and Flash) has a 1M-token context window
+        // (https://deepseek.ai/deepseek-v4). Older deepseek-chat and
+        // deepseek-reasoner ids are no longer routed. A larger configured
+        // context length is still offered.
+        maxContextLength: 1_000_000,
         experimental: false,
       };
     case "moonshot":

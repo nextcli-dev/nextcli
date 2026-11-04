@@ -30,6 +30,8 @@ export interface ConfigStructure {
 // Model ids onboarding wrote in earlier releases, replaced when onboarding runs again
 const PREVIOUS_ONBOARDING_MODELS: Record<string, string[]> = {
   anthropic: ["claude-sonnet-4-6", "claude-opus-4-6"],
+  openai: ["gpt-4.1-2025-04-14", "gpt-4.1-mini-2025-04-14", "o3"],
+  deepseek: ["deepseek-chat"],
 };
 
 function isManagedModel(model: any, newModels: ModelConfig[]): boolean {

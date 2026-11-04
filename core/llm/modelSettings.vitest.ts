@@ -76,7 +76,10 @@ describe("resolveModelSettings", () => {
   });
 
   test("follows the config's reasoning settings", () => {
-    const controls = controlsFor(opus);
+    // Sonnet 5.5: thinks by default and can turn it off (Opus 5.5 can't)
+    const controls = controlsFor(
+      new Anthropic({ apiKey: "k", model: "claude-sonnet-5-5" }),
+    );
     expect(
       resolveModelSettings("k", controls, {}, { reasoning: false }).thinking,
     ).toBe("off");
@@ -150,8 +153,11 @@ describe("model controls by provider", () => {
       thinkingModes: ["hidden", "shown"],
     });
     expect(
-      controlsFor(new xAI({ apiKey: "k", model: "grok-3-mini" })),
-    ).toMatchObject({ format: "xai", efforts: ["low", "high"] });
+      controlsFor(new xAI({ apiKey: "k", model: "grok-4.7" })),
+    ).toMatchObject({
+      format: "xai",
+      efforts: ["minimal", "low", "medium", "high", "xhigh"],
+    });
   });
 });
 

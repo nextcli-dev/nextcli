@@ -6,6 +6,7 @@ import {
 } from "openai/resources/index";
 import { DeepseekConfig } from "../types.js";
 import { addEmptyReasoningContent, chatChunk, customFetch } from "../util.js";
+import { supportsFimEndpoint } from "../fimEndpoints.js";
 import { OpenAIApi } from "./OpenAI.js";
 import { FimCreateParamsStreaming } from "./base.js";
 
@@ -27,6 +28,11 @@ export class DeepSeekApi extends OpenAIApi {
     body: FimCreateParamsStreaming,
     signal: AbortSignal,
   ): AsyncGenerator<ChatCompletionChunk, any, unknown> {
+    if (!supportsFimEndpoint("deepseek", this.apiBase)) {
+      throw new Error(
+        `${this.apiBase} has no DeepSeek FIM endpoint (beta/completions); only api.deepseek.com serves it. Use chat-based autocomplete for this endpoint.`,
+      );
+    }
     const endpoint = new URL("beta/completions", this.apiBase);
     const resp = await customFetch(this.config.requestOptions)(endpoint, {
       method: "POST",

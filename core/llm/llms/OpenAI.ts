@@ -27,19 +27,6 @@ import {
   toResponsesInput,
 } from "../openaiTypeConverters.js";
 
-const NON_CHAT_MODELS = [
-  "text-davinci-002",
-  "text-davinci-003",
-  "code-davinci-002",
-  "text-ada-001",
-  "text-babbage-001",
-  "text-curie-001",
-  "davinci",
-  "curie",
-  "babbage",
-  "ada",
-];
-
 function isChatOnlyModel(model: string): boolean {
   // gpt and o-series models
   return model.startsWith("gpt") || model.startsWith("o");
@@ -284,7 +271,20 @@ class OpenAI extends BaseLLM {
 
     finalOptions.stop = options.stop?.slice(0, this.getMaxStopWords());
 
-    // OpenAI o1-preview and o1-mini or o3-mini:
+    // Model menu settings also apply off the adapter path, e.g. chat-based
+    // autocomplete turning DeepSeek's default thinking off. nextcli_* fields
+    // are adapter-only and aren't sent.
+    if (this.supportsModelControls()) {
+      for (const [key, value] of Object.entries(
+        this.modelControlFields(options),
+      )) {
+        if (!key.startsWith("nextcli_")) {
+          (finalOptions as any)[key] = value;
+        }
+      }
+    }
+
+    // OpenAI o-series and GPT-5+ models:
     if (this.isOSeriesOrGpt5PlusModel(options.model)) {
       // a) use max_completion_tokens instead of max_tokens
       finalOptions.max_completion_tokens = options.maxTokens;
@@ -305,10 +305,6 @@ class OpenAI extends BaseLLM {
     });
     finalOptions.temperature = sampling.temperature;
     finalOptions.top_p = sampling.topP;
-
-    if (options.model === "o1") {
-      finalOptions.stream = false;
-    }
 
     if (options.prediction && this.supportsPrediction(options.model)) {
       if (finalOptions.presence_penalty) {
@@ -403,10 +399,6 @@ class OpenAI extends BaseLLM {
       body.max_output_tokens = options.maxTokens;
     }
 
-    if (model === "o1") {
-      body.stream = false;
-    }
-
     return body;
   }
 
@@ -494,7 +486,7 @@ class OpenAI extends BaseLLM {
   ): ChatCompletionCreateParams {
     body.stop = body.stop?.slice(0, this.getMaxStopWords());
 
-    // OpenAI o1-preview and o1-mini or o3-mini:
+    // OpenAI o-series and GPT-5+ models:
     if (this.isOSeriesOrGpt5PlusModel(body.model)) {
       // a) use max_completion_tokens instead of max_tokens
       body.max_completion_tokens = body.max_tokens;
@@ -515,11 +507,6 @@ class OpenAI extends BaseLLM {
     });
     body.temperature = sampling.temperature;
     body.top_p = sampling.topP;
-
-    if (body.model === "o1") {
-      // o1 doesn't support streaming
-      body.stream = false;
-    }
 
     if (body.prediction && this.supportsPrediction(body.model)) {
       if (body.presence_penalty) {
@@ -587,9 +574,7 @@ class OpenAI extends BaseLLM {
     if (
       !isChatOnlyModel(options.model) &&
       this.supportsCompletions() &&
-      (NON_CHAT_MODELS.includes(options.model) ||
-        this.useLegacyCompletionsEndpoint ||
-        options.raw)
+      (this.useLegacyCompletionsEndpoint || options.raw)
     ) {
       for await (const content of this._legacystreamComplete(
         renderChatMessage(messages[messages.length - 1]),
@@ -645,19 +630,6 @@ class OpenAI extends BaseLLM {
     }
 
     const body: any = this._convertArgsResponses(options, messages);
-
-    // o1 does not support streaming
-    if (body.model === "o1") {
-      const res = await this._responses(messages, signal, options);
-      if (Array.isArray(res)) {
-        for (const m of res) {
-          if (m) yield m;
-        }
-      } else if (res) {
-        yield res;
-      }
-      return;
-    }
 
     const response = await this.fetch(this._getEndpoint("responses"), {
       method: "POST",

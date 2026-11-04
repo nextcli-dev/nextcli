@@ -97,6 +97,12 @@ describe("ModelMenu", () => {
   });
 
   it("sets the thinking mode from the submenu", async () => {
+    // Sonnet 5.5 can turn thinking off; Opus 5.5 can't
+    state.model = {
+      name: "Opus",
+      provider: "anthropic",
+      model: "claude-sonnet-5-5",
+    };
     const { stdin, lastFrame } = render(
       <ModelMenu onSelectModel={vi.fn()} onCancel={vi.fn()} />,
     );

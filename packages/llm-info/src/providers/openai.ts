@@ -2,79 +2,6 @@ import { ModelProvider } from "../types.js";
 
 export const OpenAi: ModelProvider = {
   models: [
-    {
-      model: "gpt-3.5-turbo",
-      displayName: "GPT-3.5 Turbo",
-      contextLength: 16385,
-      maxCompletionTokens: 4096,
-    },
-    {
-      model: "gpt-3.5-turbo-0613",
-      displayName: "GPT-3.5 Turbo",
-      contextLength: 16385,
-      maxCompletionTokens: 4096,
-    },
-    {
-      model: "gpt-3.5-turbo-16k",
-      displayName: "GPT-3.5 Turbo 16K",
-      contextLength: 16384,
-      maxCompletionTokens: 4096,
-    },
-    {
-      model: "gpt-35-turbo-16k",
-      displayName: "GPT-3.5 Turbo 16K",
-      contextLength: 16384,
-      maxCompletionTokens: 4096,
-    },
-    {
-      model: "gpt-35-turbo-0613",
-      displayName: "GPT-3.5 Turbo (0613)",
-      contextLength: 4096,
-      maxCompletionTokens: 4096,
-    },
-    {
-      model: "gpt-35-turbo",
-      displayName: "GPT-3.5 Turbo",
-      contextLength: 4096,
-      maxCompletionTokens: 4096,
-    },
-    // gpt-4
-    {
-      model: "gpt-4",
-      displayName: "GPT-4",
-      contextLength: 8192,
-      maxCompletionTokens: 8192,
-    },
-    {
-      model: "gpt-4-32k",
-      displayName: "GPT-4 32K",
-      contextLength: 32000,
-      maxCompletionTokens: 8192,
-    },
-    {
-      model: "gpt-4-turbo-preview",
-      displayName: "GPT-4 Turbo Preview",
-      contextLength: 128000,
-      maxCompletionTokens: 4096,
-    },
-    {
-      model: "gpt-4-vision",
-      displayName: "GPT-4 Vision",
-      contextLength: 128000,
-      maxCompletionTokens: 4096,
-    },
-    {
-      model: "gpt-4-0125-preview",
-      displayName: "GPT-4 (0125 Preview)",
-      contextLength: 128000,
-      maxCompletionTokens: 4096,
-    },
-    {
-      model: "gpt-4-1106-preview",
-      displayName: "GPT-4 (1106 Preview)",
-      contextLength: 128000,
-      maxCompletionTokens: 4096,
-    },
     // gpt-6 and gpt-5.x (limits from developers.openai.com/api/docs/models, checked 2026-11-01)
     {
       model: "gpt-6.1-sol",
@@ -179,6 +106,7 @@ export const OpenAi: ModelProvider = {
       maxCompletionTokens: 128000,
       regex: /^gpt-5\.4-nano/,
       recommendedFor: ["chat"],
+      deprecation: { shutdownDate: "2027-04-01" },
     },
     {
       model: "gpt-5.4",
@@ -195,6 +123,7 @@ export const OpenAi: ModelProvider = {
       maxCompletionTokens: 128000,
       regex: /^gpt-5\.3-codex/,
       recommendedFor: ["chat"],
+      deprecation: { shutdownDate: "2027-04-01" },
     },
     {
       model: "gpt-5.2",
@@ -211,6 +140,7 @@ export const OpenAi: ModelProvider = {
       maxCompletionTokens: 128000,
       regex: /^gpt-5-mini/,
       recommendedFor: ["chat"],
+      deprecation: { shutdownDate: "2026-12-11" },
     },
     {
       model: "gpt-5-nano",
@@ -219,6 +149,7 @@ export const OpenAi: ModelProvider = {
       maxCompletionTokens: 128000,
       regex: /^gpt-5-nano/,
       recommendedFor: ["chat"],
+      deprecation: { shutdownDate: "2026-12-11" },
     },
     // gpt-5
     {
@@ -228,14 +159,7 @@ export const OpenAi: ModelProvider = {
       maxCompletionTokens: 128000,
       regex: /^gpt-5(?:-\d{4}-\d{2}-\d{2})?$/,
       recommendedFor: ["chat"],
-    },
-    {
-      model: "gpt-5-codex",
-      displayName: "GPT-5 Codex",
-      contextLength: 400000,
-      maxCompletionTokens: 128000,
-      regex: /gpt-5-codex/,
-      recommendedFor: ["chat"],
+      deprecation: { shutdownDate: "2026-12-11" },
     },
     {
       model: "gpt-5.1",
@@ -244,6 +168,7 @@ export const OpenAi: ModelProvider = {
       maxCompletionTokens: 128000,
       regex: /^gpt-5\.1$/,
       recommendedFor: ["chat"],
+      deprecation: { shutdownDate: "2027-04-01" },
     },
     // gpt-4.1
     {
@@ -253,6 +178,7 @@ export const OpenAi: ModelProvider = {
       maxCompletionTokens: 32768,
       regex: /^gpt-4\.1$/,
       recommendedFor: ["chat"],
+      deprecation: { shutdownDate: "unscheduled" },
     },
     {
       model: "gpt-4.1-mini",
@@ -261,23 +187,7 @@ export const OpenAi: ModelProvider = {
       maxCompletionTokens: 32768,
       regex: /gpt-4\.1-mini/,
       recommendedFor: ["chat"],
-    },
-    {
-      model: "gpt-4.1-nano",
-      displayName: "GPT-4.1 Nano",
-      contextLength: 1047576,
-      maxCompletionTokens: 32768,
-      regex: /gpt-4\.1-nano/,
-      recommendedFor: ["chat"],
-    },
-    // gpt-5 variants
-    {
-      model: "gpt-5-mini",
-      displayName: "GPT-5 Mini",
-      contextLength: 400000,
-      maxCompletionTokens: 128000,
-      regex: /gpt-5-mini/,
-      recommendedFor: ["chat"],
+      deprecation: { shutdownDate: "unscheduled" },
     },
     {
       model: "gpt-5-pro",
@@ -286,33 +196,9 @@ export const OpenAi: ModelProvider = {
       maxCompletionTokens: 272000,
       regex: /gpt-5-pro/,
       recommendedFor: ["chat"],
-    },
-    {
-      model: "gpt-5.2",
-      displayName: "GPT-5.2",
-      contextLength: 400000,
-      maxCompletionTokens: 128000,
-      regex: /^gpt-5\.2$/,
-      recommendedFor: ["chat"],
-    },
-    // codex
-    {
-      model: "codex-mini-latest",
-      displayName: "Codex Mini",
-      contextLength: 200000,
-      maxCompletionTokens: 100000,
-      regex: /codex-mini/,
-      recommendedFor: ["chat"],
+      deprecation: { shutdownDate: "2026-12-11" },
     },
     // o-series
-    {
-      model: "o1",
-      displayName: "o1",
-      contextLength: 200000,
-      maxCompletionTokens: 100000,
-      regex: /^o1$/,
-      recommendedFor: ["chat"],
-    },
     {
       model: "o3",
       displayName: "o3",
@@ -320,14 +206,7 @@ export const OpenAi: ModelProvider = {
       maxCompletionTokens: 100000,
       regex: /^o3$/,
       recommendedFor: ["chat"],
-    },
-    {
-      model: "o4-mini",
-      displayName: "o4 Mini",
-      contextLength: 200000,
-      maxCompletionTokens: 100000,
-      regex: /o4-mini/,
-      recommendedFor: ["chat"],
+      deprecation: { shutdownDate: "2026-12-11" },
     },
     // gpt-4o
     {
@@ -335,34 +214,14 @@ export const OpenAi: ModelProvider = {
       displayName: "GPT-4o",
       contextLength: 128000,
       recommendedFor: ["chat"],
+      deprecation: { shutdownDate: "unscheduled" },
     },
     {
       model: "gpt-4o-mini",
       displayName: "GPT-4o Mini",
       contextLength: 128000,
       recommendedFor: ["chat"],
-    },
-    // o1
-    {
-      model: "o1-preview",
-      displayName: "o1 Preview",
-      contextLength: 128000,
-      maxCompletionTokens: 32768,
-      recommendedFor: ["chat"],
-    },
-    {
-      model: "o1-mini",
-      displayName: "o1 Mini",
-      contextLength: 128000,
-      maxCompletionTokens: 65536,
-      recommendedFor: ["chat"],
-    },
-    {
-      model: "o3-mini",
-      displayName: "o3 Mini",
-      contextLength: 128000,
-      maxCompletionTokens: 65536,
-      recommendedFor: ["chat"],
+      deprecation: { shutdownDate: "unscheduled" },
     },
     // embed
     {

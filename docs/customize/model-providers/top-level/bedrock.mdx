@@ -50,7 +50,7 @@ sidebarTitle: "Amazon Bedrock"
 </Tabs>
 
 <Info>
-  **Check out a more advanced configuration [here](https://nextcli.dev/amazon/us-anthropic-claude-sonnet-4-20250514-v1?view=config)**
+  **Check out a more advanced configuration [here](https://nextcli.dev/amazon/us-anthropic-claude-sonnet-5-5?view=config)**
 </Info>
 
 ## How to Enable Prompt Caching with Amazon Bedrock
@@ -85,7 +85,7 @@ Prompt caching is not supported in JSON configuration files, so use the YAML syn
 models:
   - name: Claude Sonnet
     provider: bedrock
-    model: us.anthropic.claude-sonnet-4-20250514-v1:0
+    model: us.anthropic.claude-sonnet-5-5
     apiKey: ${{ secrets.BEDROCK_API_KEY }}
     env:
       region: us-east-1

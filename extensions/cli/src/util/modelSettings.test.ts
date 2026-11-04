@@ -186,10 +186,15 @@ describe("thinking mode", () => {
       nextcli_show_thinking: true,
     });
     expect(getCompletionOptions(opus)).not.toHaveProperty("nextcli_thinking");
-    updateModelSettings(opus, { thinking: "off", effort: "low" });
+    updateModelSettings(opus, { thinking: "hidden", effort: "low" });
     expect(getCompletionOptions(opus)).toMatchObject({
-      nextcli_thinking: "off",
+      nextcli_thinking: "hidden",
       reasoning_effort: "low",
+    });
+    // Opus 5.5 rejects `thinking: disabled`, so Off is never sent for it
+    updateModelSettings(opus, { thinking: "off" });
+    expect(getCompletionOptions(opus)).not.toMatchObject({
+      nextcli_thinking: "off",
     });
     updateModelSettings(gpt, { thinking: "off" });
     expect(getCompletionOptions(gpt)).toMatchObject({

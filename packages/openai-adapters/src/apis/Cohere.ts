@@ -23,13 +23,19 @@ import {
   RerankCreateParams,
 } from "./base.js";
 
+/**
+ * Cohere's v1 API (core's Cohere class uses v2; this adapter moves to v2
+ * with the AI-SDK transport). The trailing slash matters: without it
+ * `new URL("chat", ".../v1")` resolves to `/chat` and drops the version.
+ */
 export class CohereApi implements BaseLlmApi {
-  apiBase: string = "https://api.cohere.com/v1";
+  apiBase: string = "https://api.cohere.com/v1/";
 
   static maxStopSequences = 5;
 
   constructor(protected config: CohereConfig) {
-    this.apiBase = config.apiBase ?? this.apiBase;
+    const apiBase = config.apiBase ?? this.apiBase;
+    this.apiBase = apiBase.endsWith("/") ? apiBase : `${apiBase}/`;
   }
 
   private _convertMessages(
@@ -180,7 +186,7 @@ export class CohereApi implements BaseLlmApi {
   }
 
   async embed(body: EmbeddingCreateParams): Promise<CreateEmbeddingResponse> {
-    const url = new URL("/embed", this.apiBase);
+    const url = new URL("embed", this.apiBase);
     const texts = typeof body.input === "string" ? [body.input] : body.input;
     const response = await customFetch(this.config.requestOptions)(url, {
       method: "POST",

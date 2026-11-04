@@ -10,20 +10,8 @@ class FunctionNetwork extends OpenAI {
     maxEmbeddingBatchSize: 128,
   };
 
-  private static modelConversion: { [key: string]: string } = {
-    "mistral-7b": "mistral/mistral-7b-instruct-v0.1",
-    "llama3-8b": "meta/llama-3-8b-instruct",
-    "llama3.1-8b": "meta/llama-3.1-8b-instruct",
-    "llama3.1-70b": "meta/llama-3.1-70b-instruct",
-    "deepseek-7b": "thebloke/deepseek-coder-6.7b-instruct-awq",
-  };
-
   constructor(options: LLMOptions) {
     super(options);
-  }
-
-  protected _convertModelName(model: string): string {
-    return FunctionNetwork.modelConversion[model] ?? model;
   }
 
   public supportsFim(): boolean {

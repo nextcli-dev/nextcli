@@ -5,39 +5,34 @@ describe("PROVIDER_TOOL_SUPPORT", () => {
   describe("anthropic", () => {
     const supportsFn = PROVIDER_TOOL_SUPPORT["anthropic"];
 
-    it("should return true for Claude 3.5 models", () => {
-      expect(supportsFn("claude-3-5-sonnet")).toBe(true);
-      expect(supportsFn("claude-3.5-haiku")).toBe(true);
+    it("should return true for current Claude models", () => {
+      expect(supportsFn("claude-sonnet-4-5-20250929")).toBe(true);
+      expect(supportsFn("claude-haiku-4-5")).toBe(true);
+      expect(supportsFn("claude-sonnet-5-5")).toBe(true);
     });
 
-    it("should return true for Claude 3.7 models", () => {
-      expect(supportsFn("claude-3-7-haiku")).toBe(true);
-      expect(supportsFn("claude-3.7-sonnet")).toBe(true);
-    });
-
-    it("should return undefined for unsupported models", () => {
-      expect(supportsFn("claude-2")).toBe(false);
-      expect(supportsFn("claude-instant")).toBe(false);
+    it("should return false for non-Claude models", () => {
+      expect(supportsFn("gpt-5")).toBe(false);
     });
 
     it("should handle case insensitivity", () => {
-      expect(supportsFn("CLAUDE-3-5-sonnet")).toBe(true);
-      expect(supportsFn("CLAUDE-3.7-haiku")).toBe(true);
+      expect(supportsFn("CLAUDE-sonnet-4-5")).toBe(true);
     });
   });
 
   describe("openai", () => {
     const supportsFn = PROVIDER_TOOL_SUPPORT["openai"];
 
-    it("should return true for GPT-4 models", () => {
-      expect(supportsFn("gpt-4")).toBe(true);
-      expect(supportsFn("gpt-4-turbo")).toBe(true);
-      expect(supportsFn("gpt-4-1106-preview")).toBe(true);
+    it("should return true for GPT-4o/4.1 and GPT-5+ models", () => {
+      expect(supportsFn("gpt-4o")).toBe(true);
+      expect(supportsFn("gpt-4.1-mini")).toBe(true);
+      expect(supportsFn("gpt-5.5")).toBe(true);
+      expect(supportsFn("gpt-6-astra")).toBe(true);
     });
 
     it("should return true for O3 models", () => {
       expect(supportsFn("o3")).toBe(true);
-      expect(supportsFn("o3-preview")).toBe(true);
+      expect(supportsFn("o3-pro")).toBe(true);
     });
 
     it("should return true for Gemma models", () => {
@@ -53,7 +48,7 @@ describe("PROVIDER_TOOL_SUPPORT", () => {
 
     it("should handle case insensitivity", () => {
       expect(supportsFn("GPT-4-turbo")).toBe(true);
-      expect(supportsFn("O3-preview")).toBe(true);
+      expect(supportsFn("O3-pro")).toBe(true);
       expect(supportsFn("Gemma3")).toBe(true);
       expect(supportsFn("Gemma4")).toBe(true);
     });
@@ -98,42 +93,22 @@ describe("PROVIDER_TOOL_SUPPORT", () => {
   describe("bedrock", () => {
     const supportsFn = PROVIDER_TOOL_SUPPORT["bedrock"];
 
-    it("should return true for Claude 3.5 Sonnet models", () => {
-      expect(supportsFn("anthropic.claude-3-5-sonnet-20240620-v1:0")).toBe(
+    it("should return true for Claude models", () => {
+      expect(supportsFn("anthropic.claude-sonnet-4-5-20250929-v1:0")).toBe(
         true,
       );
-      expect(supportsFn("anthropic.claude-3.5-sonnet-20240620-v1:0")).toBe(
+      expect(supportsFn("us.anthropic.claude-haiku-4-5-20251001-v1:0")).toBe(
         true,
       );
+      expect(supportsFn("anthropic.claude-opus-4-5-20251101-v1:0")).toBe(true);
     });
 
-    it("should return true for Claude 3.7 Sonnet models", () => {
-      expect(supportsFn("anthropic.claude-3-7-sonnet-20240620-v1:0")).toBe(
-        true,
-      );
-      expect(supportsFn("anthropic.claude-3.7-sonnet-20240620-v1:0")).toBe(
-        true,
-      );
-    });
-
-    it("should return undefined for Claude Haiku and Opus models", () => {
-      expect(supportsFn("anthropic.claude-3-5-haiku-20240307-v1:0")).toBe(true);
-      expect(supportsFn("anthropic.claude-3.5-haiku-20240620-v1:0")).toBe(true);
-      expect(supportsFn("anthropic.claude-3-7-haiku-20240620-v1:0")).toBe(true);
-      expect(supportsFn("anthropic.claude-3-5-opus-20240620-v1:0")).toBe(true);
-      expect(supportsFn("anthropic.claude-3.7-opus-20240620-v1:0")).toBe(true);
-    });
-
-    it("should return undefined for other unsupported models", () => {
-      expect(supportsFn("anthropic.claude-instant-v1")).toBe(false);
+    it("should return false for other unsupported models", () => {
       expect(supportsFn("anthropic.titan-text-express-v1")).toBe(false);
     });
 
     it("should handle case insensitivity", () => {
-      expect(supportsFn("ANTHROPIC.CLAUDE-3-5-SONNET-20240620-v1:0")).toBe(
-        true,
-      );
-      expect(supportsFn("ANTHROPIC.CLAUDE-3.7-SONNET-20240620-v1:0")).toBe(
+      expect(supportsFn("ANTHROPIC.CLAUDE-SONNET-4-5-20250929-V1:0")).toBe(
         true,
       );
     });
@@ -159,7 +134,6 @@ describe("PROVIDER_TOOL_SUPPORT", () => {
       expect(supportsFn("mistral-embed")).toBe(false);
       expect(supportsFn("mistral-moderation-latest")).toBe(false);
       expect(supportsFn("mistral-ocr-latest")).toBe(false);
-      expect(supportsFn("open-codestral-mamba")).toBe(false);
     });
 
     it("should handle case insensitivity", () => {
@@ -280,17 +254,45 @@ describe("PROVIDER_TOOL_SUPPORT", () => {
   describe("xAI", () => {
     const supportsFn = PROVIDER_TOOL_SUPPORT["xAI"];
 
-    it("should return true for Grok-3 models", () => {
-      expect(supportsFn("grok-3")).toBe(true);
-      expect(supportsFn("grok-3-mini")).toBe(true);
-      expect(supportsFn("grok-3-fast")).toBe(true);
+    it("should return true for current Grok models", () => {
+      expect(supportsFn("grok-4.7")).toBe(true);
+      expect(supportsFn("grok-4.3")).toBe(true);
+      expect(supportsFn("grok-4.20-0309-reasoning")).toBe(true);
+      expect(supportsFn("grok-build-0.1")).toBe(true);
+      expect(supportsFn("Grok-4.6")).toBe(true);
     });
 
-    it("should return true for Grok-4 models", () => {
-      expect(supportsFn("grok-4")).toBe(true);
-      expect(supportsFn("grok-4-fast-non-reasoning")).toBe(true);
-      expect(supportsFn("grok-4-fast-reasoning")).toBe(true);
-      expect(supportsFn("Grok-4-Fast")).toBe(true);
+    it("should return false for retired Grok 2/3 models", () => {
+      expect(supportsFn("grok-2")).toBe(false);
+      expect(supportsFn("grok-3-mini")).toBe(false);
+    });
+  });
+
+  describe("deepseek", () => {
+    const supportsFn = PROVIDER_TOOL_SUPPORT["deepseek"];
+
+    it("should return true for current DeepSeek models", () => {
+      expect(supportsFn("deepseek-v4-pro")).toBe(true);
+      expect(supportsFn("deepseek-v4-flash")).toBe(true);
+      expect(supportsFn("deepseek-flash")).toBe(true);
+    });
+
+    it("should return false for retired DeepSeek models", () => {
+      expect(supportsFn("deepseek-chat")).toBe(false);
+      expect(supportsFn("deepseek-reasoner")).toBe(false);
+      expect(supportsFn("deepseek-coder")).toBe(false);
+    });
+  });
+
+  describe("moonshot", () => {
+    const supportsFn = PROVIDER_TOOL_SUPPORT["moonshot"];
+
+    it("should return true for Kimi models", () => {
+      expect(supportsFn("kimi-k2-turbo-preview")).toBe(true);
+    });
+
+    it("should return false for retired moonshot-v1 models", () => {
+      expect(supportsFn("moonshot-v1-8k")).toBe(false);
     });
   });
 
@@ -331,10 +333,13 @@ describe("PROVIDER_TOOL_SUPPORT", () => {
 
     it("should return true for supported prefixes", () => {
       expect(supportsFn("openai/gpt-4o")).toBe(true);
-      expect(supportsFn("anthropic/claude-sonnet-4")).toBe(true);
-      expect(supportsFn("google/gemini-2-flash")).toBe(true);
+      expect(supportsFn("anthropic/claude-sonnet-4.5")).toBe(true);
+      expect(supportsFn("google/gemini-2.5-flash")).toBe(true);
       expect(supportsFn("google/gemini-3-pro-preview")).toBe(true);
+      expect(supportsFn("google/gemini-4-argon")).toBe(true);
       expect(supportsFn("deepseek/deepseek-r1")).toBe(true);
+      expect(supportsFn("deepseek/deepseek-v4-pro")).toBe(true);
+      expect(supportsFn("openai/o3")).toBe(true);
       expect(supportsFn("qwen/qwen3-coder-30b")).toBe(true);
       expect(supportsFn("meta-llama/llama-4-scout")).toBe(true);
     });
@@ -347,6 +352,8 @@ describe("PROVIDER_TOOL_SUPPORT", () => {
 
     it("should return false for unsupported models", () => {
       expect(supportsFn("unknown/random-model")).toBe(false);
+      expect(supportsFn("google/gemini-2.0-flash-001")).toBe(false);
+      expect(supportsFn("openai/o1")).toBe(false);
       expect(supportsFn("some-provider/vision-model")).toBe(false);
     });
 
@@ -369,8 +376,8 @@ describe("PROVIDER_TOOL_SUPPORT", () => {
 
     it("should return true for tool-supporting models", () => {
       expect(supportsFn("gpt-4o")).toBe(true);
-      expect(supportsFn("claude-3-sonnet")).toBe(true);
-      expect(supportsFn("gemini-pro")).toBe(true);
+      expect(supportsFn("claude-sonnet-4-5")).toBe(true);
+      expect(supportsFn("gemini-2.5-pro")).toBe(true);
       expect(supportsFn("anthropic/claude-opus-4.6")).toBe(true);
     });
 
@@ -400,35 +407,32 @@ describe("PROVIDER_TOOL_SUPPORT", () => {
 
 describe("isRecommendedAgentModel", () => {
   describe("OpenAI models", () => {
-    it("should return true for o1, o3, o4 models", () => {
-      expect(isRecommendedAgentModel("o1")).toBe(true);
-      expect(isRecommendedAgentModel("o1-preview")).toBe(true);
+    it("should return true for o3 models", () => {
       expect(isRecommendedAgentModel("o3")).toBe(true);
-      expect(isRecommendedAgentModel("o3-mini")).toBe(true);
-      expect(isRecommendedAgentModel("o4")).toBe(true);
+      expect(isRecommendedAgentModel("o3-pro")).toBe(true);
     });
 
-    it("should return true for GPT-5 models", () => {
+    it("should return true for GPT-5+ models", () => {
       expect(isRecommendedAgentModel("gpt-5")).toBe(true);
-      expect(isRecommendedAgentModel("gpt-5-turbo")).toBe(true);
+      expect(isRecommendedAgentModel("gpt-5.5")).toBe(true);
+      expect(isRecommendedAgentModel("gpt-6-astra")).toBe(true);
     });
 
-    it("should return false for GPT-4 models", () => {
-      expect(isRecommendedAgentModel("gpt-4")).toBe(false);
-      expect(isRecommendedAgentModel("gpt-4-turbo")).toBe(false);
+    it("should return false for GPT-4o models", () => {
+      expect(isRecommendedAgentModel("gpt-4o")).toBe(false);
+      expect(isRecommendedAgentModel("gpt-4o-mini")).toBe(false);
     });
   });
 
   describe("DeepSeek models", () => {
-    it("should return true for DeepSeek R1/Reasoner models", () => {
+    it("should return true for DeepSeek R1 and V4+ models", () => {
       expect(isRecommendedAgentModel("deepseek-r1")).toBe(true);
       expect(isRecommendedAgentModel("deepseek-r1-0528")).toBe(true);
-      expect(isRecommendedAgentModel("deepseek-reasoner")).toBe(true);
+      expect(isRecommendedAgentModel("deepseek-v4-pro")).toBe(true);
     });
 
-    it("should return false for non-reasoner DeepSeek models", () => {
-      expect(isRecommendedAgentModel("deepseek-chat")).toBe(false);
-      expect(isRecommendedAgentModel("deepseek-coder")).toBe(false);
+    it("should return false for other DeepSeek models", () => {
+      expect(isRecommendedAgentModel("deepseek-v3")).toBe(false);
     });
   });
 
@@ -460,10 +464,9 @@ describe("isRecommendedAgentModel", () => {
   });
 
   describe("Claude models", () => {
-    it("should return true for Claude Sonnet 3.7 and later models", () => {
-      expect(isRecommendedAgentModel("claude-3-7-sonnet")).toBe(true);
-      expect(isRecommendedAgentModel("claude-3.7-sonnet")).toBe(true);
-      expect(isRecommendedAgentModel("claude-sonnet-4")).toBe(true);
+    it("should return true for Claude Sonnet 4 and later models", () => {
+      expect(isRecommendedAgentModel("claude-sonnet-4-5")).toBe(true);
+      expect(isRecommendedAgentModel("claude-sonnet-5-5")).toBe(true);
       expect(isRecommendedAgentModel("claude-4-sonnet")).toBe(true);
     });
 
@@ -475,31 +478,22 @@ describe("isRecommendedAgentModel", () => {
       expect(isRecommendedAgentModel("claude-4-5")).toBe(true);
     });
 
-    it("should return false for Claude 3.5 Sonnet models", () => {
+    it("should return false for Claude 3.x models", () => {
+      expect(isRecommendedAgentModel("claude-3-7-sonnet")).toBe(false);
       expect(isRecommendedAgentModel("claude-3-5-sonnet")).toBe(false);
-      expect(isRecommendedAgentModel("claude-3.5-sonnet")).toBe(false);
-    });
-
-    it("should return false for Claude Haiku models", () => {
-      expect(isRecommendedAgentModel("claude-3-7-haiku")).toBe(false);
-      expect(isRecommendedAgentModel("claude-3.7-haiku")).toBe(false);
-    });
-
-    it("should return false for older Claude models", () => {
       expect(isRecommendedAgentModel("claude-3-opus")).toBe(false);
-      expect(isRecommendedAgentModel("claude-2")).toBe(false);
     });
   });
 
   describe("xAI models", () => {
-    it("should return true for Grok Code models", () => {
-      expect(isRecommendedAgentModel("grok-code")).toBe(true);
-      expect(isRecommendedAgentModel("grok-code-beta")).toBe(true);
+    it("should return true for versioned Grok 4+ models", () => {
+      expect(isRecommendedAgentModel("grok-4.7")).toBe(true);
+      expect(isRecommendedAgentModel("grok-4.20-0309-reasoning")).toBe(true);
     });
 
-    it("should return false for non-code Grok models", () => {
+    it("should return false for retired Grok models", () => {
       expect(isRecommendedAgentModel("grok-3")).toBe(false);
-      expect(isRecommendedAgentModel("grok-4")).toBe(false);
+      expect(isRecommendedAgentModel("grok-code-fast-1")).toBe(false);
     });
   });
 
@@ -508,13 +502,13 @@ describe("isRecommendedAgentModel", () => {
       expect(isRecommendedAgentModel("GEMINI-3.1-PRO-PREVIEW")).toBe(true);
       expect(isRecommendedAgentModel("CLAUDE-4-SONNET")).toBe(true);
       expect(isRecommendedAgentModel("DEEPSEEK-R1")).toBe(true);
-      expect(isRecommendedAgentModel("O3-MINI")).toBe(true);
+      expect(isRecommendedAgentModel("O3-PRO")).toBe(true);
     });
 
     it("should handle mixed case model names", () => {
       expect(isRecommendedAgentModel("Gemini-3.1-Pro-Preview")).toBe(true);
       expect(isRecommendedAgentModel("Claude-Opus-4")).toBe(true);
-      expect(isRecommendedAgentModel("DeepSeek-Reasoner")).toBe(true);
+      expect(isRecommendedAgentModel("DeepSeek-V4-Pro")).toBe(true);
     });
   });
 

@@ -2,6 +2,27 @@ import { ModelProvider } from "../types.js";
 
 export const Mistral: ModelProvider = {
   models: [
+    // Context limits for these are left unset until confirmed from docs.mistral.ai
+    {
+      model: "mistral-large-4",
+      displayName: "Mistral Large 4",
+      description:
+        "Mistral's flagship model for complex reasoning, coding and agents.",
+      regex: /^mistral-large-4/i,
+      recommendedFor: ["chat"],
+    },
+    {
+      model: "mistral-large-2512",
+      displayName: "Mistral Large (2512)",
+      regex: /^mistral-large-2512/i,
+      deprecation: { shutdownDate: "2027-04-30" },
+    },
+    {
+      model: "mistral-medium-3-5",
+      displayName: "Mistral Medium 3.5",
+      regex: /^mistral-medium-3[.-]5/i,
+      deprecation: { shutdownDate: "2027-04-30" },
+    },
     {
       model: "mistral-large-latest",
       displayName: "Mistral Large",
@@ -28,30 +49,6 @@ export const Mistral: ModelProvider = {
       regex: /mistral-small/i,
     },
     {
-      model: "open-mistral-7b",
-      displayName: "Mistral 7B",
-      contextLength: 32768,
-      description:
-        "First dense model released by Mistral AI, perfect for experimentation, customization, and quick iteration. Matches capabilities of models up to 30B parameters at release time.",
-      regex: /open-mistral-7b/i,
-    },
-    {
-      model: "open-mixtral-8x7b",
-      displayName: "Mixtral 8x7B",
-      contextLength: 32768,
-      description:
-        "Sparse mixture of experts model leveraging up to 45B parameters but using about 12B during inference, offering better inference throughput at the cost of more vRAM.",
-      regex: /open-mixtral-8x7b/i,
-    },
-    {
-      model: "open-mixtral-8x22b",
-      displayName: "Mixtral 8x22B",
-      contextLength: 65536,
-      description:
-        "Larger sparse mixture of experts model leveraging up to 141B parameters but using about 39B during inference, providing better inference throughput at the cost of more vRAM.",
-      regex: /open-mixtral-8x22b/i,
-    },
-    {
       model: "mistral-embed",
       displayName: "Mistral Embeddings",
       contextLength: 8192,
@@ -62,16 +59,6 @@ export const Mistral: ModelProvider = {
     },
     // devstral family
     {
-      model: "devstral-small-2505",
-      displayName: "Devstral Small",
-      contextLength: 128000,
-      maxCompletionTokens: 128000,
-      description:
-        "A small code-focused model from Mistral AI, optimized for development tasks.",
-      regex: /devstral-small/i,
-      recommendedFor: ["chat"],
-    },
-    {
       model: "devstral-medium-latest",
       displayName: "Devstral Medium",
       contextLength: 262144,
@@ -81,37 +68,7 @@ export const Mistral: ModelProvider = {
       regex: /devstral-medium/i,
       recommendedFor: ["chat"],
     },
-    {
-      model: "devstral-2512",
-      displayName: "Devstral",
-      contextLength: 262144,
-      maxCompletionTokens: 262144,
-      description:
-        "The latest devstral model from Mistral AI for code generation.",
-      regex: /^devstral-2512$/i,
-      recommendedFor: ["chat"],
-    },
     // magistral family
-    {
-      model: "magistral-medium-latest",
-      displayName: "Magistral Medium",
-      contextLength: 128000,
-      maxCompletionTokens: 16384,
-      description:
-        "Mistral's reasoning model for complex tasks requiring step-by-step thinking.",
-      regex: /magistral-medium/i,
-      recommendedFor: ["chat"],
-    },
-    {
-      model: "magistral-small",
-      displayName: "Magistral Small",
-      contextLength: 128000,
-      maxCompletionTokens: 128000,
-      description:
-        "A smaller reasoning model from Mistral AI for efficient step-by-step thinking.",
-      regex: /magistral-small/i,
-      recommendedFor: ["chat"],
-    },
     // ministral family
     {
       model: "ministral-3b-latest",
@@ -142,13 +99,6 @@ export const Mistral: ModelProvider = {
         "An open-weight model from Mistral AI and NVIDIA with strong performance.",
       regex: /mistral-nemo/i,
       recommendedFor: ["chat"],
-    },
-    {
-      model: "codestral-mamba-latest",
-      displayName: "Codestral Mamba",
-      contextLength: 256000,
-      description: "A Mamba 2 language model specialized in code generation.",
-      regex: /codestral-mamba/i,
     },
     {
       model: "codestral-latest",
