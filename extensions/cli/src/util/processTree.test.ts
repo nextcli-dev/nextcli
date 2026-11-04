@@ -34,13 +34,38 @@ function spawnTree() {
   return child;
 }
 
+/**
+ * A child in its own process group that handles SIGINT itself and says when
+ * it's ready. Handling it overrides an inherited "ignore SIGINT" (as CI
+ * runners can set), and waiting for "ready" avoids signalling before the
+ * child has set up its process group.
+ */
+async function spawnReadyChild() {
+  const child = spawn(
+    process.execPath,
+    [
+      "-e",
+      'process.on("SIGINT", () => process.exit(130)); console.log("ready"); setInterval(() => {}, 1000);',
+    ],
+    { stdio: ["ignore", "pipe", "ignore"], ...processTreeSpawnOptions() },
+  );
+  await new Promise<void>((resolve, reject) => {
+    child.stdout!.on("data", (data: Buffer) => {
+      if (data.toString().includes("ready")) resolve();
+    });
+    child.once("error", reject);
+    child.once("exit", () => reject(new Error("child exited early")));
+  });
+  return child;
+}
+
 // PR #7 review: the shell runs in its own session, so terminal Ctrl+C and
 // Ctrl+Z reach only the CLI, which must forward them to the running command
 describe.skipIf(process.platform === "win32")(
   "terminal signal forwarding",
   () => {
     it("forwards SIGINT to a foreground tree", async () => {
-      const child = spawnTree();
+      const child = await spawnReadyChild();
       trackProcessTree(child, { foreground: true });
 
       signalForegroundProcessTrees("SIGINT");
@@ -50,7 +75,8 @@ describe.skipIf(process.platform === "win32")(
           () => child.exitCode !== null || child.signalCode !== null,
         ),
       ).toBe(true);
-      expect(child.signalCode).toBe("SIGINT");
+      // 130 means the child's SIGINT handler ran
+      expect(child.exitCode).toBe(130);
     });
 
     it("does not forward to a released or background tree", async () => {
