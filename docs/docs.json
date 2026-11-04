@@ -44,6 +44,7 @@
                   "ide-extensions/chat/quick-start",
                   "ide-extensions/chat/how-it-works",
                   "ide-extensions/chat/model-setup",
+                  "ide-extensions/chat/model-settings",
                   "ide-extensions/chat/how-to-customize",
                   "ide-extensions/chat/context-selection"
                 ]
