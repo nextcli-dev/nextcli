@@ -6,9 +6,14 @@ name: Publish VS Code Extension
 #   Stable       release-please creates release `vscode-vX.Y.Z` (even minor)
 #                when its Release PR is merged. Publishes in env `production`.
 #   Pre-release  Run this workflow from main with channel `pre-release`. It
-#                picks the next odd-minor version (stable 1.4.x -> 1.5.N),
+#                picks the next odd-minor version (stable 1.6.x -> 1.7.N),
 #                stamps it at build time (no commit), creates the tag and the
-#                GitHub pre-release, and publishes in env `staging`.
+#                GitHub pre-release, and publishes in env `staging` to the
+#                Marketplace only (see the Open VSX step).
+#
+#   Only a stable version that's higher than every pre-release becomes the
+#   default for pre-release users, so the next stable minor (1.6.0 after
+#   1.5.x) is set with a `Release-As:` footer on a commit to main.
 #   Dry run      Run this workflow with channel `dry-run` to build all targets
 #                for any ref. Nothing is published.
 #
@@ -291,7 +296,11 @@ jobs:
 
       # Both publish steps skip versions that already exist, so the job can be
       # re-run after a partial failure.
+      # Pre-releases go to the Marketplace only: Open VSX serves the highest
+      # version as the default even when it's a pre-release, so editors that
+      # install from it would get the pre-release
       - name: Publish to Open VSX
+        if: needs.resolve.outputs.channel != 'pre-release'
         run: npx --yes ovsx@1.3.0 publish --trusted-publishing --skip-duplicate $PRE_RELEASE_FLAG --packagePath vsix-artifacts/*.vsix
 
       - name: Publish to the Visual Studio Marketplace
