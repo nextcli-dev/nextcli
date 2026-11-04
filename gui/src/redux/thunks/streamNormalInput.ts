@@ -19,6 +19,7 @@ import {
   setInactive,
   setInlineErrorMessage,
   setIsPruned,
+  setStreamThinkingHidden,
   setToolGenerated,
   streamUpdate,
 } from "../slices/sessionSlice";
@@ -38,6 +39,7 @@ import {
 } from "../selectors/selectToolCalls";
 import { getBaseSystemMessage } from "../util/getBaseSystemMessage";
 import { callToolById } from "./callToolById";
+import { loadModelSettings } from "./modelSettings";
 import { evaluateToolPolicies } from "./evaluateToolPolicies";
 import { preprocessToolCalls } from "./preprocessToolCallArgs";
 import { streamResponseAfterToolCall } from "./streamResponseAfterToolCall";
@@ -134,11 +136,22 @@ export const streamNormalInput = createAsyncThunk<
       };
     }
 
+    // Settings load when the config does; if the first message is sent
+    // before that finishes, wait for them so it uses the saved settings
+    let modelSettings = selectModelSettings(state, selectedChatModel);
+    if (!modelSettings && selectedChatModel.controls) {
+      await dispatch(loadModelSettings());
+      modelSettings = selectModelSettings(getState(), selectedChatModel);
+    }
     completionOptions = buildModelControlOptions(
       completionOptions,
-      selectModelSettings(state, selectedChatModel),
+      modelSettings,
       selectedChatModel,
     );
+    const thinkingHidden = modelSettings?.thinking === "hidden";
+    if (!!getState().session.streamThinkingHidden !== thinkingHidden) {
+      dispatch(setStreamThinkingHidden(thinkingHidden));
+    }
 
     // Construct messages (excluding system message)
     const baseSystemMessage = getBaseSystemMessage(
