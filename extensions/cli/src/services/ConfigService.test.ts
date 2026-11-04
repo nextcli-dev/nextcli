@@ -537,7 +537,7 @@ describe("ConfigService", () => {
             uriType: "slug",
             fullSlug: {
               ownerSlug: "anthropic",
-              packageSlug: "claude-sonnet-4-6",
+              packageSlug: "claude-sonnet-5-5",
               versionSlug: "1.0.0",
             },
           },

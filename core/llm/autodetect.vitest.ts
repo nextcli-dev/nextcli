@@ -1,5 +1,10 @@
 import { describe, expect, it, test } from "vitest";
-import { autodetectTemplateType, modelSupportsNextEdit } from "./autodetect";
+import {
+  autodetectTemplateType,
+  modelSupportsImages,
+  modelSupportsNextEdit,
+  modelSupportsReasoning,
+} from "./autodetect";
 
 test("autodetectTemplateType returns 'codellama-70b' for CodeLlama 70B models", () => {
   expect(autodetectTemplateType("codellama-70b")).toBe("codellama-70b");
@@ -16,17 +21,16 @@ test("autodetectTemplateType returns undefined for models that don't need templa
   expect(autodetectTemplateType("GPT-4")).toBe(undefined);
   expect(autodetectTemplateType("command-r")).toBe(undefined);
   expect(autodetectTemplateType("aya-23")).toBe(undefined);
-  expect(autodetectTemplateType("chat-bison")).toBe(undefined);
   expect(autodetectTemplateType("pplx-70b")).toBe(undefined);
   expect(autodetectTemplateType("gemini-pro")).toBe(undefined);
-  expect(autodetectTemplateType("grok-beta")).toBe(undefined);
-  expect(autodetectTemplateType("moonshot-v1")).toBe(undefined);
+  expect(autodetectTemplateType("grok-4.7")).toBe(undefined);
+  expect(autodetectTemplateType("kimi-k2-turbo-preview")).toBe(undefined);
   expect(autodetectTemplateType("mercury-chat")).toBe(undefined);
   expect(autodetectTemplateType("mercury-chat")).toBe(undefined);
-  expect(autodetectTemplateType("o3-mini")).toBe(undefined);
-  expect(autodetectTemplateType("o4")).toBe(undefined);
-  expect(autodetectTemplateType("claude-sonnet-4-20250514")).toBe("none");
-  expect(autodetectTemplateType("claude-3-7-sonnet-latest")).toBe("none");
+  expect(autodetectTemplateType("o3")).toBe(undefined);
+  expect(autodetectTemplateType("o3-pro")).toBe(undefined);
+  expect(autodetectTemplateType("claude-sonnet-4-5-20250929")).toBe("none");
+  expect(autodetectTemplateType("claude-sonnet-5-5")).toBe("none");
 });
 
 test("autodetectTemplateType returns 'llama3' for Llama 3 models", () => {
@@ -335,5 +339,45 @@ describe("modelSupportsNextEdit", () => {
         ),
       ).toBe(true);
     });
+  });
+});
+
+describe("modelSupportsReasoning", () => {
+  const desc = (model: string) =>
+    ({ title: model, provider: "openai", model }) as any;
+
+  it("detects current reasoning models", () => {
+    expect(modelSupportsReasoning(desc("claude-sonnet-4-5"))).toBe(true);
+    expect(modelSupportsReasoning(desc("o3"))).toBe(true);
+    expect(modelSupportsReasoning(desc("gpt-5.3-codex"))).toBe(true);
+    expect(modelSupportsReasoning(desc("grok-4.7"))).toBe(true);
+    expect(modelSupportsReasoning(desc("deepseek-r1"))).toBe(true);
+  });
+
+  it("does not match retired o-series ids", () => {
+    expect(modelSupportsReasoning(desc("o1"))).toBe(false);
+    expect(modelSupportsReasoning(desc("o4-mini"))).toBe(false);
+  });
+});
+
+describe("modelSupportsImages", () => {
+  it("detects current image-capable models", () => {
+    expect(
+      modelSupportsImages(
+        "anthropic",
+        "claude-sonnet-4-5",
+        undefined,
+        undefined,
+      ),
+    ).toBe(true);
+    expect(modelSupportsImages("openai", "gpt-4o", undefined, undefined)).toBe(
+      true,
+    );
+  });
+
+  it("no longer matches retired-only patterns", () => {
+    expect(
+      modelSupportsImages("openai", "gpt-4-turbo", undefined, undefined),
+    ).toBe(false);
   });
 });

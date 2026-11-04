@@ -5,7 +5,6 @@ import { resolveRelativePathInDir } from "../../util/ideUtils";
 import { renderChatMessage } from "../../util/messageContent";
 
 const SUPPORTED_MODEL_TITLE_FAMILIES = [
-  "claude-3",
   "llama3.1",
   "llama3.2",
   "gemini-2.5",

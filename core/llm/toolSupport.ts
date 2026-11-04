@@ -3,9 +3,6 @@ import { ModelDescription } from "..";
 export const PROVIDER_TOOL_SUPPORT: Record<string, (model: string) => boolean> =
   {
     anthropic: (model) => {
-      if (model.includes("claude-2") || model.includes("claude-instant")) {
-        return false;
-      }
       if (["claude"].some((part) => model.toLowerCase().startsWith(part))) {
         return true;
       }
@@ -19,11 +16,7 @@ export const PROVIDER_TOOL_SUPPORT: Record<string, (model: string) => boolean> =
     openai: (model) => {
       const lower = model.toLowerCase();
       // https://platform.openai.com/docs/guides/function-calling#models-supporting-function-calling
-      if (
-        lower.match(/^gpt-[4-9]/) ||
-        lower.match(/^o[1-9]/) ||
-        lower.startsWith("codex")
-      ) {
+      if (lower.match(/^gpt-[4-9]/) || lower.match(/^o3/)) {
         return true;
       }
 
@@ -80,14 +73,11 @@ export const PROVIDER_TOOL_SUPPORT: Record<string, (model: string) => boolean> =
     xAI: (model) => {
       const lowerCaseModel = model.toLowerCase();
       return (
-        !!lowerCaseModel.match(/grok-[3-9]/) ||
-        lowerCaseModel.includes("grok-code")
+        !!lowerCaseModel.match(/grok-[4-9]/) ||
+        lowerCaseModel.includes("grok-build")
       );
     },
     bedrock: (model) => {
-      if (model.includes("claude-2") || model.includes("claude-instant")) {
-        return false;
-      }
       if (
         [
           "claude",
@@ -108,19 +98,15 @@ export const PROVIDER_TOOL_SUPPORT: Record<string, (model: string) => boolean> =
     },
     mistral: (model) => {
       // https://docs.mistral.ai/capabilities/function_calling/
-      return (
-        !model.toLowerCase().includes("mamba") &&
-        [
-          "devstral",
-          "codestral",
-          "mistral-large",
-          "mistral-small",
-          "pixtral",
-          "ministral",
-          "mistral-nemo",
-          "magistral",
-        ].some((part) => model.toLowerCase().includes(part))
-      );
+      return [
+        "devstral",
+        "codestral",
+        "mistral-large",
+        "mistral-small",
+        "pixtral",
+        "ministral",
+        "mistral-nemo",
+      ].some((part) => model.toLowerCase().includes(part));
     },
     // https://ollama.com/search?c=tools
     ollama: (model) => {
@@ -257,15 +243,9 @@ export const PROVIDER_TOOL_SUPPORT: Record<string, (model: string) => boolean> =
       // https://api-docs.deepseek.com/quick_start/pricing
       // https://api-docs.deepseek.com/guides/function_calling
       const lower = model.toLowerCase();
-      if (
-        lower === "deepseek-reasoner" ||
-        lower === "deepseek-chat" ||
-        lower.startsWith("deepseek-coder")
-      ) {
-        return true;
-      }
-
-      return false;
+      // deepseek-chat / deepseek-reasoner / deepseek-coder are retired;
+      // current API models are deepseek-v4-* and deepseek-flash.
+      return !!lower.match(/^deepseek-v[4-9]/) || lower === "deepseek-flash";
     },
     watsonx: (model) => {
       if (model.toLowerCase().includes("guard")) {
@@ -309,14 +289,12 @@ export const PROVIDER_TOOL_SUPPORT: Record<string, (model: string) => boolean> =
 
       const supportedPrefixes = [
         "openai/gpt-",
-        "openai/codex",
         "anthropic/claude",
         "microsoft/phi-3",
-        "google/gemini-flash-1.5",
-        "google/gemini-2",
+        "google/gemini-2.5",
         "google/gemini-3",
+        "google/gemini-4",
         "google/gemma-4",
-        "google/gemini-pro",
         "x-ai/grok",
         "qwen/qwen3",
         "qwen/qwen-",
@@ -334,7 +312,7 @@ export const PROVIDER_TOOL_SUPPORT: Record<string, (model: string) => boolean> =
         "amazon/nova",
         "deepseek/deepseek-r1",
         "deepseek/deepseek-chat",
-        "deepseek/deepseek-v3",
+        "deepseek/deepseek-v",
         "deepseek/deepseek-coder",
         "meta-llama/llama-4",
         "all-hands/openhands-lm-32b",
@@ -348,8 +326,8 @@ export const PROVIDER_TOOL_SUPPORT: Record<string, (model: string) => boolean> =
         }
       }
 
-      // OpenAI o-series (o1, o3, o4, ...)
-      if (baseModel.match(/^openai\/o[1-9]/)) {
+      // OpenAI o-series (o3; o1/o3-mini/o4-mini are retired)
+      if (baseModel.match(/^openai\/o3/)) {
         return true;
       }
 
@@ -409,7 +387,7 @@ export const PROVIDER_TOOL_SUPPORT: Record<string, (model: string) => boolean> =
       return (
         toolSupportingPatterns.some((pattern) => lower.includes(pattern)) ||
         !!lower.match(/gpt-[4-9]/) ||
-        !!lower.match(/\bo[1-9]\b/)
+        !!lower.match(/\bo3\b/)
       );
     },
     zAI: (model) => {
@@ -423,10 +401,6 @@ export const PROVIDER_TOOL_SUPPORT: Record<string, (model: string) => boolean> =
         model.toLowerCase().startsWith("kimi") &&
         model.toLowerCase() !== "kimi-thinking-preview"
       ) {
-        return true;
-      }
-
-      if (model.toLowerCase().startsWith("moonshot")) {
         return true;
       }
 
@@ -490,16 +464,15 @@ export const PROVIDER_TOOL_SUPPORT: Record<string, (model: string) => boolean> =
 export function isRecommendedAgentModel(modelName: string): boolean {
   // AND behavior
   const recs: RegExp[][] = [
-    [/o[134]/],
-    [/deepseek/, /r1|reasoner/],
+    [/o3/],
+    [/deepseek/, /r1|v[4-9]/],
     [/gemini/, /2\.5/, /pro/],
     [/gemini/, /3\.1-pro|3-flash-preview/],
     [/gpt-[5-9]/],
     [/gpt-4\.1/],
     [/codex/],
-    [/claude/, /sonnet/, /3\.7|3-7|(?<!\d)-[4-9]/],
+    [/claude/, /sonnet/, /(?<!\d)-[4-9]/],
     [/claude/, /opus/, /(?<!\d)-[4-9]/],
-    [/grok-code/],
     [/grok-[4-9][\.-]\d/],
     [/claude/, /[4-9]-[5-9]/],
   ];

@@ -39,7 +39,7 @@ export const Cohere: ModelProvider = {
       recommendedFor: ["chat"],
     },
     {
-      model: "command-r7b-arabic-12-2024",
+      model: "command-r7b-arabic-02-2025",
       displayName: "Command R7B Arabic 02-2025",
       contextLength: 128000,
       maxCompletionTokens: 4096,
@@ -72,60 +72,6 @@ export const Cohere: ModelProvider = {
       maxCompletionTokens: 4096,
       description:
         "Command R+ is a state-of-the-art RAG-optimized model designed to tackle enterprise-grade workloads.",
-      recommendedFor: ["chat"],
-    },
-    {
-      model: "command-r-plus-04-2024",
-      displayName: "Command R+ 04-2024",
-      contextLength: 128000,
-      maxCompletionTokens: 4096,
-      description:
-        "Command R is a scalable generative model targeting RAG and Tool Use to enable production-scale AI for enterprise.",
-      recommendedFor: ["chat"],
-    },
-    {
-      model: "command-r-03-2024",
-      displayName: "Command R 03-2024",
-      contextLength: 128000,
-      maxCompletionTokens: 4096,
-      description:
-        "Command R+ is a state-of-the-art RAG-optimized model designed to tackle enterprise-grade workloads.",
-      recommendedFor: ["chat"],
-    },
-    {
-      model: "c4ai-aya-vision-32b",
-      displayName: "C4AI Aya Vision 32B",
-      contextLength: 16000,
-      maxCompletionTokens: 4096,
-      description:
-        "Aya Vision is a state-of-the-art multimodal and massively multilingual large language model excelling at critical benchmarks for language, text, and image capabilities.",
-      recommendedFor: ["chat"],
-    },
-    {
-      model: "c4ai-aya-vision-8b",
-      displayName: "C4AI Aya Vision 8B",
-      contextLength: 16000,
-      maxCompletionTokens: 4096,
-      description:
-        "Aya Vision is a state-of-the-art multimodal and massively multilingual large language model excelling at critical benchmarks for language, text, and image capabilities.",
-      recommendedFor: ["chat"],
-    },
-    {
-      model: "c4ai-aya-expanse-32b",
-      displayName: "C4AI Aya Expanse 32B",
-      contextLength: 128000,
-      maxCompletionTokens: 4096,
-      description:
-        "Aya Expanse is a massively multilingual large language model excelling in enterprise-scale tasks.",
-      recommendedFor: ["chat"],
-    },
-    {
-      model: "c4ai-aya-expanse-8b",
-      displayName: "C4AI Aya Expanse 8B",
-      contextLength: 8000,
-      maxCompletionTokens: 4096,
-      description:
-        "Aya Expanse is a massively multilingual large language model excelling in enterprise-scale tasks.",
       recommendedFor: ["chat"],
     },
     {

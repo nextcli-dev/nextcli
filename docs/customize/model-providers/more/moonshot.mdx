@@ -1,15 +1,15 @@
 ---
 title: "Moonshot AI"
-description: "Configure Moonshot AI's language models with NextCLI, including Kimi K2, Kimi K2.5, and Moonshot v1 models with competitive pricing"
+description: "Configure Moonshot AI's language models with NextCLI, including the Kimi models"
 ---
 
-[Moonshot AI](https://platform.moonshot.cn/) provides high-quality large language model services with competitive pricing and excellent performance, including the Kimi series of models.
+[Moonshot AI](https://platform.moonshot.ai/) provides high-quality large language model services with competitive pricing and excellent performance, including the Kimi series of models.
 
 ## Configuration
 
 To use Moonshot AI models, you need to:
 
-1. Get an API key from [Moonshot AI Platform](https://platform.moonshot.cn/)
+1. Get an API key from [Moonshot AI Platform](https://platform.moonshot.ai/)
 2. Add the following configuration:
 
 <Tabs>
@@ -44,21 +44,15 @@ To use Moonshot AI models, you need to:
 
 ## Available Models
 
-Moonshot AI currently provides the following models:
-
-- `kimi-k2`: Kimi K2, a powerful MoE model with 128K context window
-- `kimi-k2.5`: Kimi K2.5, the latest generation with enhanced reasoning and 128K context window
-- `moonshot-v1-8k`: Base model with 8K context window
-- `moonshot-v1-32k`: Base model with 32K context window
-- `moonshot-v1-128k`: Base model with 128K context window
+Moonshot AI's model list changes often, so NextCLI reads it live from the `/v1/models` endpoint. Pick a current Kimi model there, or see the [Moonshot AI Platform](https://platform.moonshot.ai/docs) for the full list. The `moonshot-v1-*` models and `kimi-k2.5` were retired on 2026-08-31.
 
 ## Configuration Options
 
-| Option    | Description       | Default                       |
-| --------- | ----------------- | ----------------------------- |
-| `apiKey`  | Moonshot API key  | Required                      |
-| `apiBase` | API base URL      | `https://api.moonshot.cn/v1/` |
-| `model`   | Model name to use | `moonshot-v1-8k`              |
+| Option    | Description       | Default                                                         |
+| --------- | ----------------- | --------------------------------------------------------------- |
+| `apiKey`  | Moonshot API key  | Required                                                        |
+| `apiBase` | API base URL      | `https://api.moonshot.ai/v1/` (set `https://api.moonshot.cn/v1/` for China) |
+| `model`   | Model name to use | Required                                                        |
 
 ## Example
 

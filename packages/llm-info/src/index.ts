@@ -15,6 +15,9 @@ import { xAI } from "./providers/xAI.js";
 import { zAI } from "./providers/zai.js";
 import { LlmInfoWithProvider, ModelProvider, UseCase } from "./types.js";
 
+export { isRetired } from "./types.js";
+export type { LlmDeprecation } from "./types.js";
+
 export const allModelProviders: ModelProvider[] = [
   OpenAi,
   Gemini,

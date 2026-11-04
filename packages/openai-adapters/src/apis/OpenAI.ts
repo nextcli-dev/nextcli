@@ -63,12 +63,8 @@ export class OpenAIApi implements BaseLlmApi {
       (body as any).stream_options = { include_usage: true };
     }
 
-    // DeepSeek reasoner models use max_completion_tokens instead of max_tokens
-    if (
-      body.max_tokens &&
-      (this.apiBase?.includes("api.deepseek.com") ||
-        body.model.includes("deepseek-reasoner"))
-    ) {
+    // DeepSeek's API uses max_completion_tokens instead of max_tokens
+    if (body.max_tokens && this.apiBase?.includes("api.deepseek.com")) {
       body.max_completion_tokens = body.max_tokens;
       body.max_tokens = undefined;
     }

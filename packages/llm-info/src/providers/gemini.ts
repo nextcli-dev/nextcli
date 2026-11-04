@@ -3,6 +3,36 @@ import { AllMediaTypes, ModelProvider } from "../types.js";
 // See https://ai.google.dev/gemini-api/docs/models
 export const Gemini: ModelProvider = {
   models: [
+    // Current models (ids from ai.google.dev/gemini-api/docs/models, 2026-11-04).
+    // Context and output limits are left unset until confirmed from the docs.
+    {
+      model: "gemini-4-argon",
+      displayName: "Gemini 4 Argon",
+      mediaTypes: AllMediaTypes,
+      regex: /^(?:models\/)?gemini-4-argon/i,
+      recommendedFor: ["chat"],
+    },
+    {
+      model: "gemini-3.8-flash",
+      displayName: "Gemini 3.8 Flash",
+      mediaTypes: AllMediaTypes,
+      regex: /^(?:models\/)?gemini-3\.8-flash(?!-lite)/i,
+      recommendedFor: ["chat"],
+    },
+    {
+      model: "gemini-3.6-flash",
+      displayName: "Gemini 3.6 Flash",
+      mediaTypes: AllMediaTypes,
+      regex: /^(?:models\/)?gemini-3\.6-flash(?!-lite)/i,
+      recommendedFor: ["chat"],
+    },
+    {
+      model: "gemini-3.5-flash-lite",
+      displayName: "Gemini 3.5 Flash Lite",
+      mediaTypes: AllMediaTypes,
+      regex: /^(?:models\/)?gemini-3\.5-flash-lite/i,
+      recommendedFor: ["chat"],
+    },
     // Gemini 3.1 series
     {
       model: "gemini-3.1-pro-preview",
@@ -13,17 +43,6 @@ export const Gemini: ModelProvider = {
       maxCompletionTokens: 65536,
       mediaTypes: AllMediaTypes,
       regex: /gemini-3\.1-pro-preview/i,
-      recommendedFor: ["chat"],
-    },
-    {
-      model: "gemini-3.1-flash-lite-preview",
-      displayName: "Gemini 3.1 Flash Lite Preview",
-      description:
-        "Cost-efficient model optimized for high-volume tasks with fast inference.",
-      contextLength: 1048576,
-      maxCompletionTokens: 65536,
-      mediaTypes: AllMediaTypes,
-      regex: /gemini-3\.1-flash-lite-preview/i,
       recommendedFor: ["chat"],
     },
     {
@@ -48,7 +67,7 @@ export const Gemini: ModelProvider = {
       regex: /gemini-3-flash-preview/i,
       recommendedFor: ["chat"],
     },
-    // Gemini 2.5 series (deprecating June 17, 2026)
+    // Gemini 2.5 series (gemini-2.5-pro and gemini-2.5-flash are rerouted on 2026-12-01)
     {
       model: "gemini-2.5-pro",
       displayName: "Gemini 2.5 Pro",
@@ -59,17 +78,7 @@ export const Gemini: ModelProvider = {
       mediaTypes: AllMediaTypes,
       regex: /^gemini-2\.5-pro$/i,
       recommendedFor: ["chat"],
-    },
-    {
-      model: "gemini-2.5-pro-preview-05-06",
-      displayName: "Gemini 2.5 Pro Preview",
-      description:
-        "Google's advanced model with strong reasoning, multimodal capabilities, and advanced coding skills",
-      contextLength: 1048576,
-      maxCompletionTokens: 65536,
-      mediaTypes: AllMediaTypes,
-      regex: /gemini-2\.5-pro-preview/i,
-      recommendedFor: ["chat"],
+      deprecation: { shutdownDate: "2026-12-01" },
     },
     {
       model: "gemini-2.5-flash",
@@ -81,17 +90,7 @@ export const Gemini: ModelProvider = {
       mediaTypes: AllMediaTypes,
       regex: /^gemini-2\.5-flash$/i,
       recommendedFor: ["chat"],
-    },
-    {
-      model: "gemini-2.5-flash-preview-05-20",
-      displayName: "Gemini 2.5 Flash Preview",
-      description:
-        "Fast, token-efficient multimodal model for complex tasks with 1M context window",
-      contextLength: 1048576,
-      maxCompletionTokens: 65536,
-      mediaTypes: AllMediaTypes,
-      regex: /gemini-2\.5-flash-preview/i,
-      recommendedFor: ["chat"],
+      deprecation: { shutdownDate: "2026-12-01" },
     },
     {
       model: "gemini-2.5-flash-lite",
@@ -104,33 +103,12 @@ export const Gemini: ModelProvider = {
       regex: /gemini-2\.5-flash-lite/i,
       recommendedFor: ["chat"],
     },
-    // Gemini 2.0 series (deprecating June 1, 2026)
-    {
-      model: "gemini-2.0-flash", // stable gemini-2.0-flash-001
-      displayName: "Gemini 2.0 Flash",
-      description: "Fast, efficient model with strong multimodal capabilities",
-      contextLength: 1048576,
-      maxCompletionTokens: 8192,
-      mediaTypes: AllMediaTypes,
-      regex: /^gemini-2\.0-flash$/i,
-      recommendedFor: ["chat"],
-    },
-    {
-      model: "gemini-2.0-flash-lite", // stable gemini-2.0-flash-lite-001
-      displayName: "Gemini 2.0 Flash Lite",
-      description:
-        "Small, fast model with reduced latency and memory requirements",
-      contextLength: 1048576,
-      maxCompletionTokens: 8192,
-      mediaTypes: AllMediaTypes,
-      regex: /^gemini-2\.0-flash-lite$/i,
-      recommendedFor: ["chat"],
-    },
     // embed
     {
-      model: "models/text-embedding-004",
-      displayName: "Gemini Text Embedding",
+      model: "gemini-embedding-2",
+      displayName: "Gemini Embedding 2",
       description: "Text embedding model for vectorizing content",
+      regex: /^(?:models\/)?gemini-embedding-2/i,
       recommendedFor: ["embed"],
     },
   ],

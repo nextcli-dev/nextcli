@@ -136,10 +136,10 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     envKey: "DEEPSEEK_API_KEY",
     needsApiKey: true,
     needsApiBaseAndModel: false,
-    defaultModel: "deepseek-chat",
+    defaultModel: "deepseek-v4-pro",
     validateApiKey: requirePrefix("sk-"),
     models: ({ apiKey, model }) => [
-      customModel("deepseek", model ?? "deepseek-chat", apiKey, "DeepSeek"),
+      customModel("deepseek", model ?? "deepseek-v4-pro", apiKey, "DeepSeek"),
     ],
   },
   {
