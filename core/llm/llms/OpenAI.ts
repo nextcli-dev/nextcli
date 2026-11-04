@@ -329,6 +329,28 @@ class OpenAI extends BaseLLM {
     return finalOptions;
   }
 
+  /**
+   * Reasoning settings for the Responses API from the model menu: thinking
+   * off sends effort "none", hidden leaves out the readable summary. With no
+   * menu settings it keeps medium effort with summaries, as before.
+   */
+  private responsesReasoning(
+    options: CompletionOptions,
+  ): ResponseCreateParamsBase["reasoning"] {
+    if (options.thinking === undefined && !options.reasoningEffort) {
+      return { effort: "medium", summary: "auto" };
+    }
+    const fields = this.modelControlFields(options);
+    const effort = (fields.reasoning_effort as string | undefined) ?? "medium";
+    return {
+      effort: effort as NonNullable<
+        ResponseCreateParamsBase["reasoning"]
+      >["effort"],
+      ...(options.thinking !== "hidden" &&
+        effort !== "none" && { summary: "auto" as const }),
+    };
+  }
+
   protected _convertArgsResponses(
     options: CompletionOptions,
     messages: ChatMessage[],
@@ -348,12 +370,12 @@ class OpenAI extends BaseLLM {
       top_p: this.isOSeriesOrGpt5PlusModel(model)
         ? null
         : (options.topP ?? null),
-      reasoning: {
-        effort: "medium",
-        summary: "auto",
-      },
+      reasoning: this.responsesReasoning(options),
       include: ["reasoning.encrypted_content"],
     };
+    if (options.fast && this.modelControlFields(options).service_tier) {
+      body.service_tier = "priority";
+    }
 
     // Tools support for Responses API (schema differs from Chat Completions)
     if (options.tools?.length) {

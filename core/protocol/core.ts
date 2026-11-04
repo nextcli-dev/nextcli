@@ -12,6 +12,10 @@ import {
 } from "../autocomplete/util/types";
 import { ProfileDescription } from "../config/ProfileLifecycleManager";
 import { SharedConfigSchema } from "../config/sharedConfig";
+import type {
+  ModelSettingsPatch,
+  ResolvedModelSettings,
+} from "../llm/modelSettings";
 import { GlobalContextModelSelections } from "../util/GlobalContext";
 
 import {
@@ -119,6 +123,13 @@ export type ToCoreFromIdeOrWebviewProtocol = {
       title: string | null;
     },
     GlobalContextModelSelections,
+  ];
+  /** Model menu settings for the chat and edit models, by provider/model */
+  "modelSettings/getAll": [undefined, Record<string, ResolvedModelSettings>];
+  /** Saves a model menu change (shared with the CLI) and returns all settings */
+  "modelSettings/update": [
+    { key: string; patch: ModelSettingsPatch },
+    Record<string, ResolvedModelSettings>,
   ];
   "context/getContextItems": [
     {

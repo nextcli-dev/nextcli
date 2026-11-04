@@ -18,18 +18,29 @@ export const OPENROUTER_HEADERS: Record<string, string> = {
 
 /**
  * OpenRouter's unified reasoning settings: effort goes in `reasoning.effort`,
- * and `reasoning.exclude` keeps the reasoning out of the response.
+ * `reasoning.exclude` keeps the reasoning out of the response, and
+ * `reasoning.enabled: false` turns thinking off.
  */
 function applyOpenRouterControls(
   body: ChatCompletionCreateParams,
-  controls: { showThinking?: boolean },
+  controls: { showThinking?: boolean; thinking?: string },
 ): void {
   const target = body as ChatCompletionCreateParams & {
     reasoning?: Record<string, unknown>;
   };
+  if (controls.thinking === "off") {
+    // An effort would turn thinking back on
+    delete target.reasoning_effort;
+    target.reasoning = { enabled: false };
+    return;
+  }
   if (body.reasoning_effort) {
     target.reasoning = { ...target.reasoning, effort: body.reasoning_effort };
     delete target.reasoning_effort;
+  } else if (controls.thinking === "shown") {
+    // Claude 5 returns its reasoning text only when `reasoning` is set
+    // (checked 2026-11-04)
+    target.reasoning = { ...target.reasoning, enabled: true };
   }
   if (controls.showThinking === false) {
     target.reasoning = { ...target.reasoning, exclude: true };
@@ -61,10 +72,13 @@ export class OpenRouterApi extends OpenAIApi {
 
   override modifyChatBody<T extends ChatCompletionCreateParams>(body: T): T {
     // Read the model menu controls before the base class drops nextcli_* fields
-    const showThinking = (body as T & { nextcli_show_thinking?: boolean })
-      .nextcli_show_thinking;
+    const { nextcli_show_thinking: showThinking, nextcli_thinking: thinking } =
+      body as T & {
+        nextcli_show_thinking?: boolean;
+        nextcli_thinking?: string;
+      };
     const modifiedBody = super.modifyChatBody(body);
-    applyOpenRouterControls(modifiedBody, { showThinking });
+    applyOpenRouterControls(modifiedBody, { showThinking, thinking });
 
     if (!this.isAnthropicModel(modifiedBody.model)) {
       return modifiedBody;

@@ -5,6 +5,7 @@ import {
   ToolOverrideConfig,
 } from "@nextcli/config-yaml";
 import { ToolPolicy } from "@continuedev/terminal-security";
+import type { ModelControls } from "@nextcli/openai-adapters";
 import { McpUiResourceMeta } from "@modelcontextprotocol/ext-apps";
 import { TextResourceContents } from "@modelcontextprotocol/sdk/types.js";
 import Parser from "web-tree-sitter";
@@ -166,6 +167,16 @@ export interface ILLM
   ): string | ChatMessage[];
 
   getConfigurationStatus(): LLMConfigurationStatuses;
+
+  /** The settings the model menu offers for this model */
+  getModelControls(): SerializedModelControls;
+}
+
+/** ModelControls plus the context windows the menu offers */
+export interface SerializedModelControls extends ModelControls {
+  contextOptions: number[];
+  /** The model's own context length (from config or the model's info) */
+  defaultContextLength: number;
 }
 
 export interface ModelInstaller {
@@ -1235,6 +1246,17 @@ export interface BaseCompletionOptions {
   toolChoice?: ToolChoice;
   reasoning?: boolean;
   reasoningBudgetTokens?: number;
+  /** Effort level from the model menu, clamped to the model's levels */
+  reasoningEffort?: string;
+  /**
+   * Thinking mode from the model menu: off (no thinking tokens), hidden
+   * (think without returning the text) or shown. Wins over `reasoning`
+   */
+  thinking?: "off" | "hidden" | "shown";
+  /** Fast or priority mode, where the model has one */
+  fast?: boolean;
+  /** Context window to plan for, overriding the model's own */
+  contextLength?: number;
   promptCaching?: boolean;
 }
 
@@ -1270,6 +1292,8 @@ export interface ModelDescription {
   capabilities?: ModelCapability;
   roles?: ModelRole[];
   configurationStatus?: LLMConfigurationStatuses;
+  /** Settings the model menu can show for this model (effort, thinking...) */
+  controls?: SerializedModelControls;
 
   sourceFile?: string;
   isFromAutoDetect?: boolean;

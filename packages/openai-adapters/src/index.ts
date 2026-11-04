@@ -254,16 +254,38 @@ export {
 export { isResponsesModel } from "./apis/openaiResponses.js";
 export {
   buildModelControlFields,
+  chosenThinkingMode,
   clampEffort,
+  effectiveThinkingMode,
+  effortLabel,
+  formatContextLength,
+  getContextOptions,
   getControlsFormat,
   getModelControls,
+  looksLikeReasoningModel,
+  openAIReasoningLevels,
+  parseGeminiModelVersion,
+  thinkingLabel,
+  THINKING_MODES,
 } from "./modelControls.js";
 export type {
   ControlsFormat,
   ModelControls,
   ModelControlSettings,
   ModelIdentity,
+  ThinkingMode,
 } from "./modelControls.js";
+export {
+  anthropicControlParams,
+  anthropicThinkingOn,
+  withAnthropicBetas,
+} from "./apis/anthropicControls.js";
+export type {
+  AnthropicControlInput,
+  AnthropicControlParams,
+  AnthropicThinking,
+} from "./apis/anthropicControls.js";
+export { geminiThinkingConfig } from "./apis/Gemini.js";
 export { ONEPROVIDER_API_BASE } from "./apis/OneProvider.js";
 export { OPENROUTER_HEADERS } from "./apis/OpenRouter.js";
 export { extractBase64FromDataUrl, parseDataUrl } from "./util/url.js";

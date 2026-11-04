@@ -425,3 +425,38 @@ describe("OpenAI", () => {
     });
   });
 });
+
+describe("OpenAI Responses reasoning from the model menu", () => {
+  const llm = new OpenAI({ apiKey: "k", model: "gpt-5.5" });
+  const convert = (options: Record<string, unknown>) =>
+    (llm as any)._convertArgsResponses({ model: "gpt-5.5", ...options }, [
+      { role: "user", content: "Hi" },
+    ]);
+
+  test("keeps medium effort with summaries without menu settings", () => {
+    expect(convert({}).reasoning).toEqual({
+      effort: "medium",
+      summary: "auto",
+    });
+  });
+
+  test("turns reasoning off with effort none", () => {
+    expect(
+      convert({ thinking: "off", reasoningEffort: "high" }).reasoning,
+    ).toEqual({ effort: "none" });
+  });
+
+  test("uses the chosen effort and leaves out summaries when hidden", () => {
+    expect(
+      convert({ thinking: "hidden", reasoningEffort: "high" }).reasoning,
+    ).toEqual({ effort: "high" });
+    expect(
+      convert({ thinking: "shown", reasoningEffort: "low" }).reasoning,
+    ).toEqual({ effort: "low", summary: "auto" });
+  });
+
+  test("asks for the priority tier in fast mode", () => {
+    expect(convert({ fast: true }).service_tier).toBe("priority");
+    expect(convert({}).service_tier).toBeUndefined();
+  });
+});

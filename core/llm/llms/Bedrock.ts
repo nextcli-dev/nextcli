@@ -17,8 +17,8 @@ import {
 } from "@aws-sdk/client-bedrock-runtime";
 import { fromNodeProviderChain } from "@aws-sdk/credential-providers";
 import {
+  anthropicControlParams,
   anthropicSupportsPrefill,
-  anthropicThinkingType,
   filterAnthropicSamplingParams,
 } from "@nextcli/openai-adapters";
 
@@ -27,6 +27,7 @@ import { ChatMessage, Chunk, LLMOptions, MessageContent } from "../../index.js";
 import { safeParseToolCallArgs } from "../../tools/parseArgs.js";
 import { renderChatMessage, stripImages } from "../../util/messageContent.js";
 import { parseDataUrl } from "../../util/url.js";
+import { DEFAULT_REASONING_TOKENS } from "../constants.js";
 import { BaseLLM } from "../index.js";
 import { PROVIDER_TOOL_SUPPORT } from "../toolSupport.js";
 import { getSecureID } from "../utils/getSecureID.js";
@@ -45,6 +46,34 @@ interface PromptCachingMetrics {
 }
 
 class Bedrock extends BaseLLM {
+  /** Chat requests honour the model menu settings (for Claude models) */
+  protected supportsModelControls(): boolean {
+    return true;
+  }
+
+  /**
+   * Claude's thinking and effort settings, sent in
+   * additionalModelRequestFields. The model menu's thinking mode wins;
+   * otherwise `reasoning: true` turns thinking on with a budget and
+   * `reasoning: false` turns it off. Fast mode isn't offered on Bedrock.
+   */
+  private claudeControlParams(options: CompletionOptions) {
+    if (!options.model.toLowerCase().includes("claude")) {
+      return undefined;
+    }
+    return anthropicControlParams({
+      model: options.model,
+      effort: options.reasoningEffort,
+      thinking:
+        options.thinking ?? (options.reasoning === false ? "off" : undefined),
+      thinkingRequested: options.reasoning === true,
+      budgetTokens: options.reasoning
+        ? (options.reasoningBudgetTokens ?? DEFAULT_REASONING_TOKENS)
+        : undefined,
+      maxTokens: options.maxTokens ?? 4096,
+    });
+  }
+
   static providerName = "bedrock";
   static defaultOptions: Partial<LLMOptions> = {
     region: "us-east-1",
@@ -324,6 +353,7 @@ class Bedrock extends BaseLLM {
       availableTools,
       options.model,
     );
+    const controls = this.claudeControlParams(options);
 
     return {
       modelId: options.model,
@@ -335,7 +365,7 @@ class Bedrock extends BaseLLM {
       toolConfig: toolConfig,
       messages: convertedMessages,
       inferenceConfig: {
-        maxTokens: options.maxTokens,
+        maxTokens: controls?.thinking ? controls.maxTokens : options.maxTokens,
         ...filterAnthropicSamplingParams(options.model, {
           temperature: options.temperature,
           topP: options.topP,
@@ -353,14 +383,8 @@ class Bedrock extends BaseLLM {
           .slice(0, 4),
       },
       additionalModelRequestFields: {
-        thinking: options.reasoning
-          ? anthropicThinkingType(options.model) === "adaptive"
-            ? { type: "adaptive" }
-            : {
-                type: "enabled",
-                budget_tokens: options.reasoningBudgetTokens,
-              }
-          : undefined,
+        thinking: controls?.thinking,
+        output_config: controls?.outputConfig,
         anthropic_beta: options.model.includes("claude")
           ? ["fine-grained-tool-streaming-2025-05-14"]
           : undefined,

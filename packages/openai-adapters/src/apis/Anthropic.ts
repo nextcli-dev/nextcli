@@ -39,19 +39,21 @@ import {
   CACHING_STRATEGIES,
   CachingStrategyName,
 } from "./AnthropicCachingStrategies.js";
+import type { ThinkingMode } from "../modelControls.js";
+import {
+  type AnthropicThinking,
+  anthropicControlParams,
+  anthropicThinkingOn,
+  withAnthropicBetas,
+} from "./anthropicControls.js";
 import {
   addCacheControlToLastTwoUserMessages,
-  ANTHROPIC_FAST_MODE_BETA,
   anthropicFastMode,
-  anthropicThinkingType,
-  anthropicThinksByDefault,
-  clampAnthropicEffort,
   getAnthropicHeaders,
   getAnthropicMediaTypeFromDataUrl,
   filterAnthropicSamplingParams,
   openAiToolChoiceToAnthropicToolChoice,
   openaiToolToAnthropicTool,
-  parseClaudeModelVersion,
 } from "./AnthropicUtils.js";
 import {
   BaseLlmApi,
@@ -67,6 +69,11 @@ import {
 export interface AnthropicReasoningControls {
   /** Thinking depth: low, medium, high, xhigh or max (clamped per model) */
   reasoning_effort?: string;
+  /**
+   * Thinking mode chosen in a model menu: off (no thinking tokens), hidden or
+   * shown. Wins over nextcli_show_thinking
+   */
+  nextcli_thinking?: ThinkingMode;
   /** Ask for readable (summarized) thinking text instead of omitting it */
   nextcli_show_thinking?: boolean;
   /** Fast mode (`speed: "fast"`) on models that support it */
@@ -76,26 +83,11 @@ export interface AnthropicReasoningControls {
   top_k?: number;
 }
 
-type AnthropicThinking =
-  | { type: "adaptive"; display?: "summarized" | "omitted" }
-  | { type: "enabled"; budget_tokens: number };
-
 type AnthropicRequestBody = Omit<MessageCreateParams, "thinking"> & {
   thinking?: AnthropicThinking;
   output_config?: { effort: string };
   speed?: "fast";
 };
-
-/** Thinking budgets used for effort levels on models without `effort` */
-const EFFORT_THINKING_BUDGETS: Record<string, number> = {
-  minimal: 1024,
-  low: 2048,
-  medium: 8192,
-  high: 16384,
-  xhigh: 32000,
-  max: 32000,
-};
-const MIN_THINKING_BUDGET = 1024;
 
 interface ReasoningDetailParam {
   type?: string;
@@ -169,51 +161,20 @@ export class AnthropicApi implements BaseLlmApi {
     return { temperature, top_p: topP, top_k: topK };
   }
 
-  /**
-   * The `thinking` setting for the request, or undefined to keep the model's
-   * default. Claude 4.6 and newer use adaptive thinking: Claude 5 models
-   * think by default, so it is set only to choose whether the text is
-   * returned; Claude 4.6 to 4.8 think only when an effort is chosen. Older
-   * models use a token budget, from the effort level or an explicit budget.
-   */
-  private convertThinking(
+  /** Thinking, effort and fast mode for the request (see anthropicControlParams) */
+  private convertControls(
     oaiBody: ChatCompletionCreateParams & AnthropicReasoningControls,
     maxTokens: number,
-  ): AnthropicThinking | undefined {
-    const model = oaiBody.model;
-    const effort = oaiBody.reasoning_effort;
-    const showThinking = oaiBody.nextcli_show_thinking;
-    const budget = oaiBody.nextcli_thinking_budget;
-
-    if (anthropicThinkingType(model) === "adaptive") {
-      const wanted = anthropicThinksByDefault(model)
-        ? showThinking !== undefined
-        : effort !== undefined || budget !== undefined;
-      if (!wanted) {
-        return undefined;
-      }
-      return {
-        type: "adaptive",
-        ...(showThinking !== undefined && {
-          display: showThinking ? "summarized" : "omitted",
-        }),
-      };
-    }
-
-    if (!parseClaudeModelVersion(model)) {
-      return undefined;
-    }
-    const requested =
-      budget ?? (effort ? EFFORT_THINKING_BUDGETS[effort] : undefined);
-    if (!requested) {
-      return undefined;
-    }
-    // budget_tokens must be at least 1024 and below max_tokens
-    const budgetTokens = Math.max(
-      MIN_THINKING_BUDGET,
-      Math.min(requested, maxTokens - MIN_THINKING_BUDGET),
-    );
-    return { type: "enabled", budget_tokens: budgetTokens };
+  ) {
+    return anthropicControlParams({
+      model: oaiBody.model,
+      effort: oaiBody.reasoning_effort,
+      thinking: oaiBody.nextcli_thinking,
+      showThinking: oaiBody.nextcli_show_thinking,
+      budgetTokens: oaiBody.nextcli_thinking_budget,
+      fast: oaiBody.nextcli_fast,
+      maxTokens,
+    });
   }
 
   public _convertToCleanAnthropicBody(
@@ -259,17 +220,11 @@ export class AnthropicApi implements BaseLlmApi {
 
     const controls = oaiBody as ChatCompletionCreateParams &
       AnthropicReasoningControls;
-    let maxTokens = oaiBody.max_tokens ?? this.maxTokensForModel(oaiBody.model);
-    const thinking = this.convertThinking(controls, maxTokens);
-    if (thinking?.type === "enabled") {
-      maxTokens = Math.max(
-        maxTokens,
-        thinking.budget_tokens + MIN_THINKING_BUDGET,
-      );
-    }
-    const effort = controls.reasoning_effort
-      ? clampAnthropicEffort(oaiBody.model, controls.reasoning_effort)
-      : undefined;
+    const params = this.convertControls(
+      controls,
+      oaiBody.max_tokens ?? this.maxTokensForModel(oaiBody.model),
+    );
+    const thinking = params.thinking;
     let toolChoice = openAiToolChoiceToAnthropicToolChoice(
       oaiBody.tool_choice,
       oaiBody.model,
@@ -295,17 +250,16 @@ export class AnthropicApi implements BaseLlmApi {
               },
             ]
           : systemMessage,
-      ...this.convertSamplingParams(controls, thinking !== undefined),
-      max_tokens: maxTokens, // max_tokens is required
+      ...this.convertSamplingParams(controls, anthropicThinkingOn(thinking)),
+      max_tokens: params.maxTokens, // max_tokens is required
       model: oaiBody.model,
       stop_sequences: stop,
       stream: oaiBody.stream ?? undefined,
       tools,
       tool_choice: toolChoice,
       ...(thinking && { thinking }),
-      ...(effort && { output_config: { effort } }),
-      ...(controls.nextcli_fast &&
-        anthropicFastMode(oaiBody.model) && { speed: "fast" as const }),
+      ...(params.outputConfig && { output_config: params.outputConfig }),
+      ...(params.speed && { speed: params.speed }),
     };
 
     // The SDK types predate adaptive thinking, effort and speed
@@ -760,12 +714,13 @@ export class AnthropicApi implements BaseLlmApi {
     // Fast mode on Opus 5 and Opus 4.8 is a research preview behind a beta
     const controls = body as AnthropicReasoningControls | undefined;
     if (controls?.nextcli_fast && anthropicFastMode(body?.model) === "beta") {
-      headers["anthropic-beta"] = [
-        headers["anthropic-beta"],
-        ANTHROPIC_FAST_MODE_BETA,
-      ]
-        .filter(Boolean)
-        .join(",");
+      const betas = anthropicControlParams({
+        model: body!.model,
+        fast: true,
+        maxTokens: 0,
+      }).betas;
+      const header = withAnthropicBetas(headers["anthropic-beta"], betas);
+      if (header) headers["anthropic-beta"] = header;
     }
     return headers;
   }

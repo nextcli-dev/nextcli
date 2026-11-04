@@ -81,3 +81,14 @@ describe("OpenAI request bodies and Anthropic-only controls", () => {
     expect(result.reasoning_effort).toBe("low");
   });
 });
+
+describe("OpenAI reasoning off", () => {
+  it("sends effort none on the Responses API", () => {
+    const params = toResponsesParams({
+      model: "gpt-5.5",
+      messages: [{ role: "user", content: "Hi" }],
+      reasoning_effort: "none",
+    } as any);
+    expect(params.reasoning).toEqual({ effort: "none" });
+  });
+});

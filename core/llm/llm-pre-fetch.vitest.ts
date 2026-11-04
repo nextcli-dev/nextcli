@@ -77,7 +77,10 @@ describe("LLM Pre-fetch", () => {
       typeof import("@nextcli/openai-adapters")
     >("@nextcli/openai-adapters");
     for (const name of [
+      "anthropicControlParams",
+      "anthropicThinkingOn",
       "anthropicThinkingType",
+      "withAnthropicBetas",
       "anthropicSupportsForcedToolChoice",
       "anthropicSupportsPrefill",
       "filterAnthropicSamplingParams",

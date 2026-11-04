@@ -262,3 +262,37 @@ describe("AnthropicApi thinking round trip (#12246)", () => {
     ]);
   });
 });
+
+describe("Thinking modes from a model menu", () => {
+  it("sends disabled thinking for Off and keeps effort and sampling", () => {
+    const body = convert("claude-opus-5-5", {
+      nextcli_thinking: "off",
+      reasoning_effort: "low",
+    });
+    expect(body.thinking).toEqual({ type: "disabled" });
+    expect(body.output_config).toEqual({ effort: "low" });
+  });
+
+  it("allows forced tool use while thinking is off", () => {
+    const body = convert("claude-sonnet-4-5", {
+      nextcli_thinking: "off",
+      tools: [
+        {
+          type: "function",
+          function: { name: "read", parameters: { type: "object" } },
+        },
+      ],
+      tool_choice: { type: "function", function: { name: "read" } },
+    });
+    expect(body.thinking).toEqual({ type: "disabled" });
+    expect(body.tool_choice).toEqual({ type: "tool", name: "read" });
+  });
+
+  it("prefers the chosen mode over the older show thinking flag", () => {
+    const body = convert("claude-opus-5-5", {
+      nextcli_thinking: "hidden",
+      nextcli_show_thinking: true,
+    });
+    expect(body.thinking).toEqual({ type: "adaptive", display: "omitted" });
+  });
+});

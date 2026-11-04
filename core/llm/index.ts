@@ -3,8 +3,11 @@ import { fetchwithRequestOptions } from "@nextcli/fetch";
 import { findLlmInfo } from "@nextcli/llm-info";
 import {
   BaseLlmApi,
+  buildModelControlFields,
   ChatCompletionCreateParams,
   constructLlmApi,
+  getContextOptions,
+  getModelControls,
 } from "@nextcli/openai-adapters";
 import Handlebars from "handlebars";
 
@@ -26,6 +29,7 @@ import {
   PromptLog,
   PromptTemplate,
   RequestOptions,
+  SerializedModelControls,
   TabAutocompleteOptions,
   TemplateType,
   ToolOverride,
@@ -44,6 +48,7 @@ import {
   autodetectTemplateFunction,
   autodetectTemplateType,
   modelSupportsImages,
+  modelSupportsReasoning,
 } from "./autodetect.js";
 import {
   DEFAULT_ARGS,
@@ -51,6 +56,7 @@ import {
   DEFAULT_MAX_BATCH_SIZE,
   DEFAULT_MAX_CHUNK_SIZE,
   DEFAULT_MAX_TOKENS,
+  DEFAULT_REASONING_TOKENS,
   LLMConfigurationStatuses,
 } from "./constants.js";
 import {
@@ -304,6 +310,108 @@ export abstract class BaseLLM implements ILLM {
 
   get contextLength() {
     return this._contextLength ?? DEFAULT_CONTEXT_LENGTH;
+  }
+
+  /**
+   * Whether chat requests apply the model menu settings (effort, thinking,
+   * fast). True for requests that go through the OpenAI adapter; providers
+   * with their own request code override it.
+   */
+  protected supportsModelControls(): boolean {
+    return this.shouldUseOpenAIAdapter("streamChat") && !!this.openaiAdapter;
+  }
+
+  getModelControls(): SerializedModelControls {
+    const controls = getModelControls({
+      provider: this.providerName,
+      model: this.model,
+      apiBase: this.apiBase,
+      reasoningConfigured:
+        this.completionOptions?.reasoning !== undefined ||
+        !!this.completionOptions?.reasoningEffort,
+    });
+    // Providers with their own request code only read `reasoning`, so they
+    // get thinking on or off and nothing else (see applyThinkingToReasoning)
+    const reasoningOnly =
+      this.completionOptions?.reasoning === true ||
+      modelSupportsReasoning({
+        title: this.title ?? this.model,
+        provider: this.providerName,
+        underlyingProviderName: this.underlyingProviderName,
+        model: this.model,
+      });
+    const usable = this.supportsModelControls()
+      ? controls
+      : {
+          ...controls,
+          efforts: [],
+          thinkingModes: reasoningOnly
+            ? (["off", "shown"] as const).slice()
+            : [],
+          thinkingUnavailable: reasoningOnly
+            ? { hidden: "This provider can only turn thinking on or off." }
+            : {},
+          defaultThinking: reasoningOnly ? ("shown" as const) : undefined,
+          canShowThinking: reasoningOnly,
+          thinkingNeedsEffort: false,
+          effortNeedsThinking: false,
+          fast: false,
+        };
+    return {
+      ...usable,
+      contextOptions: getContextOptions(
+        controls.maxContextLength,
+        this.contextLength,
+      ),
+      defaultContextLength: this.contextLength,
+    };
+  }
+
+  /**
+   * For providers that only read `reasoning` (Ollama's think, Cohere...),
+   * turns the menu's thinking mode into it, with the default budget the
+   * extension has always sent.
+   */
+  private applyThinkingToReasoning(
+    options: CompletionOptions,
+  ): CompletionOptions {
+    if (options.thinking === undefined || this.supportsModelControls()) {
+      return options;
+    }
+    const reasoning = options.thinking !== "off";
+    return {
+      ...options,
+      reasoning,
+      reasoningBudgetTokens:
+        reasoning && this.underlyingProviderName !== "ollama"
+          ? (options.reasoningBudgetTokens ?? DEFAULT_REASONING_TOKENS)
+          : options.reasoningBudgetTokens,
+    };
+  }
+
+  /** Request fields for the model menu settings in the completion options */
+  protected modelControlFields(
+    options: CompletionOptions,
+  ): Record<string, unknown> {
+    if (
+      options.thinking === undefined &&
+      options.reasoningEffort === undefined &&
+      !options.fast
+    ) {
+      return {};
+    }
+    return buildModelControlFields(
+      {
+        provider: this.providerName,
+        model: options.model,
+        apiBase: this.apiBase,
+      },
+      {
+        effort: options.reasoningEffort,
+        thinking: options.thinking,
+        fast: options.fast,
+      },
+    );
   }
 
   getConfigurationStatus() {
@@ -956,7 +1064,7 @@ export abstract class BaseLLM implements ILLM {
     return compileChatMessages({
       modelName: completionOptions.model,
       msgs: message,
-      knownContextLength: this._contextLength,
+      knownContextLength: options.contextLength ?? this._contextLength,
       maxTokens: completionOptions.maxTokens ?? DEFAULT_MAX_TOKENS,
       supportsImages: this.supportsImages(),
       tools: options.tools,
@@ -1126,7 +1234,9 @@ export abstract class BaseLLM implements ILLM {
       : undefined;
     let status: InteractionStatus = "in_progress";
 
-    completionOptions = this._modifyCompletionOptions(completionOptions);
+    completionOptions = this.applyThinkingToReasoning(
+      this._modifyCompletionOptions(completionOptions),
+    );
 
     let messages = _messages;
 
@@ -1135,7 +1245,7 @@ export abstract class BaseLLM implements ILLM {
       const { compiledChatMessages } = compileChatMessages({
         modelName: completionOptions.model,
         msgs: _messages,
-        knownContextLength: this._contextLength,
+        knownContextLength: options.contextLength ?? this._contextLength,
         maxTokens: completionOptions.maxTokens ?? DEFAULT_MAX_TOKENS,
         supportsImages: this.supportsImages(),
         tools: optionsWithOverrides.tools,
@@ -1192,6 +1302,11 @@ export abstract class BaseLLM implements ILLM {
             includeReasoningDetailsField: this.supportsReasoningDetailsField,
             includeReasoningContentField: this.supportsReasoningContentField,
           });
+          // nextcli_* fields are read by the adapter and never sent on
+          body = {
+            ...body,
+            ...this.modelControlFields(completionOptions),
+          } as ChatCompletionCreateParams;
           body = this.modifyChatBody(body);
 
           if (logEnabled) {

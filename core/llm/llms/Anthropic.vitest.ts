@@ -684,3 +684,117 @@ describe("Anthropic message conversion for newer models", () => {
     expect(chunks).toEqual([{ role: "assistant", content: "Hello world" }]);
   });
 });
+
+describe("Anthropic model menu settings", () => {
+  const llm = new Anthropic({ apiKey: "test-api-key", model: "unused" });
+  const toolChoice = {
+    type: "function" as const,
+    function: { name: "say_hello" },
+  };
+
+  test("sends disabled thinking for Off and keeps the effort", () => {
+    const args = llm.convertArgs({
+      model: "claude-opus-5-5",
+      thinking: "off",
+      reasoningEffort: "low",
+      reasoning: true,
+    }) as any;
+    expect(args.thinking).toEqual({ type: "disabled" });
+    expect(args.output_config).toEqual({ effort: "low" });
+  });
+
+  test("turns reasoning: false into thinking off", () => {
+    expect(
+      llm.convertArgs({ model: "claude-sonnet-5-5", reasoning: false })
+        .thinking,
+    ).toEqual({ type: "disabled" });
+  });
+
+  test("returns or omits the thinking text for Shown and Hidden", () => {
+    expect(
+      llm.convertArgs({ model: "claude-opus-5-5", thinking: "shown" }).thinking,
+    ).toEqual({ type: "adaptive", display: "summarized" });
+    expect(
+      llm.convertArgs({ model: "claude-opus-5-5", thinking: "hidden" })
+        .thinking,
+    ).toEqual({ type: "adaptive", display: "omitted" });
+  });
+
+  test("keeps forced tool use when thinking is off", () => {
+    const args = llm.convertArgs({
+      model: "claude-haiku-5-5",
+      toolChoice,
+      thinking: "off",
+    });
+    expect(args.tool_choice).toEqual({ type: "tool", name: "say_hello" });
+  });
+
+  test("drops temperature while thinking", () => {
+    const args = llm.convertArgs({
+      model: "claude-sonnet-4-5",
+      thinking: "shown",
+      temperature: 0.2,
+      topP: 0.5,
+    });
+    expect(args.temperature).toBeUndefined();
+    expect(args.top_p).toBeUndefined();
+    expect(args.thinking).toEqual({ type: "enabled", budget_tokens: 1024 });
+  });
+
+  test("asks for fast mode on models that have it", () => {
+    expect(
+      (llm.convertArgs({ model: "claude-opus-5-5", fast: true }) as any).speed,
+    ).toBe("fast");
+    expect(
+      (llm.convertArgs({ model: "claude-sonnet-5-5", fast: true }) as any)
+        .speed,
+    ).toBeUndefined();
+  });
+
+  test("adds the fast mode beta header on research preview models", async () => {
+    const fetchSpy = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            id: "msg_1",
+            type: "message",
+            role: "assistant",
+            content: [{ type: "text", text: "Hi" }],
+            usage: { input_tokens: 1, output_tokens: 1 },
+          }),
+          { headers: { "Content-Type": "application/json" } },
+        ),
+    );
+    const fastLlm = new Anthropic({
+      apiKey: "test-api-key",
+      model: "claude-opus-4-8",
+    });
+    (fastLlm as any).fetch = fetchSpy;
+    const gen = fastLlm.streamChat(
+      [{ role: "user", content: "hello" }],
+      new AbortController().signal,
+      { fast: true, stream: false },
+    );
+    for await (const _ of gen) {
+      // drain
+    }
+    const [, init] = fetchSpy.mock.calls[0] as unknown as [URL, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    expect(headers["anthropic-beta"]).toContain("fast-mode-2026-02-01");
+    expect(JSON.parse(init.body as string).speed).toBe("fast");
+  });
+
+  test("offers every menu row for Claude", () => {
+    const controls = new Anthropic({
+      apiKey: "k",
+      model: "claude-opus-5-5",
+    }).getModelControls();
+    expect(controls).toMatchObject({
+      format: "anthropic",
+      thinkingModes: ["off", "hidden", "shown"],
+      fast: true,
+      maxContextLength: 1_000_000,
+    });
+    expect(controls.contextOptions.at(-1)).toBe(1_000_000);
+  });
+});
