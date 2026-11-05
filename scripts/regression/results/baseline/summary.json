@@ -1,0 +1,419 @@
+{
+  "label": "baseline",
+  "startedAt": "2026-11-05T17:30:37.533Z",
+  "node": "v22.23.2",
+  "steps": [
+    {
+      "area": "packages/config-types",
+      "name": "build",
+      "command": "npm run build",
+      "exitCode": 0,
+      "timedOut": false,
+      "durationMs": 911
+    },
+    {
+      "area": "packages/fetch",
+      "name": "build",
+      "command": "npm run build",
+      "exitCode": 0,
+      "timedOut": false,
+      "durationMs": 1237
+    },
+    {
+      "area": "packages/llm-info",
+      "name": "build",
+      "command": "npm run build",
+      "exitCode": 0,
+      "timedOut": false,
+      "durationMs": 1536
+    },
+    {
+      "area": "packages/terminal-security",
+      "name": "build",
+      "command": "npm run build",
+      "exitCode": 0,
+      "timedOut": false,
+      "durationMs": 1406
+    },
+    {
+      "area": "packages/config-yaml",
+      "name": "build",
+      "command": "npm run build",
+      "exitCode": 0,
+      "timedOut": false,
+      "durationMs": 2912
+    },
+    {
+      "area": "packages/openai-adapters",
+      "name": "build",
+      "command": "npm run build",
+      "exitCode": 0,
+      "timedOut": false,
+      "durationMs": 3300
+    },
+    {
+      "area": "core",
+      "name": "build",
+      "command": "npm run build",
+      "exitCode": 0,
+      "timedOut": false,
+      "durationMs": 9741
+    },
+    {
+      "area": "core",
+      "name": "tsc",
+      "command": "npx tsc -p ./ --noEmit",
+      "exitCode": 0,
+      "timedOut": false,
+      "durationMs": 8245,
+      "result": {
+        "errors": 0
+      }
+    },
+    {
+      "area": "core",
+      "name": "eslint",
+      "command": "npx eslint . --ext ts -f json -o core.eslint.json",
+      "exitCode": 0,
+      "timedOut": false,
+      "durationMs": 11170,
+      "result": {
+        "files": 622,
+        "errors": 0,
+        "warnings": 0,
+        "rules": {}
+      }
+    },
+    {
+      "area": "core",
+      "name": "jest",
+      "command": "npx jest --json --outputFile=/Users/lmolotii/Projects/nextclidev/nextcli/scripts/regression/results/baseline/raw/core.jest.json",
+      "exitCode": 0,
+      "timedOut": false,
+      "durationMs": 43667,
+      "result": {
+        "total": 905,
+        "passed": 810,
+        "failed": 0,
+        "skipped": 95,
+        "suitesFailed": 0,
+        "failing": []
+      }
+    },
+    {
+      "area": "core",
+      "name": "vitest",
+      "command": "npx vitest run --reporter=json --outputFile=/Users/lmolotii/Projects/nextclidev/nextcli/scripts/regression/results/baseline/raw/core.vitest.json",
+      "exitCode": 0,
+      "timedOut": false,
+      "durationMs": 133581,
+      "result": {
+        "total": 1832,
+        "passed": 1802,
+        "failed": 0,
+        "skipped": 30,
+        "suitesFailed": 0,
+        "failing": []
+      }
+    },
+    {
+      "area": "gui",
+      "name": "tsc",
+      "command": "npx tsc -p ./ --noEmit",
+      "exitCode": 0,
+      "timedOut": false,
+      "durationMs": 13141,
+      "result": {
+        "errors": 0
+      }
+    },
+    {
+      "area": "gui",
+      "name": "eslint",
+      "command": "npx eslint --ext ts -f json -o gui.eslint.json",
+      "exitCode": 0,
+      "timedOut": false,
+      "durationMs": 687,
+      "result": {
+        "files": 0,
+        "errors": 0,
+        "warnings": 0,
+        "rules": {}
+      }
+    },
+    {
+      "area": "gui",
+      "name": "vitest",
+      "command": "npx vitest run --reporter=json --outputFile=/Users/lmolotii/Projects/nextclidev/nextcli/scripts/regression/results/baseline/raw/gui.vitest.json",
+      "exitCode": 0,
+      "timedOut": false,
+      "durationMs": 21563,
+      "result": {
+        "total": 433,
+        "passed": 433,
+        "failed": 0,
+        "skipped": 0,
+        "suitesFailed": 0,
+        "failing": []
+      }
+    },
+    {
+      "area": "extensions/vscode",
+      "name": "tsc",
+      "command": "npx tsc -p ./ --noEmit",
+      "exitCode": 0,
+      "timedOut": false,
+      "durationMs": 9310,
+      "result": {
+        "errors": 0
+      }
+    },
+    {
+      "area": "extensions/vscode",
+      "name": "eslint",
+      "command": "npx eslint src --ext ts -f json -o extensions_vscode.eslint.json",
+      "exitCode": 0,
+      "timedOut": false,
+      "durationMs": 7909,
+      "result": {
+        "files": 79,
+        "errors": 0,
+        "warnings": 221,
+        "rules": {
+          "@typescript-eslint/no-floating-promises": 123,
+          "@typescript-eslint/no-misused-promises": 9,
+          "curly": 16,
+          "eqeqeq": 1,
+          "import/order": 69,
+          "no-negated-condition": 3
+        }
+      }
+    },
+    {
+      "area": "extensions/vscode",
+      "name": "vitest",
+      "command": "npx vitest run --reporter=json --outputFile=/Users/lmolotii/Projects/nextclidev/nextcli/scripts/regression/results/baseline/raw/extensions_vscode.vitest.json",
+      "exitCode": 0,
+      "timedOut": false,
+      "durationMs": 4235,
+      "result": {
+        "total": 132,
+        "passed": 132,
+        "failed": 0,
+        "skipped": 0,
+        "suitesFailed": 0,
+        "failing": []
+      }
+    },
+    {
+      "area": "extensions/cli",
+      "name": "tsc",
+      "command": "npx --no tsc --noEmit",
+      "exitCode": 0,
+      "timedOut": false,
+      "durationMs": 5584,
+      "result": {
+        "errors": 0
+      }
+    },
+    {
+      "area": "extensions/cli",
+      "name": "eslint",
+      "command": "npx --no eslint . -f json -o extensions_cli.eslint.json",
+      "exitCode": 0,
+      "timedOut": false,
+      "durationMs": 6511,
+      "result": {
+        "files": 446,
+        "errors": 0,
+        "warnings": 2,
+        "rules": {
+          "(parse error)": 2
+        }
+      }
+    },
+    {
+      "area": "extensions/cli",
+      "name": "vitest",
+      "command": "npx --no vitest run --reporter=json --outputFile=/Users/lmolotii/Projects/nextclidev/nextcli/scripts/regression/results/baseline/raw/extensions_cli.vitest.json",
+      "exitCode": 0,
+      "timedOut": false,
+      "durationMs": 47405,
+      "result": {
+        "total": 1923,
+        "passed": 1896,
+        "failed": 0,
+        "skipped": 27,
+        "suitesFailed": 0,
+        "failing": []
+      }
+    },
+    {
+      "area": "extensions/cli",
+      "name": "vitest-e2e",
+      "command": "npx --no vitest run --config vitest.e2e.config.ts --reporter=json --outputFile=/Users/lmolotii/Projects/nextclidev/nextcli/scripts/regression/results/baseline/raw/extensions_cli.vitest-e2e.json",
+      "exitCode": 0,
+      "timedOut": false,
+      "durationMs": 19401,
+      "result": {
+        "total": 66,
+        "passed": 63,
+        "failed": 0,
+        "skipped": 3,
+        "suitesFailed": 0,
+        "failing": []
+      }
+    },
+    {
+      "area": "extensions/cli",
+      "name": "smoke",
+      "command": "node smoke-test.mjs",
+      "exitCode": 0,
+      "timedOut": false,
+      "durationMs": 4062
+    },
+    {
+      "area": "packages/config-types",
+      "name": "tsc",
+      "command": "npx tsc --noEmit",
+      "exitCode": 0,
+      "timedOut": false,
+      "durationMs": 1574,
+      "result": {
+        "errors": 0
+      }
+    },
+    {
+      "area": "packages/llm-info",
+      "name": "tsc",
+      "command": "npx tsc --noEmit",
+      "exitCode": 0,
+      "timedOut": false,
+      "durationMs": 1355,
+      "result": {
+        "errors": 0
+      }
+    },
+    {
+      "area": "packages/fetch",
+      "name": "tsc",
+      "command": "npx tsc --noEmit",
+      "exitCode": 0,
+      "timedOut": false,
+      "durationMs": 1322,
+      "result": {
+        "errors": 0
+      }
+    },
+    {
+      "area": "packages/fetch",
+      "name": "vitest",
+      "command": "npx vitest run --reporter=json --outputFile=/Users/lmolotii/Projects/nextclidev/nextcli/scripts/regression/results/baseline/raw/packages_fetch.vitest.json",
+      "exitCode": 0,
+      "timedOut": false,
+      "durationMs": 3012,
+      "result": {
+        "total": 97,
+        "passed": 97,
+        "failed": 0,
+        "skipped": 0,
+        "suitesFailed": 0,
+        "failing": []
+      }
+    },
+    {
+      "area": "packages/terminal-security",
+      "name": "tsc",
+      "command": "npx tsc --noEmit",
+      "exitCode": 0,
+      "timedOut": false,
+      "durationMs": 972,
+      "result": {
+        "errors": 0
+      }
+    },
+    {
+      "area": "packages/terminal-security",
+      "name": "vitest",
+      "command": "npx vitest run --reporter=json --outputFile=/Users/lmolotii/Projects/nextclidev/nextcli/scripts/regression/results/baseline/raw/packages_terminal-security.vitest.json",
+      "exitCode": 0,
+      "timedOut": false,
+      "durationMs": 1777,
+      "result": {
+        "total": 482,
+        "passed": 482,
+        "failed": 0,
+        "skipped": 0,
+        "suitesFailed": 0,
+        "failing": []
+      }
+    },
+    {
+      "area": "packages/config-yaml",
+      "name": "tsc",
+      "command": "npx tsc --noEmit",
+      "exitCode": 0,
+      "timedOut": false,
+      "durationMs": 2637,
+      "result": {
+        "errors": 0
+      }
+    },
+    {
+      "area": "packages/config-yaml",
+      "name": "jest",
+      "command": "npx jest --json --outputFile=/Users/lmolotii/Projects/nextclidev/nextcli/scripts/regression/results/baseline/raw/packages_config-yaml.jest.json",
+      "exitCode": 0,
+      "timedOut": false,
+      "durationMs": 8638,
+      "result": {
+        "total": 289,
+        "passed": 288,
+        "failed": 0,
+        "skipped": 1,
+        "suitesFailed": 0,
+        "failing": []
+      }
+    },
+    {
+      "area": "packages/openai-adapters",
+      "name": "tsc",
+      "command": "npx tsc --noEmit",
+      "exitCode": 0,
+      "timedOut": false,
+      "durationMs": 3666,
+      "result": {
+        "errors": 0
+      }
+    },
+    {
+      "area": "packages/openai-adapters",
+      "name": "vitest",
+      "command": "npx vitest run --reporter=json --outputFile=/Users/lmolotii/Projects/nextclidev/nextcli/scripts/regression/results/baseline/raw/packages_openai-adapters.vitest.json",
+      "exitCode": 0,
+      "timedOut": false,
+      "durationMs": 4158,
+      "result": {
+        "total": 361,
+        "passed": 356,
+        "failed": 0,
+        "skipped": 5,
+        "suitesFailed": 0,
+        "failing": []
+      }
+    },
+    {
+      "area": "packages/continue-sdk/typescript",
+      "name": "tsc",
+      "command": "npx --no tsc --noEmit",
+      "skipped": "dependencies not installed"
+    },
+    {
+      "area": "packages/continue-sdk/typescript",
+      "name": "jest",
+      "command": "npx --no jest --json --outputFile=/Users/lmolotii/Projects/nextclidev/nextcli/scripts/regression/results/baseline/raw/packages_continue-sdk_typescript.jest.json",
+      "skipped": "dependencies not installed"
+    }
+  ],
+  "finishedAt": "2026-11-05T17:47:33.547Z"
+}

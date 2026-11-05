@@ -1,0 +1,195 @@
+{
+  "$comment": "Known deprecated npm packages, read by scripts/ci/check-deprecations.mjs. Each entry names the phase of the dependency-upgrade plan that removes it. Delete an entry when its fix lands; --strict fails on entries that no longer match anything. Omit `version` to allow every version of a package.",
+  "entries": [
+    {
+      "name": "inflight",
+      "version": "1.0.6",
+      "fix": "P1 jest 30 / vsce 4; P2 ESLint 10; P3 drop adf-to-md"
+    },
+    {
+      "name": "glob",
+      "version": "7.2.3",
+      "fix": "P1 jest 30 / vsce 4 / json-schema-to-typescript 16; P2 ESLint 10; P3 drop adf-to-md"
+    },
+    {
+      "name": "rimraf",
+      "version": "3.0.2",
+      "fix": "P2 ESLint 10; P3 drop adf-to-md"
+    },
+    {
+      "name": "eslint",
+      "version": "8.57.1",
+      "fix": "P2 ESLint 10; P3 drop adf-to-md (pulls it into core's production tree)"
+    },
+    {
+      "name": "@humanwhocodes/config-array",
+      "version": "0.13.0",
+      "fix": "P2 ESLint 10; P3 drop adf-to-md"
+    },
+    {
+      "name": "@humanwhocodes/object-schema",
+      "version": "2.0.3",
+      "fix": "P2 ESLint 10; P3 drop adf-to-md"
+    },
+    {
+      "name": "abab",
+      "version": "2.0.6",
+      "fix": "P1 remove jest-environment-jsdom from core"
+    },
+    {
+      "name": "domexception",
+      "version": "4.0.0",
+      "fix": "P1 remove jest-environment-jsdom from core"
+    },
+    {
+      "name": "whatwg-encoding",
+      "version": "2.0.0",
+      "fix": "P1 remove jest-environment-jsdom from core"
+    },
+    {
+      "name": "whatwg-encoding",
+      "version": "3.1.1",
+      "fix": "P4 jsdom ^29 and encoding-sniffer ^1.0.2 override"
+    },
+    {
+      "name": "uuid",
+      "version": "9.0.1",
+      "fix": "P1 uuid ^11.1"
+    },
+    {
+      "name": "gauge",
+      "version": "5.0.2",
+      "fix": "P1 puppeteer-chromium-resolver 25"
+    },
+    {
+      "name": "node-domexception",
+      "version": "1.0.0",
+      "fix": "P4 drop direct node-fetch use and shim node-domexception"
+    },
+    {
+      "name": "vectordb",
+      "version": "0.4.20",
+      "fix": "P5 @lancedb/lancedb 0.22.3"
+    },
+    {
+      "name": "prebuild-install",
+      "version": "7.1.3",
+      "fix": "P6 replace sqlite3 and dbinfoz, override sharp ^0.34"
+    },
+    {
+      "name": "@smithy/core",
+      "version": "3.24.6",
+      "fix": "P0.5 security: npm update to 3.39.0 (log-redaction bug, core runtime via AWS SDK)"
+    },
+    {
+      "name": "@smithy/smithy-client",
+      "version": "4.12.7",
+      "fix": "P0.5 security: npm update to 4.15.2 (log-redaction bug, openai-adapters runtime)"
+    },
+    {
+      "name": "@xmldom/xmldom",
+      "version": "0.9.10",
+      "fix": "P0.5 security: npm update to 0.9.12 (core runtime via plist)"
+    },
+    {
+      "name": "basic-ftp",
+      "version": "5.0.5",
+      "fix": "P0.5 security: npm update to 5.3.1"
+    },
+    {
+      "name": "basic-ftp",
+      "version": "5.2.0",
+      "fix": "P0.5 security: npm update to 5.3.1"
+    },
+    {
+      "name": "@ungap/structured-clone",
+      "version": "1.2.0",
+      "fix": "P0.5 security: npm update to 1.4.0 (CWE-502)"
+    },
+    {
+      "name": "@ungap/structured-clone",
+      "version": "1.3.0",
+      "fix": "P0.5 security: npm update to 1.4.0 (CWE-502)"
+    },
+    {
+      "name": "glob",
+      "version": "10.5.0",
+      "fix": "P1 bump rimraf/semantic-release/vitest coverage/mocha; override glob ^13 for what's left (tailwindcss 3 via sucrase)"
+    },
+    {
+      "name": "glob",
+      "version": "11.0.2",
+      "fix": "P1 bump vscode-extension-tester"
+    },
+    {
+      "name": "glob",
+      "version": "11.0.3",
+      "fix": "P1 cli direct glob ^13; bump @openapitools/openapi-generator-cli"
+    },
+    {
+      "name": "eslint",
+      "version": "9.33.0",
+      "fix": "P2 ESLint 10 in extensions/cli"
+    },
+    {
+      "name": "uuid",
+      "version": "8.3.2",
+      "fix": "P1 drop uuidv4, bump vsce/ovsx/vscode-extension-tester; P6 drop dbinfoz"
+    },
+    {
+      "name": "uuidv4",
+      "version": "6.2.13",
+      "fix": "P1 replace the direct uuidv4 dependency in extensions/vscode with uuid"
+    },
+    {
+      "name": "@types/dompurify",
+      "version": "3.2.0",
+      "fix": "P1 remove from gui (dompurify ships its own types)"
+    },
+    {
+      "name": "deep-diff",
+      "version": "0.3.8",
+      "fix": "P1 drop redux-logger from gui (gui/src/redux/store.ts)"
+    },
+    {
+      "name": "@opentelemetry/propagator-jaeger",
+      "version": "2.0.1",
+      "fix": "P1 bump @opentelemetry/sdk-node in cli; docs/ via @c15t/react bump"
+    },
+    {
+      "name": "@opentelemetry/sdk-trace-base",
+      "version": "2.0.1",
+      "fix": "P1 bump @opentelemetry/* in cli; docs/ via @c15t/react bump"
+    },
+    {
+      "name": "@opentelemetry/sdk-trace-base",
+      "version": "2.6.0",
+      "fix": "P1 docs/ via @c15t/react bump"
+    },
+    {
+      "name": "@opentelemetry/sdk-trace-node",
+      "version": "2.0.1",
+      "fix": "P1 bump @opentelemetry/sdk-node in cli; docs/ via @c15t/react bump"
+    },
+    {
+      "name": "semver-diff",
+      "version": "5.0.0",
+      "fix": "P1 bump semantic-release in packages/*"
+    },
+    {
+      "name": "puppeteer",
+      "version": "22.14.0",
+      "fix": "P1 bump mintlify in docs/"
+    },
+    {
+      "name": "prebuild-install",
+      "version": "7.1.1",
+      "fix": "P1 delete binary/ (pkg); P6 sharp ^0.34 override in core/vendor"
+    },
+    {
+      "name": "@lancedb/vectordb-darwin-arm64",
+      "version": "0.4.20",
+      "fix": "P5 @lancedb/lancedb 0.22.3"
+    }
+  ]
+}

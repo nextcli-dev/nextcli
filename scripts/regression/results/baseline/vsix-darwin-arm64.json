@@ -1,0 +1,71 @@
+{
+  "target": "darwin-arm64",
+  "version": "1.6.3",
+  "bytes": 76900813,
+  "files": 397,
+  "nativeModules": [
+    "extension/bin/napi-v3/darwin/arm64/onnxruntime_binding.node",
+    "extension/bin/napi-v3/darwin/x64/onnxruntime_binding.node",
+    "extension/out/Release/node_sqlite3.node",
+    "extension/out/build/Release/node_sqlite3.node",
+    "extension/out/crypt32-ia32-ICQ243Y3.node",
+    "extension/out/crypt32-x64-DGNGT7PC.node",
+    "extension/out/node_modules/@lancedb/vectordb-darwin-arm64/index.node",
+    "extension/out/onnxruntime_binding-4LK5T42I.node",
+    "extension/out/onnxruntime_binding-I6FPYYOQ.node",
+    "extension/out/onnxruntime_binding-L2PGCXTQ.node",
+    "extension/out/onnxruntime_binding-NH5JCQKK.node",
+    "extension/out/onnxruntime_binding-OTOMEMLG.node",
+    "extension/out/onnxruntime_binding-ZTPWXQRS.node"
+  ],
+  "topLevel": [
+    [
+      "extension/gui/assets",
+      56
+    ],
+    [
+      "extension/out/node_modules",
+      53
+    ],
+    [
+      "extension/gui/textmate-syntaxes",
+      48
+    ],
+    [
+      "extension/gui/logos",
+      46
+    ],
+    [
+      "extension/out/tree-sitter-wasms",
+      36
+    ],
+    [
+      "extension/tree-sitter/code-snippet-queries",
+      15
+    ],
+    [
+      "extension/tree-sitter/root-path-context-queries",
+      13
+    ],
+    [
+      "extension/models/all-MiniLM-L6-v2",
+      7
+    ],
+    [
+      "extension/gui/fonts",
+      5
+    ],
+    [
+      "extension/bin/napi-v3",
+      4
+    ],
+    [
+      "extension/tree-sitter/import-queries",
+      4
+    ],
+    [
+      "extension/tree-sitter/static-context-queries",
+      4
+    ]
+  ]
+}

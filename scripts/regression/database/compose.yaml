@@ -1,0 +1,28 @@
+# Throwaway databases for scripts/regression/generate-database-fixture.mjs.
+# Start:  podman-compose -f scripts/regression/database/compose.yaml up -d   (or docker compose)
+# Stop:   podman-compose -f scripts/regression/database/compose.yaml down
+# Ports are offset (+10000) so they don't clash with local databases.
+services:
+  postgres:
+    image: docker.io/library/postgres:16-alpine
+    environment:
+      POSTGRES_USER: fixture
+      POSTGRES_PASSWORD: fixture-password
+      POSTGRES_DB: shop
+    ports: ["15432:5432"]
+  mysql:
+    image: docker.io/library/mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: fixture-root
+      MYSQL_USER: fixture
+      MYSQL_PASSWORD: fixture-password
+      MYSQL_DATABASE: shop
+    ports: ["13306:3306"]
+  mssql:
+    # amd64-only image; on Apple Silicon it runs under emulation and may not start.
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: Fixture-Passw0rd!
+    ports: ["11433:1433"]
