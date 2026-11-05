@@ -210,4 +210,30 @@ describe("isModelCapable", () => {
       ).toBe(false);
     });
   });
+
+  describe("Provider rules and name patterns together", () => {
+    test("should let a catalog provider's explicit no win over the name", () => {
+      // core rejects it: tool calls return 400
+      expect(
+        isModelCapable("openrouter", "Kimi K2 free", "moonshotai/kimi-k2:free"),
+      ).toBe(false);
+      expect(
+        isModelCapable("openrouter", "Kimi K2", "moonshotai/kimi-k2"),
+      ).toBe(true);
+    });
+
+    test("should keep name patterns for generic OpenAI-compatible endpoints", () => {
+      expect(isModelCapable("openai", "DeepSeek", "deepseek-v4-pro")).toBe(
+        true,
+      );
+      expect(isModelCapable("openai", "GLM", "glm-4.6")).toBe(true);
+      expect(isModelCapable("openai", "GLM", "z-ai/glm-4.6")).toBe(true);
+      expect(isModelCapable("ollama", "Qwen3 Coder", "qwen3-coder")).toBe(true);
+    });
+
+    test("should not match glm inside another word", () => {
+      expect(isModelCapable("openai", "CogVLM", "cogvlm")).toBe(false);
+      expect(isModelCapable("openai", "CogVLM2", "cogvlm2-video")).toBe(false);
+    });
+  });
 });

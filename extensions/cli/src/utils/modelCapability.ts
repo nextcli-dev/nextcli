@@ -16,17 +16,30 @@ const CAPABLE_NAME_PATTERNS = [
   /nemotron/,
   /grok/,
   /mistral/,
-  /devstral/,
-  /glm/,
-  /minimax/,
+  // Anchored: these families must start the id or follow a separator
+  /(^|[^a-z])devstral/,
+  /(^|[^a-z])glm/,
+  /(^|[^a-z])minimax/,
 ];
+
+// Providers whose model ids are free-form (OpenAI-compatible gateways, local
+// servers): their tool-support rules only know some ids, so a "no" there
+// still lets the name patterns decide
+const GENERIC_ENDPOINT_PROVIDERS = new Set([
+  "openai",
+  "azure",
+  "ollama",
+  "lmstudio",
+]);
 
 /**
  * Determines if a model is recommended for use with `cn`.
  *
- * A model is capable when any source says it can call tools: the config
- * (`capabilities: [tool_use]`), the provider tool-support rules shared with
- * the IDE extensions, the recommended agent models, or the name patterns.
+ * In order: the config (`capabilities: [tool_use]`) decides; then the
+ * provider tool-support rules shared with the IDE extensions (a "no" is final
+ * for a real model id on a catalog provider, e.g. openrouter's
+ * moonshotai/kimi-k2:free); then the recommended agent models and the name
+ * patterns.
  */
 export function isModelCapable(
   provider: string,
@@ -38,9 +51,15 @@ export function isModelCapable(
     return true;
   }
 
-  const providerSupportsTools = PROVIDER_TOOL_SUPPORT[provider];
-  if (providerSupportsTools?.(model ?? name)) {
-    return true;
+  const providerRule = PROVIDER_TOOL_SUPPORT[provider];
+  if (providerRule) {
+    if (providerRule(model ?? name)) {
+      return true;
+    }
+    // Rules match model ids, not display names
+    if (model && !GENERIC_ENDPOINT_PROVIDERS.has(provider)) {
+      return false;
+    }
   }
 
   const names = [name, model]
