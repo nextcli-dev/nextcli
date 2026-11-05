@@ -6,9 +6,13 @@
   "engines": {
     "sqlite": {
       "connection": {
-        "filename": "<fixture>/shop.sqlite",
+        "filename": "<temp>/shop.sqlite",
         "database": "shop"
       },
+      "schema": [
+        "CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL UNIQUE, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)",
+        "CREATE TABLE orders (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id), total NUMERIC(10,2) NOT NULL, status TEXT DEFAULT 'new')"
+      ],
       "tablesAndSchemas": {
         "users": {
           "id": {
@@ -67,6 +71,12 @@
         "password": "<redacted>",
         "database": "shop"
       },
+      "schema": [
+        "DROP TABLE IF EXISTS orders",
+        "DROP TABLE IF EXISTS users",
+        "CREATE TABLE users (id SERIAL PRIMARY KEY, email VARCHAR(255) NOT NULL UNIQUE, created_at TIMESTAMP DEFAULT now())",
+        "CREATE TABLE orders (id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), total NUMERIC(10,2) NOT NULL, status TEXT DEFAULT 'new')"
+      ],
       "tablesAndSchemas": {
         "users": {
           "id": "integer",
@@ -90,6 +100,12 @@
         "password": "<redacted>",
         "database": "shop"
       },
+      "schema": [
+        "DROP TABLE IF EXISTS orders",
+        "DROP TABLE IF EXISTS users",
+        "CREATE TABLE users (id INT AUTO_INCREMENT PRIMARY KEY, email VARCHAR(255) NOT NULL UNIQUE, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)",
+        "CREATE TABLE orders (id INT AUTO_INCREMENT PRIMARY KEY, user_id INT NOT NULL, total DECIMAL(10,2) NOT NULL, status TEXT, FOREIGN KEY (user_id) REFERENCES users(id))"
+      ],
       "tablesAndSchemas": {
         "orders": {
           "id": {
@@ -151,6 +167,14 @@
           "trustServerCertificate": true
         }
       },
+      "schema": [
+        "IF DB_ID('shop') IS NULL CREATE DATABASE shop",
+        "USE shop",
+        "IF OBJECT_ID('orders') IS NOT NULL DROP TABLE orders",
+        "IF OBJECT_ID('users') IS NOT NULL DROP TABLE users",
+        "CREATE TABLE users (id INT IDENTITY PRIMARY KEY, email NVARCHAR(255) NOT NULL UNIQUE, created_at DATETIME2 DEFAULT SYSDATETIME())",
+        "CREATE TABLE orders (id INT IDENTITY PRIMARY KEY, user_id INT NOT NULL REFERENCES users(id), total DECIMAL(10,2) NOT NULL, status NVARCHAR(50) DEFAULT 'new')"
+      ],
       "error": "mssql not ready after 180s: Failed to connect to 127.0.0.1:11433 - Could not connect (sequence)"
     }
   }
