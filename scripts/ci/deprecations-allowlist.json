@@ -4,12 +4,12 @@
     {
       "name": "inflight",
       "version": "1.0.6",
-      "fix": "P1 jest 30 / vsce 4; P2 ESLint 10; P3 drop adf-to-md"
+      "fix": "P1 vsce 4; P2 ESLint 10; P3 drop adf-to-md"
     },
     {
       "name": "glob",
       "version": "7.2.3",
-      "fix": "P1 jest 30 / vsce 4 / json-schema-to-typescript 16; P2 ESLint 10; P3 drop adf-to-md"
+      "fix": "P1 vsce 4 / json-schema-to-typescript 16; P2 ESLint 10; P3 drop adf-to-md"
     },
     {
       "name": "rimraf",
@@ -30,21 +30,6 @@
       "name": "@humanwhocodes/object-schema",
       "version": "2.0.3",
       "fix": "P2 ESLint 10; P3 drop adf-to-md"
-    },
-    {
-      "name": "abab",
-      "version": "2.0.6",
-      "fix": "P1 remove jest-environment-jsdom from core"
-    },
-    {
-      "name": "domexception",
-      "version": "4.0.0",
-      "fix": "P1 remove jest-environment-jsdom from core"
-    },
-    {
-      "name": "whatwg-encoding",
-      "version": "2.0.0",
-      "fix": "P1 remove jest-environment-jsdom from core"
     },
     {
       "name": "whatwg-encoding",

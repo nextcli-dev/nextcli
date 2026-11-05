@@ -208,7 +208,7 @@ describe("convertJsonMcpConfigToYamlMcpConfig", () => {
 
     expect(() =>
       convertJsonMcpConfigToYamlMcpConfig("invalid", invalidConfig),
-    ).toThrowError("Invalid MCP server configuration");
+    ).toThrow("Invalid MCP server configuration");
   });
 });
 
@@ -440,9 +440,9 @@ describe("convertYamlMcpConfigToJsonMcpConfig", () => {
       invalid: "config",
     } as any;
 
-    expect(() =>
-      convertYamlMcpConfigToJsonMcpConfig(invalidConfig),
-    ).toThrowError("Invalid MCP server configuration");
+    expect(() => convertYamlMcpConfigToJsonMcpConfig(invalidConfig)).toThrow(
+      "Invalid MCP server configuration",
+    );
   });
 });
 
