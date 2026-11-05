@@ -1,17 +1,23 @@
 #!/usr/bin/env node
 // Builds a search index with today's vectordb 0.4.20, the way nextcli writes
-// one, and saves it as a test fixture together with the expected search
-// results. Phase 5 of the dependency upgrade opens this fixture with the new
-// vector library to prove existing users' indexes still work without
-// re-embedding.
+// one, and records the search results it gives. Phase 5 of the dependency
+// upgrade drops LanceDB and rebuilds users' indexes from index.sqlite, so the
+// fixture keeps only the SQLite side; the test proves the rebuilt index gives
+// the same results without re-embedding.
 //
-// Run once, before vectordb is removed:
-//   node scripts/regression/generate-lancedb-fixture.mjs
+// Run before vectordb is removed:
+//   node scripts/regression/generate-lancedb-fixture.mjs [--lance-dir <dir>]
 //
 // Writes core/test/fixtures/regression/lancedb-legacy/:
-//   index/lancedb/      Lance tables (2 codebase tags, 2 docs tables)
-//   index/index.sqlite  lance_db_cache, tag_catalog, docs (as the app creates them)
+//   index/index.sqlite  lance_db_cache, tag_catalog, docs (as the app creates
+//                       them) and docs_chunks_cache (the Phase 4.5 backup of
+//                       docs chunks, which today exist only in LanceDB)
 //   golden.json         the embedding recipe, table names and top-k results
+//
+// The Lance tables (2 codebase tags, 2 docs tables, one with the old `baseurl`
+// column) are built in a temporary folder and deleted afterwards; they are not
+// committed. Pass --lance-dir to keep them, for example to test the Phase 4.5
+// backfill, which reads them with vectordb.
 //
 // Everything is deterministic: embeddings are hashed bag-of-words vectors,
 // UUIDs and timestamps derive from content, and the corpus is a fixed list.
@@ -20,11 +26,13 @@ import crypto from "node:crypto";
 import {
   existsSync,
   mkdirSync,
+  mkdtempSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { createRequire } from "node:module";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -175,12 +183,28 @@ function sqliteExec(db, sql, params = []) {
   );
 }
 
+function parseArgs(argv) {
+  const opts = { lanceDir: null };
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === "--lance-dir") opts.lanceDir = path.resolve(argv[++i]);
+    else throw new Error(`Unknown argument: ${argv[i]}`);
+  }
+  return opts;
+}
+
 async function main() {
+  const opts = parseArgs(process.argv.slice(2));
   if (existsSync(OUT)) rmSync(OUT, { recursive: true });
   const indexDir = path.join(OUT, "index");
   mkdirSync(indexDir, { recursive: true });
 
-  const conn = await lance.connect(path.join(indexDir, "lancedb"));
+  const lanceDir =
+    opts.lanceDir ?? mkdtempSync(path.join(os.tmpdir(), "nextcli-lancedb-"));
+  if (opts.lanceDir) {
+    if (existsSync(lanceDir)) rmSync(lanceDir, { recursive: true });
+    mkdirSync(lanceDir, { recursive: true });
+  }
+  const conn = await lance.connect(lanceDir);
   const db = new sqlite3.Database(path.join(indexDir, "index.sqlite"));
 
   // Schemas exactly as the app creates them.
@@ -219,6 +243,47 @@ async function main() {
             embeddingsProviderId STRING
         )`,
   );
+  // Phase 4.5's backup of docs chunks. Docs vectors live only in LanceDB
+  // today; this is the table the bridge release fills so Phase 5 can rebuild
+  // docs indexes without re-embedding. Vectors are JSON, as in lance_db_cache.
+  await sqliteExec(
+    db,
+    `CREATE TABLE docs_chunks_cache (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        starturl TEXT NOT NULL,
+        embeddingsProviderId TEXT NOT NULL,
+        title TEXT NOT NULL,
+        path TEXT NOT NULL,
+        content TEXT NOT NULL,
+        startline INTEGER NOT NULL,
+        endline INTEGER NOT NULL,
+        vector TEXT NOT NULL,
+        contentHash TEXT NOT NULL
+    )`,
+  );
+  await sqliteExec(
+    db,
+    "CREATE INDEX docs_chunks_cache_site ON docs_chunks_cache (embeddingsProviderId, starturl)",
+  );
+  const backupDocRows = async (embeddingsProviderId, rows, urlColumn) => {
+    for (const r of rows) {
+      await sqliteExec(
+        db,
+        "INSERT INTO docs_chunks_cache (starturl, embeddingsProviderId, title, path, content, startline, endline, vector, contentHash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+          r[urlColumn],
+          embeddingsProviderId,
+          r.title,
+          r.path,
+          r.content,
+          r.startline,
+          r.endline,
+          JSON.stringify(r.vector),
+          sha256(r.content),
+        ],
+      );
+    }
+  };
 
   // --- Codebase tables: one per branch tag, rows shaped like createLanceDbRows().
   const codeTables = [];
@@ -307,6 +372,7 @@ async function main() {
         }
       }
       await table.add(rows);
+      await backupDocRows(EMBEDDING_ID, rows, "starturl");
       await sqliteExec(
         db,
         "INSERT INTO docs (title, startUrl, favicon, embeddingsProviderId) VALUES (?, ?, ?, ?)",
@@ -337,6 +403,7 @@ async function main() {
       }
     }
     const table = await conn.createTable(legacyDocsTable, rows);
+    await backupDocRows(LEGACY_EMBEDDING_ID, rows, "baseurl");
     await table.alterColumns([{ path: "baseurl", rename: "starturl" }]);
   }
 
@@ -404,17 +471,27 @@ async function main() {
     topK: TOP_K,
     queries: results,
   };
+  if (!opts.lanceDir) rmSync(lanceDir, { recursive: true });
   writeFileSync(
     path.join(OUT, "golden.json"),
     JSON.stringify(golden, null, 2) + "\n",
   );
   console.log(
     `Wrote ${path.relative(ROOT, OUT)}: ${codeTables.map((t) => `${t.rows} rows`).join(", ")} in codebase tables, ` +
-      `${golden.docsTable.rows} docs rows, ${golden.legacyDocsTable.rows} legacy docs rows, ${results.length} queries.`,
+      `${golden.docsTable.rows} docs rows, ${golden.legacyDocsTable.rows} legacy docs rows, ${results.length} queries.` +
+      (opts.lanceDir
+        ? ` Lance tables kept in ${opts.lanceDir}.`
+        : " Lance tables deleted."),
   );
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exitCode = 1;
-});
+// Run only when called directly, so tests can import embed().
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  main().catch((err) => {
+    console.error(err);
+    process.exitCode = 1;
+  });
+}

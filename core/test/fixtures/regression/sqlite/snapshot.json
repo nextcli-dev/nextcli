@@ -27,6 +27,10 @@
         "rows": 2,
         "sql": "CREATE TABLE docs ( id INTEGER PRIMARY KEY AUTOINCREMENT, title STRING NOT NULL, startUrl STRING NOT NULL, favicon STRING, embeddingsProviderId STRING )"
       },
+      "docs_chunks_cache": {
+        "rows": 263,
+        "sql": "CREATE TABLE docs_chunks_cache ( id INTEGER PRIMARY KEY AUTOINCREMENT, starturl TEXT NOT NULL, embeddingsProviderId TEXT NOT NULL, title TEXT NOT NULL, path TEXT NOT NULL, content TEXT NOT NULL, startline INTEGER NOT NULL, endline INTEGER NOT NULL, vector TEXT NOT NULL, contentHash TEXT NOT NULL )"
+      },
       "lance_db_cache": {
         "rows": 264,
         "sql": "CREATE TABLE lance_db_cache ( uuid TEXT PRIMARY KEY, cacheKey TEXT NOT NULL, path TEXT NOT NULL, artifact_id TEXT NOT NULL, vector TEXT NOT NULL, startLine INTEGER NOT NULL, endLine INTEGER NOT NULL, contents TEXT NOT NULL )"
