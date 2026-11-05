@@ -7,8 +7,8 @@
 //   node scripts/regression/capture-baseline.mjs --label baseline
 //   node scripts/regression/capture-baseline.mjs --label p1 --only core,gui
 //
-// Writes scripts/regression/results/<label>/summary.json (meant to be
-// committed) plus raw reports and logs next to it (ignored by git).
+// Writes scripts/regression/results/<label>/summary.json plus raw reports
+// and logs next to it. The folder is git-ignored: results are machine-specific.
 
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
