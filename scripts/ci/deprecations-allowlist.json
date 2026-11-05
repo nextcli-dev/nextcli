@@ -77,41 +77,6 @@
       "fix": "P6 replace sqlite3 and dbinfoz, override sharp ^0.34"
     },
     {
-      "name": "@smithy/core",
-      "version": "3.24.6",
-      "fix": "P0.5 security: npm update to 3.39.0 (log-redaction bug, core runtime via AWS SDK)"
-    },
-    {
-      "name": "@smithy/smithy-client",
-      "version": "4.12.7",
-      "fix": "P0.5 security: npm update to 4.15.2 (log-redaction bug, openai-adapters runtime)"
-    },
-    {
-      "name": "@xmldom/xmldom",
-      "version": "0.9.10",
-      "fix": "P0.5 security: npm update to 0.9.12 (core runtime via plist)"
-    },
-    {
-      "name": "basic-ftp",
-      "version": "5.0.5",
-      "fix": "P0.5 security: npm update to 5.3.1"
-    },
-    {
-      "name": "basic-ftp",
-      "version": "5.2.0",
-      "fix": "P0.5 security: npm update to 5.3.1"
-    },
-    {
-      "name": "@ungap/structured-clone",
-      "version": "1.2.0",
-      "fix": "P0.5 security: npm update to 1.4.0 (CWE-502)"
-    },
-    {
-      "name": "@ungap/structured-clone",
-      "version": "1.3.0",
-      "fix": "P0.5 security: npm update to 1.4.0 (CWE-502)"
-    },
-    {
       "name": "glob",
       "version": "10.5.0",
       "fix": "P1 bump rimraf/semantic-release/vitest coverage/mocha; override glob ^13 for what's left (tailwindcss 3 via sucrase)"
