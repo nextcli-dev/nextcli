@@ -29,6 +29,8 @@ vi.mock("fs");
 vi.mock("uuid", () => ({
   v4: vi.fn(() => "test-uuid-123"),
 }));
+// uuid types v4 as overloads; the code under test only uses the string form.
+const mockUuidv4 = vi.mocked(uuidv4 as () => string);
 vi.mock("./util/logger.js", () => ({
   logger: {
     debug: vi.fn(),
@@ -458,7 +460,7 @@ describe("SessionManager", () => {
       const firstSession = createSession();
       const firstSessionId = firstSession.sessionId;
 
-      vi.mocked(uuidv4).mockReturnValue("new-uuid-456");
+      mockUuidv4.mockReturnValue("new-uuid-456");
 
       const secondSession = startNewSession();
 
@@ -479,7 +481,7 @@ describe("SessionManager", () => {
         },
       ];
 
-      vi.mocked(uuidv4).mockReturnValue("new-uuid-789");
+      mockUuidv4.mockReturnValue("new-uuid-789");
 
       const session = startNewSession(history);
 
@@ -490,7 +492,7 @@ describe("SessionManager", () => {
     it("should set the new session as current", () => {
       const originalSession = createSession();
 
-      vi.mocked(uuidv4).mockReturnValue("new-session-id");
+      mockUuidv4.mockReturnValue("new-session-id");
 
       const newSession = startNewSession();
       const currentSession = getCurrentSession();
@@ -503,7 +505,7 @@ describe("SessionManager", () => {
   describe("session isolation", () => {
     it("should not pollute new sessions with previous session history", () => {
       // Simulate first CLI session
-      vi.mocked(uuidv4).mockReturnValue("session-1");
+      mockUuidv4.mockReturnValue("session-1");
       const session1 = createSession();
       const history1: ChatHistoryItem[] = [
         {
@@ -524,7 +526,7 @@ describe("SessionManager", () => {
       updateSessionHistory(history1);
 
       // Simulate starting a new CLI session (without --resume)
-      vi.mocked(uuidv4).mockReturnValue("session-2");
+      mockUuidv4.mockReturnValue("session-2");
       const session2 = startNewSession([]);
 
       // New session should have clean state
@@ -536,7 +538,7 @@ describe("SessionManager", () => {
 
     it("should create independent sessions for concurrent operations", () => {
       // Create first session with some data
-      vi.mocked(uuidv4).mockReturnValue("concurrent-1");
+      mockUuidv4.mockReturnValue("concurrent-1");
       const session1 = createSession();
       updateSessionTitle("Session 1");
       updateSessionHistory([
@@ -550,7 +552,7 @@ describe("SessionManager", () => {
       ]);
 
       // Start a new session
-      vi.mocked(uuidv4).mockReturnValue("concurrent-2");
+      mockUuidv4.mockReturnValue("concurrent-2");
       const session2 = startNewSession([]);
 
       // Verify session2 is clean
@@ -561,7 +563,7 @@ describe("SessionManager", () => {
 
     it("should properly clear session state when transitioning between sessions", () => {
       // First session with complex history
-      vi.mocked(uuidv4).mockReturnValue("complex-session-1");
+      mockUuidv4.mockReturnValue("complex-session-1");
       const session1 = createSession();
       updateSessionTitle("Complex Session");
       const complexHistory: ChatHistoryItem[] = [
@@ -586,7 +588,7 @@ describe("SessionManager", () => {
       expect(getCurrentSession().history.length).toBe(2);
 
       // Start fresh session
-      vi.mocked(uuidv4).mockReturnValue("fresh-session-2");
+      mockUuidv4.mockReturnValue("fresh-session-2");
       const session2 = startNewSession([]);
 
       // Verify clean state

@@ -81,7 +81,6 @@
     "@types/shell-quote": "^1.7.5",
     "@types/supertest": "^6.0.3",
     "@types/turndown": "^5.0.5",
-    "@types/uuid": "^10.0.0",
     "@typescript-eslint/eslint-plugin": "^8.39.0",
     "@typescript-eslint/parser": "^8.39.0",
     "@vitest/ui": "^3.2.4",
@@ -131,7 +130,7 @@
     "tsx": "^4.20.3",
     "turndown": "^7.2.0",
     "typescript": "^5.8.3",
-    "uuid": "^9.0.1",
+    "uuid": "^11.1.1",
     "vitest": "^3.2.4",
     "winston": "^3.17.0",
     "yaml": "^2.8.0"
