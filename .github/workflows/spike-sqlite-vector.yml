@@ -1,0 +1,165 @@
+name: Spike S1 (sqlite-vector)
+
+# Throwaway: runs spikes/sqlite-vector/check.mjs on every platform the VS Code
+# extension ships for, under plain Node (the CLI) and under the minimum VS Code's
+# Electron in Node mode (the extension host). Not part of CI; lives on the
+# spike branch only.
+on:
+  push:
+    branches: [spike/sqlite-vector]
+    paths:
+      - "spikes/sqlite-vector/**"
+      - ".github/workflows/spike-sqlite-vector.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SQLITE_VECTOR_VERSION: "1.1.2"
+  VSCODE_VERSION: "1.101.0"
+
+jobs:
+  build-win32-arm64:
+    # sqlite-vector publishes no Windows arm64 build, so build it from source.
+    runs-on: windows-11-arm
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: CLANGARM64
+          update: false
+          path-type: inherit
+          install: >-
+            git
+            make
+            mingw-w64-clang-aarch64-clang
+            mingw-w64-clang-aarch64-llvm-tools
+
+      - name: Build vector.dll
+        run: |
+          git clone --depth 1 --branch "$SQLITE_VECTOR_VERSION" https://github.com/sqliteai/sqlite-vector.git sv
+          cd sv
+          which dlltool || ln -s "$(which llvm-dlltool)" /clangarm64/bin/dlltool
+          make extension CC=clang STRIP="llvm-strip --strip-unneeded dist/vector.dll"
+          file dist/vector.dll || true
+          ls -la dist
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sqlite-vector-win32-arm64
+          path: sv/dist/vector.dll
+          if-no-files-found: error
+
+  check:
+    needs: build-win32-arm64
+    # Report every platform even if the arm64 build fails.
+    if: ${{ !cancelled() }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: darwin-arm64, os: macos-15, vscode: darwin-arm64 }
+          - { target: darwin-x64, os: macos-15-intel, vscode: darwin }
+          - { target: linux-x64, os: ubuntu-24.04, vscode: linux-x64 }
+          - { target: linux-arm64, os: ubuntu-24.04-arm, vscode: linux-arm64 }
+          - { target: win32-x64, os: windows-2025, vscode: win32-x64-archive }
+          - {
+              target: win32-arm64,
+              os: windows-11-arm,
+              vscode: win32-arm64-archive,
+              node_arch: arm64,
+            }
+    name: check (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .nvmrc
+            spikes/sqlite-vector
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: ".nvmrc"
+          architecture: ${{ matrix.node_arch || '' }}
+
+      - name: Get the extension (npm)
+        if: matrix.target != 'win32-arm64'
+        run: |
+          dir="$RUNNER_TEMP/sv"
+          mkdir -p "$dir"
+          npm install --prefix "$dir" --ignore-scripts --no-audit --no-fund "@sqliteai/sqlite-vector@$SQLITE_VECTOR_VERSION"
+          ext=$(node -e 'console.log(require(process.argv[1]).getExtensionPath())' "$dir/node_modules/@sqliteai/sqlite-vector")
+          ls -la "$ext"
+          echo "EXT=$ext" >> "$GITHUB_ENV"
+
+      - name: Get the extension (built from source)
+        if: matrix.target == 'win32-arm64'
+        uses: actions/download-artifact@v8
+        with:
+          name: sqlite-vector-win32-arm64
+          path: ${{ runner.temp }}/sv
+
+      - name: Point at the built extension
+        if: matrix.target == 'win32-arm64'
+        run: echo "EXT=$RUNNER_TEMP/sv/vector.dll" >> "$GITHUB_ENV"
+
+      - name: Check under Node
+        continue-on-error: true
+        run: node spikes/sqlite-vector/check.mjs --ext "$EXT" --out "$RUNNER_TEMP/node.json"
+
+      - name: Download VS Code ${{ env.VSCODE_VERSION }}
+        run: |
+          url="https://update.code.visualstudio.com/$VSCODE_VERSION/${{ matrix.vscode }}/stable"
+          dir="$RUNNER_TEMP/vscode"
+          mkdir -p "$dir"
+          case "$RUNNER_OS" in
+            Linux)
+              curl -fsSL "$url" | tar -xz -C "$dir"
+              sudo apt-get update -qq
+              sudo apt-get install -y -qq --no-install-recommends libnss3 libgbm1 libasound2t64 libgtk-3-0t64 libxkbfile1 libsecret-1-0 > /dev/null
+              electron=$(ls "$dir"/VSCode-linux-*/code) ;;
+            macOS)
+              curl -fsSL -o "$dir/vscode.zip" "$url"
+              ditto -x -k "$dir/vscode.zip" "$dir"
+              # Extensions run in the Plugin helper, which allows loading
+              # libraries signed by other teams.
+              electron="$dir/Visual Studio Code.app/Contents/Frameworks/Code Helper (Plugin).app/Contents/MacOS/Code Helper (Plugin)" ;;
+            Windows)
+              curl -fsSL -o "$dir/vscode.zip" "$url"
+              pwsh -NoProfile -Command "Expand-Archive -Path '$dir/vscode.zip' -DestinationPath '$dir'"
+              electron="$dir/Code.exe" ;;
+          esac
+          ls -la "$electron"
+          echo "ELECTRON=$electron" >> "$GITHUB_ENV"
+
+      - name: Check under VS Code's Electron
+        continue-on-error: true
+        env:
+          ELECTRON_RUN_AS_NODE: "1"
+        run: '"$ELECTRON" spikes/sqlite-vector/check.mjs --ext "$EXT" --out "$RUNNER_TEMP/electron.json"'
+
+      - name: Summary
+        if: always()
+        run: |
+          node spikes/sqlite-vector/summary.mjs \
+            "${{ matrix.target }} CLI=$RUNNER_TEMP/node.json" \
+            "${{ matrix.target }} VS Code $VSCODE_VERSION=$RUNNER_TEMP/electron.json" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: reports-${{ matrix.target }}
+          path: |
+            ${{ runner.temp }}/node.json
+            ${{ runner.temp }}/electron.json
+          if-no-files-found: warn
