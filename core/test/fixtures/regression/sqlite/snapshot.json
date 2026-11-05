@@ -1,0 +1,40 @@
+{
+  "generatedWith": {
+    "sqlite3": "5.1.7",
+    "node": "v22.23.2"
+  },
+  "files": {
+    "sqlite/autocompleteCache.sqlite": {
+      "cache": {
+        "rows": 50,
+        "sql": "CREATE TABLE cache ( key TEXT PRIMARY KEY, value TEXT NOT NULL, timestamp INTEGER NOT NULL )"
+      }
+    },
+    "sqlite/devdata.sqlite": {
+      "tokens_generated": {
+        "rows": 3,
+        "sql": "CREATE TABLE tokens_generated ( id INTEGER PRIMARY KEY AUTOINCREMENT, model TEXT NOT NULL, provider TEXT NOT NULL, tokens_generated INTEGER NOT NULL, tokens_prompt INTEGER NOT NULL DEFAULT 0, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP )"
+      }
+    },
+    "sqlite/devdata-legacy.sqlite": {
+      "tokens_generated": {
+        "rows": 3,
+        "sql": "CREATE TABLE tokens_generated ( id INTEGER PRIMARY KEY AUTOINCREMENT, model TEXT NOT NULL, provider TEXT NOT NULL, tokens_generated INTEGER NOT NULL, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP )"
+      }
+    },
+    "lancedb-legacy/index/index.sqlite": {
+      "docs": {
+        "rows": 2,
+        "sql": "CREATE TABLE docs ( id INTEGER PRIMARY KEY AUTOINCREMENT, title STRING NOT NULL, startUrl STRING NOT NULL, favicon STRING, embeddingsProviderId STRING )"
+      },
+      "lance_db_cache": {
+        "rows": 264,
+        "sql": "CREATE TABLE lance_db_cache ( uuid TEXT PRIMARY KEY, cacheKey TEXT NOT NULL, path TEXT NOT NULL, artifact_id TEXT NOT NULL, vector TEXT NOT NULL, startLine INTEGER NOT NULL, endLine INTEGER NOT NULL, contents TEXT NOT NULL )"
+      },
+      "tag_catalog": {
+        "rows": 36,
+        "sql": "CREATE TABLE tag_catalog ( id INTEGER PRIMARY KEY AUTOINCREMENT, dir STRING NOT NULL, branch STRING NOT NULL, artifactId STRING NOT NULL, path STRING NOT NULL, cacheKey STRING NOT NULL, lastUpdated INTEGER NOT NULL )"
+      }
+    }
+  }
+}

@@ -1,0 +1,157 @@
+{
+  "generatedWith": {
+    "dbinfoz": "0.14.0",
+    "node": "v22.23.2"
+  },
+  "engines": {
+    "sqlite": {
+      "connection": {
+        "filename": "<fixture>/shop.sqlite",
+        "database": "shop"
+      },
+      "tablesAndSchemas": {
+        "users": {
+          "id": {
+            "type": "INTEGER",
+            "nullable": true,
+            "default": null,
+            "primaryKey": true
+          },
+          "email": {
+            "type": "TEXT",
+            "nullable": false,
+            "default": null,
+            "primaryKey": false
+          },
+          "created_at": {
+            "type": "DATETIME",
+            "nullable": true,
+            "default": "CURRENT_TIMESTAMP",
+            "primaryKey": false
+          }
+        },
+        "orders": {
+          "id": {
+            "type": "INTEGER",
+            "nullable": true,
+            "default": null,
+            "primaryKey": true
+          },
+          "user_id": {
+            "type": "INTEGER",
+            "nullable": false,
+            "default": null,
+            "primaryKey": false
+          },
+          "total": {
+            "type": "NUMERIC(10,2)",
+            "nullable": false,
+            "default": null,
+            "primaryKey": false
+          },
+          "status": {
+            "type": "TEXT",
+            "nullable": true,
+            "default": "'new'",
+            "primaryKey": false
+          }
+        }
+      },
+      "allTablesPrompt": "Schema for all tables on sqlite is {\"users\":{\"id\":{\"type\":\"INTEGER\",\"nullable\":true,\"default\":null,\"primaryKey\":true},\"email\":{\"type\":\"TEXT\",\"nullable\":false,\"default\":null,\"primaryKey\":false},\"created_at\":{\"type\":\"DATETIME\",\"nullable\":true,\"default\":\"CURRENT_TIMESTAMP\",\"primaryKey\":false}},\"orders\":{\"id\":{\"type\":\"INTEGER\",\"nullable\":true,\"default\":null,\"primaryKey\":true},\"user_id\":{\"type\":\"INTEGER\",\"nullable\":false,\"default\":null,\"primaryKey\":false},\"total\":{\"type\":\"NUMERIC(10,2)\",\"nullable\":false,\"default\":null,\"primaryKey\":false},\"status\":{\"type\":\"TEXT\",\"nullable\":true,\"default\":\"'new'\",\"primaryKey\":false}}}"
+    },
+    "postgres": {
+      "connection": {
+        "host": "127.0.0.1",
+        "port": 15432,
+        "user": "fixture",
+        "password": "<redacted>",
+        "database": "shop"
+      },
+      "tablesAndSchemas": {
+        "users": {
+          "id": "integer",
+          "created_at": "timestamp without time zone",
+          "email": "character varying"
+        },
+        "orders": {
+          "id": "integer",
+          "user_id": "integer",
+          "total": "numeric",
+          "status": "text"
+        }
+      },
+      "allTablesPrompt": "Schema for all tables on postgres is {\"users\":{\"id\":\"integer\",\"created_at\":\"timestamp without time zone\",\"email\":\"character varying\"},\"orders\":{\"id\":\"integer\",\"user_id\":\"integer\",\"total\":\"numeric\",\"status\":\"text\"}}"
+    },
+    "mysql": {
+      "connection": {
+        "host": "127.0.0.1",
+        "port": 13306,
+        "user": "fixture",
+        "password": "<redacted>",
+        "database": "shop"
+      },
+      "tablesAndSchemas": {
+        "orders": {
+          "id": {
+            "type": "int",
+            "nullable": false,
+            "key": "PRI",
+            "default": null
+          },
+          "user_id": {
+            "type": "int",
+            "nullable": false,
+            "key": "MUL",
+            "default": null
+          },
+          "total": {
+            "type": "decimal(10,2)",
+            "nullable": false,
+            "key": "",
+            "default": null
+          },
+          "status": {
+            "type": "text",
+            "nullable": true,
+            "key": "",
+            "default": null
+          }
+        },
+        "users": {
+          "id": {
+            "type": "int",
+            "nullable": false,
+            "key": "PRI",
+            "default": null
+          },
+          "email": {
+            "type": "varchar(255)",
+            "nullable": false,
+            "key": "UNI",
+            "default": null
+          },
+          "created_at": {
+            "type": "timestamp",
+            "nullable": true,
+            "key": "",
+            "default": "CURRENT_TIMESTAMP"
+          }
+        }
+      },
+      "allTablesPrompt": "Schema for all tables on mysql is {\"orders\":{\"id\":{\"type\":\"int\",\"nullable\":false,\"key\":\"PRI\",\"default\":null},\"user_id\":{\"type\":\"int\",\"nullable\":false,\"key\":\"MUL\",\"default\":null},\"total\":{\"type\":\"decimal(10,2)\",\"nullable\":false,\"key\":\"\",\"default\":null},\"status\":{\"type\":\"text\",\"nullable\":true,\"key\":\"\",\"default\":null}},\"users\":{\"id\":{\"type\":\"int\",\"nullable\":false,\"key\":\"PRI\",\"default\":null},\"email\":{\"type\":\"varchar(255)\",\"nullable\":false,\"key\":\"UNI\",\"default\":null},\"created_at\":{\"type\":\"timestamp\",\"nullable\":true,\"key\":\"\",\"default\":\"CURRENT_TIMESTAMP\"}}}"
+    },
+    "mssql": {
+      "connection": {
+        "server": "127.0.0.1",
+        "port": 11433,
+        "user": "sa",
+        "password": "<redacted>",
+        "database": "shop",
+        "options": {
+          "trustServerCertificate": true
+        }
+      },
+      "error": "mssql not ready after 180s: Failed to connect to 127.0.0.1:11433 - Could not connect (sequence)"
+    }
+  }
+}

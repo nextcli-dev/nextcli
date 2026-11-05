@@ -1,0 +1,2062 @@
+{
+  "generatedWith": {
+    "vectordb": "0.4.20",
+    "node": "v22.23.2"
+  },
+  "embedding": {
+    "method": "hashed bag-of-words: distinct lowercase words /[a-z_][a-z0-9_]*/ with weight log1p(count); no words -> one token '__nowords__' + sha256(text); bucket = uint32BE(sha256(word)[0..4]) % dim; sign = sha256(word)[4] & 1 ? +1 : -1; L2-normalize; Math.fround. See scripts/regression/generate-lancedb-fixture.mjs embed().",
+    "dim": 384,
+    "embeddingId": "FixtureEmbeddings::hashed-bow-384::512",
+    "legacyEmbeddingId": "FixtureEmbeddings::hashed-bow-legacy-384::512"
+  },
+  "workspace": "file:///workspace/nextcli",
+  "artifactId": "vectordb::FixtureEmbeddings::hashed-bow-384::512",
+  "codeTables": [
+    {
+      "name": "fileworkspacenextclimainvectordbFixtureEmbeddingshashed-bow-384512",
+      "tag": {
+        "directory": "file:///workspace/nextcli",
+        "branch": "main",
+        "artifactId": "vectordb::FixtureEmbeddings::hashed-bow-384::512"
+      },
+      "rows": 264
+    },
+    {
+      "name": "fileworkspacenextclidevvectordbFixtureEmbeddingshashed-bow-384512",
+      "tag": {
+        "directory": "file:///workspace/nextcli",
+        "branch": "dev",
+        "artifactId": "vectordb::FixtureEmbeddings::hashed-bow-384::512"
+      },
+      "rows": 122
+    }
+  ],
+  "docsTable": {
+    "name": "docsFixtureEmbeddings__hashed-bow-384__512",
+    "sites": [
+      {
+        "startUrl": "https://docs.example.dev/alpha/",
+        "title": "Alpha Docs"
+      },
+      {
+        "startUrl": "https://docs.example.dev/beta/",
+        "title": "Beta Docs"
+      }
+    ],
+    "rows": 194
+  },
+  "legacyDocsTable": {
+    "name": "docsFixtureEmbeddings__hashed-bow-legacy-384__512",
+    "rows": 69,
+    "schema": [
+      "vector:FixedSizeList[384]<Float32>",
+      "starturl:Utf8",
+      "title:Utf8",
+      "content:Utf8",
+      "path:Utf8",
+      "startline:Float64",
+      "endline:Float64"
+    ]
+  },
+  "topK": 5,
+  "queries": [
+    {
+      "query": "how is the lancedb table name built from a tag",
+      "code": {
+        "fileworkspacenextclimainvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "dff41cd4-1a6c-4505-83ee-9a776844cc49",
+            "path": "file:///workspace/nextcli/core/indexing/utils.ts",
+            "startLine": 0,
+            "distance": 1.3268241882324219
+          },
+          {
+            "uuid": "1b27db49-9355-4e30-8809-914589b1948b",
+            "path": "file:///workspace/nextcli/core/indexing/utils.ts",
+            "startLine": 30,
+            "distance": 1.407357096672058
+          },
+          {
+            "uuid": "8eb0f624-b4f5-4041-89d8-b07ca182626c",
+            "path": "file:///workspace/nextcli/core/indexing/CodebaseIndexer.ts",
+            "startLine": 240,
+            "distance": 1.502237319946289
+          },
+          {
+            "uuid": "00109569-7cd2-4def-838c-72f51f3b7745",
+            "path": "file:///workspace/nextcli/core/indexing/docs/DocsService.ts",
+            "startLine": 1050,
+            "distance": 1.5105234384536743
+          },
+          {
+            "uuid": "c6089176-2be6-4a1c-83f6-a36c380768de",
+            "path": "file:///workspace/nextcli/core/indexing/CodeSnippetsIndex.ts",
+            "startLine": 120,
+            "distance": 1.515167474746704
+          }
+        ],
+        "fileworkspacenextclidevvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "dff41cd4-1a6c-4505-83ee-9a776844cc49",
+            "path": "file:///workspace/nextcli/core/indexing/utils.ts",
+            "startLine": 0,
+            "distance": 1.3268241882324219
+          },
+          {
+            "uuid": "1b27db49-9355-4e30-8809-914589b1948b",
+            "path": "file:///workspace/nextcli/core/indexing/utils.ts",
+            "startLine": 30,
+            "distance": 1.407357096672058
+          },
+          {
+            "uuid": "8eb0f624-b4f5-4041-89d8-b07ca182626c",
+            "path": "file:///workspace/nextcli/core/indexing/CodebaseIndexer.ts",
+            "startLine": 240,
+            "distance": 1.502237319946289
+          },
+          {
+            "uuid": "c6089176-2be6-4a1c-83f6-a36c380768de",
+            "path": "file:///workspace/nextcli/core/indexing/CodeSnippetsIndex.ts",
+            "startLine": 120,
+            "distance": 1.515167474746704
+          },
+          {
+            "uuid": "99676aed-8b25-4093-8424-ad9379dcc9d3",
+            "path": "file:///workspace/nextcli/core/indexing/FullTextSearchCodebaseIndex.ts",
+            "startLine": 180,
+            "distance": 1.5716999769210815
+          }
+        ]
+      },
+      "docs": {
+        "https://docs.example.dev/alpha/": [
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-utils.ts",
+            "startline": 0,
+            "distance": 1.3268241882324219
+          },
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-utils.ts",
+            "startline": 30,
+            "distance": 1.407357096672058
+          },
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-CodebaseIndexer.ts",
+            "startline": 240,
+            "distance": 1.502237319946289
+          },
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-CodeSnippetsIndex.ts",
+            "startline": 120,
+            "distance": 1.515167474746704
+          }
+        ],
+        "https://docs.example.dev/beta/": [
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-DocsService.ts",
+            "startline": 1050,
+            "distance": 1.5105234384536743
+          }
+        ]
+      }
+    },
+    {
+      "query": "sqlite cache table for embeddings vectors",
+      "code": {
+        "fileworkspacenextclimainvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "ae57be73-9e81-44a0-856a-c716a8473f19",
+            "path": "file:///workspace/nextcli/core/autocomplete/util/AutocompleteLruCache.ts",
+            "startLine": 150,
+            "distance": 1.5295019149780273
+          },
+          {
+            "uuid": "8ea0aeb9-9e7a-453a-89e7-555ba445c1dc",
+            "path": "file:///workspace/nextcli/core/autocomplete/util/AutocompleteLruCache.ts",
+            "startLine": 180,
+            "distance": 1.546034336090088
+          },
+          {
+            "uuid": "b8e5b86a-0e00-4ce9-81b0-78beabf6fca6",
+            "path": "file:///workspace/nextcli/core/indexing/docs/DocsService.ts",
+            "startLine": 780,
+            "distance": 1.5464195013046265
+          },
+          {
+            "uuid": "8e1353e5-a017-45e1-8225-9bb0e16eaff3",
+            "path": "file:///workspace/nextcli/core/indexing/docs/DocsService.ts",
+            "startLine": 630,
+            "distance": 1.5502771139144897
+          },
+          {
+            "uuid": "8d57f2b6-7809-48fa-8931-4b4d5ccca1ce",
+            "path": "file:///workspace/nextcli/core/indexing/docs/DocsService.ts",
+            "startLine": 1110,
+            "distance": 1.5519907474517822
+          }
+        ],
+        "fileworkspacenextclidevvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "d1342e1b-361d-4841-84eb-5f0993c02261",
+            "path": "file:///workspace/nextcli/core/indexing/LanceDbIndex.ts",
+            "startLine": 210,
+            "distance": 1.626283049583435
+          },
+          {
+            "uuid": "aced884a-c944-42d2-8de6-cbf96d105623",
+            "path": "file:///workspace/nextcli/core/indexing/LanceDbIndex.ts",
+            "startLine": 510,
+            "distance": 1.630321979522705
+          },
+          {
+            "uuid": "54ff871c-7e4d-42b2-842f-b436b90fbdd8",
+            "path": "file:///workspace/nextcli/core/indexing/chunk/ChunkCodebaseIndex.ts",
+            "startLine": 210,
+            "distance": 1.6315525770187378
+          },
+          {
+            "uuid": "dff41cd4-1a6c-4505-83ee-9a776844cc49",
+            "path": "file:///workspace/nextcli/core/indexing/utils.ts",
+            "startLine": 0,
+            "distance": 1.6322658061981201
+          },
+          {
+            "uuid": "4a26aa6e-9ed3-4556-8040-19d199a3c139",
+            "path": "file:///workspace/nextcli/core/indexing/CodebaseIndexer.ts",
+            "startLine": 120,
+            "distance": 1.6412113904953003
+          }
+        ]
+      },
+      "docs": {
+        "https://docs.example.dev/alpha/": [
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-LanceDbIndex.ts",
+            "startline": 210,
+            "distance": 1.626283049583435
+          }
+        ],
+        "https://docs.example.dev/beta/": [
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-DocsService.ts",
+            "startline": 780,
+            "distance": 1.5464195013046265
+          },
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-DocsService.ts",
+            "startline": 630,
+            "distance": 1.5502771139144897
+          },
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-DocsService.ts",
+            "startline": 1110,
+            "distance": 1.5519907474517822
+          },
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-DocsService.ts",
+            "startline": 840,
+            "distance": 1.6200902462005615
+          }
+        ]
+      }
+    },
+    {
+      "query": "walk the directory and ignore files",
+      "code": {
+        "fileworkspacenextclimainvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "438a4082-8648-4765-8442-c1ebd861c985",
+            "path": "file:///workspace/nextcli/core/indexing/walkDir.ts",
+            "startLine": 180,
+            "distance": 1.2916820049285889
+          },
+          {
+            "uuid": "7d9f4022-fc1b-4b7d-81d9-1cf39dcb789a",
+            "path": "file:///workspace/nextcli/core/indexing/walkDir.ts",
+            "startLine": 150,
+            "distance": 1.2949508428573608
+          },
+          {
+            "uuid": "0c300ce5-4b12-4211-89ab-05bff3cacf42",
+            "path": "file:///workspace/nextcli/core/indexing/walkDir.ts",
+            "startLine": 90,
+            "distance": 1.3639492988586426
+          },
+          {
+            "uuid": "8dde1ef7-3401-4faf-8ffb-bee51cd839fd",
+            "path": "file:///workspace/nextcli/core/indexing/refreshIndex.ts",
+            "startLine": 300,
+            "distance": 1.4999295473098755
+          },
+          {
+            "uuid": "61e85336-075a-4393-8f4c-0936296c8371",
+            "path": "file:///workspace/nextcli/core/indexing/walkDir.ts",
+            "startLine": 210,
+            "distance": 1.52881920337677
+          }
+        ],
+        "fileworkspacenextclidevvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "438a4082-8648-4765-8442-c1ebd861c985",
+            "path": "file:///workspace/nextcli/core/indexing/walkDir.ts",
+            "startLine": 180,
+            "distance": 1.2916820049285889
+          },
+          {
+            "uuid": "7d9f4022-fc1b-4b7d-81d9-1cf39dcb789a",
+            "path": "file:///workspace/nextcli/core/indexing/walkDir.ts",
+            "startLine": 150,
+            "distance": 1.2949508428573608
+          },
+          {
+            "uuid": "0c300ce5-4b12-4211-89ab-05bff3cacf42",
+            "path": "file:///workspace/nextcli/core/indexing/walkDir.ts",
+            "startLine": 90,
+            "distance": 1.3639492988586426
+          },
+          {
+            "uuid": "8dde1ef7-3401-4faf-8ffb-bee51cd839fd",
+            "path": "file:///workspace/nextcli/core/indexing/refreshIndex.ts",
+            "startLine": 300,
+            "distance": 1.4999295473098755
+          },
+          {
+            "uuid": "61e85336-075a-4393-8f4c-0936296c8371",
+            "path": "file:///workspace/nextcli/core/indexing/walkDir.ts",
+            "startLine": 210,
+            "distance": 1.52881920337677
+          }
+        ]
+      },
+      "docs": {
+        "https://docs.example.dev/alpha/": [
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-walkDir.ts",
+            "startline": 180,
+            "distance": 1.2916820049285889
+          },
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-walkDir.ts",
+            "startline": 150,
+            "distance": 1.2949508428573608
+          },
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-walkDir.ts",
+            "startline": 90,
+            "distance": 1.3639492988586426
+          },
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-refreshIndex.ts",
+            "startline": 300,
+            "distance": 1.4999295473098755
+          },
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-walkDir.ts",
+            "startline": 210,
+            "distance": 1.52881920337677
+          }
+        ],
+        "https://docs.example.dev/beta/": []
+      }
+    },
+    {
+      "query": "delete docs from lance by start url",
+      "code": {
+        "fileworkspacenextclimainvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "d0506db2-8ec2-4b70-8320-e96deae6841d",
+            "path": "file:///workspace/nextcli/core/indexing/docs/article.ts",
+            "startLine": 210,
+            "distance": 1.371029019355774
+          },
+          {
+            "uuid": "bbeac998-0556-4468-8c90-4f19c617b3a5",
+            "path": "file:///workspace/nextcli/core/indexing/chunk/ChunkCodebaseIndex.ts",
+            "startLine": 120,
+            "distance": 1.5224151611328125
+          },
+          {
+            "uuid": "69b55a81-04d3-4c78-8022-06723337cdab",
+            "path": "file:///workspace/nextcli/core/indexing/FullTextSearchCodebaseIndex.ts",
+            "startLine": 90,
+            "distance": 1.5353479385375977
+          },
+          {
+            "uuid": "a5268d5c-14b9-4ebf-899b-1069d3ea601e",
+            "path": "file:///workspace/nextcli/core/indexing/docs/DocsService.ts",
+            "startLine": 150,
+            "distance": 1.5386667251586914
+          },
+          {
+            "uuid": "958af27f-842e-4016-88d6-35cd24915061",
+            "path": "file:///workspace/nextcli/core/indexing/docs/DocsService.ts",
+            "startLine": 0,
+            "distance": 1.5545480251312256
+          }
+        ],
+        "fileworkspacenextclidevvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "bbeac998-0556-4468-8c90-4f19c617b3a5",
+            "path": "file:///workspace/nextcli/core/indexing/chunk/ChunkCodebaseIndex.ts",
+            "startLine": 120,
+            "distance": 1.5224151611328125
+          },
+          {
+            "uuid": "69b55a81-04d3-4c78-8022-06723337cdab",
+            "path": "file:///workspace/nextcli/core/indexing/FullTextSearchCodebaseIndex.ts",
+            "startLine": 90,
+            "distance": 1.5353479385375977
+          },
+          {
+            "uuid": "d90939b0-81cb-4fcc-8450-03f2e9a29cfd",
+            "path": "file:///workspace/nextcli/core/indexing/chunk/ChunkCodebaseIndex.ts",
+            "startLine": 90,
+            "distance": 1.5583758354187012
+          },
+          {
+            "uuid": "f4c663c7-f963-45db-8a44-a4d2fad596f7",
+            "path": "file:///workspace/nextcli/core/indexing/CodeSnippetsIndex.ts",
+            "startLine": 90,
+            "distance": 1.5993943214416504
+          },
+          {
+            "uuid": "2815d0a1-d640-455d-802f-0c48d237fad7",
+            "path": "file:///workspace/nextcli/core/indexing/LanceDbIndex.ts",
+            "startLine": 360,
+            "distance": 1.6073369979858398
+          }
+        ]
+      },
+      "docs": {
+        "https://docs.example.dev/alpha/": [
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-FullTextSearchCodebaseIndex.ts",
+            "startline": 90,
+            "distance": 1.5353479385375977
+          }
+        ],
+        "https://docs.example.dev/beta/": [
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-article.ts",
+            "startline": 210,
+            "distance": 1.371029019355774
+          },
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-chunk-ChunkCodebaseIndex.ts",
+            "startline": 120,
+            "distance": 1.5224151611328125
+          },
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-DocsService.ts",
+            "startline": 150,
+            "distance": 1.5386667251586914
+          },
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-DocsService.ts",
+            "startline": 0,
+            "distance": 1.5545480251312256
+          }
+        ]
+      }
+    },
+    {
+      "query": "rename baseurl column migration",
+      "code": {
+        "fileworkspacenextclimainvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "f39a64c0-5411-49b3-88dc-2ebd19edd6e8",
+            "path": "file:///workspace/nextcli/core/indexing/docs/migrations.ts",
+            "startLine": 30,
+            "distance": 1.562644362449646
+          },
+          {
+            "uuid": "03c33fd4-ac7e-4a35-8c82-433d7d8d7a5e",
+            "path": "file:///workspace/nextcli/core/indexing/docs/DocsService.ts",
+            "startLine": 810,
+            "distance": 1.6175205707550049
+          },
+          {
+            "uuid": "d1342e1b-361d-4841-84eb-5f0993c02261",
+            "path": "file:///workspace/nextcli/core/indexing/LanceDbIndex.ts",
+            "startLine": 210,
+            "distance": 1.6707075834274292
+          },
+          {
+            "uuid": "b8eaf06c-5594-435f-87d8-40c495f0bea3",
+            "path": "file:///workspace/nextcli/core/indexing/LanceDbIndex.ts",
+            "startLine": 150,
+            "distance": 1.7181938886642456
+          },
+          {
+            "uuid": "6a22a0d5-f54e-4151-8f4d-6a3b8d806dbf",
+            "path": "file:///workspace/nextcli/core/indexing/docs/crawlers/CheerioCrawler.ts",
+            "startLine": 30,
+            "distance": 1.719114065170288
+          }
+        ],
+        "fileworkspacenextclidevvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "d1342e1b-361d-4841-84eb-5f0993c02261",
+            "path": "file:///workspace/nextcli/core/indexing/LanceDbIndex.ts",
+            "startLine": 210,
+            "distance": 1.6707075834274292
+          },
+          {
+            "uuid": "b8eaf06c-5594-435f-87d8-40c495f0bea3",
+            "path": "file:///workspace/nextcli/core/indexing/LanceDbIndex.ts",
+            "startLine": 150,
+            "distance": 1.7181938886642456
+          },
+          {
+            "uuid": "b04e9161-1b0e-4e28-8e5d-088c863f8dc0",
+            "path": "file:///workspace/nextcli/core/indexing/LanceDbIndex.ts",
+            "startLine": 30,
+            "distance": 1.7335565090179443
+          },
+          {
+            "uuid": "86774fca-bab2-4aa0-88b2-66c1be92f43f",
+            "path": "file:///workspace/nextcli/core/indexing/LanceDbIndex.ts",
+            "startLine": 120,
+            "distance": 1.7472070455551147
+          },
+          {
+            "uuid": "5723e8c1-e50a-4c95-863c-f24681efe5e7",
+            "path": "file:///workspace/nextcli/core/indexing/LanceDbIndex.ts",
+            "startLine": 540,
+            "distance": 1.7501890659332275
+          }
+        ]
+      },
+      "docs": {
+        "https://docs.example.dev/alpha/": [
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-LanceDbIndex.ts",
+            "startline": 210,
+            "distance": 1.6707075834274292
+          },
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-LanceDbIndex.ts",
+            "startline": 150,
+            "distance": 1.7181938886642456
+          }
+        ],
+        "https://docs.example.dev/beta/": [
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-migrations.ts",
+            "startline": 30,
+            "distance": 1.562644362449646
+          },
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-DocsService.ts",
+            "startline": 810,
+            "distance": 1.6175205707550049
+          },
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-crawlers-CheerioCrawler.ts",
+            "startline": 30,
+            "distance": 1.719114065170288
+          }
+        ]
+      }
+    },
+    {
+      "query": "full text search index",
+      "code": {
+        "fileworkspacenextclimainvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "6825e53a-bc56-4b77-84a2-fd2eca757e6c",
+            "path": "file:///workspace/nextcli/core/llm/llms/TransformersJsEmbeddingsProvider.ts",
+            "startLine": 0,
+            "distance": 1.579192042350769
+          },
+          {
+            "uuid": "319b4bd9-bf90-4d61-85ff-3a39b4777471",
+            "path": "file:///workspace/nextcli/core/util/paths.ts",
+            "startLine": 180,
+            "distance": 1.6279270648956299
+          },
+          {
+            "uuid": "6a22a0d5-f54e-4151-8f4d-6a3b8d806dbf",
+            "path": "file:///workspace/nextcli/core/indexing/docs/crawlers/CheerioCrawler.ts",
+            "startLine": 30,
+            "distance": 1.6390342712402344
+          },
+          {
+            "uuid": "9d0e50fc-b09c-490b-8b94-efa9cb8fada9",
+            "path": "file:///workspace/nextcli/core/indexing/chunk/code.ts",
+            "startLine": 180,
+            "distance": 1.6393003463745117
+          },
+          {
+            "uuid": "f8b5e297-612f-4e04-85c6-764a6acb1d29",
+            "path": "file:///workspace/nextcli/core/indexing/docs/DocsService.ts",
+            "startLine": 990,
+            "distance": 1.6649965047836304
+          }
+        ],
+        "fileworkspacenextclidevvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "c2eaa569-33e7-43d4-829c-8be1be586a95",
+            "path": "file:///workspace/nextcli/core/indexing/LanceDbIndex.ts",
+            "startLine": 90,
+            "distance": 1.6976629495620728
+          },
+          {
+            "uuid": "8dd80072-2a5c-4d5c-847b-cef4530fadcc",
+            "path": "file:///workspace/nextcli/core/indexing/CodebaseIndexer.ts",
+            "startLine": 60,
+            "distance": 1.7210010290145874
+          },
+          {
+            "uuid": "ba1f958f-4f4c-44cc-8296-49a9e8d4fd25",
+            "path": "file:///workspace/nextcli/core/indexing/CodeSnippetsIndex.ts",
+            "startLine": 30,
+            "distance": 1.739991545677185
+          },
+          {
+            "uuid": "0d9a1481-ef06-48ab-8f54-cd0df3cb66c5",
+            "path": "file:///workspace/nextcli/core/indexing/CodeSnippetsIndex.ts",
+            "startLine": 150,
+            "distance": 1.7671198844909668
+          },
+          {
+            "uuid": "105f4186-d58d-49d4-8cc3-bcad4a67ef17",
+            "path": "file:///workspace/nextcli/core/indexing/refreshIndex.ts",
+            "startLine": 570,
+            "distance": 1.7698255777359009
+          }
+        ]
+      },
+      "docs": {
+        "https://docs.example.dev/alpha/": [
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-LanceDbIndex.ts",
+            "startline": 90,
+            "distance": 1.6976629495620728
+          }
+        ],
+        "https://docs.example.dev/beta/": [
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-crawlers-CheerioCrawler.ts",
+            "startline": 30,
+            "distance": 1.6390342712402344
+          },
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-chunk-code.ts",
+            "startline": 180,
+            "distance": 1.6393003463745117
+          },
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-DocsService.ts",
+            "startline": 990,
+            "distance": 1.6649965047836304
+          },
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-chunk-code.ts",
+            "startline": 60,
+            "distance": 1.6815345287322998
+          }
+        ]
+      }
+    },
+    {
+      "query": "chunk a document into pieces by size",
+      "code": {
+        "fileworkspacenextclimainvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "54ff871c-7e4d-42b2-842f-b436b90fbdd8",
+            "path": "file:///workspace/nextcli/core/indexing/chunk/ChunkCodebaseIndex.ts",
+            "startLine": 210,
+            "distance": 1.5866883993148804
+          },
+          {
+            "uuid": "c597c401-8e51-4d2b-84ad-2ac164dafd65",
+            "path": "file:///workspace/nextcli/core/llm/llms/TransformersJsEmbeddingsProvider.ts",
+            "startLine": 90,
+            "distance": 1.661938190460205
+          },
+          {
+            "uuid": "650aa63e-1162-4b3b-8bf6-943004e988c5",
+            "path": "file:///workspace/nextcli/core/indexing/LanceDbIndex.ts",
+            "startLine": 180,
+            "distance": 1.698059320449829
+          },
+          {
+            "uuid": "36f28681-e335-4194-847a-d07825ee913b",
+            "path": "file:///workspace/nextcli/core/indexing/docs/article.ts",
+            "startLine": 90,
+            "distance": 1.699292540550232
+          },
+          {
+            "uuid": "668126c7-0be3-465b-842d-ac23cd289206",
+            "path": "file:///workspace/nextcli/core/indexing/docs/DocsService.ts",
+            "startLine": 600,
+            "distance": 1.7221678495407104
+          }
+        ],
+        "fileworkspacenextclidevvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "54ff871c-7e4d-42b2-842f-b436b90fbdd8",
+            "path": "file:///workspace/nextcli/core/indexing/chunk/ChunkCodebaseIndex.ts",
+            "startLine": 210,
+            "distance": 1.5866883993148804
+          },
+          {
+            "uuid": "650aa63e-1162-4b3b-8bf6-943004e988c5",
+            "path": "file:///workspace/nextcli/core/indexing/LanceDbIndex.ts",
+            "startLine": 180,
+            "distance": 1.698059320449829
+          },
+          {
+            "uuid": "d1342e1b-361d-4841-84eb-5f0993c02261",
+            "path": "file:///workspace/nextcli/core/indexing/LanceDbIndex.ts",
+            "startLine": 210,
+            "distance": 1.7243669033050537
+          },
+          {
+            "uuid": "751bb20c-0607-441f-899a-36103c721ea8",
+            "path": "file:///workspace/nextcli/core/indexing/LanceDbIndex.ts",
+            "startLine": 450,
+            "distance": 1.767790675163269
+          },
+          {
+            "uuid": "4b131b93-b981-4242-8397-e538c55cacd4",
+            "path": "file:///workspace/nextcli/core/indexing/chunk/chunk.ts",
+            "startLine": 90,
+            "distance": 1.7709319591522217
+          }
+        ]
+      },
+      "docs": {
+        "https://docs.example.dev/alpha/": [
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-LanceDbIndex.ts",
+            "startline": 180,
+            "distance": 1.698059320449829
+          },
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-LanceDbIndex.ts",
+            "startline": 210,
+            "distance": 1.7243669033050537
+          }
+        ],
+        "https://docs.example.dev/beta/": [
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-chunk-ChunkCodebaseIndex.ts",
+            "startline": 210,
+            "distance": 1.5866883993148804
+          },
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-article.ts",
+            "startline": 90,
+            "distance": 1.699292540550232
+          },
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-DocsService.ts",
+            "startline": 600,
+            "distance": 1.7221678495407104
+          }
+        ]
+      }
+    },
+    {
+      "query": "crawl a website with cheerio",
+      "code": {
+        "fileworkspacenextclimainvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "2c59d1fd-dfa0-4548-892f-fc6ecee7c6c1",
+            "path": "file:///workspace/nextcli/core/indexing/docs/crawlers/CheerioCrawler.ts",
+            "startLine": 0,
+            "distance": 1.7410296201705933
+          },
+          {
+            "uuid": "dbcd2485-8cc6-4714-8eed-f95c9270bbcd",
+            "path": "file:///workspace/nextcli/core/indexing/docs/crawlers/GitHubCrawler.ts",
+            "startLine": 0,
+            "distance": 1.7772749662399292
+          },
+          {
+            "uuid": "7279627b-20ba-4ebd-8282-e6df9c220a95",
+            "path": "file:///workspace/nextcli/core/indexing/CodebaseIndexer.ts",
+            "startLine": 690,
+            "distance": 1.7846968173980713
+          },
+          {
+            "uuid": "0191d4f0-15e2-4499-8ffc-5dcde7a77dc3",
+            "path": "file:///workspace/nextcli/core/autocomplete/util/AutocompleteLruCache.ts",
+            "startLine": 0,
+            "distance": 1.7901934385299683
+          },
+          {
+            "uuid": "cad3afb3-f60e-4e73-8855-9bf266061597",
+            "path": "file:///workspace/nextcli/packages/fetch/src/fetch.ts",
+            "startLine": 120,
+            "distance": 1.8294358253479004
+          }
+        ],
+        "fileworkspacenextclidevvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "7279627b-20ba-4ebd-8282-e6df9c220a95",
+            "path": "file:///workspace/nextcli/core/indexing/CodebaseIndexer.ts",
+            "startLine": 690,
+            "distance": 1.7846968173980713
+          },
+          {
+            "uuid": "18224270-65ea-41bd-85cf-25275bd43995",
+            "path": "file:///workspace/nextcli/core/indexing/CodebaseIndexer.ts",
+            "startLine": 450,
+            "distance": 1.8399841785430908
+          },
+          {
+            "uuid": "8eb0f624-b4f5-4041-89d8-b07ca182626c",
+            "path": "file:///workspace/nextcli/core/indexing/CodebaseIndexer.ts",
+            "startLine": 240,
+            "distance": 1.8565397262573242
+          },
+          {
+            "uuid": "751bb20c-0607-441f-899a-36103c721ea8",
+            "path": "file:///workspace/nextcli/core/indexing/LanceDbIndex.ts",
+            "startLine": 450,
+            "distance": 1.862622857093811
+          },
+          {
+            "uuid": "4b131b93-b981-4242-8397-e538c55cacd4",
+            "path": "file:///workspace/nextcli/core/indexing/chunk/chunk.ts",
+            "startLine": 90,
+            "distance": 1.8644815683364868
+          }
+        ]
+      },
+      "docs": {
+        "https://docs.example.dev/alpha/": [
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-CodebaseIndexer.ts",
+            "startline": 690,
+            "distance": 1.7846968173980713
+          },
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-CodebaseIndexer.ts",
+            "startline": 450,
+            "distance": 1.8399841785430908
+          }
+        ],
+        "https://docs.example.dev/beta/": [
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-crawlers-CheerioCrawler.ts",
+            "startline": 0,
+            "distance": 1.7410296201705933
+          },
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-DocsService.ts",
+            "startline": 480,
+            "distance": 1.8393597602844238
+          },
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-DocsService.ts",
+            "startline": 150,
+            "distance": 1.8450905084609985
+          }
+        ]
+      }
+    },
+    {
+      "query": "github repository crawler",
+      "code": {
+        "fileworkspacenextclimainvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "61e85336-075a-4393-8f4c-0936296c8371",
+            "path": "file:///workspace/nextcli/core/indexing/walkDir.ts",
+            "startLine": 210,
+            "distance": 1.74817955493927
+          },
+          {
+            "uuid": "aad4e18d-d17d-4b8a-8f1b-5c7e16442f64",
+            "path": "file:///workspace/nextcli/core/indexing/docs/DocsService.ts",
+            "startLine": 240,
+            "distance": 1.7698758840560913
+          },
+          {
+            "uuid": "2112f559-3caf-4365-8891-5f7f27580e1a",
+            "path": "file:///workspace/nextcli/core/indexing/docs/DocsService.ts",
+            "startLine": 570,
+            "distance": 1.7821463346481323
+          },
+          {
+            "uuid": "81795dfc-58f9-4170-8cc0-9b88a7d538cf",
+            "path": "file:///workspace/nextcli/core/indexing/docs/DocsService.ts",
+            "startLine": 180,
+            "distance": 1.7858630418777466
+          },
+          {
+            "uuid": "1030ce8b-abdf-461d-8dcf-9e46b51d9838",
+            "path": "file:///workspace/nextcli/core/indexing/docs/DocsService.ts",
+            "startLine": 720,
+            "distance": 1.7859735488891602
+          }
+        ],
+        "fileworkspacenextclidevvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "61e85336-075a-4393-8f4c-0936296c8371",
+            "path": "file:///workspace/nextcli/core/indexing/walkDir.ts",
+            "startLine": 210,
+            "distance": 1.74817955493927
+          },
+          {
+            "uuid": "8da7fc1d-bd58-41ed-873b-164a3c7eb96c",
+            "path": "file:///workspace/nextcli/core/indexing/walkDir.ts",
+            "startLine": 240,
+            "distance": 1.8806071281433105
+          },
+          {
+            "uuid": "0c63d606-5de5-4d95-8706-fab46ddb92d7",
+            "path": "file:///workspace/nextcli/core/indexing/CodebaseIndexer.ts",
+            "startLine": 180,
+            "distance": 1.8809044361114502
+          },
+          {
+            "uuid": "0c300ce5-4b12-4211-89ab-05bff3cacf42",
+            "path": "file:///workspace/nextcli/core/indexing/walkDir.ts",
+            "startLine": 90,
+            "distance": 1.8809632062911987
+          },
+          {
+            "uuid": "b04e9161-1b0e-4e28-8e5d-088c863f8dc0",
+            "path": "file:///workspace/nextcli/core/indexing/LanceDbIndex.ts",
+            "startLine": 30,
+            "distance": 1.8809800148010254
+          }
+        ]
+      },
+      "docs": {
+        "https://docs.example.dev/alpha/": [
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-walkDir.ts",
+            "startline": 210,
+            "distance": 1.74817955493927
+          }
+        ],
+        "https://docs.example.dev/beta/": [
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-DocsService.ts",
+            "startline": 240,
+            "distance": 1.7698758840560913
+          },
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-DocsService.ts",
+            "startline": 570,
+            "distance": 1.7821463346481323
+          },
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-DocsService.ts",
+            "startline": 180,
+            "distance": 1.7858630418777466
+          },
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-DocsService.ts",
+            "startline": 720,
+            "distance": 1.7859735488891602
+          }
+        ]
+      }
+    },
+    {
+      "query": "autocomplete lru cache",
+      "code": {
+        "fileworkspacenextclimainvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "0191d4f0-15e2-4499-8ffc-5dcde7a77dc3",
+            "path": "file:///workspace/nextcli/core/autocomplete/util/AutocompleteLruCache.ts",
+            "startLine": 0,
+            "distance": 1.5195759534835815
+          },
+          {
+            "uuid": "af29d06a-aada-4f17-8fc3-9041bb0038a3",
+            "path": "file:///workspace/nextcli/core/autocomplete/util/AutocompleteLruCache.ts",
+            "startLine": 60,
+            "distance": 1.7124971151351929
+          },
+          {
+            "uuid": "8ea0aeb9-9e7a-453a-89e7-555ba445c1dc",
+            "path": "file:///workspace/nextcli/core/autocomplete/util/AutocompleteLruCache.ts",
+            "startLine": 180,
+            "distance": 1.735874056816101
+          },
+          {
+            "uuid": "4b529f34-2332-4e58-8289-219b9115c0b4",
+            "path": "file:///workspace/nextcli/core/autocomplete/util/AutocompleteLruCache.ts",
+            "startLine": 120,
+            "distance": 1.7473766803741455
+          },
+          {
+            "uuid": "ae57be73-9e81-44a0-856a-c716a8473f19",
+            "path": "file:///workspace/nextcli/core/autocomplete/util/AutocompleteLruCache.ts",
+            "startLine": 150,
+            "distance": 1.778205156326294
+          }
+        ],
+        "fileworkspacenextclidevvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "d90939b0-81cb-4fcc-8450-03f2e9a29cfd",
+            "path": "file:///workspace/nextcli/core/indexing/chunk/ChunkCodebaseIndex.ts",
+            "startLine": 90,
+            "distance": 1.7813289165496826
+          },
+          {
+            "uuid": "0c300ce5-4b12-4211-89ab-05bff3cacf42",
+            "path": "file:///workspace/nextcli/core/indexing/walkDir.ts",
+            "startLine": 90,
+            "distance": 1.8113311529159546
+          },
+          {
+            "uuid": "2dcd821c-46b3-44a3-88d5-684793b00080",
+            "path": "file:///workspace/nextcli/core/indexing/chunk/ChunkCodebaseIndex.ts",
+            "startLine": 30,
+            "distance": 1.813583493232727
+          },
+          {
+            "uuid": "4049b090-0ecb-4412-8817-401aea7613bd",
+            "path": "file:///workspace/nextcli/core/indexing/walkDir.ts",
+            "startLine": 270,
+            "distance": 1.8205642700195312
+          },
+          {
+            "uuid": "d29f9bbd-a1c4-4c81-8c04-69a077169a3f",
+            "path": "file:///workspace/nextcli/core/indexing/refreshIndex.ts",
+            "startLine": 420,
+            "distance": 1.868088960647583
+          }
+        ]
+      },
+      "docs": {
+        "https://docs.example.dev/alpha/": [
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-walkDir.ts",
+            "startline": 90,
+            "distance": 1.8113311529159546
+          },
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-walkDir.ts",
+            "startline": 270,
+            "distance": 1.8205642700195312
+          },
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-refreshIndex.ts",
+            "startline": 420,
+            "distance": 1.868088960647583
+          }
+        ],
+        "https://docs.example.dev/beta/": [
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-chunk-ChunkCodebaseIndex.ts",
+            "startline": 90,
+            "distance": 1.7813289165496826
+          },
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-chunk-ChunkCodebaseIndex.ts",
+            "startline": 30,
+            "distance": 1.813583493232727
+          }
+        ]
+      }
+    },
+    {
+      "query": "jira issue description markdown",
+      "code": {
+        "fileworkspacenextclimainvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "24e9d8d4-0eb4-4c27-8886-31f2e6ddb7ec",
+            "path": "file:///workspace/nextcli/core/context/providers/JiraIssuesContextProvider/JiraClient.ts",
+            "startLine": 90,
+            "distance": 1.463584542274475
+          },
+          {
+            "uuid": "2a2814f5-7285-4e8a-88de-da7d4c253f09",
+            "path": "file:///workspace/nextcli/core/context/providers/JiraIssuesContextProvider/JiraClient.ts",
+            "startLine": 180,
+            "distance": 1.5292283296585083
+          },
+          {
+            "uuid": "7ee024e9-0631-40b4-8ce6-1b322e0f37c7",
+            "path": "file:///workspace/nextcli/core/context/providers/JiraIssuesContextProvider/JiraClient.ts",
+            "startLine": 150,
+            "distance": 1.6172564029693604
+          },
+          {
+            "uuid": "944c5bea-0870-4c09-8757-8fc33f9c9b6d",
+            "path": "file:///workspace/nextcli/core/context/providers/JiraIssuesContextProvider/JiraClient.ts",
+            "startLine": 30,
+            "distance": 1.6903795003890991
+          },
+          {
+            "uuid": "d0506db2-8ec2-4b70-8320-e96deae6841d",
+            "path": "file:///workspace/nextcli/core/indexing/docs/article.ts",
+            "startLine": 210,
+            "distance": 1.7226499319076538
+          }
+        ],
+        "fileworkspacenextclidevvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "4a26aa6e-9ed3-4556-8040-19d199a3c139",
+            "path": "file:///workspace/nextcli/core/indexing/CodebaseIndexer.ts",
+            "startLine": 120,
+            "distance": 1.7242727279663086
+          },
+          {
+            "uuid": "9e86678f-0f65-48b5-8e60-81c3be263b6a",
+            "path": "file:///workspace/nextcli/core/indexing/CodebaseIndexer.ts",
+            "startLine": 270,
+            "distance": 1.7613673210144043
+          },
+          {
+            "uuid": "e3cdd47c-b873-47a1-8043-9d38c776d641",
+            "path": "file:///workspace/nextcli/core/indexing/walkDir.ts",
+            "startLine": 330,
+            "distance": 1.8355005979537964
+          },
+          {
+            "uuid": "5f1eb4be-9b1e-4cd5-8769-2536ea281acf",
+            "path": "file:///workspace/nextcli/core/indexing/refreshIndex.ts",
+            "startLine": 120,
+            "distance": 1.8605707883834839
+          },
+          {
+            "uuid": "1822f63c-9c5a-4908-8d83-63082130147c",
+            "path": "file:///workspace/nextcli/core/indexing/refreshIndex.ts",
+            "startLine": 450,
+            "distance": 1.8607027530670166
+          }
+        ]
+      },
+      "docs": {
+        "https://docs.example.dev/alpha/": [
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-CodebaseIndexer.ts",
+            "startline": 120,
+            "distance": 1.7242727279663086
+          },
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-CodebaseIndexer.ts",
+            "startline": 270,
+            "distance": 1.7613673210144043
+          }
+        ],
+        "https://docs.example.dev/beta/": [
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-article.ts",
+            "startline": 210,
+            "distance": 1.7226499319076538
+          },
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-DocsService.ts",
+            "startline": 510,
+            "distance": 1.8129860162734985
+          },
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-DocsService.ts",
+            "startline": 720,
+            "distance": 1.8146476745605469
+          }
+        ]
+      }
+    },
+    {
+      "query": "database context provider tables",
+      "code": {
+        "fileworkspacenextclimainvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "aced884a-c944-42d2-8de6-cbf96d105623",
+            "path": "file:///workspace/nextcli/core/indexing/LanceDbIndex.ts",
+            "startLine": 510,
+            "distance": 1.6432474851608276
+          },
+          {
+            "uuid": "52b74b35-7942-40fd-80aa-74124ae2e09a",
+            "path": "file:///workspace/nextcli/core/context/providers/DatabaseContextProvider.ts",
+            "startLine": 0,
+            "distance": 1.6435328722000122
+          },
+          {
+            "uuid": "6c844180-c5b1-481e-8079-c79fd37ca9ba",
+            "path": "file:///workspace/nextcli/core/util/paths.ts",
+            "startLine": 30,
+            "distance": 1.6679658889770508
+          },
+          {
+            "uuid": "3b3adcbe-869e-4e38-8864-d48afe3c1fc8",
+            "path": "file:///workspace/nextcli/core/indexing/chunk/ChunkCodebaseIndex.ts",
+            "startLine": 0,
+            "distance": 1.691114068031311
+          },
+          {
+            "uuid": "552ed035-8b99-4a6e-8db8-878016053016",
+            "path": "file:///workspace/nextcli/core/indexing/refreshIndex.ts",
+            "startLine": 0,
+            "distance": 1.6926647424697876
+          }
+        ],
+        "fileworkspacenextclidevvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "aced884a-c944-42d2-8de6-cbf96d105623",
+            "path": "file:///workspace/nextcli/core/indexing/LanceDbIndex.ts",
+            "startLine": 510,
+            "distance": 1.6432474851608276
+          },
+          {
+            "uuid": "3b3adcbe-869e-4e38-8864-d48afe3c1fc8",
+            "path": "file:///workspace/nextcli/core/indexing/chunk/ChunkCodebaseIndex.ts",
+            "startLine": 0,
+            "distance": 1.691114068031311
+          },
+          {
+            "uuid": "552ed035-8b99-4a6e-8db8-878016053016",
+            "path": "file:///workspace/nextcli/core/indexing/refreshIndex.ts",
+            "startLine": 0,
+            "distance": 1.6926647424697876
+          },
+          {
+            "uuid": "c8563b6b-b77b-41d3-8fff-d58d8ed9bb95",
+            "path": "file:///workspace/nextcli/core/indexing/CodebaseIndexer.ts",
+            "startLine": 540,
+            "distance": 1.7129900455474854
+          },
+          {
+            "uuid": "b4b4f88b-bdda-46bd-8ddd-67870a7c0882",
+            "path": "file:///workspace/nextcli/core/indexing/LanceDbIndex.ts",
+            "startLine": 60,
+            "distance": 1.721479892730713
+          }
+        ]
+      },
+      "docs": {
+        "https://docs.example.dev/alpha/": [
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-LanceDbIndex.ts",
+            "startline": 510,
+            "distance": 1.6432474851608276
+          },
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-refreshIndex.ts",
+            "startline": 0,
+            "distance": 1.6926647424697876
+          },
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-CodebaseIndexer.ts",
+            "startline": 540,
+            "distance": 1.7129900455474854
+          }
+        ],
+        "https://docs.example.dev/beta/": [
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-chunk-ChunkCodebaseIndex.ts",
+            "startline": 0,
+            "distance": 1.691114068031311
+          },
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-DocsService.ts",
+            "startline": 180,
+            "distance": 1.697547197341919
+          }
+        ]
+      }
+    },
+    {
+      "query": "fetch url context provider",
+      "code": {
+        "fileworkspacenextclimainvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "e0b0bca6-bb89-4dab-8599-04028b5a3c66",
+            "path": "file:///workspace/nextcli/core/context/providers/URLContextProvider.ts",
+            "startLine": 60,
+            "distance": 1.4559129476547241
+          },
+          {
+            "uuid": "b2cd1536-4154-49f7-8e88-d6afbb7fd530",
+            "path": "file:///workspace/nextcli/packages/fetch/src/fetch.ts",
+            "startLine": 0,
+            "distance": 1.5393356084823608
+          },
+          {
+            "uuid": "8ebc13c6-8cdf-474f-8245-73859dae72a0",
+            "path": "file:///workspace/nextcli/packages/fetch/src/fetch.ts",
+            "startLine": 30,
+            "distance": 1.5412107706069946
+          },
+          {
+            "uuid": "c8563b6b-b77b-41d3-8fff-d58d8ed9bb95",
+            "path": "file:///workspace/nextcli/core/indexing/CodebaseIndexer.ts",
+            "startLine": 540,
+            "distance": 1.6173202991485596
+          },
+          {
+            "uuid": "f10ed13b-e6ae-4239-8de9-a6ec4b0a8d09",
+            "path": "file:///workspace/nextcli/core/indexing/CodebaseIndexer.ts",
+            "startLine": 210,
+            "distance": 1.6334500312805176
+          }
+        ],
+        "fileworkspacenextclidevvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "c8563b6b-b77b-41d3-8fff-d58d8ed9bb95",
+            "path": "file:///workspace/nextcli/core/indexing/CodebaseIndexer.ts",
+            "startLine": 540,
+            "distance": 1.6173202991485596
+          },
+          {
+            "uuid": "f10ed13b-e6ae-4239-8de9-a6ec4b0a8d09",
+            "path": "file:///workspace/nextcli/core/indexing/CodebaseIndexer.ts",
+            "startLine": 210,
+            "distance": 1.6334500312805176
+          },
+          {
+            "uuid": "aced884a-c944-42d2-8de6-cbf96d105623",
+            "path": "file:///workspace/nextcli/core/indexing/LanceDbIndex.ts",
+            "startLine": 510,
+            "distance": 1.643247365951538
+          },
+          {
+            "uuid": "2dcd821c-46b3-44a3-88d5-684793b00080",
+            "path": "file:///workspace/nextcli/core/indexing/chunk/ChunkCodebaseIndex.ts",
+            "startLine": 30,
+            "distance": 1.6616344451904297
+          },
+          {
+            "uuid": "0f8d6936-319e-4685-8cde-dd1db7777872",
+            "path": "file:///workspace/nextcli/core/indexing/refreshIndex.ts",
+            "startLine": 480,
+            "distance": 1.6853731870651245
+          }
+        ]
+      },
+      "docs": {
+        "https://docs.example.dev/alpha/": [
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-CodebaseIndexer.ts",
+            "startline": 540,
+            "distance": 1.6173202991485596
+          },
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-CodebaseIndexer.ts",
+            "startline": 210,
+            "distance": 1.6334500312805176
+          },
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-LanceDbIndex.ts",
+            "startline": 510,
+            "distance": 1.643247365951538
+          }
+        ],
+        "https://docs.example.dev/beta/": [
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-DocsService.ts",
+            "startline": 450,
+            "distance": 1.6376935243606567
+          },
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-article.ts",
+            "startline": 120,
+            "distance": 1.6613295078277588
+          }
+        ]
+      }
+    },
+    {
+      "query": "transformers js embeddings pipeline",
+      "code": {
+        "fileworkspacenextclimainvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "6825e53a-bc56-4b77-84a2-fd2eca757e6c",
+            "path": "file:///workspace/nextcli/core/llm/llms/TransformersJsEmbeddingsProvider.ts",
+            "startLine": 0,
+            "distance": 1.4820066690444946
+          },
+          {
+            "uuid": "7967a7c2-267d-4010-8616-ee4142eb0835",
+            "path": "file:///workspace/nextcli/core/llm/llms/TransformersJsEmbeddingsProvider.ts",
+            "startLine": 30,
+            "distance": 1.5040770769119263
+          },
+          {
+            "uuid": "35c637af-3b4a-46ca-88ba-471690e263f4",
+            "path": "file:///workspace/nextcli/core/indexing/docs/DocsService.ts",
+            "startLine": 330,
+            "distance": 1.5123226642608643
+          },
+          {
+            "uuid": "d1237f3c-b74b-46d9-8d3f-765aa7c0714d",
+            "path": "file:///workspace/nextcli/core/indexing/chunk/code.ts",
+            "startLine": 0,
+            "distance": 1.5294378995895386
+          },
+          {
+            "uuid": "74ae3f4d-a3c0-4017-8eeb-ec7b913fd967",
+            "path": "file:///workspace/nextcli/core/indexing/docs/crawlers/ChromiumCrawler.ts",
+            "startLine": 150,
+            "distance": 1.5318289995193481
+          }
+        ],
+        "fileworkspacenextclidevvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "3fa6af66-97e9-4e12-8ca9-e42755ced321",
+            "path": "file:///workspace/nextcli/core/indexing/CodebaseIndexer.ts",
+            "startLine": 0,
+            "distance": 1.6419709920883179
+          },
+          {
+            "uuid": "3b3adcbe-869e-4e38-8864-d48afe3c1fc8",
+            "path": "file:///workspace/nextcli/core/indexing/chunk/ChunkCodebaseIndex.ts",
+            "startLine": 0,
+            "distance": 1.6911141872406006
+          },
+          {
+            "uuid": "917936ef-58e4-437b-8736-4148e9d95472",
+            "path": "file:///workspace/nextcli/core/indexing/LanceDbIndex.ts",
+            "startLine": 270,
+            "distance": 1.720136046409607
+          },
+          {
+            "uuid": "a50a9664-f987-42b3-808a-22a5af168236",
+            "path": "file:///workspace/nextcli/core/indexing/chunk/chunk.ts",
+            "startLine": 0,
+            "distance": 1.7360846996307373
+          },
+          {
+            "uuid": "86774fca-bab2-4aa0-88b2-66c1be92f43f",
+            "path": "file:///workspace/nextcli/core/indexing/LanceDbIndex.ts",
+            "startLine": 120,
+            "distance": 1.7472069263458252
+          }
+        ]
+      },
+      "docs": {
+        "https://docs.example.dev/alpha/": [
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-CodebaseIndexer.ts",
+            "startline": 0,
+            "distance": 1.6419709920883179
+          }
+        ],
+        "https://docs.example.dev/beta/": [
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-DocsService.ts",
+            "startline": 330,
+            "distance": 1.5123226642608643
+          },
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-chunk-code.ts",
+            "startline": 0,
+            "distance": 1.5294378995895386
+          },
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-chunk-ChunkCodebaseIndex.ts",
+            "startline": 0,
+            "distance": 1.6911141872406006
+          },
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-DocsService.ts",
+            "startline": 510,
+            "distance": 1.694993257522583
+          }
+        ]
+      }
+    },
+    {
+      "query": "proxy agent for fetch requests",
+      "code": {
+        "fileworkspacenextclimainvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "8ebc13c6-8cdf-474f-8245-73859dae72a0",
+            "path": "file:///workspace/nextcli/packages/fetch/src/fetch.ts",
+            "startLine": 30,
+            "distance": 1.3500118255615234
+          },
+          {
+            "uuid": "b2cd1536-4154-49f7-8e88-d6afbb7fd530",
+            "path": "file:///workspace/nextcli/packages/fetch/src/fetch.ts",
+            "startLine": 0,
+            "distance": 1.465259313583374
+          },
+          {
+            "uuid": "97a6e705-320e-4340-8969-1a83083913f9",
+            "path": "file:///workspace/nextcli/packages/fetch/src/fetch.ts",
+            "startLine": 150,
+            "distance": 1.5115785598754883
+          },
+          {
+            "uuid": "911b565e-cff7-45c0-8c3f-8e8b1301e003",
+            "path": "file:///workspace/nextcli/core/indexing/docs/crawlers/CheerioCrawler.ts",
+            "startLine": 90,
+            "distance": 1.5143141746520996
+          },
+          {
+            "uuid": "a6fc5d25-1cc3-43a4-88a5-4b885b77041f",
+            "path": "file:///workspace/nextcli/core/indexing/CodebaseIndexer.ts",
+            "startLine": 30,
+            "distance": 1.5693738460540771
+          }
+        ],
+        "fileworkspacenextclidevvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "a6fc5d25-1cc3-43a4-88a5-4b885b77041f",
+            "path": "file:///workspace/nextcli/core/indexing/CodebaseIndexer.ts",
+            "startLine": 30,
+            "distance": 1.5693738460540771
+          },
+          {
+            "uuid": "4a26aa6e-9ed3-4556-8040-19d199a3c139",
+            "path": "file:///workspace/nextcli/core/indexing/CodebaseIndexer.ts",
+            "startLine": 120,
+            "distance": 1.6069667339324951
+          },
+          {
+            "uuid": "7c326300-58e7-4822-8a4f-d54a66b31da6",
+            "path": "file:///workspace/nextcli/core/indexing/chunk/ChunkCodebaseIndex.ts",
+            "startLine": 240,
+            "distance": 1.6386860609054565
+          },
+          {
+            "uuid": "e775118b-6a8c-4f05-8a3a-43040f6979fc",
+            "path": "file:///workspace/nextcli/core/indexing/CodebaseIndexer.ts",
+            "startLine": 810,
+            "distance": 1.6654316186904907
+          },
+          {
+            "uuid": "0c63d606-5de5-4d95-8706-fab46ddb92d7",
+            "path": "file:///workspace/nextcli/core/indexing/CodebaseIndexer.ts",
+            "startLine": 180,
+            "distance": 1.693548321723938
+          }
+        ]
+      },
+      "docs": {
+        "https://docs.example.dev/alpha/": [
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-CodebaseIndexer.ts",
+            "startline": 30,
+            "distance": 1.5693738460540771
+          },
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-CodebaseIndexer.ts",
+            "startline": 120,
+            "distance": 1.6069667339324951
+          },
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-CodebaseIndexer.ts",
+            "startline": 810,
+            "distance": 1.6654316186904907
+          }
+        ],
+        "https://docs.example.dev/beta/": [
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-crawlers-CheerioCrawler.ts",
+            "startline": 90,
+            "distance": 1.5143141746520996
+          },
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-chunk-ChunkCodebaseIndex.ts",
+            "startline": 240,
+            "distance": 1.6386860609054565
+          }
+        ]
+      }
+    },
+    {
+      "query": "index folder path global dir",
+      "code": {
+        "fileworkspacenextclimainvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "08972525-bee1-49b8-881e-148f3daeed18",
+            "path": "file:///workspace/nextcli/core/indexing/refreshIndex.ts",
+            "startLine": 60,
+            "distance": 1.4850497245788574
+          },
+          {
+            "uuid": "6a22a0d5-f54e-4151-8f4d-6a3b8d806dbf",
+            "path": "file:///workspace/nextcli/core/indexing/docs/crawlers/CheerioCrawler.ts",
+            "startLine": 30,
+            "distance": 1.50148606300354
+          },
+          {
+            "uuid": "fb9f5f47-1798-41e1-8cb9-1c07c8681d86",
+            "path": "file:///workspace/nextcli/core/indexing/walkDir.ts",
+            "startLine": 390,
+            "distance": 1.5295841693878174
+          },
+          {
+            "uuid": "64f920f4-bb9e-40f5-81fb-689213674ebb",
+            "path": "file:///workspace/nextcli/core/indexing/refreshIndex.ts",
+            "startLine": 270,
+            "distance": 1.5403811931610107
+          },
+          {
+            "uuid": "d29f9bbd-a1c4-4c81-8c04-69a077169a3f",
+            "path": "file:///workspace/nextcli/core/indexing/refreshIndex.ts",
+            "startLine": 420,
+            "distance": 1.5912891626358032
+          }
+        ],
+        "fileworkspacenextclidevvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "08972525-bee1-49b8-881e-148f3daeed18",
+            "path": "file:///workspace/nextcli/core/indexing/refreshIndex.ts",
+            "startLine": 60,
+            "distance": 1.4850497245788574
+          },
+          {
+            "uuid": "fb9f5f47-1798-41e1-8cb9-1c07c8681d86",
+            "path": "file:///workspace/nextcli/core/indexing/walkDir.ts",
+            "startLine": 390,
+            "distance": 1.5295841693878174
+          },
+          {
+            "uuid": "64f920f4-bb9e-40f5-81fb-689213674ebb",
+            "path": "file:///workspace/nextcli/core/indexing/refreshIndex.ts",
+            "startLine": 270,
+            "distance": 1.5403811931610107
+          },
+          {
+            "uuid": "d29f9bbd-a1c4-4c81-8c04-69a077169a3f",
+            "path": "file:///workspace/nextcli/core/indexing/refreshIndex.ts",
+            "startLine": 420,
+            "distance": 1.5912891626358032
+          },
+          {
+            "uuid": "c608a095-a7e7-436b-8602-d748fc431176",
+            "path": "file:///workspace/nextcli/core/indexing/CodeSnippetsIndex.ts",
+            "startLine": 390,
+            "distance": 1.612489938735962
+          }
+        ]
+      },
+      "docs": {
+        "https://docs.example.dev/alpha/": [
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-refreshIndex.ts",
+            "startline": 60,
+            "distance": 1.4850497245788574
+          },
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-walkDir.ts",
+            "startline": 390,
+            "distance": 1.5295841693878174
+          },
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-refreshIndex.ts",
+            "startline": 270,
+            "distance": 1.5403811931610107
+          },
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-refreshIndex.ts",
+            "startline": 420,
+            "distance": 1.5912891626358032
+          }
+        ],
+        "https://docs.example.dev/beta/": [
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-crawlers-CheerioCrawler.ts",
+            "startline": 30,
+            "distance": 1.50148606300354
+          }
+        ]
+      }
+    },
+    {
+      "query": "tag catalog last updated cache key",
+      "code": {
+        "fileworkspacenextclimainvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "deb25a86-4b59-48c5-815d-c8c592604780",
+            "path": "file:///workspace/nextcli/core/autocomplete/util/AutocompleteLruCache.ts",
+            "startLine": 90,
+            "distance": 1.4716211557388306
+          },
+          {
+            "uuid": "1b27db49-9355-4e30-8809-914589b1948b",
+            "path": "file:///workspace/nextcli/core/indexing/utils.ts",
+            "startLine": 30,
+            "distance": 1.6062198877334595
+          },
+          {
+            "uuid": "917936ef-58e4-437b-8736-4148e9d95472",
+            "path": "file:///workspace/nextcli/core/indexing/LanceDbIndex.ts",
+            "startLine": 270,
+            "distance": 1.6313831806182861
+          },
+          {
+            "uuid": "b4b4f88b-bdda-46bd-8ddd-67870a7c0882",
+            "path": "file:///workspace/nextcli/core/indexing/LanceDbIndex.ts",
+            "startLine": 60,
+            "distance": 1.6331535577774048
+          },
+          {
+            "uuid": "d29f9bbd-a1c4-4c81-8c04-69a077169a3f",
+            "path": "file:///workspace/nextcli/core/indexing/refreshIndex.ts",
+            "startLine": 420,
+            "distance": 1.6656124591827393
+          }
+        ],
+        "fileworkspacenextclidevvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "1b27db49-9355-4e30-8809-914589b1948b",
+            "path": "file:///workspace/nextcli/core/indexing/utils.ts",
+            "startLine": 30,
+            "distance": 1.6062198877334595
+          },
+          {
+            "uuid": "917936ef-58e4-437b-8736-4148e9d95472",
+            "path": "file:///workspace/nextcli/core/indexing/LanceDbIndex.ts",
+            "startLine": 270,
+            "distance": 1.6313831806182861
+          },
+          {
+            "uuid": "b4b4f88b-bdda-46bd-8ddd-67870a7c0882",
+            "path": "file:///workspace/nextcli/core/indexing/LanceDbIndex.ts",
+            "startLine": 60,
+            "distance": 1.6331535577774048
+          },
+          {
+            "uuid": "d29f9bbd-a1c4-4c81-8c04-69a077169a3f",
+            "path": "file:///workspace/nextcli/core/indexing/refreshIndex.ts",
+            "startLine": 420,
+            "distance": 1.6656124591827393
+          },
+          {
+            "uuid": "5723e8c1-e50a-4c95-863c-f24681efe5e7",
+            "path": "file:///workspace/nextcli/core/indexing/LanceDbIndex.ts",
+            "startLine": 540,
+            "distance": 1.6767154932022095
+          }
+        ]
+      },
+      "docs": {
+        "https://docs.example.dev/alpha/": [
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-utils.ts",
+            "startline": 30,
+            "distance": 1.6062198877334595
+          },
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-LanceDbIndex.ts",
+            "startline": 270,
+            "distance": 1.6313831806182861
+          },
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-LanceDbIndex.ts",
+            "startline": 60,
+            "distance": 1.6331535577774048
+          },
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-refreshIndex.ts",
+            "startline": 420,
+            "distance": 1.6656124591827393
+          },
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-LanceDbIndex.ts",
+            "startline": 540,
+            "distance": 1.6767154932022095
+          }
+        ],
+        "https://docs.example.dev/beta/": []
+      }
+    },
+    {
+      "query": "retrieve chunks by vector similarity",
+      "code": {
+        "fileworkspacenextclimainvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "03c33fd4-ac7e-4a35-8c82-433d7d8d7a5e",
+            "path": "file:///workspace/nextcli/core/indexing/docs/DocsService.ts",
+            "startLine": 810,
+            "distance": 1.4670472145080566
+          },
+          {
+            "uuid": "c597c401-8e51-4d2b-84ad-2ac164dafd65",
+            "path": "file:///workspace/nextcli/core/llm/llms/TransformersJsEmbeddingsProvider.ts",
+            "startLine": 90,
+            "distance": 1.5999999046325684
+          },
+          {
+            "uuid": "089b6323-bfd4-4261-86e8-465fb001dd6a",
+            "path": "file:///workspace/nextcli/core/indexing/docs/DocsService.ts",
+            "startLine": 750,
+            "distance": 1.628619909286499
+          },
+          {
+            "uuid": "526f0dd4-471f-4644-8fb6-1b9e09b424d3",
+            "path": "file:///workspace/nextcli/core/indexing/LanceDbIndex.ts",
+            "startLine": 420,
+            "distance": 1.6755294799804688
+          },
+          {
+            "uuid": "ecffe70e-3450-4f42-88d0-ad4c13dad354",
+            "path": "file:///workspace/nextcli/core/llm/llms/TransformersJsEmbeddingsProvider.ts",
+            "startLine": 60,
+            "distance": 1.6806904077529907
+          }
+        ],
+        "fileworkspacenextclidevvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "526f0dd4-471f-4644-8fb6-1b9e09b424d3",
+            "path": "file:///workspace/nextcli/core/indexing/LanceDbIndex.ts",
+            "startLine": 420,
+            "distance": 1.6755294799804688
+          },
+          {
+            "uuid": "b04e9161-1b0e-4e28-8e5d-088c863f8dc0",
+            "path": "file:///workspace/nextcli/core/indexing/LanceDbIndex.ts",
+            "startLine": 30,
+            "distance": 1.7234221696853638
+          },
+          {
+            "uuid": "20ab5f3a-1f96-4516-8fe7-091baec99f8a",
+            "path": "file:///workspace/nextcli/core/indexing/CodebaseIndexer.ts",
+            "startLine": 780,
+            "distance": 1.7306703329086304
+          },
+          {
+            "uuid": "86774fca-bab2-4aa0-88b2-66c1be92f43f",
+            "path": "file:///workspace/nextcli/core/indexing/LanceDbIndex.ts",
+            "startLine": 120,
+            "distance": 1.737592101097107
+          },
+          {
+            "uuid": "751bb20c-0607-441f-899a-36103c721ea8",
+            "path": "file:///workspace/nextcli/core/indexing/LanceDbIndex.ts",
+            "startLine": 450,
+            "distance": 1.7399743795394897
+          }
+        ]
+      },
+      "docs": {
+        "https://docs.example.dev/alpha/": [
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-LanceDbIndex.ts",
+            "startline": 420,
+            "distance": 1.6755294799804688
+          },
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-LanceDbIndex.ts",
+            "startline": 30,
+            "distance": 1.7234221696853638
+          },
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-CodebaseIndexer.ts",
+            "startline": 780,
+            "distance": 1.7306703329086304
+          }
+        ],
+        "https://docs.example.dev/beta/": [
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-DocsService.ts",
+            "startline": 810,
+            "distance": 1.4670472145080566
+          },
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-DocsService.ts",
+            "startline": 750,
+            "distance": 1.628619909286499
+          }
+        ]
+      }
+    },
+    {
+      "query": "devdata sqlite logging",
+      "code": {
+        "fileworkspacenextclimainvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "9df30915-1239-4e87-8ba0-c3c310c96b70",
+            "path": "file:///workspace/nextcli/core/util/paths.ts",
+            "startLine": 210,
+            "distance": 1.732027530670166
+          },
+          {
+            "uuid": "958af27f-842e-4016-88d6-35cd24915061",
+            "path": "file:///workspace/nextcli/core/indexing/docs/DocsService.ts",
+            "startLine": 0,
+            "distance": 1.7476261854171753
+          },
+          {
+            "uuid": "b8e5b86a-0e00-4ce9-81b0-78beabf6fca6",
+            "path": "file:///workspace/nextcli/core/indexing/docs/DocsService.ts",
+            "startLine": 780,
+            "distance": 1.7518495321273804
+          },
+          {
+            "uuid": "2df10a3a-2641-43c4-8787-f1c08ed736c8",
+            "path": "file:///workspace/nextcli/core/indexing/docs/DocsService.ts",
+            "startLine": 960,
+            "distance": 1.770707368850708
+          },
+          {
+            "uuid": "7279627b-20ba-4ebd-8282-e6df9c220a95",
+            "path": "file:///workspace/nextcli/core/indexing/CodebaseIndexer.ts",
+            "startLine": 690,
+            "distance": 1.7849445343017578
+          }
+        ],
+        "fileworkspacenextclidevvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "7279627b-20ba-4ebd-8282-e6df9c220a95",
+            "path": "file:///workspace/nextcli/core/indexing/CodebaseIndexer.ts",
+            "startLine": 690,
+            "distance": 1.7849445343017578
+          },
+          {
+            "uuid": "e26b831f-21de-4358-8995-68fc29d8cf80",
+            "path": "file:///workspace/nextcli/core/indexing/CodebaseIndexer.ts",
+            "startLine": 750,
+            "distance": 1.8128186464309692
+          },
+          {
+            "uuid": "1b24b4b3-eb2a-4525-87d3-e78dc3a87aef",
+            "path": "file:///workspace/nextcli/core/indexing/CodebaseIndexer.ts",
+            "startLine": 840,
+            "distance": 1.854265570640564
+          },
+          {
+            "uuid": "0c63d606-5de5-4d95-8706-fab46ddb92d7",
+            "path": "file:///workspace/nextcli/core/indexing/CodebaseIndexer.ts",
+            "startLine": 180,
+            "distance": 1.880904197692871
+          },
+          {
+            "uuid": "552ed035-8b99-4a6e-8db8-878016053016",
+            "path": "file:///workspace/nextcli/core/indexing/refreshIndex.ts",
+            "startLine": 0,
+            "distance": 1.8817068338394165
+          }
+        ]
+      },
+      "docs": {
+        "https://docs.example.dev/alpha/": [
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-CodebaseIndexer.ts",
+            "startline": 690,
+            "distance": 1.7849445343017578
+          }
+        ],
+        "https://docs.example.dev/beta/": [
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-DocsService.ts",
+            "startline": 0,
+            "distance": 1.7476261854171753
+          },
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-DocsService.ts",
+            "startline": 780,
+            "distance": 1.7518495321273804
+          },
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-DocsService.ts",
+            "startline": 960,
+            "distance": 1.770707368850708
+          },
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-docs-article.ts",
+            "startline": 30,
+            "distance": 1.7904019355773926
+          }
+        ]
+      }
+    },
+    {
+      "query": "code snippets index tree sitter",
+      "code": {
+        "fileworkspacenextclimainvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "6e5f3348-5f9e-422b-8760-36fc781f2aa4",
+            "path": "file:///workspace/nextcli/core/indexing/chunk/code.ts",
+            "startLine": 60,
+            "distance": 1.5601813793182373
+          },
+          {
+            "uuid": "a50a9664-f987-42b3-808a-22a5af168236",
+            "path": "file:///workspace/nextcli/core/indexing/chunk/chunk.ts",
+            "startLine": 0,
+            "distance": 1.6144790649414062
+          },
+          {
+            "uuid": "d1237f3c-b74b-46d9-8d3f-765aa7c0714d",
+            "path": "file:///workspace/nextcli/core/indexing/chunk/code.ts",
+            "startLine": 0,
+            "distance": 1.6328140497207642
+          },
+          {
+            "uuid": "1b72b8d8-3a6c-4d0c-86e8-72ce28ae33b8",
+            "path": "file:///workspace/nextcli/core/indexing/CodebaseIndexer.ts",
+            "startLine": 90,
+            "distance": 1.6583791971206665
+          },
+          {
+            "uuid": "4d76c7c5-4fae-44b5-8d10-f845aeaf8b4a",
+            "path": "file:///workspace/nextcli/core/indexing/chunk/code.ts",
+            "startLine": 90,
+            "distance": 1.680751085281372
+          }
+        ],
+        "fileworkspacenextclidevvectordbFixtureEmbeddingshashed-bow-384512": [
+          {
+            "uuid": "a50a9664-f987-42b3-808a-22a5af168236",
+            "path": "file:///workspace/nextcli/core/indexing/chunk/chunk.ts",
+            "startLine": 0,
+            "distance": 1.6144790649414062
+          },
+          {
+            "uuid": "1b72b8d8-3a6c-4d0c-86e8-72ce28ae33b8",
+            "path": "file:///workspace/nextcli/core/indexing/CodebaseIndexer.ts",
+            "startLine": 90,
+            "distance": 1.6583791971206665
+          },
+          {
+            "uuid": "4945dc21-af30-4b0c-86b8-a901a56ba31c",
+            "path": "file:///workspace/nextcli/core/indexing/CodeSnippetsIndex.ts",
+            "startLine": 270,
+            "distance": 1.7031301259994507
+          },
+          {
+            "uuid": "b751dbe6-1922-4587-88f8-87aaa49b4e01",
+            "path": "file:///workspace/nextcli/core/indexing/CodeSnippetsIndex.ts",
+            "startLine": 210,
+            "distance": 1.7127304077148438
+          },
+          {
+            "uuid": "2f43d2a3-a39c-4de5-8068-3926cd46b219",
+            "path": "file:///workspace/nextcli/core/indexing/CodeSnippetsIndex.ts",
+            "startLine": 0,
+            "distance": 1.7249243259429932
+          }
+        ]
+      },
+      "docs": {
+        "https://docs.example.dev/alpha/": [
+          {
+            "path": "https://docs.example.dev/alpha/core-indexing-CodebaseIndexer.ts",
+            "startline": 90,
+            "distance": 1.6583791971206665
+          }
+        ],
+        "https://docs.example.dev/beta/": [
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-chunk-code.ts",
+            "startline": 60,
+            "distance": 1.5601813793182373
+          },
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-chunk-chunk.ts",
+            "startline": 0,
+            "distance": 1.6144790649414062
+          },
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-chunk-code.ts",
+            "startline": 0,
+            "distance": 1.6328140497207642
+          },
+          {
+            "path": "https://docs.example.dev/beta/core-indexing-chunk-code.ts",
+            "startline": 90,
+            "distance": 1.680751085281372
+          }
+        ]
+      }
+    }
+  ]
+}

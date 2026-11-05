@@ -1,0 +1,1461 @@
+{
+  "generatedWith": {
+    "adf-to-md": "1.2.1",
+    "function": "convert"
+  },
+  "cases": [
+    {
+      "name": "empty doc",
+      "input": {
+        "type": "doc",
+        "version": 1,
+        "content": []
+      },
+      "output": "",
+      "warnings": []
+    },
+    {
+      "name": "empty paragraph",
+      "input": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": []
+          }
+        ]
+      },
+      "output": "",
+      "warnings": []
+    },
+    {
+      "name": "plain paragraphs",
+      "input": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "First paragraph."
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "Second paragraph."
+              }
+            ]
+          }
+        ]
+      },
+      "output": "First paragraph.\n\nSecond paragraph.",
+      "warnings": []
+    },
+    {
+      "name": "strong, em, code, strike",
+      "input": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "bold",
+                "marks": [
+                  {
+                    "type": "strong"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": " "
+              },
+              {
+                "type": "text",
+                "text": "italic",
+                "marks": [
+                  {
+                    "type": "em"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": " "
+              },
+              {
+                "type": "text",
+                "text": "inline()",
+                "marks": [
+                  {
+                    "type": "code"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": " "
+              },
+              {
+                "type": "text",
+                "text": "gone",
+                "marks": [
+                  {
+                    "type": "strike"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "output": "**bold** _italic_ `inline()` ~~gone~~",
+      "warnings": []
+    },
+    {
+      "name": "link",
+      "input": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "See "
+              },
+              {
+                "type": "text",
+                "text": "the docs",
+                "marks": [
+                  {
+                    "type": "link",
+                    "attrs": {
+                      "href": "https://docs.example.dev/a?b=1&c=2"
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "."
+              }
+            ]
+          }
+        ]
+      },
+      "output": "See [the docs](https://docs.example.dev/a?b=1&c=2).",
+      "warnings": []
+    },
+    {
+      "name": "stacked marks (order matters)",
+      "input": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "bold link",
+                "marks": [
+                  {
+                    "type": "strong"
+                  },
+                  {
+                    "type": "link",
+                    "attrs": {
+                      "href": "https://x.dev"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "link bold",
+                "marks": [
+                  {
+                    "type": "link",
+                    "attrs": {
+                      "href": "https://x.dev"
+                    }
+                  },
+                  {
+                    "type": "strong"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "output": "[**bold link**](https://x.dev)\n\n**[link bold](https://x.dev)**",
+      "warnings": []
+    },
+    {
+      "name": "unsupported marks (underline, textColor, subsup)",
+      "input": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "under",
+                "marks": [
+                  {
+                    "type": "underline"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": " red",
+                "marks": [
+                  {
+                    "type": "textColor",
+                    "attrs": {
+                      "color": "#ff0000"
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": " sub",
+                "marks": [
+                  {
+                    "type": "subsup",
+                    "attrs": {
+                      "type": "sub"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "output": "under red sub",
+      "warnings": [
+        "subsup",
+        "textColor",
+        "underline"
+      ]
+    },
+    {
+      "name": "headings 1-6",
+      "input": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "heading",
+            "attrs": {
+              "level": 1
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "Heading 1"
+              }
+            ]
+          },
+          {
+            "type": "heading",
+            "attrs": {
+              "level": 2
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "Heading 2"
+              }
+            ]
+          },
+          {
+            "type": "heading",
+            "attrs": {
+              "level": 3
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "Heading 3"
+              }
+            ]
+          },
+          {
+            "type": "heading",
+            "attrs": {
+              "level": 4
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "Heading 4"
+              }
+            ]
+          },
+          {
+            "type": "heading",
+            "attrs": {
+              "level": 5
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "Heading 5"
+              }
+            ]
+          },
+          {
+            "type": "heading",
+            "attrs": {
+              "level": 6
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "Heading 6"
+              }
+            ]
+          }
+        ]
+      },
+      "output": "# Heading 1\n\n## Heading 2\n\n### Heading 3\n\n#### Heading 4\n\n##### Heading 5\n\n###### Heading 6",
+      "warnings": []
+    },
+    {
+      "name": "heading with marks",
+      "input": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "heading",
+            "attrs": {
+              "level": 2
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "Fix "
+              },
+              {
+                "type": "text",
+                "text": "parseConfig",
+                "marks": [
+                  {
+                    "type": "code"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "output": "## Fix `parseConfig`",
+      "warnings": []
+    },
+    {
+      "name": "hard break",
+      "input": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "line one"
+              },
+              {
+                "type": "hardBreak"
+              },
+              {
+                "type": "text",
+                "text": "line two"
+              }
+            ]
+          }
+        ]
+      },
+      "output": "line one\nline two",
+      "warnings": []
+    },
+    {
+      "name": "bullet list",
+      "input": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "bulletList",
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "apples"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "pears"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "plums"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "output": "  * apples\n  * pears\n  * plums",
+      "warnings": []
+    },
+    {
+      "name": "ordered list default start",
+      "input": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "orderedList",
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "one"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "two"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "three"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "output": "  1. one\n  2. two\n  3. three",
+      "warnings": []
+    },
+    {
+      "name": "ordered list starting at 5",
+      "input": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "orderedList",
+            "attrs": {
+              "order": 5
+            },
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "five"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "six"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "output": "  5. five\n  6. six",
+      "warnings": []
+    },
+    {
+      "name": "nested lists",
+      "input": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "bulletList",
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "parent"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "orderedList",
+                    "content": [
+                      {
+                        "type": "listItem",
+                        "content": [
+                          {
+                            "type": "paragraph",
+                            "content": [
+                              {
+                                "type": "text",
+                                "text": "child one"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "type": "listItem",
+                        "content": [
+                          {
+                            "type": "paragraph",
+                            "content": [
+                              {
+                                "type": "text",
+                                "text": "child two"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "sibling"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "output": "  * parent   1. child one\n  2. child two\n  * sibling",
+      "warnings": []
+    },
+    {
+      "name": "list item with two paragraphs",
+      "input": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "bulletList",
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "first para"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "second para"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "output": "  * first para second para",
+      "warnings": []
+    },
+    {
+      "name": "code block with language",
+      "input": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "codeBlock",
+            "attrs": {
+              "language": "typescript"
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "const x: number = 1;\nconsole.log(x);"
+              }
+            ]
+          }
+        ]
+      },
+      "output": "``` typescript\nconst x: number = 1;\nconsole.log(x);\n```",
+      "warnings": []
+    },
+    {
+      "name": "code block without language",
+      "input": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "codeBlock",
+            "content": [
+              {
+                "type": "text",
+                "text": "plain code"
+              }
+            ]
+          }
+        ]
+      },
+      "output": "```\nplain code\n```",
+      "warnings": []
+    },
+    {
+      "name": "code block with empty attrs",
+      "input": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "codeBlock",
+            "attrs": {},
+            "content": [
+              {
+                "type": "text",
+                "text": "attrs but no language"
+              }
+            ]
+          }
+        ]
+      },
+      "output": "``` undefined\nattrs but no language\n```",
+      "warnings": []
+    },
+    {
+      "name": "blockquote",
+      "input": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "blockquote",
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "quoted one"
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "quoted two"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "output": "> quoted one\n> quoted two",
+      "warnings": []
+    },
+    {
+      "name": "rule between paragraphs",
+      "input": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "above"
+              }
+            ]
+          },
+          {
+            "type": "rule"
+          },
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "below"
+              }
+            ]
+          }
+        ]
+      },
+      "output": "above\n\n\n\n---\n\n\nbelow",
+      "warnings": []
+    },
+    {
+      "name": "emoji",
+      "input": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "Ship it "
+              },
+              {
+                "type": "emoji",
+                "attrs": {
+                  "shortName": ":rocket:",
+                  "id": "1f680",
+                  "text": "🚀"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "output": "Ship it :rocket:",
+      "warnings": []
+    },
+    {
+      "name": "mention (unsupported)",
+      "input": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "Ping "
+              },
+              {
+                "type": "mention",
+                "attrs": {
+                  "id": "abc",
+                  "text": "@Ann Lee"
+                }
+              },
+              {
+                "type": "text",
+                "text": " please"
+              }
+            ]
+          }
+        ]
+      },
+      "output": "Ping  please",
+      "warnings": [
+        "mention"
+      ]
+    },
+    {
+      "name": "inline card",
+      "input": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "Ticket: "
+              },
+              {
+                "type": "inlineCard",
+                "attrs": {
+                  "url": "https://acme.atlassian.net/browse/NX-1"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "output": "Ticket: [https://acme.atlassian.net/browse/NX-1](https://acme.atlassian.net/browse/NX-1)",
+      "warnings": []
+    },
+    {
+      "name": "block card",
+      "input": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "blockCard",
+            "attrs": {
+              "url": "https://github.com/acme/repo/pull/7"
+            }
+          }
+        ]
+      },
+      "output": "[https://github.com/acme/repo/pull/7](https://github.com/acme/repo/pull/7)",
+      "warnings": []
+    },
+    {
+      "name": "table with header row",
+      "input": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "table",
+            "content": [
+              {
+                "type": "tableRow",
+                "content": [
+                  {
+                    "type": "tableHeader",
+                    "attrs": {},
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Name"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "tableHeader",
+                    "attrs": {},
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Status"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "tableRow",
+                "content": [
+                  {
+                    "type": "tableCell",
+                    "attrs": {},
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "parser"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "tableCell",
+                    "attrs": {},
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "done",
+                            "marks": [
+                              {
+                                "type": "strong"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "tableRow",
+                "content": [
+                  {
+                    "type": "tableCell",
+                    "attrs": {},
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "lexer"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "tableCell",
+                    "attrs": {},
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": []
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "output": "|Name|Status|\n|:-:|:-:|\n|parser|**done**|\n|lexer||\n",
+      "warnings": []
+    },
+    {
+      "name": "table without header",
+      "input": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "table",
+            "content": [
+              {
+                "type": "tableRow",
+                "content": [
+                  {
+                    "type": "tableCell",
+                    "attrs": {},
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "a"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "tableCell",
+                    "attrs": {},
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "b"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "output": "|a|b|\n",
+      "warnings": []
+    },
+    {
+      "name": "panel (unsupported)",
+      "input": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "panel",
+            "attrs": {
+              "panelType": "info"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Heads up: this is in a panel."
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "output": "",
+      "warnings": [
+        "panel"
+      ]
+    },
+    {
+      "name": "media (unsupported)",
+      "input": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "mediaSingle",
+            "attrs": {
+              "layout": "center"
+            },
+            "content": [
+              {
+                "type": "media",
+                "attrs": {
+                  "id": "m1",
+                  "type": "file",
+                  "collection": "c"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "output": "",
+      "warnings": [
+        "mediaSingle"
+      ]
+    },
+    {
+      "name": "status, date, expand (unsupported)",
+      "input": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "status",
+                "attrs": {
+                  "text": "IN PROGRESS",
+                  "color": "blue"
+                }
+              },
+              {
+                "type": "text",
+                "text": " since "
+              },
+              {
+                "type": "date",
+                "attrs": {
+                  "timestamp": "1762300800000"
+                }
+              }
+            ]
+          },
+          {
+            "type": "expand",
+            "attrs": {
+              "title": "Details"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "hidden text"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "output": " since \n\n",
+      "warnings": [
+        "date",
+        "expand",
+        "status"
+      ]
+    },
+    {
+      "name": "task list (unsupported)",
+      "input": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "taskList",
+            "attrs": {
+              "localId": "t"
+            },
+            "content": [
+              {
+                "type": "taskItem",
+                "attrs": {
+                  "localId": "1",
+                  "state": "DONE"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "write tests"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "output": "",
+      "warnings": [
+        "taskList"
+      ]
+    },
+    {
+      "name": "markdown special characters in text",
+      "input": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "Use *stars*, _underscores_, `ticks`, # hashes and | pipes"
+              }
+            ]
+          }
+        ]
+      },
+      "output": "Use *stars*, _underscores_, `ticks`, # hashes and | pipes",
+      "warnings": []
+    },
+    {
+      "name": "unicode",
+      "input": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "Ünïcödé — 日本語 — emoji 🙂 — RTL עברית"
+              }
+            ]
+          }
+        ]
+      },
+      "output": "Ünïcödé — 日本語 — emoji 🙂 — RTL עברית",
+      "warnings": []
+    },
+    {
+      "name": "realistic bug report",
+      "input": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "heading",
+            "attrs": {
+              "level": 3
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "Steps to reproduce"
+              }
+            ]
+          },
+          {
+            "type": "orderedList",
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Open "
+                      },
+                      {
+                        "type": "text",
+                        "text": "settings.json",
+                        "marks": [
+                          {
+                            "type": "code"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Set "
+                      },
+                      {
+                        "type": "text",
+                        "text": "apiVersion",
+                        "marks": [
+                          {
+                            "type": "code"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "text",
+                        "text": " to 3"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Run "
+                      },
+                      {
+                        "type": "text",
+                        "text": "@jira",
+                        "marks": [
+                          {
+                            "type": "strong"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "heading",
+            "attrs": {
+              "level": 3
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "Actual"
+              }
+            ]
+          },
+          {
+            "type": "codeBlock",
+            "attrs": {
+              "language": "text"
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "TypeError: Cannot read properties of undefined (reading 'result')"
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "See "
+              },
+              {
+                "type": "text",
+                "text": "NX-42",
+                "marks": [
+                  {
+                    "type": "link",
+                    "attrs": {
+                      "href": "https://acme.atlassian.net/browse/NX-42"
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "."
+              }
+            ]
+          }
+        ]
+      },
+      "output": "### Steps to reproduce\n\n  1. Open `settings.json`\n  2. Set `apiVersion` to 3\n  3. Run **@jira**\n\n### Actual\n\n``` text\nTypeError: Cannot read properties of undefined (reading 'result')\n```\n\nSee [NX-42](https://acme.atlassian.net/browse/NX-42).",
+      "warnings": []
+    },
+    {
+      "name": "invalid: missing version",
+      "input": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "x"
+              }
+            ]
+          }
+        ]
+      },
+      "error": "adf-validation-failed"
+    },
+    {
+      "name": "invalid: wrong root type",
+      "input": {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "text": "x"
+          }
+        ]
+      },
+      "error": "adf-validation-failed"
+    }
+  ]
+}
