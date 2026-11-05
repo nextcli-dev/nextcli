@@ -10,7 +10,8 @@ vi.mock("uuid");
 vi.mock("core/util/messageContent");
 vi.mock("../../util/toolCallState");
 
-const mockUuidv4 = vi.mocked(uuidv4);
+// uuid types v4 as overloads; the test only uses the string-returning form.
+const mockUuidv4 = vi.mocked(uuidv4 as () => string);
 const mockRenderChatMessage = vi.mocked(renderChatMessage);
 const mockAddToolCallDeltaToState = vi.mocked(addToolCallDeltaToState);
 

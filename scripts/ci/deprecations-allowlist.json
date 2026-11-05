@@ -37,11 +37,6 @@
       "fix": "P4 jsdom ^29 and encoding-sniffer ^1.0.2 override"
     },
     {
-      "name": "uuid",
-      "version": "9.0.1",
-      "fix": "P1 uuid ^11.1"
-    },
-    {
       "name": "gauge",
       "version": "5.0.2",
       "fix": "P1 puppeteer-chromium-resolver 25"
@@ -84,12 +79,7 @@
     {
       "name": "uuid",
       "version": "8.3.2",
-      "fix": "P1 drop uuidv4, bump vsce/ovsx/vscode-extension-tester; P6 drop dbinfoz"
-    },
-    {
-      "name": "uuidv4",
-      "version": "6.2.13",
-      "fix": "P1 replace the direct uuidv4 dependency in extensions/vscode with uuid"
+      "fix": "P1 bump vsce/ovsx/vscode-extension-tester; P6 drop dbinfoz"
     },
     {
       "name": "@types/dompurify",
