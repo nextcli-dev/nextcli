@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.3](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.2...vscode-v1.6.3) (2026-11-05)
+
+
+### Bug Fixes
+
+* streaming-edit typing, unreadable dirs, adt:// roots, CLI warning, NextCLI attribution ([#38](https://github.com/nextcli-dev/nextcli/issues/38)) ([61df861](https://github.com/nextcli-dev/nextcli/commit/61df86123845e419d264d4b288f650aa15bb7e7c))
+
 ## [1.6.2](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.1...vscode-v1.6.2) (2026-11-04)
 
 
