@@ -20,6 +20,10 @@ const ModelCapabilityWarning: React.FC<ModelCapabilityWarningProps> = ({
         The model "{modelName}" is not recommended for use with cn due to
         limited reasoning and tool calling capabilities
       </Text>
+      <Text color="gray">
+        If this model supports tool calling, add "capabilities: [tool_use]" to
+        it in your config to hide this warning.
+      </Text>
     </Box>
   );
 };

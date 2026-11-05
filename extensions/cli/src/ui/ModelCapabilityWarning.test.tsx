@@ -20,6 +20,7 @@ describe("ModelCapabilityWarning", () => {
         "is not recommended for use with cn due to limited reasoning and tool",
       );
       expect(frame).toContain("calling capabilities");
+      expect(frame).toContain('add "capabilities: [tool_use]"');
     }
   });
 
