@@ -4,7 +4,7 @@
 // `node scripts/ci/affected.mjs --base origin/main --explain`.
 //
 // How it decides:
-// 1. Every changed file is mapped to an area (core, gui, vscode, cli, binary,
+// 1. Every changed file is mapped to an area (core, gui, vscode, cli,
 //    or a package under packages/). Markdown and docs map to nothing.
 // 2. Some files (lockfiles, CI config, shared tooling) force a full run.
 // 3. Areas propagate to everything that depends on them. Dependencies are read
@@ -31,7 +31,6 @@ export const APP_AREAS = {
   gui: "gui",
   vscode: "extensions/vscode",
   cli: "extensions/cli",
-  binary: "binary",
 };
 
 // Edges that package.json does not declare. The extension bundles the GUI
@@ -252,7 +251,6 @@ export function computeAffected({ files, graph, full = false, fullReason }) {
     // Windows and macOS CLI runs are the most expensive jobs. They run when
     // the CLI's own files change, or on a full run.
     cliCrossOs: isFull || direct.has("cli"),
-    binary: has("binary"),
     packages,
     testMode,
     reasons,
@@ -317,7 +315,7 @@ function explain(result) {
   lines.push("");
   lines.push(
     `Jobs: ${
-      ["core", "gui", "vscode", "vscodeE2e", "cli", "cliCrossOs", "binary"]
+      ["core", "gui", "vscode", "vscodeE2e", "cli", "cliCrossOs"]
         .filter((k) => result[k])
         .join(", ") || "none"
     }; packages: ${result.packages.join(", ") || "none"}`,
@@ -375,7 +373,6 @@ function main() {
       vscode_e2e: result.vscodeE2e,
       cli: result.cli,
       cli_cross_os: result.cliCrossOs,
-      binary: result.binary,
       packages: JSON.stringify(result.packages),
       base_sha: base ?? "",
       core_jest_args: args("core").jest,

@@ -34,7 +34,6 @@ jobs:
       vscode_e2e: ${{ steps.affected.outputs.vscode_e2e }}
       cli: ${{ steps.affected.outputs.cli }}
       cli_cross_os: ${{ steps.affected.outputs.cli_cross_os }}
-      binary: ${{ steps.affected.outputs.binary }}
       packages: ${{ steps.affected.outputs.packages }}
       base_sha: ${{ steps.affected.outputs.base_sha }}
       core_jest_args: ${{ steps.affected.outputs.core_jest_args }}
@@ -201,29 +200,6 @@ jobs:
         run: npm test -- $VITEST_ARGS
         env:
           VITEST_ARGS: ${{ needs.changes.outputs.gui_vitest_args }}
-
-  binary:
-    needs: changes
-    if: needs.changes.outputs.binary == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-      - name: Setup packages
-        uses: ./.github/actions/setup-packages
-      - name: Setup core component
-        uses: ./.github/actions/setup-component
-        with:
-          component: core
-          include-root: true
-      - name: Setup binary component
-        uses: ./.github/actions/setup-component
-        with:
-          component: binary
-          include-packages: false
-      - name: Type check
-        working-directory: binary
-        run: npx tsc --noEmit
 
   vscode:
     needs: changes
@@ -574,7 +550,6 @@ jobs:
       - pr-title
       - core
       - gui
-      - binary
       - vscode
       - packages
       - vscode-e2e-matrix
@@ -592,7 +567,7 @@ jobs:
         uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35 # v1.3.0
         with:
           allowed-skips: >-
-            pr-title, core, gui, binary, vscode, packages, vscode-e2e-matrix,
+            pr-title, core, gui, vscode, packages, vscode-e2e-matrix,
             vscode-build-linux, vscode-e2e, cli-lint, cli-test,
             cli-test-cross-os, cli-smoke-api
           jobs: ${{ toJSON(needs) }}

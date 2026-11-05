@@ -149,7 +149,7 @@
     {
       "name": "prebuild-install",
       "version": "7.1.1",
-      "fix": "P1 delete binary/ (pkg); P6 sharp ^0.34 override in core/vendor"
+      "fix": "P6 sharp ^0.34 override in core/vendor"
     },
     {
       "name": "@lancedb/vectordb-darwin-arm64",

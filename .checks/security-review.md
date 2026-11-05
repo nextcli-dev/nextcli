@@ -6,7 +6,6 @@ paths:
   - "extensions/**"
   - "gui/src/**"
   - "packages/**"
-  - "binary/**"
 ---
 
 NextCLI runs locally with the user's permissions. It reads their files, runs shell commands, and sends file contents to model providers. Review only code changed in this pull request. Flag:

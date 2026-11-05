@@ -16,7 +16,6 @@
       "exclude-paths": [
         "extensions/vscode",
         "gui",
-        "binary",
         "docs",
         "docs-site",
         "eval",
