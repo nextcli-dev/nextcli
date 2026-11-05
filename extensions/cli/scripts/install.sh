@@ -4,7 +4,7 @@ set -euo pipefail
 # NextCLI CLI Installer - Unix (macOS, Linux, WSL, Git Bash)
 # curl -fsSL https://nextcli.dev/install.sh | bash
 
-REQUIRED_NODE_VERSION="20.20.1"
+REQUIRED_NODE_VERSION="22.23.2"
 PACKAGE_NAME="@nextcli/cli"
 CLI_COMMAND="cn"
 NETWORK_TIMEOUT=60
