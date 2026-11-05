@@ -23,14 +23,14 @@ describe("ClawRouter", () => {
     expect(clawRouter["supportsReasoningDetailsField"]).toBe(true);
   });
 
-  it("should include Continue User-Agent header", () => {
+  it("should identify itself as NextCLI in the User-Agent", () => {
     const clawRouter = new ClawRouter({
       model: "blockrun/auto",
     });
 
     const headers = clawRouter["_getHeaders"]();
 
-    expect(headers["User-Agent"]).toMatch(/^Continue\//);
+    expect(headers["User-Agent"]).toMatch(/^NextCLI\//);
     expect(headers["X-Continue-Provider"]).toBe("clawrouter");
   });
 

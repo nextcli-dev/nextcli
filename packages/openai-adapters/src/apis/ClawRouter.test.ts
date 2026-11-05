@@ -20,11 +20,11 @@ describe("ClawRouterApi", () => {
     expect(api["config"].apiBase).toBe("http://custom:8080/v1/");
   });
 
-  it("should include Continue headers", () => {
+  it("should identify itself as NextCLI", () => {
     const api = new ClawRouterApi(baseConfig);
     const headers = api["getHeaders"]();
 
-    expect(headers["User-Agent"]).toBe("Continue/IDE");
+    expect(headers["User-Agent"]).toBe("NextCLI/IDE");
     expect(headers["X-Continue-Provider"]).toBe("clawrouter");
   });
 

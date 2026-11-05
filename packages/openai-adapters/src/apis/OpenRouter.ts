@@ -10,9 +10,12 @@ export interface OpenRouterConfig extends OpenAIConfig {
 
 // TODO: Extract detailed error info from OpenRouter's error.metadata.raw to surface better messages
 
+// OpenRouter app attribution: the referer identifies the app, the title is
+// its display name (X-Title is the older name of the same header)
 export const OPENROUTER_HEADERS: Record<string, string> = {
   "HTTP-Referer": "https://nextcli.dev/",
-  "X-OpenRouter-Title": "Continue",
+  "X-OpenRouter-Title": "NextCLI",
+  "X-Title": "NextCLI",
   "X-OpenRouter-Categories": "ide-extension",
 };
 
