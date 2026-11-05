@@ -8,13 +8,21 @@
 //   node scripts/regression/generate-database-fixture.mjs
 //   podman-compose -f scripts/regression/database/compose.yaml down
 //
-// Writes core/test/fixtures/regression/database/:
-//   shop.sqlite   the SQLite database (seeded here)
-//   golden.json   per engine: the connection config used and the output,
-//                 or the error if that engine was unreachable
+// Writes core/test/fixtures/regression/database/golden.json: per engine, the
+// connection config used, the schema SQL that seeded it, and the output (or
+// the error if that engine was unreachable). The SQLite database is built in a
+// temporary folder and not committed; Phase 6's test rebuilds it from the
+// recorded schema SQL.
 
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { createRequire } from "node:module";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -28,7 +36,7 @@ const OUT = path.join(ROOT, "core/test/fixtures/regression/database");
 const READY_TIMEOUT_MS = 180_000;
 
 // The same logical schema in each dialect.
-const SCHEMA = {
+export const SCHEMA = {
   sqlite: [
     `CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL UNIQUE, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`,
     `CREATE TABLE orders (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id), total NUMERIC(10,2) NOT NULL, status TEXT DEFAULT 'new')`,
@@ -58,7 +66,8 @@ const SCHEMA = {
 // Connection configs in the shape users put under `connection` in their
 // config, which DatabaseContextProvider passes to dbinfoz unchanged.
 const CONNECTIONS = {
-  sqlite: { filename: path.join(OUT, "shop.sqlite"), database: "shop" },
+  // Set in main(): a temporary file, so importing this module has no side effects.
+  sqlite: { filename: null, database: "shop" },
   postgres: {
     host: "127.0.0.1",
     port: 15432,
@@ -149,6 +158,10 @@ const SEEDERS = {
 async function main() {
   if (existsSync(OUT)) rmSync(OUT, { recursive: true });
   mkdirSync(OUT, { recursive: true });
+  CONNECTIONS.sqlite.filename = path.join(
+    mkdtempSync(path.join(os.tmpdir(), "nextcli-db-fixture-")),
+    "shop.sqlite",
+  );
   await seedSqlite(CONNECTIONS.sqlite.filename);
 
   const dbinfozEntry = requireFromCore.resolve("dbinfoz");
@@ -166,7 +179,7 @@ async function main() {
     // Recorded with the absolute path stripped so the file is portable.
     const recordedConnection =
       engine === "sqlite"
-        ? { ...connection, filename: "<fixture>/shop.sqlite" }
+        ? { ...connection, filename: "<temp>/shop.sqlite" }
         : { ...connection, password: "<redacted>" };
     try {
       if (SEEDERS[engine]) await SEEDERS[engine]();
@@ -176,6 +189,7 @@ async function main() {
       );
       golden.engines[engine] = {
         connection: recordedConnection,
+        schema: SCHEMA[engine],
         tablesAndSchemas,
         // What the provider puts in the prompt for `<name>.all`.
         allTablesPrompt: `Schema for all tables on ${engine} is ${JSON.stringify(tablesAndSchemas)}`,
@@ -187,6 +201,7 @@ async function main() {
     } catch (err) {
       golden.engines[engine] = {
         connection: recordedConnection,
+        schema: SCHEMA[engine],
         error: String(err?.message ?? err),
       };
       console.log(`${engine}: not recorded (${err?.message ?? err})`);
@@ -197,10 +212,17 @@ async function main() {
     JSON.stringify(golden, null, 2) + "\n",
   );
   console.log(`Wrote ${path.relative(ROOT, OUT)}/golden.json`);
+  rmSync(path.dirname(CONNECTIONS.sqlite.filename), { recursive: true });
   process.exit(0); // driver pools can keep the event loop alive
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+// Run only when called directly, so Phase 6's test can import SCHEMA.
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
