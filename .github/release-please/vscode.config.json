@@ -15,7 +15,6 @@
       "changelog-path": "extensions/vscode/CHANGELOG.md",
       "exclude-paths": [
         "extensions/cli",
-        "binary",
         "docs",
         "docs-site",
         "eval",

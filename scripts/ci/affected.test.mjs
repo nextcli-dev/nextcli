@@ -11,7 +11,6 @@ const graph = {
     gui: "gui",
     vscode: "extensions/vscode",
     cli: "extensions/cli",
-    binary: "binary",
     "packages/config-types": "packages/config-types",
     "packages/config-yaml": "packages/config-yaml",
     "packages/fetch": "packages/fetch",
@@ -22,7 +21,6 @@ const graph = {
     gui: ["core", "packages/config-yaml"],
     vscode: ["core", "gui", "packages/config-types"],
     cli: ["core", "packages/config-yaml"],
-    binary: ["core"],
     "packages/config-types": [],
     "packages/config-yaml": ["packages/config-types"],
     "packages/fetch": ["packages/config-types"],
@@ -36,7 +34,7 @@ test("docs-only change runs no jobs", () => {
   const r = run(["README.md", "docs/guide.mdx", "extensions/cli/spec/tui.md"]);
   assert.equal(r.docsOnly, true);
   assert.equal(r.full, false);
-  for (const job of ["core", "gui", "vscode", "vscodeE2e", "cli", "binary"]) {
+  for (const job of ["core", "gui", "vscode", "vscodeE2e", "cli"]) {
     assert.equal(r[job], false, job);
   }
   assert.deepEqual(r.packages, []);
@@ -46,7 +44,7 @@ test("CLI-only change runs only the CLI, with narrowed tests", () => {
   const r = run(["extensions/cli/src/ui/App.tsx"]);
   assert.equal(r.cli, true);
   assert.equal(r.cliCrossOs, true);
-  assert.equal(r.core || r.gui || r.vscode || r.binary, false);
+  assert.equal(r.core || r.gui || r.vscode, false);
   assert.equal(r.testMode.cli, "changed");
   assert.equal(
     testArgs(r, "cli", "abc").vitest,
@@ -56,10 +54,7 @@ test("CLI-only change runs only the CLI, with narrowed tests", () => {
 
 test("core change runs all its dependents with full suites", () => {
   const r = run(["core/llm/index.ts"]);
-  assert.equal(
-    r.core && r.gui && r.vscode && r.vscodeE2e && r.cli && r.binary,
-    true,
-  );
+  assert.equal(r.core && r.gui && r.vscode && r.vscodeE2e && r.cli, true);
   assert.equal(r.testMode.core, "changed");
   assert.equal(r.testMode.gui, "full");
   assert.equal(r.testMode.cli, "full");
@@ -71,7 +66,7 @@ test("core change runs all its dependents with full suites", () => {
 test("package change propagates through packages and apps", () => {
   const r = run(["packages/config-types/src/index.ts"]);
   assert.deepEqual(r.packages, ["config-types", "config-yaml", "fetch"]);
-  assert.equal(r.core && r.gui && r.vscode && r.cli && r.binary, true);
+  assert.equal(r.core && r.gui && r.vscode && r.cli, true);
   assert.equal(r.testMode.core, "full");
 });
 
@@ -84,7 +79,7 @@ test("leaf package change stays local", () => {
 test("GUI change affects the VS Code extension", () => {
   const r = run(["gui/src/App.tsx"]);
   assert.equal(r.gui && r.vscode && r.vscodeE2e, true);
-  assert.equal(r.core || r.cli || r.binary, false);
+  assert.equal(r.core || r.cli, false);
 });
 
 test("e2e-only change runs the e2e matrix", () => {

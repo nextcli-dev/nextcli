@@ -175,21 +175,6 @@
       ]
     },
     {
-      "label": "binary:esbuild",
-      "type": "shell",
-      "command": "npm",
-      "args": ["run", "esbuild"],
-      "problemMatcher": [],
-      "presentation": {
-        "group": "build-tasks",
-        "panel": "shared",
-        "reveal": "always"
-      },
-      "options": {
-        "cwd": "binary"
-      }
-    },
-    {
       "label": "docs:start",
       "type": "shell",
       "command": "npm",

@@ -29,7 +29,6 @@ Per area touched:
 | `extensions/vscode/` | `npx tsc --noEmit && npm run lint && npm run vitest`             |
 | `extensions/cli/`    | `npm run lint` (tsc + eslint) `&& npm test`                      |
 | `packages/<name>/`   | `npm test` (plus `npx tsc --noEmit`)                             |
-| `binary/`            | `npx tsc --noEmit`                                               |
 
 Build order matters: the CLI typechecks against `core/dist`, and `packages/*` are consumed through their `dist`. After changing `core/` or a package the CLI uses, run `npm run build` there first, or the CLI checks will test stale code.
 
