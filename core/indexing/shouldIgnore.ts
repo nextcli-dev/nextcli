@@ -37,8 +37,16 @@ export async function shouldIgnore(
     splitUri.pop();
     currentDir = splitUri.join("/");
 
-    // Get all files in the dir
-    const dirEntries = await ide.listDir(currentDir);
+    // Get all files in the dir. A directory that can't be listed (e.g. on a
+    // virtual filesystem) contributes no ignore files instead of failing
+    let dirEntries: [string, FileType][] = [];
+    try {
+      dirEntries = await ide.listDir(currentDir);
+    } catch (e) {
+      console.warn(
+        `Could not list ${currentDir} while checking ignores: ${e instanceof Error ? e.message : e}`,
+      );
+    }
 
     // Check if the file is a symbolic link, ignore if so
     if (directParent) {
@@ -58,7 +66,7 @@ export async function shouldIgnore(
       dirEntries,
       ide,
       defaultAndGlobalIgnores,
-    );
+    ).catch(() => defaultAndGlobalIgnores);
 
     let relativePath = uri.substring(currentDir.length + 1);
     if (fileType === (2 as FileType.Directory)) {

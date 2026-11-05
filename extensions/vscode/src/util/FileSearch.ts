@@ -12,7 +12,9 @@ type FileMiniSearchResult = { relativePath: string; id: string };
 */
 export class FileSearch {
   constructor(private readonly ide: IDE) {
-    this.initializeFileSearchState();
+    this.initializeFileSearchState().catch((e) => {
+      console.warn("Failed to build the file search index:", e);
+    });
   }
 
   private miniSearch = new MiniSearch<FileMiniSearchResult>({

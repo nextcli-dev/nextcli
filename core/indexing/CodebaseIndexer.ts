@@ -256,6 +256,10 @@ export class CodebaseIndexer {
     const indexesToBuild = await this.getIndexesToBuild();
     const stats = await this.ide.getFileStats([file]);
     const filePath = Object.keys(stats)[0];
+    if (filePath === undefined) {
+      // The IDE couldn't stat the file (unreadable or already gone)
+      return;
+    }
     for (const index of indexesToBuild) {
       const tag = {
         directory: foundInDir,
@@ -305,30 +309,37 @@ export class CodebaseIndexer {
     const workspaceDirs = await this.ide.getWorkspaceDirs();
 
     const progressPer = 1 / files.length;
-    try {
-      for (const file of files) {
-        yield {
-          progress,
-          desc: `Indexing file ${file}...`,
-          status: "indexing",
-        };
+    let lastError: unknown;
+    for (const file of files) {
+      yield {
+        progress,
+        desc: `Indexing file ${file}...`,
+        status: "indexing",
+      };
+      // One file failing must not stop the rest of the batch
+      try {
         await this.refreshFile(file, workspaceDirs);
-
-        progress += progressPer;
-
-        if (this.pauseToken.paused) {
-          yield* this.yieldUpdateAndPause();
-        }
+      } catch (err) {
+        lastError = err;
+        console.warn(`Failed to index ${file}:`, err);
       }
 
-      yield {
-        progress: 1,
-        desc: "Indexing Complete",
-        status: "done",
-      };
-    } catch (err) {
-      yield this.handleErrorAndGetProgressUpdate(err);
+      progress += progressPer;
+
+      if (this.pauseToken.paused) {
+        yield* this.yieldUpdateAndPause();
+      }
     }
+
+    if (lastError !== undefined) {
+      yield this.handleErrorAndGetProgressUpdate(lastError);
+      return;
+    }
+    yield {
+      progress: 1,
+      desc: "Indexing Complete",
+      status: "done",
+    };
   }
 
   async *refreshDirs(

@@ -54,6 +54,17 @@ class WalkDirCache {
       ignore: Promise<Ignore>;
     }
   > = new Map();
+  /** Drops a failed listing so the next walk asks the IDE again */
+  forgetFailedListing(uri: string, failed: Promise<[string, FileType][]>) {
+    if (this.dirListCache.get(uri)?.entries === failed) {
+      this.dirListCache.delete(uri);
+    }
+  }
+  forgetFailedIgnore(uri: string, failed: Promise<Ignore>) {
+    if (this.dirIgnoreCache.get(uri)?.ignore === failed) {
+      this.dirIgnoreCache.delete(uri);
+    }
+  }
   // The super safe approach for now
   invalidate() {
     this.dirListCache.clear();
@@ -120,49 +131,70 @@ class DFSWalker {
       dirs++;
 
       section = Date.now();
-      let entries: [string, FileType][] = [];
-      const cachedListdir = walkDirCache.dirListCache.get(
-        cur.walkableEntry.uri,
-      );
+      const dirUri = cur.walkableEntry.uri;
+      let listing: Promise<[string, FileType][]>;
+      const cachedListdir = walkDirCache.dirListCache.get(dirUri);
       if (
         cachedListdir &&
         cachedListdir.time > Date.now() - LIST_DIR_CACHE_TIME
       ) {
-        entries = await cachedListdir.entries;
+        listing = cachedListdir.entries;
         listDirCacheHits++;
       } else {
-        const promise = this.ide.listDir(cur.walkableEntry.uri);
-        walkDirCache.dirListCache.set(cur.walkableEntry.uri, {
+        listing = this.ide.listDir(dirUri);
+        walkDirCache.dirListCache.set(dirUri, {
           time: Date.now(),
-          entries: promise,
+          entries: listing,
         });
-        entries = await promise;
+      }
+      let entries: [string, FileType][];
+      try {
+        entries = await listing;
+      } catch (e) {
+        walkDirCache.forgetFailedListing(dirUri, listing);
+        // The directory asked for must be readable; below it, skip what
+        // can't be listed (e.g. objects on a virtual filesystem that are
+        // typed as directories but refuse listing) and keep walking
+        if (cur === rootContext) {
+          throw e;
+        }
+        console.warn(
+          `Skipping directory that could not be listed: ${dirUri} (${errorMessage(e)})`,
+        );
+        continue;
       }
       listDirTime += Date.now() - section;
 
       section = Date.now();
-      let newIgnore: Ignore;
-      const cachedIgnore = walkDirCache.dirIgnoreCache.get(
-        cur.walkableEntry.uri,
-      );
+      let ignoreLoading: Promise<Ignore>;
+      const cachedIgnore = walkDirCache.dirIgnoreCache.get(dirUri);
       if (
         cachedIgnore &&
         cachedIgnore.time > Date.now() - IGNORE_FILE_CACHE_TIME
       ) {
-        newIgnore = await cachedIgnore.ignore;
+        ignoreLoading = cachedIgnore.ignore;
         ignoreCacheHits++;
       } else {
-        const ignorePromise = getIgnoreContext(
-          cur.walkableEntry.uri,
+        ignoreLoading = getIgnoreContext(
+          dirUri,
           entries,
           this.ide,
           defaultAndGlobalIgnores,
         );
-        walkDirCache.dirIgnoreCache.set(cur.walkableEntry.uri, {
+        walkDirCache.dirIgnoreCache.set(dirUri, {
           time: Date.now(),
-          ignore: ignorePromise,
+          ignore: ignoreLoading,
         });
-        newIgnore = await ignorePromise;
+      }
+      let newIgnore: Ignore;
+      try {
+        newIgnore = await ignoreLoading;
+      } catch (e) {
+        walkDirCache.forgetFailedIgnore(dirUri, ignoreLoading);
+        console.warn(
+          `Could not read ignore files in ${dirUri}, using default ignores there (${errorMessage(e)})`,
+        );
+        newIgnore = defaultAndGlobalIgnores;
       }
 
       const ignoreContexts = [
@@ -291,9 +323,21 @@ export async function walkDirs(
 ): Promise<string[]> {
   const workspaceDirs = dirs ?? (await ide.getWorkspaceDirs());
   const results = await Promise.all(
-    workspaceDirs.map((dir) => walkDir(dir, ide, _optionOverrides)),
+    workspaceDirs.map((dir) =>
+      // One unreadable workspace folder must not empty the results for the rest
+      walkDir(dir, ide, _optionOverrides).catch((e) => {
+        console.warn(
+          `Skipping workspace folder that could not be listed: ${dir} (${errorMessage(e)})`,
+        );
+        return [];
+      }),
+    ),
   );
   return results.flat();
+}
+
+function errorMessage(e: unknown) {
+  return e instanceof Error ? e.message : String(e);
 }
 
 export async function getIgnoreContext(
