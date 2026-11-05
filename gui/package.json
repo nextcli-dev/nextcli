@@ -116,5 +116,13 @@
   "engine-strict": true,
   "engines": {
     "node": ">=20.20.1"
+  },
+  "overrides": {
+    "@vitest/coverage-v8": {
+      "test-exclude": "^8.0.0"
+    },
+    "sucrase": {
+      "glob": "^13.0.6"
+    }
   }
 }
