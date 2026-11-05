@@ -20,5 +20,7 @@ Known gaps in the baseline:
 
 - MSSQL crashes under x86 emulation on Apple Silicon, so its schema output must
   be recorded on an x86 Linux machine.
-- `packages/continue-sdk` is not installed or tested anywhere, including CI, so
-  its steps are recorded as skipped.
+- `packages/continue-sdk/typescript` (the SDK code and its jest tests) is not
+  installed or tested anywhere, so its steps are recorded as skipped. CI's
+  `packages (continue-sdk)` job only runs `npm ci` and an `echo` test script in
+  the parent folder.
