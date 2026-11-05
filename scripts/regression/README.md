@@ -13,8 +13,8 @@ replaced, so each phase of the upgrade can prove nothing changed.
 | `core/test/regression/htmlExtraction.vitest.ts` | Text extracted from web pages by the docs indexer and the @url provider                                                           | Runs with core's vitest; `UPDATE_REGRESSION_FIXTURES=1` re-records                                                             |
 
 The fixture generators must run before the dependency they record is removed;
-after that, the committed output is the reference. Only `summary.json` from each
-results folder is committed; raw reports and logs stay local.
+after that, the committed output is the reference. The `results/` folder is
+git-ignored: baselines are machine-specific and stay on the machine that made them.
 
 Known gaps in the baseline:
 
