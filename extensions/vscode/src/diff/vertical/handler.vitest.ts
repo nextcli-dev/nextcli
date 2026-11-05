@@ -39,6 +39,7 @@ vi.mock("vscode", () => {
       return new Range(start ?? this.start, end ?? this.end);
     }
   }
+  const documentListeners = new Set<(event: any) => void>();
   const window = {
     activeTextEditor: undefined as any,
     visibleTextEditors: [] as any[],
@@ -53,7 +54,12 @@ vi.mock("vscode", () => {
     Selection: Range,
     window,
     workspace: {
-      onDidChangeTextDocument: () => ({ dispose() {} }),
+      onDidChangeTextDocument: (listener: (event: any) => void) => {
+        documentListeners.add(listener);
+        return { dispose: () => documentListeners.delete(listener) };
+      },
+      fireDocumentChange: (event: any) =>
+        documentListeners.forEach((listener) => listener(event)),
       openTextDocument: vi.fn(),
     },
     commands: { executeCommand: vi.fn() },
@@ -77,6 +83,31 @@ function createEditor(initial: string) {
     let offset = 0;
     for (let i = 0; i < pos.line; i++) offset += ls[i].length + 1;
     return offset + Math.min(pos.character, ls[pos.line].length);
+  };
+  const positionAt = (offset: number) => {
+    const before = text.slice(0, offset).split("\n");
+    return new vscode.Position(
+      before.length - 1,
+      before[before.length - 1].length,
+    );
+  };
+  /** Applies edits and, like VS Code, reports them before edit() resolves */
+  const applyOps = (ops: { start: number; end: number; text: string }[]) => {
+    const contentChanges = [];
+    ops.sort((a, b) => b.start - a.start);
+    for (const op of ops) {
+      contentChanges.push({
+        range: new vscode.Range(positionAt(op.start), positionAt(op.end)),
+        text: op.text,
+      });
+      text = text.slice(0, op.start) + op.text + text.slice(op.end);
+    }
+    if (contentChanges.length) {
+      (vscode.workspace as any).fireDocumentChange({
+        document,
+        contentChanges,
+      });
+    }
   };
   const document = {
     uri: { toString: () => "file:///sandbox/.continue/config.yaml" },
@@ -121,14 +152,14 @@ function createEditor(initial: string) {
             text: t,
           }),
       });
-      ops.sort((a, b) => b.start - a.start);
-      for (const op of ops) {
-        text = text.slice(0, op.start) + op.text + text.slice(op.end);
-      }
+      applyOps(ops);
       return true;
     },
   };
-  return { editor, getText: () => text };
+  /** A keystroke from the user, not from the handler */
+  const userInsert = (pos: vscode.Position, t: string) =>
+    applyOps([{ start: offsetAt(pos), end: offsetAt(pos), text: t }]);
+  return { editor, getText: () => text, userInsert };
 }
 
 async function* toStream(lines: string[]) {
@@ -237,5 +268,105 @@ describe("VerticalDiffHandler accept", () => {
     const { handler, getText } = await runApply(ORIGINAL, GEMINI_OUTPUT);
     await handler.clear(true);
     expect(getText()).toBe(GEMINI_OUTPUT);
+  });
+});
+
+/** Streams `output`, pausing after `pauseAfter` lines until resumed */
+function pausingStream(output: string, pauseAfter: number) {
+  let resume!: () => void;
+  const resumed = new Promise<void>((r) => (resume = r));
+  let reachedPause!: () => void;
+  const paused = new Promise<void>((r) => (reachedPause = r));
+  async function* lines() {
+    const all = output.split("\n");
+    for (let i = 0; i < all.length; i++) {
+      if (i === pauseAfter) {
+        reachedPause();
+        await resumed;
+      }
+      yield all[i];
+    }
+  }
+  return { lines: lines(), paused, resume };
+}
+
+async function startApplyAndPause(
+  original: string,
+  output: string,
+  pauseAfter: number,
+) {
+  const { editor, getText, userInsert } = createEditor(original);
+  (vscode.window as any).activeTextEditor = editor;
+  (vscode.window as any).visibleTextEditors = [editor];
+  const statusUpdates: any[][] = [];
+  const clearCalls: any[][] = [];
+  let clearDone: Promise<void> | undefined;
+  const handler: VerticalDiffHandler = new VerticalDiffHandler(
+    0,
+    original.split("\n").length - 1,
+    editor,
+    new Map(),
+    (...args: any[]) => {
+      clearCalls.push(args);
+      clearDone = handler.clear(args[1]);
+    },
+    () => {},
+    { onStatusUpdate: (...args: any[]) => statusUpdates.push(args) },
+  );
+  const stream = pausingStream(output, pauseAfter);
+  const diff = filterLeadingAndTrailingNewLineInsertion(
+    streamDiff(original.split("\n"), stream.lines),
+  );
+  const run = handler.run(diff);
+  await stream.paused;
+  // Let the lines before the pause reach the document
+  await new Promise((r) => setTimeout(r, 0));
+  const finish = async () => {
+    stream.resume();
+    await run;
+    await clearDone;
+  };
+  return { getText, userInsert, statusUpdates, clearCalls, finish };
+}
+
+describe("VerticalDiffHandler user typing mid-stream", () => {
+  it("does not treat its own edits as user edits", async () => {
+    const { handler, getText } = await runApply(ORIGINAL, GEMINI_OUTPUT);
+    expect(handler.isCancelled).toBe(false);
+    await handler.clear(true);
+    expect(getText()).toBe(GEMINI_OUTPUT);
+  });
+
+  it("stops the stream, reverts the edit and keeps a typed line", async () => {
+    const apply = await startApplyAndPause(ORIGINAL, GEMINI_OUTPUT, 6);
+    // The streamed header lines are already in the document
+    expect(apply.getText()).toContain("# NextCLI Operator Runbook");
+
+    const line = apply.getText().split("\n").indexOf("models:");
+    apply.userInsert(new vscode.Position(line, 0), "# ZZZTEST123\n");
+    await apply.finish();
+
+    expect(apply.getText()).toBe(
+      ORIGINAL.replace("models:", "# ZZZTEST123\nmodels:"),
+    );
+    expect(apply.clearCalls).toEqual([
+      [
+        "file:///sandbox/.continue/config.yaml",
+        false,
+        { focusChatInput: false },
+      ],
+    ]);
+    const closed = apply.statusUpdates.find((u) => u[0] === "closed");
+    expect(closed?.[4]).toBe(true);
+    expect(apply.statusUpdates.some((u) => u[0] === "done")).toBe(false);
+  });
+
+  it("restores lines the stream had removed and keeps typed text", async () => {
+    const apply = await startApplyAndPause(ORIGINAL, PROSE, 1);
+    const lastLine = apply.getText().split("\n").length - 1;
+    apply.userInsert(new vscode.Position(lastLine, 0), "ZZZTEST123");
+    await apply.finish();
+
+    expect(apply.getText()).toBe(ORIGINAL + "ZZZTEST123");
   });
 });

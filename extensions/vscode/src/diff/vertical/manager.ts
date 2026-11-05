@@ -127,7 +127,11 @@ export class VerticalDiffManager {
     });
   }
 
-  clearForfileUri(fileUri: string | undefined, accept: boolean) {
+  clearForfileUri(
+    fileUri: string | undefined,
+    accept: boolean,
+    { focusChatInput = true }: { focusChatInput?: boolean } = {},
+  ) {
     if (!fileUri) {
       const activeEditor = vscode.window.activeTextEditor;
       if (!activeEditor) {
@@ -150,10 +154,13 @@ export class VerticalDiffManager {
       false,
     );
 
-    void this.webviewProtocol.request(
-      "focusContinueInputWithoutClear",
-      undefined,
-    );
+    // Not after the user's own typing stopped a stream: they are mid-edit
+    if (focusChatInput) {
+      void this.webviewProtocol.request(
+        "focusContinueInputWithoutClear",
+        undefined,
+      );
+    }
   }
 
   async acceptRejectVerticalDiffBlock(
@@ -240,7 +247,13 @@ export class VerticalDiffManager {
       endLine,
       {
         instant,
-        onStatusUpdate: (status, numDiffs, fileContent, destructiveWarning) =>
+        onStatusUpdate: (
+          status,
+          numDiffs,
+          fileContent,
+          destructiveWarning,
+          interruptedByUserEdit,
+        ) =>
           void this.webviewProtocol.request("updateApplyState", {
             streamId,
             status,
@@ -249,6 +262,7 @@ export class VerticalDiffManager {
             filepath: fileUri,
             toolCallId,
             destructiveWarning,
+            interruptedByUserEdit,
           }),
         streamId,
         destructiveCheckSuggestedCode,
@@ -449,7 +463,13 @@ export class VerticalDiffManager {
       {
         instant: isFastApplyModel(llm),
         input,
-        onStatusUpdate: (status, numDiffs, fileContent, destructiveWarning) =>
+        onStatusUpdate: (
+          status,
+          numDiffs,
+          fileContent,
+          destructiveWarning,
+          interruptedByUserEdit,
+        ) =>
           streamId &&
           void this.webviewProtocol.request("updateApplyState", {
             streamId,
@@ -459,6 +479,7 @@ export class VerticalDiffManager {
             filepath: fileUri,
             toolCallId,
             destructiveWarning,
+            interruptedByUserEdit,
           }),
         streamId,
         destructiveCheckSuggestedCode: isApply ? (newCode ?? "") : undefined,

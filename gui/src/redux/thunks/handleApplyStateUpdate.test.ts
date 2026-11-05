@@ -325,6 +325,53 @@ describe("handleApplyStateUpdate", () => {
       );
     });
 
+    it("reports an edit stopped by the user's typing as not applied", async () => {
+      const toolCallState: ToolCallState = {
+        toolCallId: "test-tool-call",
+        status: "calling",
+        ...UNUSED_TOOL_CALL_PARAMS,
+      };
+      vi.mocked(findToolCallById).mockReturnValue(toolCallState);
+      mockGetState.mockReturnValue({
+        session: {
+          history: [],
+          codeBlockApplyStates: { states: [{ streamId: "chat-stream" }] },
+        },
+        config: { config: {} },
+      });
+
+      await handleApplyStateUpdate({
+        streamId: "chat-stream",
+        toolCallId: "test-tool-call",
+        status: "closed",
+        filepath: "test.txt",
+        interruptedByUserEdit: true,
+      })(mockDispatch, mockGetState, mockExtra);
+
+      expect(logToolUsage).toHaveBeenCalledWith(
+        toolCallState,
+        false,
+        true,
+        mockExtra.ideMessenger,
+      );
+      expect(acceptToolCall).not.toHaveBeenCalled();
+      expect(updateToolCallOutput).not.toHaveBeenCalled();
+      expect(errorToolCall).toHaveBeenCalledWith({
+        toolCallId: "test-tool-call",
+        output: [
+          expect.objectContaining({
+            name: "Edit Interrupted",
+            hidden: false,
+            content: expect.stringContaining("was not applied"),
+          }),
+        ],
+      });
+      // The agent goes on and sees why the edit didn't happen
+      expect(streamResponseAfterToolCall).toHaveBeenCalledWith({
+        toolCallId: "test-tool-call",
+      });
+    });
+
     it("should handle canceled tool call closure", async () => {
       const toolCallState: ToolCallState = {
         toolCallId: "test-tool-call",
