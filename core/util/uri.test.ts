@@ -69,6 +69,46 @@ describe("uri utils", () => {
         "Invalid uri: invalid-uri",
       );
     });
+
+    it("should not match a folder that only shares a name prefix", () => {
+      expect(
+        findUriInDirs("file:///workspace/project10/a.ts", dirUris).foundInDir,
+      ).toBeNull();
+    });
+
+    // Virtual filesystems such as SAP ABAP put the root in the authority:
+    // the workspace folder is adt://<system> with an empty path
+    it("should find URIs in a root with an empty path", () => {
+      for (const root of ["adt://sys", "adt://sys/"]) {
+        expect(findUriInDirs("adt://sys/ENHC/obj.abap", [root])).toEqual({
+          uri: "adt://sys/ENHC/obj.abap",
+          relativePathOrBasename: "ENHC/obj.abap",
+          foundInDir: root,
+        });
+      }
+      expect(
+        findUriInDirs("file:///anything/a.ts", ["file:///"])
+          .relativePathOrBasename,
+      ).toBe("anything/a.ts");
+    });
+
+    it("should not match a root on a different authority", () => {
+      expect(
+        findUriInDirs("adt://sysB/ENHC/obj.abap", ["adt://sysA", "adt://sysB"])
+          .foundInDir,
+      ).toBe("adt://sysB");
+      expect(
+        findUriInDirs("file://serverB/share/a.ts", ["file://serverA/share"])
+          .foundInDir,
+      ).toBeNull();
+    });
+
+    it("should treat file://localhost like an empty authority", () => {
+      expect(
+        findUriInDirs("file://localhost/proj/a.ts", ["file:///proj"])
+          .foundInDir,
+      ).toBe("file:///proj");
+    });
   });
 
   describe("URI path operations", () => {
