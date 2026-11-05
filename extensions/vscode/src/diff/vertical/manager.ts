@@ -130,7 +130,10 @@ export class VerticalDiffManager {
   clearForfileUri(
     fileUri: string | undefined,
     accept: boolean,
-    { focusChatInput = true }: { focusChatInput?: boolean } = {},
+    {
+      focusChatInput = true,
+      handlerAlreadyCleared = false,
+    }: { focusChatInput?: boolean; handlerAlreadyCleared?: boolean } = {},
   ) {
     if (!fileUri) {
       const activeEditor = vscode.window.activeTextEditor;
@@ -142,7 +145,10 @@ export class VerticalDiffManager {
 
     const handler = this.fileUriToHandler.get(fileUri);
     if (handler) {
-      handler.clear(accept);
+      // A handler that reverted itself after a user edit is already closed
+      if (!handlerAlreadyCleared) {
+        handler.clear(accept);
+      }
       this.fileUriToHandler.delete(fileUri);
     }
 
@@ -353,7 +359,12 @@ export class VerticalDiffManager {
       return;
     }
 
-    await diffHandler.reapplyWithMyersDiff(myersDiffs);
+    const applied = await diffHandler.reapplyWithMyersDiff(myersDiffs);
+    if (!applied) {
+      // The user edited the file meanwhile: reverted, reported as interrupted
+      await diffHandler.finishAfterUserEdit();
+      return;
+    }
 
     const scrollToLine = getFirstChangedLine(myersDiffs, 0) ?? 0;
     const range = new vscode.Range(scrollToLine, 0, scrollToLine, 0);

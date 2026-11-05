@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Minimal in-memory implementation of the vscode API used by the handler
 vi.mock("vscode", () => {
@@ -134,7 +134,13 @@ function createEditor(initial: string) {
     selection: new vscode.Range(0, 0, 0, 0),
     setDecorations() {},
     revealRange() {},
+    /** Refuse this many upcoming edits, as VS Code does for a stale version */
+    refuseEdits: 0,
     async edit(callback: (builder: any) => void) {
+      if (editor.refuseEdits > 0) {
+        editor.refuseEdits--;
+        return false;
+      }
       const ops: { start: number; end: number; text: string }[] = [];
       callback({
         insert: (pos: vscode.Position, t: string) =>
@@ -159,7 +165,10 @@ function createEditor(initial: string) {
   /** A keystroke from the user, not from the handler */
   const userInsert = (pos: vscode.Position, t: string) =>
     applyOps([{ start: offsetAt(pos), end: offsetAt(pos), text: t }]);
-  return { editor, getText: () => text, userInsert };
+  /** A user selection replaced (or deleted, with "") */
+  const userReplace = (from: vscode.Position, to: vscode.Position, t: string) =>
+    applyOps([{ start: offsetAt(from), end: offsetAt(to), text: t }]);
+  return { editor, getText: () => text, userInsert, userReplace };
 }
 
 async function* toStream(lines: string[]) {
@@ -295,7 +304,7 @@ async function startApplyAndPause(
   output: string,
   pauseAfter: number,
 ) {
-  const { editor, getText, userInsert } = createEditor(original);
+  const { editor, getText, userInsert, userReplace } = createEditor(original);
   (vscode.window as any).activeTextEditor = editor;
   (vscode.window as any).visibleTextEditors = [editor];
   const statusUpdates: any[][] = [];
@@ -308,7 +317,10 @@ async function startApplyAndPause(
     new Map(),
     (...args: any[]) => {
       clearCalls.push(args);
-      clearDone = handler.clear(args[1]);
+      // After a user edit the handler reverts and closes itself
+      if (!args[2]?.handlerAlreadyCleared) {
+        clearDone = handler.clear(args[1]);
+      }
     },
     () => {},
     { onStatusUpdate: (...args: any[]) => statusUpdates.push(args) },
@@ -326,7 +338,16 @@ async function startApplyAndPause(
     await run;
     await clearDone;
   };
-  return { getText, userInsert, statusUpdates, clearCalls, finish };
+  return {
+    editor,
+    handler,
+    getText,
+    userInsert,
+    userReplace,
+    statusUpdates,
+    clearCalls,
+    finish,
+  };
 }
 
 describe("VerticalDiffHandler user typing mid-stream", () => {
@@ -353,7 +374,7 @@ describe("VerticalDiffHandler user typing mid-stream", () => {
       [
         "file:///sandbox/.continue/config.yaml",
         false,
-        { focusChatInput: false },
+        { focusChatInput: false, handlerAlreadyCleared: true },
       ],
     ]);
     const closed = apply.statusUpdates.find((u) => u[0] === "closed");
@@ -368,5 +389,85 @@ describe("VerticalDiffHandler user typing mid-stream", () => {
     await apply.finish();
 
     expect(apply.getText()).toBe(ORIGINAL + "ZZZTEST123");
+  });
+
+  // GEMINI_OUTPUT starts with three new header lines: after 6 streamed lines
+  // they sit at the top of the document as one multi-line green block
+  const HEADER = "# NextCLI Operator Runbook";
+
+  it("keeps a newline and a character typed inside a multi-line green block", async () => {
+    const apply = await startApplyAndPause(ORIGINAL, GEMINI_OUTPUT, 6);
+    expect(apply.getText().startsWith(HEADER)).toBe(true);
+
+    // Enter in the middle of the block's second line, then a character
+    apply.userInsert(new vscode.Position(1, 5), "\n");
+    apply.userInsert(new vscode.Position(3, 0), "Q");
+    await apply.finish();
+
+    // Both keystrokes kept where the block was; no streamed line left behind
+    expect(apply.getText()).toBe("\nQ" + ORIGINAL);
+  });
+
+  it("applies a deletion over added and original text to the original part only", async () => {
+    const apply = await startApplyAndPause(ORIGINAL, GEMINI_OUTPUT, 6);
+    const lines = apply.getText().split("\n");
+    const firstOriginal = lines.indexOf("name: sandbox-config");
+    expect(firstOriginal).toBeGreaterThan(0);
+
+    // Select from inside the last header line into "name: " and delete it
+    apply.userReplace(
+      new vscode.Position(firstOriginal - 1, 3),
+      new vscode.Position(firstOriginal, "name: ".length),
+      "",
+    );
+    await apply.finish();
+
+    expect(apply.getText()).toBe(ORIGINAL.replace("name: ", ""));
+  });
+
+  it("retries the revert when the user types while it is being applied", async () => {
+    const apply = await startApplyAndPause(ORIGINAL, GEMINI_OUTPUT, 6);
+    apply.editor.refuseEdits = 1;
+    apply.userInsert(new vscode.Position(0, 0), "ZZZ");
+    await apply.finish();
+
+    expect(apply.getText()).toBe("ZZZ" + ORIGINAL);
+  });
+});
+
+describe("VerticalDiffHandler user typing during the final Myers pass", () => {
+  beforeEach(() => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  it("reverts around the user's text instead of overwriting it", async () => {
+    const { editor, getText, userInsert } = createEditor(ORIGINAL);
+    (vscode.window as any).activeTextEditor = editor;
+    (vscode.window as any).visibleTextEditors = [editor];
+    const statusUpdates: any[][] = [];
+    const handler: VerticalDiffHandler = new VerticalDiffHandler(
+      0,
+      ORIGINAL.split("\n").length - 1,
+      editor,
+      new Map(),
+      () => {},
+      () => {},
+      { onStatusUpdate: (...args: any[]) => statusUpdates.push(args) },
+    );
+    const diff = filterLeadingAndTrailingNewLineInsertion(
+      streamDiff(ORIGINAL.split("\n"), toStream(GEMINI_OUTPUT.split("\n"))),
+    );
+    const run = handler.run(diff);
+
+    // The stream is done; the final pass waits 100 ms before rewriting
+    await vi.waitFor(() => expect((handler as any).phase).toBe("finishing"));
+    const last = getText().split("\n").length - 1;
+    userInsert(new vscode.Position(last, 0), "TYPED");
+    await run;
+
+    expect(getText()).toBe(ORIGINAL + "TYPED");
+    expect(statusUpdates.some((u) => u[0] === "done")).toBe(false);
+    const closed = statusUpdates.find((u) => u[0] === "closed");
+    expect(closed?.[4]).toBe(true);
   });
 });
