@@ -17,7 +17,7 @@ const SKILLS_DIR = "skills";
 /**
  * Get skills from .claude/skills directory
  */
-async function getClaudeSkillsDir(ide: IDE) {
+async function getClaudeSkillsDir(ide: IDE, errors: ConfigValidationError[]) {
   const fullDirs = (await ide.getWorkspaceDirs()).map((dir) =>
     joinPathsToUri(dir, ".claude", SKILLS_DIR),
   );
@@ -27,13 +27,22 @@ async function getClaudeSkillsDir(ide: IDE) {
   return (
     await Promise.all(
       fullDirs.map(async (dir) => {
-        const exists = await ide.fileExists(dir);
-        if (!exists) return [];
-        const uris = await walkDir(dir, ide, {
-          source: "get .claude skills files",
-        });
-        // filter markdown files only
-        return uris.filter((uri) => uri.endsWith(".md"));
+        // One unreadable skills dir must not drop the skills from the others
+        try {
+          const exists = await ide.fileExists(dir);
+          if (!exists) return [];
+          const uris = await walkDir(dir, ide, {
+            source: "get .claude skills files",
+          });
+          // filter markdown files only
+          return uris.filter((uri) => uri.endsWith(".md"));
+        } catch (err) {
+          errors.push({
+            fatal: false,
+            message: `Error loading skills from ${dir}: ${err instanceof Error ? err.message : err}`,
+          });
+          return [];
+        }
       }),
     )
   ).flat();
@@ -56,7 +65,7 @@ export async function loadMarkdownSkills(ide: IDE) {
           SKILLS_DIR,
         )
       ).map((file) => file.path),
-      ...(await getClaudeSkillsDir(ide)),
+      ...(await getClaudeSkillsDir(ide, errors)),
     ];
 
     const skillFiles = yamlAndMarkdownFileUris.filter((path) =>

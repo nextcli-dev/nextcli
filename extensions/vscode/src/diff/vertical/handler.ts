@@ -15,6 +15,7 @@ import {
 
 import type { ApplyState, DiffLine } from "core";
 import type { VerticalDiffCodeLens } from "./manager";
+import { revertKeepingUserEdits } from "./revertKeepingUserEdits";
 import { getFirstChangedLine, getRangeDiffSides } from "./util";
 
 export interface VerticalDiffHandlerOptions {
@@ -25,6 +26,7 @@ export interface VerticalDiffHandlerOptions {
     numDiffs?: ApplyState["numDiffs"],
     fileContent?: ApplyState["fileContent"],
     destructiveWarning?: ApplyState["destructiveWarning"],
+    interruptedByUserEdit?: ApplyState["interruptedByUserEdit"],
   ) => void;
   streamId?: string;
   /**
@@ -50,6 +52,20 @@ export class VerticalDiffHandler implements vscode.Disposable {
   private readonly originalRangeText: string;
   /** Whether the range ran to the end of the document before any edits */
   private readonly rangeReachesEndOfDocument: boolean;
+  /**
+   * While "streaming" or "finishing" (the final Myers pass), a user edit to
+   * the file stops the edit and reverts only the handler's own changes
+   */
+  private phase: "idle" | "streaming" | "finishing" | "done" = "idle";
+  /** Number of the handler's own edits in flight, to tell them apart from the user's */
+  private ownEditsInFlight = 0;
+  /** Set when the user edited the file mid-edit; the edit is then abandoned */
+  private interruptedByUserEdit = false;
+  private abortPromise?: Promise<void>;
+  /** The whole document before the handler changed anything */
+  private readonly originalDocumentText: string;
+  /** The whole document right after the handler's last own edit */
+  private textAfterOwnEdits: string;
 
   constructor(
     private startLine: number,
@@ -62,6 +78,7 @@ export class VerticalDiffHandler implements vscode.Disposable {
     private readonly clearForFileUri: (
       fileUri: string | undefined,
       accept: boolean,
+      options?: { focusChatInput?: boolean; handlerAlreadyCleared?: boolean },
     ) => void,
     private readonly refreshCodeLens: () => void,
     public options: VerticalDiffHandlerOptions,
@@ -73,6 +90,8 @@ export class VerticalDiffHandler implements vscode.Disposable {
     );
     this.rangeReachesEndOfDocument =
       Math.max(startLine, endLine) >= editor.document.lineCount - 1;
+    this.originalDocumentText = editor.document.getText();
+    this.textAfterOwnEdits = this.originalDocumentText;
 
     this.removedLineDecorations = new RemovedLineDecorationManager(this.editor);
     this.addedLineDecorations = new AddedLineDecorationManager(this.editor);
@@ -94,9 +113,153 @@ export class VerticalDiffHandler implements vscode.Disposable {
       }
     });
     this.disposables.push(disposable);
+
+    this.disposables.push(
+      vscode.workspace.onDidChangeTextDocument((event) =>
+        this.onDocumentChange(event),
+      ),
+    );
   }
 
-  /**  ensures the current target file is open and focused before performing edits*/
+  private get guardingUserEdits() {
+    return this.phase === "streaming" || this.phase === "finishing";
+  }
+
+  /**
+   * The streamed lines are written at tracked line positions and the final
+   * pass rebuilds the range from the text captured before streaming, so a
+   * user edit during either would be misplaced or overwritten. Stop the edit
+   * and revert only our changes, keeping what the user typed.
+   */
+  private onDocumentChange(event: vscode.TextDocumentChangeEvent) {
+    if (
+      !this.guardingUserEdits ||
+      this.ownEditsInFlight > 0 ||
+      event.contentChanges.length === 0 ||
+      !URI.equal(event.document.uri.toString(), this.fileUri)
+    ) {
+      return;
+    }
+    this.noteUserEdit();
+  }
+
+  private noteUserEdit() {
+    this.interruptedByUserEdit = true;
+    // While finishing, run() aborts once the Myers pass has stopped; aborting
+    // in the middle of it would revert a half-reset document
+    if (this.phase === "streaming") {
+      void this.abortForUserEdit();
+    }
+  }
+
+  /**
+   * Reverts the handler's own edits, keeping the user's, and closes the diff.
+   * Safe to call more than once; every caller waits for the same abort.
+   */
+  private abortForUserEdit(): Promise<void> {
+    // A diff line being applied finishes first; the queue calls back here
+    if (this._queueLock && !this.abortPromise) {
+      return Promise.resolve();
+    }
+    this.abortPromise ??= this.revertAndCloseAfterUserEdit();
+    return this.abortPromise;
+  }
+
+  private async revertAndCloseAfterUserEdit() {
+    this._diffLinesQueue = [];
+    try {
+      await this.ensureCurrentFileIsFocused();
+      await this.revertOwnEdits();
+    } finally {
+      this.phase = "done";
+      this.cancelled = true;
+      void vscode.commands.executeCommand(
+        "setContext",
+        "continue.streamingDiff",
+        false,
+      );
+      this.clearDecorations();
+      this.options.onStatusUpdate(
+        "closed",
+        0,
+        this.editor.document.getText(),
+        undefined,
+        true,
+      );
+      const fileName = decodeURIComponent(
+        this.fileUri.split("/").pop() ?? this.fileUri,
+      );
+      void vscode.window.showWarningMessage(
+        `Stopped applying the edit to ${fileName} because the file was changed while the edit was streaming. The partial edit was reverted; your changes were kept.`,
+      );
+      this.dispose();
+      this.clearForFileUri(this.fileUri, false, {
+        focusChatInput: false,
+        handlerAlreadyCleared: true,
+      });
+    }
+  }
+
+  /**
+   * Puts the document back to how it was before this handler, plus whatever
+   * the user changed since. Retries when the user types while the revert is
+   * being applied (VS Code then refuses the edit as out of date).
+   */
+  private async revertOwnEdits() {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const current = this.editor.document.getText();
+      const target = revertKeepingUserEdits(
+        this.originalDocumentText,
+        this.textAfterOwnEdits,
+        current,
+      );
+      if (target === current) {
+        return;
+      }
+      const { start, end, text } = changedRegion(current, target);
+      const applied = await this.editDocument(
+        (editBuilder) =>
+          editBuilder.replace(
+            new vscode.Range(
+              offsetToPosition(current, start),
+              offsetToPosition(current, end),
+            ),
+            text,
+          ),
+        { undoStopBefore: false, undoStopAfter: false },
+      );
+      if (applied) {
+        return;
+      }
+    }
+    console.warn(
+      `Could not revert the partial edit to ${this.fileUri}: the document kept changing`,
+    );
+  }
+
+  private async editDocument(
+    callback: (editBuilder: vscode.TextEditorEdit) => void,
+    options?: { undoStopBefore: boolean; undoStopAfter: boolean },
+  ): Promise<boolean> {
+    // VS Code fires onDidChangeTextDocument before edit() resolves
+    this.ownEditsInFlight++;
+    let applied: boolean;
+    try {
+      applied = await this.editor.edit(callback, options);
+    } finally {
+      this.ownEditsInFlight--;
+    }
+    if (applied) {
+      this.textAfterOwnEdits = this.editor.document.getText();
+    } else if (this.guardingUserEdits) {
+      // VS Code refuses an edit when the document changed after it was built:
+      // the user typed while it was in flight
+      this.noteUserEdit();
+    }
+    return applied;
+  }
+
+  /** Ensures the target file is open and visible before performing edits, without taking keyboard focus */
   private async ensureCurrentFileIsFocused() {
     const targetUri = this.editor.document.uri;
     const active = vscode.window.activeTextEditor;
@@ -112,19 +275,16 @@ export class VerticalDiffHandler implements vscode.Disposable {
       URI.equal(foundEditor.document.uri.toString(), targetUri.toString()),
     );
     if (visible) {
-      await vscode.window.showTextDocument(visible.document, {
-        preview: false,
-        preserveFocus: false,
-        viewColumn: visible.viewColumn,
-      });
-      this.editor = vscode.window.activeTextEditor ?? visible;
+      // Edits apply to a visible editor without focusing it; taking focus
+      // would send the user's keystrokes into this file
+      this.editor = visible;
       return;
     }
 
     const doc = await vscode.workspace.openTextDocument(targetUri);
     const editor = await vscode.window.showTextDocument(doc, {
       preview: false,
-      preserveFocus: false,
+      preserveFocus: true,
     });
     this.editor = editor;
   }
@@ -164,6 +324,8 @@ export class VerticalDiffHandler implements vscode.Disposable {
       "closed",
       this.editorToVerticalDiffCodeLens.get(this.fileUri)?.length ?? 0,
       this.editor.document.getText(),
+      undefined,
+      this.interruptedByUserEdit || undefined,
     );
 
     this.cancelled = true;
@@ -186,7 +348,7 @@ export class VerticalDiffHandler implements vscode.Disposable {
 
     this._queueLock = true;
 
-    while (this._diffLinesQueue.length) {
+    while (this._diffLinesQueue.length && !this.interruptedByUserEdit) {
       const line = this._diffLinesQueue.shift();
       if (!line) {
         break;
@@ -202,6 +364,10 @@ export class VerticalDiffHandler implements vscode.Disposable {
     }
 
     this._queueLock = false;
+
+    if (this.interruptedByUserEdit && this.phase === "streaming") {
+      await this.abortForUserEdit();
+    }
   }
 
   async run(diffLineGenerator: AsyncGenerator<DiffLine>) {
@@ -211,18 +377,35 @@ export class VerticalDiffHandler implements vscode.Disposable {
       // As an indicator of loading
       this.updateIndexLineDecorations();
 
+      this.phase = "streaming";
       for await (const diffLine of diffLineGenerator) {
         if (this.isCancelled) {
+          return;
+        }
+        if (this.interruptedByUserEdit) {
+          await this.abortForUserEdit();
           return;
         }
         diffLines.push(diffLine);
         await this.queueDiffLine(diffLine);
       }
+      if (this.interruptedByUserEdit) {
+        await this.abortForUserEdit();
+        return;
+      }
 
+      // Still guarded: a user edit now is reverted around, not overwritten
+      this.phase = "finishing";
       // Clear deletion buffer
       await this.insertDeletionBuffer();
 
-      const myersDiffs = await this.reapplyWithMyersDiff(diffLines);
+      const myersDiffs = this.interruptedByUserEdit
+        ? undefined
+        : await this.reapplyWithMyersDiff(diffLines);
+      if (!myersDiffs) {
+        await this.finishAfterUserEdit();
+        return;
+      }
 
       // Scroll to the first diff
       const scrollToLine =
@@ -353,9 +536,41 @@ export class VerticalDiffHandler implements vscode.Disposable {
    * and decide to follow up with a deterministic algorithm like Myers Diff once
    * we have received all of the diff lines.
    */
-  async reapplyWithMyersDiff(diffLines: DiffLine[]) {
+  /** Reverts and closes once the final pass stopped because of a user edit */
+  async finishAfterUserEdit() {
+    this.phase = "done";
+    this.interruptedByUserEdit = true;
+    await this.abortForUserEdit();
+  }
+
+  /**
+   * Returns undefined when the user edited the file meanwhile; the caller
+   * then calls finishAfterUserEdit() instead of reporting the edit as done.
+   */
+  async reapplyWithMyersDiff(
+    diffLines: DiffLine[],
+  ): Promise<DiffLine[] | undefined> {
+    // Instant apply calls this directly, without run()
+    if (this.phase === "idle") {
+      this.phase = "finishing";
+    }
+    try {
+      return await this.reapplyWithMyersDiffGuarded(diffLines);
+    } finally {
+      if (this.phase === "finishing") {
+        this.phase = "done";
+      }
+    }
+  }
+
+  private async reapplyWithMyersDiffGuarded(
+    diffLines: DiffLine[],
+  ): Promise<DiffLine[] | undefined> {
     // Diff is messed up without this delay.
     await new Promise((resolve) => setTimeout(resolve, 100));
+    if (this.interruptedByUserEdit) {
+      return undefined;
+    }
 
     await this.ensureCurrentFileIsFocused();
 
@@ -372,6 +587,9 @@ export class VerticalDiffHandler implements vscode.Disposable {
     }
 
     this.clearDecorations();
+    if (this.interruptedByUserEdit) {
+      return undefined;
+    }
 
     // Then, get our old/new file content based on the original lines
     // We need the input to be "newline terminated" rather than
@@ -409,10 +627,13 @@ export class VerticalDiffHandler implements vscode.Disposable {
           new vscode.Position(lastLine, document.lineAt(lastLine).text.length),
         )
       : this.range;
-    await this.editor.edit((editBuilder) => {
-      editBuilder.replace(rangeToReplace, replaceContent),
-        { undoStopAfter: false, undoStopBefore: false };
-    });
+    const replaced = await this.editDocument(
+      (editBuilder) => editBuilder.replace(rangeToReplace, replaceContent),
+      { undoStopAfter: false, undoStopBefore: false },
+    );
+    if (!replaced || this.interruptedByUserEdit) {
+      return undefined;
+    }
 
     // Lastly, we apply decorations
     let numRed = 0;
@@ -511,7 +732,7 @@ export class VerticalDiffHandler implements vscode.Disposable {
 
   private async insertTextAboveLine(index: number, text: string) {
     await this.ensureCurrentFileIsFocused();
-    await this.editor.edit(
+    await this.editDocument(
       (editBuilder) => {
         const lineCount = this.editor.document.lineCount;
         if (index >= lineCount) {
@@ -540,7 +761,7 @@ export class VerticalDiffHandler implements vscode.Disposable {
   private async deleteLinesAt(index: number, numLines = 1) {
     const startLine = new vscode.Position(index, 0);
     await this.ensureCurrentFileIsFocused();
-    await this.editor.edit(
+    await this.editDocument(
       (editBuilder) => {
         editBuilder.delete(
           new vscode.Range(startLine, startLine.translate(numLines)),
@@ -552,7 +773,7 @@ export class VerticalDiffHandler implements vscode.Disposable {
 
   private async deleteRangeLines(ranges: vscode.Range[]) {
     await this.ensureCurrentFileIsFocused();
-    await this.editor.edit(
+    await this.editDocument(
       (editBuilder) => {
         for (const range of ranges) {
           editBuilder.delete(
@@ -686,7 +907,7 @@ export class VerticalDiffHandler implements vscode.Disposable {
 
     const finalContent = lines.join("\n");
 
-    await this.editor.edit(
+    await this.editDocument(
       (editBuilder) => {
         const fullRange = new vscode.Range(0, 0, document.lineCount, 0);
         editBuilder.replace(fullRange, finalContent);
@@ -694,4 +915,33 @@ export class VerticalDiffHandler implements vscode.Disposable {
       { undoStopAfter: false, undoStopBefore: false },
     );
   }
+}
+
+/** The smallest single replacement turning `from` into `to` */
+function changedRegion(from: string, to: string) {
+  let start = 0;
+  const maxStart = Math.min(from.length, to.length);
+  while (start < maxStart && from[start] === to[start]) {
+    start++;
+  }
+  let suffix = 0;
+  const maxSuffix = Math.min(from.length, to.length) - start;
+  while (
+    suffix < maxSuffix &&
+    from[from.length - 1 - suffix] === to[to.length - 1 - suffix]
+  ) {
+    suffix++;
+  }
+  return {
+    start,
+    end: from.length - suffix,
+    text: to.slice(start, to.length - suffix),
+  };
+}
+
+function offsetToPosition(text: string, offset: number): vscode.Position {
+  const before = text.slice(0, offset);
+  const line = before.split("\n").length - 1;
+  const character = offset - (before.lastIndexOf("\n") + 1);
+  return new vscode.Position(line, character);
 }

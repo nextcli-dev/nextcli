@@ -107,9 +107,9 @@ export async function getAllAvailableTools(
     throw new Error("Model service is not initialized");
   }
 
-  const { provider, name, model } = modelState.model;
+  const { provider, name, model, capabilities } = modelState.model;
 
-  const isCapable = isModelCapable(provider, name, model);
+  const isCapable = isModelCapable(provider, name, model, capabilities);
   if (isCapable) {
     tools.push(multiEditTool);
   } else {

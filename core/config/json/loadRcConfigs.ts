@@ -9,16 +9,23 @@ export async function getWorkspaceRcConfigs(
     const workspaces = await ide.getWorkspaceDirs();
     const rcFiles = await Promise.all(
       workspaces.map(async (dir) => {
-        const ls = await ide.listDir(dir);
-        const rcFiles = ls
-          .filter(
-            (entry) =>
-              (entry[1] === (1 as FileType.File) ||
-                entry[1] === (64 as FileType.SymbolicLink)) &&
-              entry[0].endsWith(".continuerc.json"),
-          )
-          .map((entry) => joinPathsToUri(dir, entry[0]));
-        return await Promise.all(rcFiles.map(ide.readFile));
+        // One unreadable workspace folder must not drop the others' configs
+        try {
+          const ls = await ide.listDir(dir);
+          const rcFiles = ls
+            .filter(
+              (entry) =>
+                (entry[1] === (1 as FileType.File) ||
+                  entry[1] === (64 as FileType.SymbolicLink)) &&
+                entry[0].endsWith(".continuerc.json"),
+            )
+            .map((entry) => joinPathsToUri(dir, entry[0]));
+          // Arrow keeps `this` bound for IDE classes
+          return await Promise.all(rcFiles.map((file) => ide.readFile(file)));
+        } catch (e) {
+          console.debug(`Failed to load workspace configs in ${dir}: `, e);
+          return [];
+        }
       }),
     );
     return rcFiles

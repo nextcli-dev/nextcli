@@ -127,7 +127,14 @@ export class VerticalDiffManager {
     });
   }
 
-  clearForfileUri(fileUri: string | undefined, accept: boolean) {
+  clearForfileUri(
+    fileUri: string | undefined,
+    accept: boolean,
+    {
+      focusChatInput = true,
+      handlerAlreadyCleared = false,
+    }: { focusChatInput?: boolean; handlerAlreadyCleared?: boolean } = {},
+  ) {
     if (!fileUri) {
       const activeEditor = vscode.window.activeTextEditor;
       if (!activeEditor) {
@@ -138,7 +145,10 @@ export class VerticalDiffManager {
 
     const handler = this.fileUriToHandler.get(fileUri);
     if (handler) {
-      handler.clear(accept);
+      // A handler that reverted itself after a user edit is already closed
+      if (!handlerAlreadyCleared) {
+        handler.clear(accept);
+      }
       this.fileUriToHandler.delete(fileUri);
     }
 
@@ -150,10 +160,13 @@ export class VerticalDiffManager {
       false,
     );
 
-    void this.webviewProtocol.request(
-      "focusContinueInputWithoutClear",
-      undefined,
-    );
+    // Not after the user's own typing stopped a stream: they are mid-edit
+    if (focusChatInput) {
+      void this.webviewProtocol.request(
+        "focusContinueInputWithoutClear",
+        undefined,
+      );
+    }
   }
 
   async acceptRejectVerticalDiffBlock(
@@ -240,7 +253,13 @@ export class VerticalDiffManager {
       endLine,
       {
         instant,
-        onStatusUpdate: (status, numDiffs, fileContent, destructiveWarning) =>
+        onStatusUpdate: (
+          status,
+          numDiffs,
+          fileContent,
+          destructiveWarning,
+          interruptedByUserEdit,
+        ) =>
           void this.webviewProtocol.request("updateApplyState", {
             streamId,
             status,
@@ -249,6 +268,7 @@ export class VerticalDiffManager {
             filepath: fileUri,
             toolCallId,
             destructiveWarning,
+            interruptedByUserEdit,
           }),
         streamId,
         destructiveCheckSuggestedCode,
@@ -339,7 +359,12 @@ export class VerticalDiffManager {
       return;
     }
 
-    await diffHandler.reapplyWithMyersDiff(myersDiffs);
+    const applied = await diffHandler.reapplyWithMyersDiff(myersDiffs);
+    if (!applied) {
+      // The user edited the file meanwhile: reverted, reported as interrupted
+      await diffHandler.finishAfterUserEdit();
+      return;
+    }
 
     const scrollToLine = getFirstChangedLine(myersDiffs, 0) ?? 0;
     const range = new vscode.Range(scrollToLine, 0, scrollToLine, 0);
@@ -449,7 +474,13 @@ export class VerticalDiffManager {
       {
         instant: isFastApplyModel(llm),
         input,
-        onStatusUpdate: (status, numDiffs, fileContent, destructiveWarning) =>
+        onStatusUpdate: (
+          status,
+          numDiffs,
+          fileContent,
+          destructiveWarning,
+          interruptedByUserEdit,
+        ) =>
           streamId &&
           void this.webviewProtocol.request("updateApplyState", {
             streamId,
@@ -459,6 +490,7 @@ export class VerticalDiffManager {
             filepath: fileUri,
             toolCallId,
             destructiveWarning,
+            interruptedByUserEdit,
           }),
         streamId,
         destructiveCheckSuggestedCode: isApply ? (newCode ?? "") : undefined,

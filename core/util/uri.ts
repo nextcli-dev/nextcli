@@ -22,6 +22,21 @@ export function getCleanUriPath(uri: string) {
   return clean;
 }
 
+/** The URI's path split into encoded parts; an empty path has no parts */
+function getUriPathParts(uri: string): string[] {
+  const clean = getCleanUriPath(uri);
+  return clean === "" ? [] : clean.split("/");
+}
+
+function getUriAuthority(comps: URI.URIComponents): string {
+  let host = (comps.host ?? "").toLowerCase();
+  // file://localhost/path is the same as file:///path
+  if (comps.scheme === "file" && host === "localhost") {
+    host = "";
+  }
+  return `${comps.userinfo ?? ""}@${host}:${comps.port ?? ""}`;
+}
+
 export function findUriInDirs(
   uri: string,
   dirUriCandidates: string[],
@@ -34,7 +49,7 @@ export function findUriInDirs(
   if (!uriComps.scheme) {
     throw new Error(`Invalid uri: ${uri}`);
   }
-  const uriPathParts = getCleanUriPath(uri).split("/");
+  const uriPathParts = getUriPathParts(uri);
 
   for (const dir of dirUriCandidates) {
     const dirComps = URI.parse(dir);
@@ -43,14 +58,20 @@ export function findUriInDirs(
       throw new Error(`Invalid uri: ${dir}`);
     }
 
-    if (uriComps.scheme !== dirComps.scheme) {
+    // Virtual filesystems often put the root in the authority
+    // (e.g. adt://<system>/...), so different hosts are different roots
+    if (
+      uriComps.scheme !== dirComps.scheme ||
+      getUriAuthority(uriComps) !== getUriAuthority(dirComps)
+    ) {
       continue;
     }
     // Can't just use startsWith because e.g.
     // file:///folder/file is not within file:///fold
 
-    // At this point we break the path up and check if each dir path part matches
-    const dirPathParts = getCleanUriPath(dir).split("/");
+    // At this point we break the path up and check if each dir path part matches.
+    // A root with an empty path (adt://sys, file:///) contains everything below it
+    const dirPathParts = getUriPathParts(dir);
 
     if (uriPathParts.length < dirPathParts.length) {
       continue;

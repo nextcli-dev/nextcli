@@ -39,6 +39,25 @@ function _mergeUserAgentIntoRequestOptions(
 }
 
 /**
+ * OpenRouter lists cn as NextCLI (shared attribution headers); mark it as a
+ * CLI agent rather than the IDE extension. The model's own headers win.
+ */
+export function withCliAttribution(
+  model: ModelConfig,
+): ModelConfig["requestOptions"] {
+  if (model.provider !== "openrouter") {
+    return model.requestOptions;
+  }
+  return {
+    ...model.requestOptions,
+    headers: {
+      "X-OpenRouter-Categories": "cli-agent",
+      ...model.requestOptions?.headers,
+    },
+  };
+}
+
+/**
  * Creates an LLM API instance from a ModelConfig and auth configuration
  */
 export function createLlmApi(
@@ -50,7 +69,7 @@ export function createLlmApi(
     model: model.model,
     apiKey: model.apiKey,
     apiBase: model.apiBase,
-    requestOptions: model.requestOptions,
+    requestOptions: withCliAttribution(model),
     env: model.env,
   };
 

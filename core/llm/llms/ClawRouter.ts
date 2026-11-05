@@ -38,13 +38,13 @@ class ClawRouter extends OpenAI {
   };
 
   /**
-   * Override headers to include Continue-specific User-Agent
+   * Override headers to include a NextCLI User-Agent
    * This helps ClawRouter track integration usage and optimize accordingly
    */
   protected _getHeaders() {
     return {
       ...super._getHeaders(),
-      "User-Agent": `Continue/${CONTINUE_VERSION}`,
+      "User-Agent": `NextCLI/${CONTINUE_VERSION}`,
       "X-Continue-Provider": "clawrouter",
     };
   }

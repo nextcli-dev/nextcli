@@ -18,27 +18,47 @@ export async function shouldIgnore(
   rootDirCandidates?: string[],
 ): Promise<boolean> {
   const rootDirUris = rootDirCandidates ?? (await ide.getWorkspaceDirs());
-  const { foundInDir: rootDir, uri } = findUriInDirs(fileUri, rootDirUris);
+  const {
+    foundInDir: rootDir,
+    uri,
+    relativePathOrBasename,
+  } = findUriInDirs(fileUri, rootDirUris);
 
   if (!rootDir) {
     return true;
+  }
+  if (relativePathOrBasename === "") {
+    // The root itself
+    return false;
   }
 
   const defaultAndGlobalIgnores = ignore()
     .add(defaultIgnoreFileAndDir)
     .add(getGlobalContinueIgArray());
 
-  let currentDir = uri;
+  // Climb one parent per part of the path relative to the root, so the walk
+  // stops at the root however its uri is written (adt://sys, file:///proj/)
+  const relativeParts = relativePathOrBasename.split("/");
+  const uriSegments = uri.replace(/\/$/, "").split("/");
   let directParent = true;
   let fileType = 1 as FileType.File as FileType;
-  while (currentDir !== rootDir) {
-    // Go to parent dir of file
-    const splitUri = currentDir.split("/");
-    splitUri.pop();
-    currentDir = splitUri.join("/");
+  for (let levelsUp = 1; levelsUp <= relativeParts.length; levelsUp++) {
+    const currentDir =
+      levelsUp === relativeParts.length
+        ? rootDir
+        : uriSegments.slice(0, uriSegments.length - levelsUp).join("/");
 
-    // Get all files in the dir
-    const dirEntries = await ide.listDir(currentDir);
+    // Get all files in the dir. Fail closed: if a parent can't be listed, its
+    // .gitignore/.continueignore can't be checked, so treat the file as ignored
+    let dirEntries: [string, FileType][];
+    try {
+      dirEntries = await ide.listDir(currentDir);
+    } catch (e) {
+      console.warn(
+        `Treating ${fileUri} as ignored: could not list ${currentDir} (${e instanceof Error ? e.message : e})`,
+      );
+      return true;
+    }
 
     // Check if the file is a symbolic link, ignore if so
     if (directParent) {
@@ -53,14 +73,24 @@ export async function shouldIgnore(
       }
     }
 
-    const ignoreContext = await getIgnoreContext(
-      currentDir,
-      dirEntries,
-      ide,
-      defaultAndGlobalIgnores,
-    );
+    let ignoreContext;
+    try {
+      ignoreContext = await getIgnoreContext(
+        currentDir,
+        dirEntries,
+        ide,
+        defaultAndGlobalIgnores,
+      );
+    } catch (e) {
+      console.warn(
+        `Treating ${fileUri} as ignored: could not read ignore files in ${currentDir} (${e instanceof Error ? e.message : e})`,
+      );
+      return true;
+    }
 
-    let relativePath = uri.substring(currentDir.length + 1);
+    let relativePath = relativeParts
+      .slice(relativeParts.length - levelsUp)
+      .join("/");
     if (fileType === (2 as FileType.Directory)) {
       relativePath += "/";
     }

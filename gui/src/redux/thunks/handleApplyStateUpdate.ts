@@ -67,7 +67,9 @@ export const handleApplyStateUpdate = createAsyncThunk<
 
         if (applyState.status === "closed") {
           if (toolCallState) {
-            const accepted = toolCallState.status !== "canceled";
+            const accepted =
+              toolCallState.status !== "canceled" &&
+              !applyState.interruptedByUserEdit;
 
             logToolUsage(toolCallState, accepted, true, extra.ideMessenger);
 
@@ -88,7 +90,32 @@ export const handleApplyStateUpdate = createAsyncThunk<
               );
             }
 
-            if (accepted) {
+            if (
+              applyState.interruptedByUserEdit &&
+              toolCallState.status !== "canceled"
+            ) {
+              // Mark it errored so the agent continues and sees why
+              dispatch(
+                errorToolCall({
+                  toolCallId: applyState.toolCallId,
+                  output: [
+                    {
+                      icon: "warning",
+                      name: "Edit Interrupted",
+                      description:
+                        "The file was changed while the edit was applied",
+                      content: `The edit to ${applyState.filepath} was not applied: the user changed the file while the edit was being applied, so it was stopped and reverted. The user's changes were kept. Read the file again before making further changes.`,
+                      hidden: false,
+                    },
+                  ],
+                }),
+              );
+              void dispatch(
+                streamResponseAfterToolCall({
+                  toolCallId: applyState.toolCallId,
+                }),
+              );
+            } else if (accepted) {
               if (toolCallState.status !== "errored") {
                 dispatch(
                   acceptToolCall({

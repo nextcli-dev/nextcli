@@ -1542,6 +1542,8 @@ export interface ApplyState {
   autoFormattingDiff?: string;
   /** Set when an LLM apply result looks like it destroyed the file */
   destructiveWarning?: string;
+  /** Set when the user edited the file mid-stream and the edit was reverted */
+  interruptedByUserEdit?: boolean;
 }
 
 export type StreamDiffLinesType = "edit" | "apply";

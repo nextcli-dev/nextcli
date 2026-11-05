@@ -831,9 +831,14 @@ export class Core {
     const refreshIfNotIgnored = async (uris: string[]) => {
       const toRefresh: string[] = [];
       for (const uri of uris) {
-        const ignore = await shouldIgnore(uri, this.ide);
-        if (!ignore) {
-          toRefresh.push(uri);
+        // One uri that can't be checked must not stop the rest
+        try {
+          const ignore = await shouldIgnore(uri, this.ide);
+          if (!ignore) {
+            toRefresh.push(uri);
+          }
+        } catch (e) {
+          Logger.warn(`Skipping ${uri} while refreshing files: ${e}`);
         }
       }
       if (toRefresh.length > 0) {
@@ -853,7 +858,9 @@ export class Core {
       }
 
       walkDirCache.invalidate();
-      void refreshIfNotIgnored(data.uris);
+      void refreshIfNotIgnored(data.uris).catch((e) =>
+        Logger.error(`Failed to refresh created files: ${e}`),
+      );
 
       const colocatedRulesUris = data.uris.filter(isColocatedRulesFile);
       const nonColocatedRuleUris = data.uris.filter(
@@ -863,9 +870,13 @@ export class Core {
         const rulesCache = CodebaseRulesCache.getInstance();
         void Promise.all(
           colocatedRulesUris.map((uri) => rulesCache.update(this.ide, uri)),
-        ).then(() => {
-          void this.configHandler.reloadConfig("Codebase rule file created");
-        });
+        )
+          .then(() => {
+            void this.configHandler.reloadConfig("Codebase rule file created");
+          })
+          .catch((e) =>
+            Logger.error(`Failed to load created codebase rule: ${e}`),
+          );
       }
 
       // If it's a local config being created, we want to reload all configs so it shows up in the list
@@ -884,7 +895,9 @@ export class Core {
       }
 
       walkDirCache.invalidate();
-      void refreshIfNotIgnored(data.uris);
+      void refreshIfNotIgnored(data.uris).catch((e) =>
+        Logger.error(`Failed to refresh deleted files: ${e}`),
+      );
 
       const colocatedRulesUris = data.uris.filter(isColocatedRulesFile);
       const nonColocatedRuleUris = data.uris.filter(
@@ -1290,14 +1303,13 @@ export class Core {
           continue;
         }
         if (isColocatedRulesFile(uri)) {
-          try {
-            const codebaseRulesCache = CodebaseRulesCache.getInstance();
-            void codebaseRulesCache.update(this.ide, uri).then(() => {
+          const codebaseRulesCache = CodebaseRulesCache.getInstance();
+          void codebaseRulesCache
+            .update(this.ide, uri)
+            .then(() => {
               void this.configHandler.reloadConfig("Codebase rule update");
-            });
-          } catch (e) {
-            Logger.error(`Failed to update codebase rule: ${e}`);
-          }
+            })
+            .catch((e) => Logger.error(`Failed to update codebase rule: ${e}`));
         } else if (isContinueConfigRelatedUri(uri)) {
           await this.configHandler.reloadConfig(
             "Local config-related file updated",
@@ -1313,10 +1325,13 @@ export class Core {
         } else {
           const { config } = await this.configHandler.loadConfig();
           if (config && !config.disableIndexing) {
-            // Reindex the file
-            const ignore = await shouldIgnore(uri, this.ide);
-            if (!ignore) {
-              await this.codeBaseIndexer.refreshCodebaseIndexFiles([uri]);
+            try {
+              const ignore = await shouldIgnore(uri, this.ide);
+              if (!ignore) {
+                await this.codeBaseIndexer.refreshCodebaseIndexFiles([uri]);
+              }
+            } catch (e) {
+              Logger.warn(`Skipping reindex of ${uri}: ${e}`);
             }
           }
         }

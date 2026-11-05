@@ -223,14 +223,22 @@ class VsCodeIde implements IDE {
     const pathToLastModified: FileStatsMap = {};
     await Promise.all(
       files.map(async (file) => {
-        const stat = await this.ideUtils.stat(
-          vscode.Uri.parse(file),
-          false /* No need to catch ENOPRO exceptions */,
-        );
-        pathToLastModified[file] = {
-          lastModified: stat!.mtime,
-          size: stat!.size,
-        };
+        // A file that can't be stat'ed (e.g. on a virtual filesystem) is
+        // left out rather than failing the whole batch
+        try {
+          const stat = await this.ideUtils.stat(
+            vscode.Uri.parse(file),
+            false /* No need to catch ENOPRO exceptions */,
+          );
+          if (stat) {
+            pathToLastModified[file] = {
+              lastModified: stat.mtime,
+              size: stat.size,
+            };
+          }
+        } catch (e) {
+          console.warn(`Could not stat ${file}:`, e);
+        }
       }),
     );
 

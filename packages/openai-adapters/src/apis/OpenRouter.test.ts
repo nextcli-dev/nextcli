@@ -317,3 +317,28 @@ describe("OpenRouterApi Anthropic caching", () => {
     });
   });
 });
+
+describe("OpenRouterApi app attribution", () => {
+  it("identifies requests as NextCLI", () => {
+    const api = new OpenRouterApi({ provider: "openrouter", apiKey: "k" });
+    // Sent on every request by customFetch(config.requestOptions)
+    const headers = api["config"].requestOptions!.headers!;
+
+    expect(headers["HTTP-Referer"]).toBe("https://nextcli.dev/");
+    expect(headers["X-OpenRouter-Title"]).toBe("NextCLI");
+    expect(headers["X-Title"]).toBe("NextCLI");
+    expect(headers["X-OpenRouter-Categories"]).toBe("ide-extension");
+  });
+
+  it("lets the caller's headers override the defaults", () => {
+    const api = new OpenRouterApi({
+      provider: "openrouter",
+      apiKey: "k",
+      requestOptions: { headers: { "X-OpenRouter-Categories": "cli-agent" } },
+    });
+
+    const headers = api["config"].requestOptions!.headers!;
+    expect(headers["X-OpenRouter-Categories"]).toBe("cli-agent");
+    expect(headers["X-OpenRouter-Title"]).toBe("NextCLI");
+  });
+});

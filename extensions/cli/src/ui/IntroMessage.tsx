@@ -41,11 +41,22 @@ const IntroMessage: React.FC<IntroMessageProps> = ({
 
     // Check if model is capable - now checking both name and model properties
     const modelCapable = model
-      ? isModelCapable(model.provider, model.name, model.model)
+      ? isModelCapable(
+          model.provider,
+          model.name,
+          model.model,
+          model.capabilities,
+        )
       : true; // Default to true if model not loaded yet
 
     return { allRules, modelCapable };
-  }, [config?.rules, model?.provider, model?.name, model?.model]);
+  }, [
+    config?.rules,
+    model?.provider,
+    model?.name,
+    model?.model,
+    model?.capabilities,
+  ]);
 
   // Render helper components
   const renderMcpPrompts = () =>

@@ -173,4 +173,67 @@ describe("isModelCapable", () => {
       );
     });
   });
+
+  describe("Models the provider rules or config know can call tools", () => {
+    test("should consider DeepSeek V4 capable on the deepseek provider", () => {
+      expect(
+        isModelCapable("deepseek", "DeepSeek V4 Pro", "deepseek-v4-pro"),
+      ).toBe(true);
+      expect(isModelCapable("deepseek", "deepseek-flash")).toBe(true);
+    });
+
+    test("should consider DeepSeek V4 capable through an OpenAI-compatible gateway", () => {
+      expect(
+        isModelCapable("openai", "DeepSeek v4 Flash", "deepseek-v4-flash"),
+      ).toBe(true);
+      expect(isModelCapable("openai", "DeepSeek V4 Pro")).toBe(true);
+    });
+
+    test("should consider GLM, MiniMax and Devstral capable", () => {
+      expect(isModelCapable("openai", "GLM", "glm-4.6")).toBe(true);
+      expect(isModelCapable("openai", "MiniMax", "MiniMax-M2")).toBe(true);
+      expect(isModelCapable("ollama", "devstral-small-2")).toBe(true);
+    });
+
+    test("should trust capabilities: [tool_use] from the config", () => {
+      expect(
+        isModelCapable("openai", "In-house", "my-model", ["tool_use"]),
+      ).toBe(true);
+      expect(
+        isModelCapable("openai", "In-house", "my-model", ["image_input"]),
+      ).toBe(false);
+    });
+
+    test("should keep retired DeepSeek models without tool calling not capable", () => {
+      expect(
+        isModelCapable("deepseek", "DeepSeek Coder", "deepseek-coder"),
+      ).toBe(false);
+    });
+  });
+
+  describe("Provider rules and name patterns together", () => {
+    test("should let a catalog provider's explicit no win over the name", () => {
+      // core rejects it: tool calls return 400
+      expect(
+        isModelCapable("openrouter", "Kimi K2 free", "moonshotai/kimi-k2:free"),
+      ).toBe(false);
+      expect(
+        isModelCapable("openrouter", "Kimi K2", "moonshotai/kimi-k2"),
+      ).toBe(true);
+    });
+
+    test("should keep name patterns for generic OpenAI-compatible endpoints", () => {
+      expect(isModelCapable("openai", "DeepSeek", "deepseek-v4-pro")).toBe(
+        true,
+      );
+      expect(isModelCapable("openai", "GLM", "glm-4.6")).toBe(true);
+      expect(isModelCapable("openai", "GLM", "z-ai/glm-4.6")).toBe(true);
+      expect(isModelCapable("ollama", "Qwen3 Coder", "qwen3-coder")).toBe(true);
+    });
+
+    test("should not match glm inside another word", () => {
+      expect(isModelCapable("openai", "CogVLM", "cogvlm")).toBe(false);
+      expect(isModelCapable("openai", "CogVLM2", "cogvlm2-video")).toBe(false);
+    });
+  });
 });
