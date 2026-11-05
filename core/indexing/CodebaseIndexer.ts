@@ -254,12 +254,11 @@ export class CodebaseIndexer {
     const branch = await this.ide.getBranch(foundInDir);
     const repoName = await this.ide.getRepoName(foundInDir);
     const indexesToBuild = await this.getIndexesToBuild();
+    // A file the IDE can't stat (gone or unreadable) is missing from the
+    // stats: indexing against them then removes it from the index, rather
+    // than leaving stale chunks behind
     const stats = await this.ide.getFileStats([file]);
-    const filePath = Object.keys(stats)[0];
-    if (filePath === undefined) {
-      // The IDE couldn't stat the file (unreadable or already gone)
-      return;
-    }
+    const filePath = file in stats ? file : (Object.keys(stats)[0] ?? file);
     for (const index of indexesToBuild) {
       const tag = {
         directory: foundInDir,
@@ -309,19 +308,26 @@ export class CodebaseIndexer {
     const workspaceDirs = await this.ide.getWorkspaceDirs();
 
     const progressPer = 1 / files.length;
-    let lastError: unknown;
+    const warnings: string[] = [];
     for (const file of files) {
       yield {
         progress,
         desc: `Indexing file ${file}...`,
         status: "indexing",
       };
-      // One file failing must not stop the rest of the batch
       try {
         await this.refreshFile(file, workspaceDirs);
       } catch (err) {
-        lastError = err;
+        // Model errors and index corruption affect every file: stop and
+        // report them as before. Anything else is about this one file.
+        if (this.shouldFailBatch(err)) {
+          yield this.handleErrorAndGetProgressUpdate(err);
+          return;
+        }
         console.warn(`Failed to index ${file}:`, err);
+        warnings.push(
+          `Failed to index ${file}: ${err instanceof Error ? err.message : err}`,
+        );
       }
 
       progress += progressPer;
@@ -331,15 +337,24 @@ export class CodebaseIndexer {
       }
     }
 
-    if (lastError !== undefined) {
-      yield this.handleErrorAndGetProgressUpdate(lastError);
-      return;
-    }
     yield {
       progress: 1,
       desc: "Indexing Complete",
       status: "done",
+      warnings: warnings.length > 0 ? warnings : undefined,
     };
+  }
+
+  private shouldFailBatch(err: unknown): boolean {
+    if (!(err instanceof Error)) {
+      return false;
+    }
+    if (getRootCause(err) instanceof LLMError) {
+      return true;
+    }
+    return this.errorsRegexesToClearIndexesOn.some((regex) =>
+      new RegExp(regex).test(err.message),
+    );
   }
 
   async *refreshDirs(

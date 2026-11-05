@@ -307,6 +307,68 @@ describe("CodebaseIndexer", () => {
       });
     });
 
+    test("refreshFiles keeps indexing after one file fails and reports a warning", async () => {
+      const refreshFile = jest
+        .spyOn(codebaseIndexer, "refreshFile")
+        .mockImplementationOnce(async () => {
+          throw new Error("boom");
+        })
+        .mockImplementationOnce(async () => {});
+
+      const updates = [];
+      for await (const update of (codebaseIndexer as any).refreshFiles([
+        "file:///a.ts",
+        "file:///b.ts",
+      ])) {
+        updates.push(update);
+      }
+
+      expect(refreshFile).toHaveBeenCalledTimes(2);
+      const last = updates[updates.length - 1];
+      expect(last.status).toBe("done");
+      expect(last.warnings).toEqual([
+        expect.stringContaining("file:///a.ts: boom"),
+      ]);
+      refreshFile.mockRestore();
+    });
+
+    test("refreshFiles still stops on a model error", async () => {
+      const refreshFile = jest
+        .spyOn(codebaseIndexer, "refreshFile")
+        .mockImplementation(async () => {
+          throw new LLMError("invalid api key", {} as any);
+        });
+
+      const run = async () => {
+        for await (const _ of (codebaseIndexer as any).refreshFiles([
+          "file:///a.ts",
+          "file:///b.ts",
+        ])) {
+        }
+      };
+
+      await expect(run()).rejects.toThrow("invalid api key");
+      expect(refreshFile).toHaveBeenCalledTimes(1);
+      refreshFile.mockRestore();
+    });
+
+    test("refreshFile removes a file the IDE can no longer stat", async () => {
+      // Earlier tests in this group stub refreshDirs, so index via refreshFile
+      addToTestDir([["stat-gone.py", TEST_PY]]);
+      const target = localPathToUri(path.join(TEST_DIR_PATH, "stat-gone.py"));
+      await codebaseIndexer.refreshFile(target, [TEST_DIR]);
+      expect(await getAllIndexedFiles()).toContain(target);
+
+      const getFileStats = jest
+        .spyOn(testIde, "getFileStats")
+        .mockResolvedValueOnce({});
+      await codebaseIndexer.refreshFile(target, [TEST_DIR]);
+      getFileStats.mockRestore();
+
+      expect(await getAllIndexedFiles()).not.toContain(target);
+      fs.rmSync(path.join(TEST_DIR_PATH, "stat-gone.py"));
+    });
+
     test("should call messenger with progress updates when refreshing specific files", async () => {
       jest
         .spyOn(codebaseIndexer as any, "refreshFiles")
