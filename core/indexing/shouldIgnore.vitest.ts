@@ -27,11 +27,36 @@ describe("shouldIgnore", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
   });
 
-  it("doesn't throw on a parent that can't be listed", async () => {
+  it("fails closed when a parent can't be listed", async () => {
     const { ide } = createIde({}, {}, ["file:///proj/ENHC"]);
     await expect(
       shouldIgnore("file:///proj/ENHC/obj.ts", ide, ["file:///proj"]),
-    ).resolves.toBe(false);
+    ).resolves.toBe(true);
+  });
+
+  it("fails closed when a parent's ignore file can't be read", async () => {
+    const { ide } = createIde({ "file:///proj": [[".gitignore", 1]] }, {});
+    (ide as any).readFile = async () => {
+      throw new Error("Operation not supported");
+    };
+    await expect(
+      shouldIgnore("file:///proj/a.ts", ide, ["file:///proj"]),
+    ).resolves.toBe(true);
+  });
+
+  it("reads the .gitignore of a root written with a trailing slash", async () => {
+    for (const root of ["file:///proj/", "adt://sys/"]) {
+      const { ide } = createIde(
+        { [root]: [[".gitignore", 1]] },
+        { [`${root}.gitignore`]: "secret/\n" },
+      );
+      await expect(
+        shouldIgnore(`${root}secret/key.txt`, ide, [root]),
+      ).resolves.toBe(true);
+      await expect(
+        shouldIgnore(`${root}public/readme.txt`, ide, [root]),
+      ).resolves.toBe(false);
+    }
   });
 
   // The SAP ABAP filesystem's workspace folder is adt://<system>

@@ -94,6 +94,33 @@ describe("walkDir with directories that can't be listed", () => {
   });
 });
 
+describe("walkDir with ignore files that can't be read", () => {
+  beforeEach(() => {
+    walkDirCache.invalidate();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  it("skips the directory instead of walking it with only the defaults", async () => {
+    const { ide } = createIde({
+      "file:///proj": [
+        ["top.ts", FILE],
+        ["sub", DIR],
+      ],
+      "file:///proj/sub": [
+        [".gitignore", FILE],
+        ["secret.ts", FILE],
+      ],
+    });
+    (ide as any).readFile = async (uri: string) => {
+      if (uri === "file:///proj/sub/.gitignore") {
+        throw new Error("Operation not supported");
+      }
+      return "";
+    };
+    expect(await walkDir("file:///proj", ide)).toEqual(["file:///proj/top.ts"]);
+  });
+});
+
 describe("loadCodebaseRules (continuedev/continue#13304)", () => {
   beforeEach(() => {
     walkDirCache.invalidate();

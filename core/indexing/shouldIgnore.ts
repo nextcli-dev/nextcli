@@ -48,15 +48,16 @@ export async function shouldIgnore(
         ? rootDir
         : uriSegments.slice(0, uriSegments.length - levelsUp).join("/");
 
-    // Get all files in the dir. A directory that can't be listed (e.g. on a
-    // virtual filesystem) contributes no ignore files instead of failing
-    let dirEntries: [string, FileType][] = [];
+    // Get all files in the dir. Fail closed: if a parent can't be listed, its
+    // .gitignore/.continueignore can't be checked, so treat the file as ignored
+    let dirEntries: [string, FileType][];
     try {
       dirEntries = await ide.listDir(currentDir);
     } catch (e) {
       console.warn(
-        `Could not list ${currentDir} while checking ignores: ${e instanceof Error ? e.message : e}`,
+        `Treating ${fileUri} as ignored: could not list ${currentDir} (${e instanceof Error ? e.message : e})`,
       );
+      return true;
     }
 
     // Check if the file is a symbolic link, ignore if so
@@ -72,12 +73,20 @@ export async function shouldIgnore(
       }
     }
 
-    const ignoreContext = await getIgnoreContext(
-      currentDir,
-      dirEntries,
-      ide,
-      defaultAndGlobalIgnores,
-    ).catch(() => defaultAndGlobalIgnores);
+    let ignoreContext;
+    try {
+      ignoreContext = await getIgnoreContext(
+        currentDir,
+        dirEntries,
+        ide,
+        defaultAndGlobalIgnores,
+      );
+    } catch (e) {
+      console.warn(
+        `Treating ${fileUri} as ignored: could not read ignore files in ${currentDir} (${e instanceof Error ? e.message : e})`,
+      );
+      return true;
+    }
 
     let relativePath = relativeParts
       .slice(relativeParts.length - levelsUp)

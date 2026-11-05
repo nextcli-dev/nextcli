@@ -191,10 +191,12 @@ class DFSWalker {
         newIgnore = await ignoreLoading;
       } catch (e) {
         walkDirCache.forgetFailedIgnore(dirUri, ignoreLoading);
+        // Fail closed: without this directory's .gitignore/.continueignore
+        // its contents can't be checked, so leave them out of the walk
         console.warn(
-          `Could not read ignore files in ${dirUri}, using default ignores there (${errorMessage(e)})`,
+          `Skipping directory whose ignore files could not be read: ${dirUri} (${errorMessage(e)})`,
         );
-        newIgnore = defaultAndGlobalIgnores;
+        continue;
       }
 
       const ignoreContexts = [
@@ -359,14 +361,20 @@ export async function getIgnoreContext(
 
   const getGitIgnorePatterns = async () => {
     if (gitIgnoreFile) {
-      const contents = await ide.readFile(`${currentDir}/.gitignore`);
+      // joinPathsToUri: roots like file:///proj/ or adt://sys have no
+      // single trailing-slash-free form to append to
+      const contents = await ide.readFile(
+        joinPathsToUri(currentDir, ".gitignore"),
+      );
       return gitIgArrayFromFile(contents);
     }
     return [];
   };
   const getContinueIgnorePatterns = async () => {
     if (continueIgnoreFile) {
-      const contents = await ide.readFile(`${currentDir}/.continueignore`);
+      const contents = await ide.readFile(
+        joinPathsToUri(currentDir, ".continueignore"),
+      );
       return gitIgArrayFromFile(contents);
     }
     return [];
