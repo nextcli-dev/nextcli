@@ -15,6 +15,9 @@ replaced, so each phase of the upgrade can prove nothing changed.
 The fixture generators must run before the dependency they record is removed;
 after that, the committed output is the reference. The `results/` folder is
 git-ignored: baselines are machine-specific and stay on the machine that made them.
+`summary.json` records every path relative to the repo root, so a result file can
+be shared without exposing local paths. The reference numbers for the baseline
+run are in a comment on [PR #41](https://github.com/nextcli-dev/nextcli/pull/41).
 
 Known gaps in the baseline:
 

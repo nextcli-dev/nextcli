@@ -8,7 +8,9 @@
 //   node scripts/regression/capture-baseline.mjs --label p1 --only core,gui
 //
 // Writes scripts/regression/results/<label>/summary.json plus raw reports
-// and logs next to it. The folder is git-ignored: results are machine-specific.
+// and logs next to it. The folder is git-ignored: timings and the Node version
+// are machine-specific. summary.json records every path repo-relative, so it
+// can be shared as is.
 
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -174,6 +176,16 @@ export function summarizeEslint(results) {
   return { files: results.length, errors, warnings, rules: sorted };
 }
 
+/**
+ * The command as recorded in summary.json: any absolute path under the repo
+ * (including inside `--flag=/path` arguments) becomes repo-relative, so the
+ * file carries no machine-specific paths.
+ */
+export function displayCommand(cmd, root = ROOT) {
+  const prefix = root.endsWith(path.sep) ? root : root + path.sep;
+  return cmd.map((a) => a.replaceAll(prefix, "")).join(" ");
+}
+
 /** Number of distinct TypeScript errors in tsc output. */
 export function summarizeTsc(output) {
   return { errors: (output.match(/error TS\d+/g) ?? []).length };
@@ -234,7 +246,7 @@ function main() {
       record({
         area: step.area,
         name: step.name,
-        command: step.cmd.join(" "),
+        command: displayCommand(step.cmd),
         skipped: "dependencies not installed",
       });
       continue;
@@ -255,9 +267,7 @@ function main() {
     const entry = {
       area: step.area,
       name: step.name,
-      command: step.cmd
-        .map((a) => (a.startsWith(rawDir) ? path.basename(a) : a))
-        .join(" "),
+      command: displayCommand(step.cmd),
       exitCode: res.status,
       timedOut: res.error?.code === "ETIMEDOUT",
       durationMs: Date.now() - started,
