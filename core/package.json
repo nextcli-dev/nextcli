@@ -65,7 +65,6 @@
     "@mozilla/readability": "^0.6.0",
     "@octokit/rest": "^20.1.1",
     "@xenova/transformers": "2.14.0",
-    "adf-to-md": "^1.1.0",
     "async-mutex": "^0.5.0",
     "axios": "^1.6.7",
     "cheerio": "^1.0.0-rc.12",
