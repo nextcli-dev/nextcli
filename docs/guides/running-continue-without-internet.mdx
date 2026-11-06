@@ -4,6 +4,6 @@ description: "Learn how to set up NextCLI for air-gapped or offline environments
 ---
 
 1. Download the latest .vsix file from the [GitHub Releases page](https://github.com/nextcli-dev/nextcli/releases) and [install it to VS Code](https://code.visualstudio.com/docs/editor/extension-marketplace#_install-from-a-vsix).
-2. Turn off "Allow Anonymous Telemetry" in the user settings. This will stop NextCLI from attempting requests to PostHog for [anonymous telemetry](https://docs.nextcli.dev/reference/telemetry).
+2. Leave "Allow Anonymous Telemetry" off in the user settings (the default). NextCLI has no telemetry endpoint of its own and only sends [telemetry](/reference/telemetry) to an OTLP collector you configure.
 3. In your `config.yaml` file (or through the NextCLI UI), set the default model to a local model. You can find available local model options [here](https://docs.nextcli.dev/reference/model-providers/ollama).
 4. Restart VS Code to ensure that the changes to `config.yaml` take effect.
