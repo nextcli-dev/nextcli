@@ -1274,10 +1274,6 @@ export abstract class BaseLLM implements ILLM {
       ? this.templateMessages(messagesCopy)
       : this._formatChatMessages(messagesCopy);
 
-    if (logEnabled) {
-      this.logStartChat(interaction, messages, completionOptions, prompt);
-    }
-
     // Performance optimization: Use arrays instead of string concatenation.
     // String concatenation in loops creates new string objects for each operation,
     // which is O(n²) for n chunks. Arrays with push() are O(1) per operation,
@@ -1288,7 +1284,11 @@ export abstract class BaseLLM implements ILLM {
     let citations: null | string[] = null;
 
     try {
+      // Each path logs startChat once: the adapter path adds the request body.
       if (this.templateMessages) {
+        if (logEnabled) {
+          this.logStartChat(interaction, messages, completionOptions, prompt);
+        }
         for await (const chunk of this._streamComplete(
           prompt,
           signal,
