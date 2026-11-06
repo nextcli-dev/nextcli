@@ -338,17 +338,10 @@ export default async function doLoadConfig(options: {
     }
   });
 
-  // Telemetry needs the user's opt-in (allowAnonymousTelemetry, "Allow
-  // Anonymous Telemetry" in User Settings) AND, in VS Code, the editor's own
-  // telemetry setting: either one off turns it off.
-  if (
-    newConfig.allowAnonymousTelemetry !== false &&
-    ideInfo.ideType === "vscode"
-  ) {
-    if ((await ide.isTelemetryEnabled()) === false) {
-      newConfig.allowAnonymousTelemetry = false;
-    }
-  }
+  // allowAnonymousTelemetry stays the user's stored choice, so the settings
+  // switch shows and changes what is saved. Whether telemetry may run (the
+  // choice AND VS Code's own setting) is decided where it is configured:
+  // isTelemetryAllowed() in util/telemetry/coreTelemetry.ts.
 
   // Setup IdeInfoService
   IdeInfoService.setup(uniqueId, ideInfo);

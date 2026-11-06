@@ -7,19 +7,21 @@
  * computes styles. A jsdom upgrade that changes that code fails here, not on
  * a user's machine.
  */
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
+import http from "node:http";
+import type { AddressInfo } from "node:net";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 
-import { build } from "esbuild";
+import * as esbuild from "esbuild";
 import { afterAll, describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
 const coreDir = path.resolve(__dirname, "../..");
 const repoRoot = path.resolve(coreDir, "..");
-const { jsdomPlugins } = require(
+const { jsdomPlugins, buildXhrSyncWorker } = require(
   path.join(repoRoot, "scripts/esbuild-plugins/jsdom.cjs"),
 );
 
@@ -50,11 +52,15 @@ console.log(
 `;
 const EXPECTED = "hi|a|2|/favicon.ico|1|rgb(0, 0, 255)";
 
-async function bundleAndRun(format: "cjs" | "esm"): Promise<string> {
-  const dir = path.join(tmp, format);
+async function bundleAndRun(
+  format: "cjs" | "esm",
+  program = PROGRAM,
+  name: string = format,
+): Promise<string> {
+  const dir = path.join(tmp, name);
   const outfile = path.join(dir, format === "cjs" ? "out.cjs" : "out.mjs");
-  await build({
-    stdin: { contents: PROGRAM, resolveDir: coreDir, loader: "js" },
+  await esbuild.build({
+    stdin: { contents: program, resolveDir: coreDir, loader: "js" },
     outfile,
     bundle: true,
     format,
@@ -71,14 +77,16 @@ async function bundleAndRun(format: "cjs" | "esm"): Promise<string> {
     logLevel: "error",
   });
   // jsdom resolves its sync-XHR worker next to the bundle when it loads
-  fs.copyFileSync(
-    path.join(
-      coreDir,
-      "node_modules/jsdom/lib/jsdom/living/xhr/xhr-sync-worker.js",
+  await buildXhrSyncWorker(esbuild, {
+    jsdomDir: path.join(coreDir, "node_modules/jsdom"),
+    outfile: path.join(dir, "xhr-sync-worker.js"),
+  });
+  // Not execFileSync: the sync XHR test needs this process's server to answer
+  return new Promise((resolve, reject) =>
+    execFile(process.execPath, [outfile], { encoding: "utf8" }, (e, out) =>
+      e ? reject(e) : resolve(out.trim()),
     ),
-    path.join(dir, "xhr-sync-worker.js"),
   );
-  return execFileSync(process.execPath, [outfile], { encoding: "utf8" }).trim();
 }
 
 describe("bundled jsdom", () => {
@@ -88,5 +96,31 @@ describe("bundled jsdom", () => {
 
   it("starts, selects and computes styles in an ESM bundle (CLI)", async () => {
     expect(await bundleAndRun("esm")).toBe(EXPECTED);
+  }, 60_000);
+
+  it("runs a synchronous XMLHttpRequest through the bundled worker", async () => {
+    const server = http.createServer((_req, res) => {
+      res.writeHead(200, { "Access-Control-Allow-Origin": "*" });
+      res.end("synchronous ok");
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+    try {
+      const program = `
+import { JSDOM } from "jsdom";
+const { window } = new JSDOM("", { url: ${JSON.stringify(url)} });
+const xhr = new window.XMLHttpRequest();
+xhr.open("GET", ${JSON.stringify(url)}, false);
+xhr.send();
+console.log(xhr.status + " " + xhr.responseText);
+`;
+      expect(await bundleAndRun("cjs", program, "sync-xhr")).toBe(
+        "200 synchronous ok",
+      );
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
   }, 60_000);
 });

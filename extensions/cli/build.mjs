@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import * as esbuild from "esbuild";
-import { chmodSync, copyFileSync, writeFileSync } from "fs";
+import { chmodSync, writeFileSync } from "fs";
 import { dirname, resolve } from "path";
 import { createRequire } from "module";
 import { fileURLToPath } from "url";
@@ -12,7 +12,7 @@ const noMinify = args.includes("--no-minify");
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const { jsdomPlugins } = createRequire(import.meta.url)(
+const { jsdomPlugins, buildXhrSyncWorker } = createRequire(import.meta.url)(
   "../../scripts/esbuild-plugins/jsdom.cjs",
 );
 
@@ -21,7 +21,7 @@ const { jsdomPlugins } = createRequire(import.meta.url)(
 // Users should not need to install any additional dependencies
 const external = [
   "fsevents", // macOS native file watcher (optional dependency)
-  "./xhr-sync-worker.js", // JSDOM worker file that needs to be copied separately
+  "./xhr-sync-worker.js", // jsdom's sync-XHR worker, bundled separately below
 ];
 
 console.log("Building CLI with esbuild...");
@@ -103,18 +103,13 @@ const require = __createRequire(import.meta.url);`,
     "dist/cn.js",
     "#!/usr/bin/env node\nimport { runCli } from './index.js';\nawait runCli();\n",
   );
-  // Copy worker files needed by JSDOM
-  const workerSource = resolve(
-    __dirname,
-    "node_modules/jsdom/lib/jsdom/living/xhr/xhr-sync-worker.js",
-  );
-  const workerDest = resolve(__dirname, "dist/xhr-sync-worker.js");
-  try {
-    copyFileSync(workerSource, workerDest);
-    console.log("✓ Copied xhr-sync-worker.js");
-  } catch (error) {
-    console.warn("Warning: Could not copy xhr-sync-worker.js:", error.message);
-  }
+  // jsdom's synchronous-XHR worker, bundled: a plain copy cannot load
+  // (scripts/esbuild-plugins/jsdom.cjs)
+  await buildXhrSyncWorker(esbuild, {
+    jsdomDir: resolve(__dirname, "node_modules/jsdom"),
+    outfile: resolve(__dirname, "dist/xhr-sync-worker.js"),
+  });
+  console.log("✓ Built xhr-sync-worker.js");
 
   // Make the wrapper script executable
   chmodSync("dist/cn.js", 0o755);

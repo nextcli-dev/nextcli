@@ -159,9 +159,11 @@ describe("doLoadConfig pre-read content bypass", () => {
 });
 
 describe("doLoadConfig and the telemetry opt-in", () => {
-  // The user's opt-in ("Allow Anonymous Telemetry" in User Settings) reaches
-  // doLoadConfig as allowAnonymousTelemetry on the loaded config; VS Code's
-  // own setting comes from ide.isTelemetryEnabled().
+  // The user's choice ("Allow Anonymous Telemetry" in User Settings) reaches
+  // doLoadConfig as allowAnonymousTelemetry on the loaded config. It must stay
+  // the stored choice, so the settings switch can show and change it; VS
+  // Code's own setting is applied by isTelemetryAllowed() when telemetry is
+  // configured.
   async function load(optIn: boolean | undefined, ideTelemetry: boolean) {
     mockLoadJson.mockResolvedValueOnce({
       config: { ...stubConfig, allowAnonymousTelemetry: optIn },
@@ -182,12 +184,13 @@ describe("doLoadConfig and the telemetry opt-in", () => {
         fileUri: "file:///home/user/.continue/config.json",
       },
     });
-    return result.config;
+    return { config: result.config, ide };
   }
 
-  async function requestsAfterConfigure(allowAnonymousTelemetry?: boolean) {
+  async function exportsFor(optIn: boolean | undefined, ideTelemetry: boolean) {
+    const { config, ide } = await load(optIn, ideTelemetry);
     const http = await import("node:http");
-    const { CoreTelemetry } = await import(
+    const { CoreTelemetry, isTelemetryAllowed } = await import(
       "../../util/telemetry/coreTelemetry"
     );
     const bodies: string[] = [];
@@ -203,41 +206,50 @@ describe("doLoadConfig and the telemetry opt-in", () => {
       server.listen(0, "127.0.0.1", resolve),
     );
     const port = (server.address() as { port: number }).port;
-    const telemetry = new CoreTelemetry({
-      OTEL_EXPORTER_OTLP_ENDPOINT: `http://127.0.0.1:${port}`,
+    const telemetry = new CoreTelemetry(
+      { OTEL_EXPORTER_OTLP_ENDPOINT: `http://127.0.0.1:${port}` },
+      { docs_backup_sites: { outcome: ["copied"] } },
+    );
+    // As core.ts does on every config load
+    await telemetry.configure({
+      allowAnonymousTelemetry: await isTelemetryAllowed(
+        config?.allowAnonymousTelemetry,
+        "vscode",
+        ide,
+      ),
+      ideType: "vscode",
     });
-    await telemetry.configure({ allowAnonymousTelemetry, ideType: "vscode" });
-    telemetry.count("docs_backup_sites");
+    telemetry.count("docs_backup_sites", 1, { outcome: "copied" });
     await telemetry.flush();
     const sent = bodies.length; // shutdown() sends a final export too
     await telemetry.shutdown();
     await new Promise((resolve) => server.close(resolve));
-    return sent;
+    return { config, sent };
   }
 
-  it("keeps the user's opt-in when VS Code telemetry is on, and metrics are sent", async () => {
-    const config = await load(true, true);
-    expect(config?.allowAnonymousTelemetry).toBe(true);
-    expect(await requestsAfterConfigure(config?.allowAnonymousTelemetry)).toBe(
-      1,
+  it("keeps the stored opt-in whatever VS Code's setting is", async () => {
+    expect((await load(true, true)).config?.allowAnonymousTelemetry).toBe(true);
+    expect((await load(true, false)).config?.allowAnonymousTelemetry).toBe(
+      true,
+    );
+    expect((await load(false, true)).config?.allowAnonymousTelemetry).toBe(
+      false,
     );
   });
 
-  it("sends nothing without the user's opt-in, even with VS Code telemetry on", async () => {
+  it("sends metrics with the opt-in and VS Code telemetry on", async () => {
+    expect((await exportsFor(true, true)).sent).toBe(1);
+  });
+
+  it("sends nothing without the opt-in, even with VS Code telemetry on", async () => {
     for (const optIn of [undefined, false]) {
-      const config = await load(optIn, true);
-      expect(config?.allowAnonymousTelemetry).not.toBe(true);
-      expect(
-        await requestsAfterConfigure(config?.allowAnonymousTelemetry),
-      ).toBe(0);
+      expect((await exportsFor(optIn, true)).sent).toBe(0);
     }
   });
 
-  it("turns the opt-in off when VS Code telemetry is off", async () => {
-    const config = await load(true, false);
-    expect(config?.allowAnonymousTelemetry).toBe(false);
-    expect(await requestsAfterConfigure(config?.allowAnonymousTelemetry)).toBe(
-      0,
-    );
+  it("sends nothing while VS Code telemetry is off, keeping the opt-in for later", async () => {
+    const { config, sent } = await exportsFor(true, false);
+    expect(sent).toBe(0);
+    expect(config?.allowAnonymousTelemetry).toBe(true);
   });
 });

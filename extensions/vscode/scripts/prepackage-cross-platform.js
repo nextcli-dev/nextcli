@@ -17,6 +17,9 @@ const {
 const { generateAndCopyConfigYamlSchema } = require("./generate-copy-config");
 const { npmInstall } = require("./npm-install");
 const {
+  buildXhrSyncWorker,
+} = require("../../../scripts/esbuild-plugins/jsdom.cjs");
+const {
   buildGui,
   copyOnnxRuntimeFromNodeModules,
   copyTreeSitterWasms,
@@ -120,11 +123,12 @@ async function package(target, os, arch, exe) {
   // copy node_modules to out/node_modules
   await copyNodeModules();
 
-  // Copy over any worker files
-  fs.cpSync(
-    "node_modules/jsdom/lib/jsdom/living/xhr/xhr-sync-worker.js",
-    "out/xhr-sync-worker.js",
-  );
+  // jsdom's synchronous-XHR worker, bundled: a plain copy cannot load
+  // (scripts/esbuild-plugins/jsdom.cjs)
+  await buildXhrSyncWorker(require("esbuild"), {
+    jsdomDir: path.resolve("node_modules/jsdom"),
+    outfile: "out/xhr-sync-worker.js",
+  });
 
   // Validate the all of the necessary files are present
   validateFilesPresent([

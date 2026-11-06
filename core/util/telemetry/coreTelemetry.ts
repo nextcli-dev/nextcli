@@ -14,9 +14,9 @@
  * default 60000). Other OTEL_* variables, including the protocol ones, are
  * not read.
  *
- * Counters accept only low-cardinality attributes: numbers, booleans and
- * short identifier-like strings. Other values (paths, URLs, text) are dropped
- * here, so callers cannot send them by mistake.
+ * Only metrics declared in CORE_METRICS are recorded, and only with the
+ * attribute values declared there. Anything else is dropped here, so a caller
+ * cannot send a path, URL, file name or text by mistake.
  */
 import type { Attributes, Counter, Meter } from "@opentelemetry/api";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
@@ -34,9 +34,31 @@ export interface CoreTelemetrySettings {
 
 const METRIC_PREFIX = "nextcli_core_";
 const DEFAULT_EXPORT_INTERVAL_MS = 60_000;
-const METRIC_NAME = /^[a-z][a-z0-9_]*$/;
-const ATTRIBUTE_KEY = /^[a-z][a-z0-9_.]{0,63}$/;
-const ATTRIBUTE_STRING = /^[A-Za-z0-9_.-]{1,64}$/;
+
+/**
+ * Every counter core records (exported as nextcli_core_<name>), with each
+ * attribute it may carry and that attribute's allowed values. Add a metric
+ * here, and to docs/reference/telemetry.mdx, before recording it.
+ */
+export type MetricRegistry = Record<string, Record<string, readonly string[]>>;
+export const CORE_METRICS: MetricRegistry = {};
+
+/**
+ * Whether telemetry may run: the user's opt-in ("Allow Anonymous Telemetry")
+ * AND, in VS Code, the editor's own telemetry setting. Either one off is off.
+ */
+export async function isTelemetryAllowed(
+  optIn: boolean | undefined,
+  ideType: string | undefined,
+  ide: { isTelemetryEnabled(): Promise<boolean> },
+): Promise<boolean> {
+  if (optIn !== true) {
+    return false;
+  }
+  return ideType === "vscode"
+    ? (await ide.isTelemetryEnabled()) === true
+    : true;
+}
 
 /** The metrics URL from the OTLP variables, or undefined. */
 export function otlpMetricsUrl(
@@ -86,22 +108,21 @@ export function exportIntervalMs(env: NodeJS.ProcessEnv = process.env) {
     : DEFAULT_EXPORT_INTERVAL_MS;
 }
 
-/** Keeps only attribute values that cannot carry paths, URLs or text. */
-export function sanitizeAttributes(attributes: Attributes): Attributes {
-  const safe: Attributes = {};
+/**
+ * The attributes of `attributes` that `metric` declares, with declared values.
+ * Everything else is dropped.
+ */
+export function allowedAttributes(
+  metric: Record<string, readonly string[]>,
+  attributes: Attributes,
+): Attributes {
+  const allowed: Attributes = {};
   for (const [key, value] of Object.entries(attributes)) {
-    if (!ATTRIBUTE_KEY.test(key)) {
-      continue;
-    }
-    if (
-      typeof value === "boolean" ||
-      (typeof value === "number" && Number.isFinite(value)) ||
-      (typeof value === "string" && ATTRIBUTE_STRING.test(value))
-    ) {
-      safe[key] = value;
+    if (typeof value === "string" && metric[key]?.includes(value)) {
+      allowed[key] = value;
     }
   }
-  return safe;
+  return allowed;
 }
 
 export class CoreTelemetry {
@@ -115,7 +136,10 @@ export class CoreTelemetry {
   private generation = 0;
   private readonly warned = new Set<string>();
 
-  constructor(private readonly env: NodeJS.ProcessEnv = process.env) {}
+  constructor(
+    private readonly env: NodeJS.ProcessEnv = process.env,
+    private readonly metrics: MetricRegistry = CORE_METRICS,
+  ) {}
 
   get enabled() {
     return this.meter !== undefined;
@@ -147,8 +171,11 @@ export class CoreTelemetry {
     if (!meter || !(value > 0)) {
       return;
     }
-    if (!METRIC_NAME.test(name)) {
-      this.warnOnce(`Dropped telemetry metric with an invalid name: ${name}`);
+    const metric = Object.hasOwn(this.metrics, name)
+      ? this.metrics[name]
+      : undefined;
+    if (!metric) {
+      this.warnOnce(`Dropped telemetry metric not in CORE_METRICS: ${name}`);
       return;
     }
     const fullName = METRIC_PREFIX + name;
@@ -157,7 +184,7 @@ export class CoreTelemetry {
       counter = meter.createCounter(fullName);
       this.counters.set(fullName, counter);
     }
-    counter.add(value, sanitizeAttributes(attributes));
+    counter.add(value, allowedAttributes(metric, attributes));
   }
 
   /** Sends what has been recorded so far. */
