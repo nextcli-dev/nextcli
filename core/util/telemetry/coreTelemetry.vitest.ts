@@ -17,8 +17,15 @@ import {
   otlpMetricsHeaders,
   otlpMetricsUrl,
   parseOtlpHeaders,
-  sanitizeAttributes,
+  allowedAttributes,
+  CORE_METRICS,
+  type MetricRegistry,
 } from "./coreTelemetry";
+
+// Tests record to their own registry; CORE_METRICS lists core's real metrics
+const TEST_METRICS: MetricRegistry = {
+  docs_backup_sites: { outcome: ["copied", "no_source", "failed", "skipped"] },
+};
 
 describe("OTLP settings", () => {
   it("prefers the metrics endpoint and appends /v1/metrics to the base", () => {
@@ -63,24 +70,26 @@ describe("OTLP settings", () => {
     );
   });
 
-  it("drops attribute values that could carry paths, URLs or text", () => {
+  it("keeps only declared attributes with declared values", () => {
+    const metric = TEST_METRICS.docs_backup_sites;
+    expect(allowedAttributes(metric, { outcome: "copied" })).toEqual({
+      outcome: "copied",
+    });
+    // Identifier-like values that are not declared are dropped too
+    for (const value of [".env", "secret.ts", "id_rsa", "gpt-4o-mini"]) {
+      expect(allowedAttributes(metric, { outcome: value })).toEqual({});
+    }
     expect(
-      sanitizeAttributes({
-        outcome: "no_source",
-        model: "gpt-4o-mini",
-        count: 3,
-        ok: true,
+      allowedAttributes(metric, {
         path: "/Users/me/secret.ts",
         url: "https://docs.example.com/page",
-        prompt: "explain this code",
-        "Bad Key": "x",
+        count: 3,
       }),
-    ).toEqual({
-      outcome: "no_source",
-      model: "gpt-4o-mini",
-      count: 3,
-      ok: true,
-    });
+    ).toEqual({});
+  });
+
+  it("records nothing on main until a metric is declared", () => {
+    expect(CORE_METRICS).toEqual({});
   });
 });
 
@@ -118,7 +127,7 @@ describe("CoreTelemetry", () => {
   afterAll(() => new Promise((resolve) => server.close(resolve)));
 
   function telemetry(env: NodeJS.ProcessEnv) {
-    const t = new CoreTelemetry(env);
+    const t = new CoreTelemetry(env, TEST_METRICS);
     instances.push(t);
     return t;
   }
@@ -237,12 +246,12 @@ describe("CoreTelemetry", () => {
     ).not.toThrow();
   });
 
-  it("drops a bad metric name with a warning while on", async () => {
+  it("drops a metric that is not declared, with one warning, while on", async () => {
     const t = telemetry({ OTEL_EXPORTER_OTLP_ENDPOINT: endpoint });
     await t.configure({ allowAnonymousTelemetry: true });
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    t.count("Docs-Backup");
-    t.count("Docs-Backup");
+    t.count("chat_messages");
+    t.count("chat_messages");
     expect(warn).toHaveBeenCalledTimes(1);
     warn.mockRestore();
     await t.flush();

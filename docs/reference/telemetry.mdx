@@ -19,7 +19,7 @@ export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <token>"
 code .
 ```
 
-Turning off either setting stops the exporter right away. Without an endpoint, no exporter is created and no telemetry request is made.
+Turning off either setting stops the exporter right away. **Allow Anonymous Telemetry** keeps your choice while VS Code's telemetry is off, and the switch shows that stored choice. Without an endpoint, no exporter is created and no telemetry request is made.
 
 ### Variables it reads
 
@@ -35,11 +35,9 @@ Metrics are always sent as OTLP over HTTP with a JSON body. Other `OTEL_*` varia
 
 ### What is sent
 
-Counters named `nextcli_core_*`, with the resource attributes `service.name=nextcli-core`, `service.version` (the extension version) and `nextcli.ide`. Counter attributes are limited to numbers, booleans and short identifier-like strings (letters, digits, `_`, `.`, `-`, up to 64 characters); anything else, such as a file path, URL or text, is dropped before it is recorded.
+Counters named `nextcli_core_*`, with the resource attributes `service.name=nextcli-core`, `service.version` (the extension version) and `nextcli.ide`. Only metrics declared in the list below are recorded, and their attributes only take the values listed. Anything else, such as a file name, path, URL or text, is dropped before it is recorded.
 
-| Metric | Attributes | Counts |
-|---|---|---|
-| `nextcli_core_docs_backup_sites` | `outcome`: `copied`, `no_source`, `failed`, `skipped` | @docs sites per run of the docs backup |
+No metrics are recorded yet. Features add their metrics to this list (and to `CORE_METRICS` in `core/util/telemetry/coreTelemetry.ts`) when they start recording them.
 
 ## CLI
 
