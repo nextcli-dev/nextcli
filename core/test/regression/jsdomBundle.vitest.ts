@@ -8,8 +8,6 @@
  * a user's machine.
  */
 import { execFile } from "node:child_process";
-import http from "node:http";
-import type { AddressInfo } from "node:net";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
@@ -21,7 +19,7 @@ import { afterAll, describe, expect, it } from "vitest";
 const require = createRequire(import.meta.url);
 const coreDir = path.resolve(__dirname, "../..");
 const repoRoot = path.resolve(coreDir, "..");
-const { jsdomPlugins, buildXhrSyncWorker } = require(
+const { jsdomPlugins, writeXhrSyncWorkerStub } = require(
   path.join(repoRoot, "scripts/esbuild-plugins/jsdom.cjs"),
 );
 
@@ -76,12 +74,9 @@ async function bundleAndRun(
     plugins: jsdomPlugins(),
     logLevel: "error",
   });
-  // jsdom resolves its sync-XHR worker next to the bundle when it loads
-  await buildXhrSyncWorker(esbuild, {
-    jsdomDir: path.join(coreDir, "node_modules/jsdom"),
-    outfile: path.join(dir, "xhr-sync-worker.js"),
-  });
-  // Not execFileSync: the sync XHR test needs this process's server to answer
+  // jsdom resolves its sync-XHR worker next to the bundle when it loads; the
+  // builds ship a stub (scripts/esbuild-plugins/jsdom.cjs)
+  writeXhrSyncWorkerStub(path.join(dir, "xhr-sync-worker.js"));
   return new Promise((resolve, reject) =>
     execFile(process.execPath, [outfile], { encoding: "utf8" }, (e, out) =>
       e ? reject(e) : resolve(out.trim()),
@@ -98,29 +93,26 @@ describe("bundled jsdom", () => {
     expect(await bundleAndRun("esm")).toBe(EXPECTED);
   }, 60_000);
 
-  it("runs a synchronous XMLHttpRequest through the bundled worker", async () => {
-    const server = http.createServer((_req, res) => {
-      res.writeHead(200, { "Access-Control-Allow-Origin": "*" });
-      res.end("synchronous ok");
-    });
-    await new Promise<void>((resolve) =>
-      server.listen(0, "127.0.0.1", resolve),
-    );
-    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
-    try {
-      const program = `
+  it("fails a synchronous XMLHttpRequest at once with a clear error", async () => {
+    const program = `
 import { JSDOM } from "jsdom";
-const { window } = new JSDOM("", { url: ${JSON.stringify(url)} });
+const { window } = new JSDOM("", { url: "http://127.0.0.1:9/" });
 const xhr = new window.XMLHttpRequest();
-xhr.open("GET", ${JSON.stringify(url)}, false);
-xhr.send();
-console.log(xhr.status + " " + xhr.responseText);
+xhr.open("GET", "http://127.0.0.1:9/", false);
+const started = Date.now();
+try {
+  xhr.send();
+  console.log("sent");
+} catch (e) {
+  console.log(e.name + ": " + e.message + " | " + (Date.now() - started) + "ms");
+}
 `;
-      expect(await bundleAndRun("cjs", program, "sync-xhr")).toBe(
-        "200 synchronous ok",
-      );
-    } finally {
-      await new Promise((resolve) => server.close(resolve));
-    }
+    const out = await bundleAndRun("cjs", program, "sync-xhr");
+    const [message, elapsed] = out.split(" | ");
+    expect(message).toBe(
+      "NetworkError: Synchronous XMLHttpRequest is not supported in NextCLI",
+    );
+    // No waiting for jsdom's 5 s acknowledgement or 2 min response timeout
+    expect(parseInt(elapsed, 10)).toBeLessThan(3000);
   }, 60_000);
 });

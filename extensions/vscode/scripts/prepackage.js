@@ -16,7 +16,7 @@ const { installAndCopyNodeModules } = require("./install-copy-nodemodule");
 const { npmInstall } = require("./npm-install");
 const { writeBuildTimestamp, continueDir } = require("./utils");
 const {
-  buildXhrSyncWorker,
+  writeXhrSyncWorkerStub,
 } = require("../../../scripts/esbuild-plugins/jsdom.cjs");
 
 // Clear folders that will be packaged to ensure clean slate
@@ -393,12 +393,8 @@ void (async () => {
     }
   }
 
-  // jsdom's synchronous-XHR worker, bundled: a plain copy cannot load
-  // (scripts/esbuild-plugins/jsdom.cjs)
-  await buildXhrSyncWorker(require("esbuild"), {
-    jsdomDir: path.resolve("node_modules/jsdom"),
-    outfile: "out/xhr-sync-worker.js",
-  });
+  // Stub for jsdom's synchronous-XHR worker (scripts/esbuild-plugins/jsdom.cjs)
+  writeXhrSyncWorkerStub("out/xhr-sync-worker.js");
 
   // Validate the all of the necessary files are present
   validateFilesPresent([

@@ -12,7 +12,7 @@ const noMinify = args.includes("--no-minify");
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const { jsdomPlugins, buildXhrSyncWorker } = createRequire(import.meta.url)(
+const { jsdomPlugins, writeXhrSyncWorkerStub } = createRequire(import.meta.url)(
   "../../scripts/esbuild-plugins/jsdom.cjs",
 );
 
@@ -21,7 +21,7 @@ const { jsdomPlugins, buildXhrSyncWorker } = createRequire(import.meta.url)(
 // Users should not need to install any additional dependencies
 const external = [
   "fsevents", // macOS native file watcher (optional dependency)
-  "./xhr-sync-worker.js", // jsdom's sync-XHR worker, bundled separately below
+  "./xhr-sync-worker.js", // stub for jsdom's sync-XHR worker, written below
 ];
 
 console.log("Building CLI with esbuild...");
@@ -103,13 +103,9 @@ const require = __createRequire(import.meta.url);`,
     "dist/cn.js",
     "#!/usr/bin/env node\nimport { runCli } from './index.js';\nawait runCli();\n",
   );
-  // jsdom's synchronous-XHR worker, bundled: a plain copy cannot load
-  // (scripts/esbuild-plugins/jsdom.cjs)
-  await buildXhrSyncWorker(esbuild, {
-    jsdomDir: resolve(__dirname, "node_modules/jsdom"),
-    outfile: resolve(__dirname, "dist/xhr-sync-worker.js"),
-  });
-  console.log("✓ Built xhr-sync-worker.js");
+  // Stub for jsdom's synchronous-XHR worker (scripts/esbuild-plugins/jsdom.cjs)
+  writeXhrSyncWorkerStub(resolve(__dirname, "dist/xhr-sync-worker.js"));
+  console.log("✓ Wrote xhr-sync-worker.js (stub)");
 
   // Make the wrapper script executable
   chmodSync("dist/cn.js", 0o755);
