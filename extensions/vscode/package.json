@@ -22,8 +22,8 @@
   "description": "The open-source AI coding agent. Your model and API key. No account.",
   "publisher": "nextcli",
   "engines": {
-    "vscode": "^1.70.0",
-    "node": ">=20.20.1"
+    "vscode": "^1.101.0",
+    "node": "^22.13.0 || >=24.0.0"
   },
   "engine-strict": true,
   "galleryBanner": {
@@ -663,8 +663,8 @@
     "e2e:compile": "tsc -p ./tsconfig.e2e.json",
     "e2e:build": "npm --prefix ../../gui run build && npm run package",
     "e2e:create-storage": "mkdir -p ./e2e/storage",
-    "e2e:get-chromedriver": "extest get-chromedriver --storage ./e2e/storage --code_version 1.95.0",
-    "e2e:get-vscode": "extest get-vscode --storage ./e2e/storage --code_version 1.95.0",
+    "e2e:get-chromedriver": "extest get-chromedriver --storage ./e2e/storage --code_version 1.101.2",
+    "e2e:get-vscode": "extest get-vscode --storage ./e2e/storage --code_version 1.101.2",
     "e2e:sign-vscode": "codesign --entitlements entitlements.plist --deep --force -s - './e2e/storage/Visual Studio Code.app'",
     "e2e:copy-vsix": "chmod +x ./e2e/get-latest-vsix.sh && bash ./e2e/get-latest-vsix.sh",
     "e2e:install-vsix": "extest install-vsix -f ./e2e/vsix/continue.vsix --extensions_dir ./e2e/.test-extensions --storage ./e2e/storage",
@@ -693,7 +693,7 @@
     "@types/node-fetch": "^2.6.12",
     "@types/react-dom": "^18.2.4",
     "@types/request": "^2.48.8",
-    "@types/vscode": "1.70",
+    "@types/vscode": "1.101",
     "@types/ws": "^8.5.4",
     "@vscode/vsce": "^4.0.0",
     "cargo-cp-artifact": "^0.1",
@@ -707,7 +707,7 @@
     "typescript": "^5.6.3",
     "typescript-eslint": "^8.57.0",
     "vite": "^4.5.14",
-    "vscode-extension-tester": "~8.14.1"
+    "vscode-extension-tester": "~8.28.1"
   },
   "dependencies": {
     "@nextcli/config-types": "file:../../packages/config-types",
