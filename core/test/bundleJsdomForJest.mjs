@@ -53,7 +53,7 @@ export async function bundleJsdomForJest() {
   }
 
   const { build } = await import("esbuild");
-  const { jsdomPlugins } = require(pluginsFile);
+  const { jsdomPlugins, buildXhrSyncWorker } = require(pluginsFile);
 
   // Jest finds the named exports of a CommonJS file by scanning it, and a
   // bundle of a CommonJS entry hides them. An ESM wrapper makes esbuild list
@@ -78,9 +78,9 @@ export async function bundleJsdomForJest() {
     logLevel: "error",
   });
   // jsdom resolves the worker next to itself when it loads (see external above)
-  fs.copyFileSync(
-    path.join(jsdomDir, "lib/jsdom/living/xhr/xhr-sync-worker.js"),
-    path.join(path.dirname(JSDOM_CJS_FILE), "xhr-sync-worker.js"),
-  );
+  await buildXhrSyncWorker(await import("esbuild"), {
+    jsdomDir,
+    outfile: path.join(path.dirname(JSDOM_CJS_FILE), "xhr-sync-worker.js"),
+  });
   fs.writeFileSync(STAMP_FILE, stamp);
 }

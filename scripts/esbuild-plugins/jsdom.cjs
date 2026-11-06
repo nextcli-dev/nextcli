@@ -81,4 +81,29 @@ function jsdomPlugins() {
   return [inlineDefaultStylesheet, cssTreeCommonJs];
 }
 
-module.exports = { jsdomPlugins };
+/**
+ * Writes jsdom's synchronous-XHR worker, bundled, to `outfile`. A bundle that
+ * contains jsdom resolves "./xhr-sync-worker.js" next to itself when it loads,
+ * and starts that file in a worker thread for a synchronous XMLHttpRequest. A
+ * plain copy of the file cannot run there: it requires jsdom and jsdom's IDL
+ * utilities by paths that only exist inside the jsdom package. So the worker
+ * is bundled with jsdom, like the main bundle.
+ */
+async function buildXhrSyncWorker(esbuild, { jsdomDir, outfile }) {
+  await esbuild.build({
+    entryPoints: [
+      path.join(jsdomDir, "lib/jsdom/living/xhr/xhr-sync-worker.js"),
+    ],
+    outfile,
+    bundle: true,
+    format: "cjs",
+    platform: "node",
+    target: "node22",
+    // The worker's own copy of jsdom resolves the worker next to itself too
+    external: ["canvas", "./xhr-sync-worker.js"],
+    plugins: jsdomPlugins(),
+    logLevel: "error",
+  });
+}
+
+module.exports = { jsdomPlugins, buildXhrSyncWorker };
