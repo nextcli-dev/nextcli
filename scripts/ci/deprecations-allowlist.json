@@ -110,6 +110,11 @@
       "name": "@lancedb/vectordb-darwin-arm64",
       "version": "0.4.20",
       "fix": "P5 @lancedb/lancedb 0.22.3"
+    },
+    {
+      "name": "uuid",
+      "version": "8.3.2",
+      "fix": "P6 drop dbinfoz (via @azure/msal-node 2)"
     }
   ]
 }
