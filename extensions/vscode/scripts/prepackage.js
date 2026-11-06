@@ -14,7 +14,11 @@ const { copySqlite } = require("./download-copy-sqlite");
 const { generateAndCopyConfigYamlSchema } = require("./generate-copy-config");
 const { installAndCopyNodeModules } = require("./install-copy-nodemodule");
 const { npmInstall } = require("./npm-install");
-const { writeBuildTimestamp, continueDir } = require("./utils");
+const {
+  writeBuildTimestamp,
+  continueDir,
+  downloadRipgrepBinary,
+} = require("./utils");
 const {
   writeXhrSyncWorkerStub,
 } = require("../../../scripts/esbuild-plugins/jsdom.cjs");
@@ -334,6 +338,15 @@ void (async () => {
       },
     );
   });
+
+  // @vscode/ripgrep downloads rg in its postinstall, which is skipped by
+  // installs using --ignore-scripts. Fetch it so the copy/validation works.
+  if (!fs.existsSync(`node_modules/@vscode/ripgrep/bin/rg${exe}`)) {
+    console.log(
+      "[info] ripgrep binary missing (@vscode/ripgrep install script was skipped); downloading it",
+    );
+    await downloadRipgrepBinary(target);
+  }
 
   // Copy node_modules for pre-built binaries
   const NODE_MODULES_TO_COPY = ["@lancedb", "@vscode/ripgrep", "workerpool"];
