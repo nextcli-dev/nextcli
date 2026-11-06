@@ -25,6 +25,7 @@
   },
   "devDependencies": {
     "@types/follow-redirects": "^1.14.4",
+    "node-domexception": "file:../../shims/node-domexception",
     "typescript": "^5.0.0",
     "vitest": "^3.2.0"
   },

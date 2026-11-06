@@ -2,16 +2,6 @@
   "$comment": "Known deprecated npm packages, read by scripts/ci/check-deprecations.mjs. Each entry names the phase of the dependency-upgrade plan that removes it. Delete an entry when its fix lands; --strict fails on entries that no longer match anything. Omit `version` to allow every version of a package.",
   "entries": [
     {
-      "name": "whatwg-encoding",
-      "version": "3.1.1",
-      "fix": "P4 jsdom ^29 and encoding-sniffer ^1.0.2 override"
-    },
-    {
-      "name": "node-domexception",
-      "version": "1.0.0",
-      "fix": "P4 drop direct node-fetch use and shim node-domexception"
-    },
-    {
       "name": "vectordb",
       "version": "0.4.20",
       "fix": "P5 @lancedb/lancedb 0.22.3"
@@ -30,11 +20,6 @@
       "name": "@lancedb/vectordb-darwin-arm64",
       "version": "0.4.20",
       "fix": "P5 @lancedb/lancedb 0.22.3"
-    },
-    {
-      "name": "uuid",
-      "version": "8.3.2",
-      "fix": "P6 drop dbinfoz (via @azure/msal-node 2)"
     }
   ]
 }

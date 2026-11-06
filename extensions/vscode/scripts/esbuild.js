@@ -4,6 +4,8 @@ const { writeBuildTimestamp } = require("./utils");
 
 const esbuild = require("esbuild");
 
+const { jsdomPlugins } = require("../../../scripts/esbuild-plugins/jsdom.cjs");
+
 const flags = process.argv.slice(2);
 
 const esbuildConfig = {
@@ -26,6 +28,7 @@ const esbuildConfig = {
   supported: { "dynamic-import": false },
   metafile: true,
   plugins: [
+    ...jsdomPlugins(),
     {
       name: "on-end-plugin",
       setup(build) {

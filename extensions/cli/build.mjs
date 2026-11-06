@@ -3,6 +3,7 @@
 import * as esbuild from "esbuild";
 import { chmodSync, copyFileSync, writeFileSync } from "fs";
 import { dirname, resolve } from "path";
+import { createRequire } from "module";
 import { fileURLToPath } from "url";
 
 // Parse command line arguments
@@ -10,6 +11,10 @@ const args = process.argv.slice(2);
 const noMinify = args.includes("--no-minify");
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+const { jsdomPlugins } = createRequire(import.meta.url)(
+  "../../scripts/esbuild-plugins/jsdom.cjs",
+);
 
 // List of packages to mark as external (ONLY native modules that cannot be bundled)
 // Note: Everything else will be bundled to create a self-contained CLI
@@ -44,7 +49,7 @@ try {
     sourcemap: true,
     minify: !noMinify, // Use --no-minify flag to control minification
     metafile: true,
-    plugins: [optionalDevtoolsPlugin],
+    plugins: [optionalDevtoolsPlugin, ...jsdomPlugins()],
 
     // Handle .js extensions in imports
     resolveExtensions: [".ts", ".tsx", ".js", ".jsx", ".json"],
@@ -75,6 +80,10 @@ try {
       "@continuedev/terminal-security": resolve(
         __dirname,
         "../../packages/terminal-security/dist/index.js",
+      ),
+      "node-domexception": resolve(
+        __dirname,
+        "../../shims/node-domexception/index.js",
       ),
     },
 
