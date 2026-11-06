@@ -6,9 +6,10 @@ NextCLI sends no telemetry by default, and it has no endpoint of its own. Metric
 
 ## VS Code extension
 
-The extension exports metrics only when both of these are true:
+The extension exports metrics only when all of these are true:
 
-- **Allow Anonymous Telemetry** is on in the NextCLI user settings, and VS Code's own `telemetry.telemetryLevel` is not `off`. Either one turned off stops telemetry.
+- **Allow Anonymous Telemetry** is on. Open the NextCLI settings, choose **User Settings**, and find it under **Telemetry**. It is off by default.
+- VS Code's own telemetry is on (`telemetry.telemetryLevel` is not `off`).
 - An OTLP endpoint is set in the environment VS Code starts with:
 
 ```bash
@@ -18,14 +19,28 @@ export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <token>"
 code .
 ```
 
-`OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` overrides the metrics URL; otherwise NextCLI uses `$OTEL_EXPORTER_OTLP_ENDPOINT/v1/metrics`. Metrics are sent once a minute as OTLP over HTTP.
+Turning off either setting stops the exporter right away. Without an endpoint, no exporter is created and no telemetry request is made.
 
-The metrics are counters named `nextcli_core_*`, with the resource attributes `service.name=nextcli-core`, `service.version` (the extension version) and `nextcli.ide`. They carry no user, file, URL, prompt or code content.
+### Variables it reads
+
+| Variable | Use |
+|---|---|
+| `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | Full metrics URL. Takes precedence over the next one. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Base URL; metrics go to `<base>/v1/metrics`. |
+| `OTEL_EXPORTER_OTLP_HEADERS` | Headers as `key=value,key2=value2`, values %-encoded. |
+| `OTEL_EXPORTER_OTLP_METRICS_HEADERS` | Same format; overrides `OTEL_EXPORTER_OTLP_HEADERS` per key. |
+| `OTEL_METRIC_EXPORT_INTERVAL` | Milliseconds between exports. Default `60000`. |
+
+Metrics are always sent as OTLP over HTTP with a JSON body. Other `OTEL_*` variables, including `OTEL_EXPORTER_OTLP_PROTOCOL` and `OTEL_EXPORTER_OTLP_METRICS_PROTOCOL`, are not read.
+
+### What is sent
+
+Counters named `nextcli_core_*`, with the resource attributes `service.name=nextcli-core`, `service.version` (the extension version) and `nextcli.ide`. Counter attributes are limited to numbers, booleans and short identifier-like strings (letters, digits, `_`, `.`, `-`, up to 64 characters); anything else, such as a file path, URL or text, is dropped before it is recorded.
+
+| Metric | Attributes | Counts |
+|---|---|---|
+| `nextcli_core_docs_backup_sites` | `outcome`: `copied`, `no_source`, `failed`, `skipped` | @docs sites per run of the docs backup |
 
 ## CLI
 
-The CLI (`cn`) exports metrics only when you set `CONTINUE_CLI_ENABLE_TELEMETRY=1` (or `CONTINUE_METRICS_ENABLED=1`) and an OTLP endpoint with the same `OTEL_EXPORTER_OTLP_*` variables. Its metrics are named `continue_cli_*`.
-
-## Turn it off
-
-Turn off **Allow Anonymous Telemetry**, or unset the `OTEL_EXPORTER_OTLP_*` variables. Without an endpoint, NextCLI creates no exporter and makes no network requests for telemetry.
+The CLI (`cn`) exports metrics only when you set `CONTINUE_CLI_ENABLE_TELEMETRY=1` (or `CONTINUE_METRICS_ENABLED=1`) and an OTLP endpoint with `OTEL_EXPORTER_OTLP_ENDPOINT` or `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`. Its metrics are named `continue_cli_*`.

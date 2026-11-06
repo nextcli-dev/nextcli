@@ -59,4 +59,9 @@ export function activate(context: vscode.ExtensionContext) {
   });
 }
 
-export function deactivate() {}
+export async function deactivate() {
+  // Stop the opt-in metrics exporter (core/util/telemetry/coreTelemetry.ts)
+  // and send what it has, instead of leaving it to the extension host's exit.
+  const { coreTelemetry } = await import("core/util/telemetry/coreTelemetry");
+  await coreTelemetry.shutdown();
+}

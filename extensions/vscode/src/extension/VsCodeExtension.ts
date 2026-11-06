@@ -618,6 +618,15 @@ export class VsCodeExtension {
 
     // This is how you would enable/disable next edit in the autocomplete menu.
     // See extensions/vscode/src/autocomplete/statusBar.ts.
+    // Telemetry also depends on VS Code's own telemetry setting
+    // (doLoadConfig); reload config so turning it off stops the exporter.
+    context.subscriptions.push(
+      vscode.env.onDidChangeTelemetryEnabled(async () => {
+        const settings = await this.ide.getIdeSettings();
+        void this.core.invoke("config/ideSettingsUpdate", settings);
+      }),
+    );
+
     vscode.workspace.onDidChangeConfiguration(async (event) => {
       if (event.affectsConfiguration(EXTENSION_NAME)) {
         const settings = await this.ide.getIdeSettings();

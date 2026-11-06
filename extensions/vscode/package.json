@@ -88,7 +88,7 @@
         "continue.telemetryEnabled": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "NextCLI does not send anonymous usage data. This setting is kept for compatibility and defaults to off.",
+          "markdownDescription": "No longer used. Telemetry is controlled by _Telemetry > Allow Anonymous Telemetry_ in the extension's User Settings page, together with VS Code's own telemetry setting, and is sent only to an OpenTelemetry endpoint you configure.",
           "markdownDeprecationMessage": "This setting is deprecated and will be removed in a later version. Please use the _Telemetry > Allow Anonymous Telemetry_ setting in the extension's User Settings page.",
           "deprecationMessage": "Please use the _Telemetry > Allow Anonymous Telemetry_ setting in the extension's User Settings page."
         },
