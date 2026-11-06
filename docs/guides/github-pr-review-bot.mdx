@@ -125,7 +125,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Install NextCLI CLI
         run: npm i -g @nextcli/cli
@@ -405,7 +405,7 @@ The workflow will respond with a targeted review based on your request.
 ## Troubleshooting
 <AccordionGroup>
 <Accordion title="NextCLI CLI not found">
-- The workflow installs the CLI automatically, but ensure Node.js 20+ is available
+- The workflow installs the CLI automatically, but ensure Node.js 22.15+ is available
 - Check the "Install NextCLI CLI" step logs for errors
 </Accordion>
 <Accordion title="Authentication failed">

@@ -57,21 +57,6 @@
       "fix": "P2 ESLint 10 in extensions/cli"
     },
     {
-      "name": "@opentelemetry/propagator-jaeger",
-      "version": "2.0.1",
-      "fix": "P1 bump @opentelemetry/sdk-node in cli; docs/ via @c15t/react bump"
-    },
-    {
-      "name": "@opentelemetry/sdk-trace-base",
-      "version": "2.0.1",
-      "fix": "P1 bump @opentelemetry/* in cli; docs/ via @c15t/react bump"
-    },
-    {
-      "name": "@opentelemetry/sdk-trace-node",
-      "version": "2.0.1",
-      "fix": "P1 bump @opentelemetry/sdk-node in cli; docs/ via @c15t/react bump"
-    },
-    {
       "name": "prebuild-install",
       "version": "7.1.1",
       "fix": "P6 sharp ^0.34 override in core/vendor"

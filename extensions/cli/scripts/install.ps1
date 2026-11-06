@@ -20,7 +20,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'  # Faster downloads
 
-$script:RequiredNodeVersion = [version]"20.20.1"
+$script:RequiredNodeVersion = [version]"22.23.2"
 $script:PackageName = "@nextcli/cli"
 $script:CliCommand = "cn"
 $script:FnmInstalled = $false

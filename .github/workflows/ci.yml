@@ -445,7 +445,7 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         # The oldest supported version (package.json engines) and the newest LTS.
-        node-version: [20, 24]
+        node-version: ["22.15", 24]
     steps:
       - uses: actions/checkout@v7
         with:

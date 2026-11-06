@@ -18,7 +18,7 @@ curl -fsSL https://raw.githubusercontent.com/nextcli-dev/nextcli/main/extensions
 irm https://raw.githubusercontent.com/nextcli-dev/nextcli/main/extensions/cli/scripts/install.ps1 | iex
 ```
 
-Or install with npm if you have Node.js 20+:
+Or install with npm if you have Node.js 22.15+:
 
 ```bash
 npm i -g @nextcli/cli
