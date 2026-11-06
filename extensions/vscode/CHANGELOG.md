@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.6.5](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.4...vscode-v1.6.5) (2026-11-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* **vscode:** NextCLI for VS Code now requires VS Code 1.101 or newer. Older VS Code (and forks based on it) stays on NextCLI 1.6.x.
+
+### Features
+
+* **vscode:** require VS Code 1.101 or newer ([d917259](https://github.com/nextcli-dev/nextcli/commit/d91725908e05d69404fa29af0776e02d76d13d72))
+
 ## [1.6.4](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.3...vscode-v1.6.4) (2026-11-06)
 
 
