@@ -1191,6 +1191,41 @@ export abstract class BaseLLM implements ILLM {
     yield msg as ChatMessage;
   }
 
+  /** Applies this model's tool overrides, warning about unknown tool names. */
+  private applyModelToolOverrides(tools: LLMFullCompletionOptions["tools"]) {
+    if (!this.toolOverrides?.length || !tools?.length) {
+      return tools;
+    }
+    const { tools: overriddenTools, errors } = applyToolOverrides(
+      tools,
+      this.toolOverrides,
+    );
+    for (const error of errors) {
+      if (!error.fatal) {
+        console.warn(`Tool override warning: ${error.message}`);
+      }
+    }
+    return overriddenTools;
+  }
+
+  /** Logs the start of a chat request and calls the request hook, if any. */
+  private logStartChat(
+    interaction: ILLMInteractionLog | undefined,
+    messages: ChatMessage[],
+    options: CompletionOptions,
+    prompt: string,
+  ) {
+    interaction?.logItem({
+      kind: "startChat",
+      messages,
+      options,
+      provider: this.providerName,
+    });
+    if (this.llmRequestHook) {
+      this.llmRequestHook(options.model, prompt);
+    }
+  }
+
   // Update the streamChat method:
   async *streamChat(
     _messages: ChatMessage[],
@@ -1200,24 +1235,11 @@ export abstract class BaseLLM implements ILLM {
   ): AsyncGenerator<ChatMessage, PromptLog> {
     this.lastRequestId = undefined;
 
-    // Apply per-model tool overrides if configured
-    let effectiveTools = options.tools;
-    if (this.toolOverrides?.length && options.tools?.length) {
-      const { tools: overriddenTools, errors } = applyToolOverrides(
-        options.tools,
-        this.toolOverrides,
-      );
-      effectiveTools = overriddenTools;
-      // Log any warnings for unknown tool names
-      for (const error of errors) {
-        if (!error.fatal) {
-          console.warn(`Tool override warning: ${error.message}`);
-        }
-      }
-    }
-
-    // Use effectiveTools for the rest of this method
-    const optionsWithOverrides = { ...options, tools: effectiveTools };
+    // Use the per-model tool overrides for the rest of this method
+    const optionsWithOverrides = {
+      ...options,
+      tools: this.applyModelToolOverrides(options.tools),
+    };
 
     let { completionOptions, logEnabled } =
       this._parseCompletionOptions(optionsWithOverrides);
@@ -1253,15 +1275,7 @@ export abstract class BaseLLM implements ILLM {
       : this._formatChatMessages(messagesCopy);
 
     if (logEnabled) {
-      interaction?.logItem({
-        kind: "startChat",
-        messages,
-        options: completionOptions,
-        provider: this.providerName,
-      });
-      if (this.llmRequestHook) {
-        this.llmRequestHook(completionOptions.model, prompt);
-      }
+      this.logStartChat(interaction, messages, completionOptions, prompt);
     }
 
     // Performance optimization: Use arrays instead of string concatenation.
@@ -1302,18 +1316,15 @@ export abstract class BaseLLM implements ILLM {
           body = this.modifyChatBody(body);
 
           if (logEnabled) {
-            interaction?.logItem({
-              kind: "startChat",
+            this.logStartChat(
+              interaction,
               messages,
-              options: {
+              {
                 ...completionOptions,
                 requestBody: body,
               } as CompletionOptions,
-              provider: this.providerName,
-            });
-            if (this.llmRequestHook) {
-              this.llmRequestHook(completionOptions.model, prompt);
-            }
+              prompt,
+            );
           }
 
           const canUseResponses = this.canUseOpenAIResponses(completionOptions);
@@ -1345,15 +1356,7 @@ export abstract class BaseLLM implements ILLM {
           }
         } else {
           if (logEnabled) {
-            interaction?.logItem({
-              kind: "startChat",
-              messages,
-              options: completionOptions,
-              provider: this.providerName,
-            });
-            if (this.llmRequestHook) {
-              this.llmRequestHook(completionOptions.model, prompt);
-            }
+            this.logStartChat(interaction, messages, completionOptions, prompt);
           }
 
           for await (const chunk of this._streamChat(

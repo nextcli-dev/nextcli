@@ -148,7 +148,6 @@ function useChatHandlers(
   };
 }
 
-// eslint-disable-next-line complexity
 const TUIChat: React.FC<TUIChatProps> = ({
   remoteUrl,
   configPath,
@@ -157,6 +156,8 @@ const TUIChat: React.FC<TUIChatProps> = ({
   fork,
   additionalRules,
   additionalPrompts,
+  // ESLint 10 reports complexity at the arrow, so the directive goes here.
+  // eslint-disable-next-line complexity
 }) => {
   // Use custom hook for services
   const { services, allServicesReady, isRemoteMode } =

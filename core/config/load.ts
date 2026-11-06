@@ -686,7 +686,7 @@ async function handleEsbuildInstallation(
         "esbuild",
       );
       const candidate = require.resolve("esbuild", { paths: [userEsbuild] });
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       require(candidate);
       return true; // available via ~/.continue
     } catch {

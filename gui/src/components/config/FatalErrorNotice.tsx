@@ -58,7 +58,7 @@ export const FatalErrorIndicator = () => {
           <div
             className={`cursor-pointer underline`}
             onClick={() => {
-              refreshProfiles("Clicked reload in fatal indicator");
+              void refreshProfiles("Clicked reload in fatal indicator");
             }}
           >
             Reload

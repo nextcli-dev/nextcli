@@ -11,6 +11,23 @@ jest.mock("sqlite3");
 
 jest.useFakeTimers();
 
+// Module-level mock helpers keep the deeply nested tests within max-nested-callbacks.
+const rejectInserts = (sql: string) => {
+  if (sql.includes("INSERT")) {
+    return Promise.reject(new Error("DB Error"));
+  }
+  return Promise.resolve();
+};
+
+const rejectAllButBeginAndRollback = (sql: string) => {
+  if (sql === "BEGIN TRANSACTION" || sql === "ROLLBACK") {
+    return Promise.resolve();
+  }
+  return Promise.reject(new Error("DB Error"));
+};
+
+const isCacheInsertCall = (call: any) => call[0].includes("INSERT INTO cache");
+
 describe("AutocompleteLruCache", () => {
   let mockDb: any;
   let cache: AutocompleteLruCache;
@@ -328,12 +345,7 @@ describe("AutocompleteLruCache", () => {
 
       it("should rollback transaction on error", async () => {
         await cache.put("key", "value");
-        mockDb.run.mockImplementation((sql: string) => {
-          if (sql.includes("INSERT")) {
-            return Promise.reject(new Error("DB Error"));
-          }
-          return Promise.resolve();
-        });
+        mockDb.run.mockImplementation(rejectInserts);
 
         await cache.flush();
 
@@ -380,12 +392,7 @@ describe("AutocompleteLruCache", () => {
         await cache.put("key", "value");
 
         const originalRun = mockDb.run;
-        mockDb.run = jest.fn().mockImplementation((sql: string) => {
-          if (sql === "BEGIN TRANSACTION" || sql === "ROLLBACK") {
-            return Promise.resolve();
-          }
-          return Promise.reject(new Error("DB Error"));
-        });
+        mockDb.run = jest.fn().mockImplementation(rejectAllButBeginAndRollback);
 
         await cache.flush();
 
@@ -404,9 +411,7 @@ describe("AutocompleteLruCache", () => {
 
         await cache.flush();
 
-        const insertCalls = mockDb.run.mock.calls.filter((call: any) =>
-          call[0].includes("INSERT INTO cache"),
-        );
+        const insertCalls = mockDb.run.mock.calls.filter(isCacheInsertCall);
         expect(insertCalls.length).toBe(3);
       });
     });

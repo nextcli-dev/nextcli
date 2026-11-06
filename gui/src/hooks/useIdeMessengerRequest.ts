@@ -37,7 +37,7 @@ export function useIdeMessengerRequest<T extends keyof FromWebviewProtocol>(
   }
 
   useEffect(() => {
-    makeRequest();
+    void makeRequest();
   }, [data, messageType]);
 
   return { result, isLoading, refresh: makeRequest };

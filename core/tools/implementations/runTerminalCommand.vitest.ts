@@ -20,6 +20,11 @@ import {
   runTerminalCommandImpl,
 } from "./runTerminalCommand";
 
+// Module-level so the nested test stays within max-nested-callbacks.
+const throwNoCwd = () => {
+  throw new Error("No cwd available");
+};
+
 // We're using real child processes, so ensure these aren't mocked
 vi.unmock("node:child_process");
 vi.unmock("node:util");
@@ -551,7 +556,8 @@ describe("runTerminalCommandImpl", () => {
         const nonFileUri = "vscode-vfs://github/user/repo";
 
         // This demonstrates why the fix is needed - fileURLToPath throws on non-file URIs
-        expect(() => fileURLToPath(nonFileUri)).toThrow();
+        const convertNonFileUri = () => fileURLToPath(nonFileUri);
+        expect(convertNonFileUri).toThrow();
       });
 
       it("should handle vscode-remote URIs by extracting pathname", async () => {
@@ -716,9 +722,9 @@ describe("runTerminalCommandImpl", () => {
         delete process.env.HOME;
         delete process.env.USERPROFILE;
         // Mock process.cwd to throw an error
-        process.cwd = vi.fn().mockImplementation(() => {
-          throw new Error("No cwd available");
-        }) as typeof process.cwd;
+        process.cwd = vi
+          .fn()
+          .mockImplementation(throwNoCwd) as typeof process.cwd;
 
         mockGetWorkspaceDirs.mockResolvedValue([]);
 

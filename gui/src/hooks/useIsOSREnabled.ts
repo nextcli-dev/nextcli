@@ -9,7 +9,7 @@ export default function useIsOSREnabled() {
 
   useEffect(() => {
     if (isJetBrains()) {
-      (async () => {
+      void (async () => {
         await ideMessenger
           .request("jetbrains/isOSREnabled", undefined)
           .then((result) => {

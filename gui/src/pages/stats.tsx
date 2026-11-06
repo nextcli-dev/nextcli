@@ -46,13 +46,15 @@ function Stats() {
   >([]);
 
   useEffect(() => {
-    ideMessenger.request("stats/getTokensPerDay", undefined).then((result) => {
-      result.status === "success" && setDays(result.content);
-    });
+    void ideMessenger
+      .request("stats/getTokensPerDay", undefined)
+      .then((result) => {
+        result.status === "success" && setDays(result.content);
+      });
   }, []);
 
   useEffect(() => {
-    ideMessenger
+    void ideMessenger
       .request("stats/getTokensPerModel", undefined)
       .then((result) => {
         result.status === "success" && setModels(result.content);

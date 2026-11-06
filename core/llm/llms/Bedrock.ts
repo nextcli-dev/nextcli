@@ -24,7 +24,13 @@ import {
 } from "@nextcli/openai-adapters";
 
 import type { CompletionOptions } from "../../index.js";
-import { ChatMessage, Chunk, LLMOptions, MessageContent } from "../../index.js";
+import {
+  ChatMessage,
+  Chunk,
+  LLMOptions,
+  MessageContent,
+  ToolCallDelta,
+} from "../../index.js";
 import { safeParseToolCallArgs } from "../../tools/parseArgs.js";
 import { renderChatMessage, stripImages } from "../../util/messageContent.js";
 import { parseDataUrl } from "../../util/url.js";
@@ -401,6 +407,38 @@ class Bedrock extends BaseLLM {
   }
 
   /*
+    Converts an assistant tool call to a "toolUse" block. A tool call must have an
+    id and a function name, else it is skipped (returns undefined). A tool that is
+    not available becomes a text block (e.g. Chat mode passes no tools).
+    Records the ids of added toolUse blocks in hasAddedToolCallIds.
+    */
+  private _convertToolCallToBlock(
+    toolCall: ToolCallDelta,
+    availableTools: Set<string>,
+    hasAddedToolCallIds: Set<string>,
+  ): ContentBlock | undefined {
+    if (!toolCall.id || !toolCall.function?.name) {
+      console.warn(
+        `Bedrock: tool call missing id or name, skipping tool call: ${JSON.stringify(toolCall)}`,
+      );
+      return undefined;
+    }
+    if (!availableTools.has(toolCall.function.name)) {
+      return {
+        text: `Assistant tool call:\nTool name: ${toolCall.function.name}\nTool Call ID: ${toolCall.id}\nArguments: ${toolCall.function?.arguments ?? "{}"}`,
+      };
+    }
+    hasAddedToolCallIds.add(toolCall.id);
+    return {
+      toolUse: {
+        toolUseId: toolCall.id,
+        name: toolCall.function.name,
+        input: safeParseToolCallArgs(toolCall),
+      },
+    };
+  }
+
+  /*
     Converts the messages to the format expected by the Bedrock API.
     
     */
@@ -502,30 +540,14 @@ class Bedrock extends BaseLLM {
           // Each tool call must have an id and a function name
           // The function name must match one of the available tools
           // Otherwise, we will convert it to a text block (e.g. Chat mode will pass no tools)
-          if (message.toolCalls) {
-            for (const toolCall of message.toolCalls) {
-              if (toolCall.id && toolCall.function?.name) {
-                if (availableTools.has(toolCall.function.name)) {
-                  currentBlocks.push({
-                    toolUse: {
-                      toolUseId: toolCall.id,
-                      name: toolCall.function.name,
-                      input: safeParseToolCallArgs(toolCall),
-                    },
-                  });
-                  hasAddedToolCallIds.add(toolCall.id);
-                } else {
-                  const toolCallText = `Assistant tool call:\nTool name: ${toolCall.function.name}\nTool Call ID: ${toolCall.id}\nArguments: ${toolCall.function?.arguments ?? "{}"}`;
-                  currentBlocks.push({
-                    text: toolCallText,
-                  });
-                }
-              } else {
-                console.warn(
-                  `Bedrock: tool call missing id or name, skipping tool call: ${JSON.stringify(toolCall)}`,
-                );
-                continue;
-              }
+          for (const toolCall of message.toolCalls ?? []) {
+            const block = this._convertToolCallToBlock(
+              toolCall,
+              availableTools,
+              hasAddedToolCallIds,
+            );
+            if (block) {
+              currentBlocks.push(block);
             }
           }
         } else if (message.role === "thinking") {

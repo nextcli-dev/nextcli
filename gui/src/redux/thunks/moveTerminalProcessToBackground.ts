@@ -1,4 +1,4 @@
-import { createAsyncThunk } from "@reduxjs/toolkit";
+import { createAsyncThunk, unwrapResult } from "@reduxjs/toolkit";
 import { ContextItem } from "core";
 import {
   abortStream,
@@ -73,10 +73,11 @@ export const moveTerminalProcessToBackground = createAsyncThunk<
 
     // Trigger an LLM response about the command being moved to background
     dispatch(updateToolCallOutput({ toolCallId, contextItems }));
-    dispatch(
+    const wrapped = await dispatch(
       streamResponseAfterToolCall({
         toolCallId,
       }),
     );
+    unwrapResult(wrapped);
   },
 );
