@@ -32,6 +32,10 @@ describe("Edit Test", () => {
 
     await GUIActions.toggleGui();
 
+    // The GUI took focus. Give it back to the editor, or typing and the
+    // command palette (used by typeTextAt) do not reach it on VS Code 1.101.
+    await editor.click();
+
     await editor.typeTextAt(1, 1, originalEditorText);
     await editor.selectText(originalEditorText);
 
