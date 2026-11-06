@@ -170,7 +170,7 @@ describe("Keyboard Shortcuts", () => {
 
     await view.switchBack();
 
-    KeyboardShortcutsActions.HACK__typeWithSelect(editor, "hello");
+    await KeyboardShortcutsActions.HACK__typeWithSelect(editor, "hello");
 
     await TestUtils.waitForTimeout(DEFAULT_TIMEOUT.XS);
 
