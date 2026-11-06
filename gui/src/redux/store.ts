@@ -4,7 +4,6 @@ import {
   ThunkDispatch,
   UnknownAction,
 } from "@reduxjs/toolkit";
-import { createLogger } from "redux-logger";
 import {
   createMigrate,
   MigrationManifest,
@@ -110,13 +109,6 @@ const persistedReducer = persistReducer<ReturnType<typeof rootReducer>>(
 export function setupStore(options: { ideMessenger?: IIdeMessenger }) {
   const ideMessenger = options.ideMessenger ?? new IdeMessenger();
 
-  const logger = createLogger({
-    // Customize logger options if needed
-    collapsed: true, // Collapse console groups by default
-    timestamp: false, // Remove timestamps from log
-    diff: true, // Show diff between states
-  });
-
   return configureStore({
     // persistedReducer causes type errors with async thunks
     reducer: persistedReducer as unknown as typeof rootReducer,
@@ -130,8 +122,6 @@ export function setupStore(options: { ideMessenger?: IIdeMessenger }) {
           },
         },
       }),
-    // This can be uncommented to get detailed Redux logs
-    // .concat(logger),
   });
 }
 

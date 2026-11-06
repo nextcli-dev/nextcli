@@ -37,11 +37,6 @@
       "fix": "P4 jsdom ^29 and encoding-sniffer ^1.0.2 override"
     },
     {
-      "name": "gauge",
-      "version": "5.0.2",
-      "fix": "P1 puppeteer-chromium-resolver 25"
-    },
-    {
       "name": "node-domexception",
       "version": "1.0.0",
       "fix": "P4 drop direct node-fetch use and shim node-domexception"
@@ -57,24 +52,9 @@
       "fix": "P6 replace sqlite3 and dbinfoz, override sharp ^0.34"
     },
     {
-      "name": "glob",
-      "version": "10.5.0",
-      "fix": "P1 docs/ via @c15t/react removal (#49)"
-    },
-    {
       "name": "eslint",
       "version": "9.33.0",
       "fix": "P2 ESLint 10 in extensions/cli"
-    },
-    {
-      "name": "@types/dompurify",
-      "version": "3.2.0",
-      "fix": "P1 remove from gui (dompurify ships its own types)"
-    },
-    {
-      "name": "deep-diff",
-      "version": "0.3.8",
-      "fix": "P1 drop redux-logger from gui (gui/src/redux/store.ts)"
     },
     {
       "name": "@opentelemetry/propagator-jaeger",
@@ -87,19 +67,9 @@
       "fix": "P1 bump @opentelemetry/* in cli; docs/ via @c15t/react bump"
     },
     {
-      "name": "@opentelemetry/sdk-trace-base",
-      "version": "2.6.0",
-      "fix": "P1 docs/ via @c15t/react bump"
-    },
-    {
       "name": "@opentelemetry/sdk-trace-node",
       "version": "2.0.1",
       "fix": "P1 bump @opentelemetry/sdk-node in cli; docs/ via @c15t/react bump"
-    },
-    {
-      "name": "puppeteer",
-      "version": "22.14.0",
-      "fix": "P1 bump mintlify in docs/"
     },
     {
       "name": "prebuild-install",
