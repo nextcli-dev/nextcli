@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.0](https://github.com/nextcli-dev/nextcli/compare/cli-v0.3.0...cli-v0.4.0) (2026-11-06)
+
+
+### Features
+
+* **vscode:** announce the VS Code 1.101 minimum for NextCLI 1.8 ([#56](https://github.com/nextcli-dev/nextcli/issues/56)) ([d1e8e31](https://github.com/nextcli-dev/nextcli/commit/d1e8e31165a5535c6fd5e89a57a9bb02ce87fefe))
+
+
+### Bug Fixes
+
+* **core:** convert Jira ADF in-house and drop adf-to-md ([#55](https://github.com/nextcli-dev/nextcli/issues/55)) ([c821b22](https://github.com/nextcli-dev/nextcli/commit/c821b22ace4c14577201fa39ed36205861476348))
+* **core:** log startChat and call the request hook once per chat request ([#53](https://github.com/nextcli-dev/nextcli/issues/53)) ([a26d7e8](https://github.com/nextcli-dev/nextcli/commit/a26d7e828788ea68989a5c83151b3b9e56f75058))
+
 ## [0.3.0](https://github.com/nextcli-dev/nextcli/compare/cli-v0.2.3...cli-v0.3.0) (2026-11-06)
 
 
