@@ -29,6 +29,14 @@ runs:
       with:
         node-version-file: ".nvmrc"
 
+    # The VS Code version the e2e tests download and select locators for.
+    # Cached storage must match it: run-tests with locators for one version
+    # against a cached binary of another fails in every hook.
+    - name: Read the e2e VS Code version
+      id: e2e-vscode
+      shell: bash
+      run: echo "version=$(node -p "require('./extensions/vscode/package.json').config.e2eVscodeVersion")" >> "$GITHUB_OUTPUT"
+
     - uses: actions/cache@v6
       id: vscode-node-modules-cache
       with:
@@ -40,13 +48,13 @@ runs:
       id: test-extensions-cache
       with:
         path: extensions/vscode/e2e/.test-extensions
-        key: CONSTANT
+        key: test-extensions-vscode-${{ steps.e2e-vscode.outputs.version }}
 
     - uses: actions/cache@v6
       id: storage-cache
       with:
         path: extensions/vscode/e2e/storage
-        key: ${{ runner.os }}-vscode-storage-${{ hashFiles('extensions/vscode/package-lock.json') }}
+        key: ${{ runner.os }}-vscode-storage-${{ steps.e2e-vscode.outputs.version }}-${{ hashFiles('extensions/vscode/package-lock.json') }}
 
     - name: Download build artifact
       uses: actions/download-artifact@v8
