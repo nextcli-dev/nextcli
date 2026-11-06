@@ -1,7 +1,15 @@
 import path from "path";
 import { fileURLToPath } from "url";
 
-export default {
+import { bundleJsdomForJest } from "./test/bundleJsdomForJest.mjs";
+
+// Bundles jsdom for Jest first (see test/bundleJsdomForJest.mjs).
+export default async () => {
+  await bundleJsdomForJest();
+  return config;
+};
+
+const config = {
   transform: {
     "^.+\\.(ts|js)$": [
       "ts-jest",
@@ -22,7 +30,7 @@ export default {
     "^(\\.{1,2}/.*)\\.js$": "$1",
     "^uuid$": "uuid", // https://stackoverflow.com/a/73626360
     // jsdom 29 has ESM-only dependencies that Jest can't require():
-    // bundled to CommonJS in test/jest.global-setup.ts
+    // bundled to CommonJS by test/bundleJsdomForJest.mjs
     "^jsdom$": "<rootDir>/node_modules/.cache/jsdom-cjs/jsdom.cjs",
     "^@azure/(.*)$": "<rootDir>/node_modules/@azure/$1",
     "^mssql$": "<rootDir>/node_modules/mssql",
