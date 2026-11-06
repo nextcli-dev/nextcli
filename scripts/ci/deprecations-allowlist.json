@@ -2,36 +2,6 @@
   "$comment": "Known deprecated npm packages, read by scripts/ci/check-deprecations.mjs. Each entry names the phase of the dependency-upgrade plan that removes it. Delete an entry when its fix lands; --strict fails on entries that no longer match anything. Omit `version` to allow every version of a package.",
   "entries": [
     {
-      "name": "inflight",
-      "version": "1.0.6",
-      "fix": "P3 drop adf-to-md (only remaining source after P2 ESLint 10)"
-    },
-    {
-      "name": "glob",
-      "version": "7.2.3",
-      "fix": "P3 drop adf-to-md (only remaining source after P2 ESLint 10)"
-    },
-    {
-      "name": "rimraf",
-      "version": "3.0.2",
-      "fix": "P3 drop adf-to-md (only remaining source after P2 ESLint 10)"
-    },
-    {
-      "name": "eslint",
-      "version": "8.57.1",
-      "fix": "P3 drop adf-to-md (only remaining source after P2 ESLint 10)"
-    },
-    {
-      "name": "@humanwhocodes/config-array",
-      "version": "0.13.0",
-      "fix": "P3 drop adf-to-md (only remaining source after P2 ESLint 10)"
-    },
-    {
-      "name": "@humanwhocodes/object-schema",
-      "version": "2.0.3",
-      "fix": "P3 drop adf-to-md (only remaining source after P2 ESLint 10)"
-    },
-    {
       "name": "whatwg-encoding",
       "version": "3.1.1",
       "fix": "P4 jsdom ^29 and encoding-sniffer ^1.0.2 override"
