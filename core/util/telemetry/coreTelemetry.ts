@@ -34,9 +34,31 @@ export interface CoreTelemetrySettings {
 
 const METRIC_PREFIX = "nextcli_core_";
 const DEFAULT_EXPORT_INTERVAL_MS = 60_000;
-const METRIC_NAME = /^[a-z][a-z0-9_]*$/;
-const ATTRIBUTE_KEY = /^[a-z][a-z0-9_.]{0,63}$/;
-const ATTRIBUTE_STRING = /^[A-Za-z0-9_.-]{1,64}$/;
+
+/**
+ * Every counter core records (exported as nextcli_core_<name>), with each
+ * attribute it may carry and that attribute's allowed values. Add a metric
+ * here, and to docs/reference/telemetry.mdx, before recording it.
+ */
+export type MetricRegistry = Record<string, Record<string, readonly string[]>>;
+export const CORE_METRICS: MetricRegistry = {};
+
+/**
+ * Whether telemetry may run: the user's opt-in ("Allow Anonymous Telemetry")
+ * AND, in VS Code, the editor's own telemetry setting. Either one off is off.
+ */
+export async function isTelemetryAllowed(
+  optIn: boolean | undefined,
+  ideType: string | undefined,
+  ide: { isTelemetryEnabled(): Promise<boolean> },
+): Promise<boolean> {
+  if (optIn !== true) {
+    return false;
+  }
+  return ideType === "vscode"
+    ? (await ide.isTelemetryEnabled()) === true
+    : true;
+}
 
 /** The metrics URL from the OTLP variables, or undefined. */
 export function otlpMetricsUrl(

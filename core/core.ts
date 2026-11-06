@@ -91,7 +91,10 @@ import type { IMessenger, Message } from "./protocol/messenger";
 import { ContinueError, ContinueErrorReason } from "./util/errors";
 import { shareSession } from "./util/historyUtils";
 import { Logger } from "./util/Logger.js";
-import { coreTelemetry } from "./util/telemetry/coreTelemetry";
+import {
+  coreTelemetry,
+  isTelemetryAllowed,
+} from "./util/telemetry/coreTelemetry";
 
 export class Core {
   configHandler: ConfigHandler;
@@ -179,7 +182,11 @@ export class Core {
         void (async () => {
           const ideInfo = await this.ide.getIdeInfo();
           await coreTelemetry.configure({
-            allowAnonymousTelemetry: result.config?.allowAnonymousTelemetry,
+            allowAnonymousTelemetry: await isTelemetryAllowed(
+              result.config?.allowAnonymousTelemetry,
+              ideInfo.ideType,
+              this.ide,
+            ),
             ideType: ideInfo.ideType,
             extensionVersion: ideInfo.extensionVersion,
           });
