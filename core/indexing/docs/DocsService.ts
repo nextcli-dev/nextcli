@@ -431,6 +431,34 @@ export default class DocsService {
     }
   }
 
+  /**
+   * Does a test run on the embedder. A failure here does not mark the config as
+   * failed in global context, since the SiteIndexingConfig is likely valid.
+   * Returns false (after reporting the failure) when the embedder is unusable.
+   */
+  private async testEmbeddingsConnection(
+    provider: ILLM,
+    fixedStatus: Omit<IndexingStatus, "progress" | "description" | "status">,
+  ): Promise<boolean> {
+    try {
+      await provider.embed(["continue-test-run"]);
+      return true;
+    } catch (e) {
+      if (e instanceof LLMError) {
+        // Report the error to the IDE
+        await this.messenger?.request("reportError", e);
+      }
+      this.handleStatusUpdate({
+        ...fixedStatus,
+        description: `Failed to test embeddings connection. ${e}`,
+        status: "failed",
+        progress: 1,
+      });
+      console.error("Failed to test embeddings connection", e);
+      return false;
+    }
+  }
+
   // eslint-disable-next-line max-statements
   async indexAndAdd(
     siteIndexingConfig: SiteIndexingConfig,
@@ -499,23 +527,7 @@ export default class DocsService {
       return;
     }
 
-    // Do a test run on the embedder
-    // This particular failure will not mark as a failed config in global context
-    // Since SiteIndexingConfig is likely to be valid
-    try {
-      await provider.embed(["continue-test-run"]);
-    } catch (e) {
-      if (e instanceof LLMError) {
-        // Report the error to the IDE
-        await this.messenger?.request("reportError", e);
-      }
-      this.handleStatusUpdate({
-        ...fixedStatus,
-        description: `Failed to test embeddings connection. ${e}`,
-        status: "failed",
-        progress: 1,
-      });
-      console.error("Failed to test embeddings connection", e);
+    if (!(await this.testEmbeddingsConnection(provider, fixedStatus))) {
       return;
     }
 

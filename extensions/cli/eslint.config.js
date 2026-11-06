@@ -1,18 +1,21 @@
-import tsPlugin from "@typescript-eslint/eslint-plugin";
-import tsParser from "@typescript-eslint/parser";
-import importPlugin from "eslint-plugin-import";
+import { createTypeScriptImportResolver } from "eslint-import-resolver-typescript";
+import { defineConfig } from "eslint/config";
+import importPlugin, { createNodeResolver } from "eslint-plugin-import-x";
 import unusedImports from "eslint-plugin-unused-imports";
+import tseslint from "typescript-eslint";
 
-export default [
+export default defineConfig([
   {
     files: ["**/*.ts", "**/*.tsx"],
     plugins: {
-      "@typescript-eslint": tsPlugin,
+      "@typescript-eslint": tseslint.plugin,
+      // eslint-plugin-import-x, registered as `import` so rule names and
+      // disable comments (`import/order`) stay the same.
       import: importPlugin,
       "unused-imports": unusedImports,
     },
     languageOptions: {
-      parser: tsParser,
+      parser: tseslint.parser,
       parserOptions: {
         project: "./tsconfig.json",
         ecmaVersion: "latest",
@@ -129,12 +132,10 @@ export default [
       "no-console": "off",
     },
     settings: {
-      "import/resolver": {
-        typescript: {
-          project: "./tsconfig.json",
-        },
-        node: true,
-      },
+      "import-x/resolver-next": [
+        createTypeScriptImportResolver({ project: "./tsconfig.json" }),
+        createNodeResolver(),
+      ],
     },
   },
   {
@@ -183,4 +184,4 @@ export default [
       "*.config.ts",
     ],
   },
-];
+]);

@@ -148,7 +148,9 @@ function useChatHandlers(
   };
 }
 
-// eslint-disable-next-line complexity
+// ESLint 10 reports complexity at the arrow, so a next-line disable no longer
+// covers this component; disable for the whole component instead.
+/* eslint-disable complexity */
 const TUIChat: React.FC<TUIChatProps> = ({
   remoteUrl,
   configPath,
@@ -499,5 +501,6 @@ const TUIChat: React.FC<TUIChatProps> = ({
     </Box>
   );
 };
+/* eslint-enable complexity */
 
 export { TUIChat };

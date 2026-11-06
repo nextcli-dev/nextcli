@@ -42,7 +42,7 @@ const FULL_RUN_PATTERNS = [
   /^package(-lock)?\.json$/,
   /^\.nvmrc$/,
   /^\.node-version$/,
-  /^\.eslintrc\.shared\.json$/,
+  /^eslint\.shared\.mjs$/,
   /^\.prettierrc$/,
   /^\.prettierignore$/,
   /^scripts\/build-packages\.js$/,
@@ -69,7 +69,7 @@ const TEST_CONFIG_PATTERNS = [
   /(^|\/)tsconfig[^/]*\.json$/,
   /(^|\/)(jest|vitest)[^/]*\.(c|m)?(js|ts)$/,
   /(^|\/)(jest|vitest|test)[.-]?setup[^/]*$/i,
-  /(^|\/)\.eslintrc[^/]*$/,
+  /(^|\/)eslint\.config\.(c|m)?js$/,
   /(^|\/)(__mocks__|__fixtures__|fixtures|test-fixtures)\//,
 ];
 

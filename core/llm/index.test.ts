@@ -189,12 +189,12 @@ describe("BaseLLM", () => {
         }
       };
       describe(`${modelProvider.id}`, () => {
-        modelProvider.models.forEach((llmInfo) => {
+        for (const llmInfo of modelProvider.models) {
           test(
             `should have correct context length for ${llmInfo.model}`,
             testContextLength(llmInfo),
           );
-        });
+        }
       });
     });
   });

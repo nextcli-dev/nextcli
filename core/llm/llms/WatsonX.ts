@@ -262,21 +262,14 @@ class WatsonX extends BaseLLM {
     }
   }
 
-  protected async *_streamChat(
+  private _buildChatPayload(
     messages: ChatMessage[],
-    signal: AbortSignal,
     options: CompletionOptions,
-  ): AsyncGenerator<ChatMessage> {
-    await this.updateWatsonxToken();
-
-    const stopSequences = options.stop?.slice(0, 6) ?? [];
-    const url = this._getEndpoint("chat");
-    const headers = this._getHeaders();
-
+  ): any {
     const payload: any = {
       messages: messages.map(this._convertMessage).filter(Boolean),
       max_tokens: options.maxTokens ?? 1024,
-      stop: stopSequences,
+      stop: options.stop?.slice(0, 6) ?? [],
       frequency_penalty: options.frequencyPenalty ?? 0,
       presence_penalty: options.presencePenalty ?? 0,
     };
@@ -300,6 +293,19 @@ class WatsonX extends BaseLLM {
         payload.tool_choice_option = "auto";
       }
     }
+    return payload;
+  }
+
+  protected async *_streamChat(
+    messages: ChatMessage[],
+    signal: AbortSignal,
+    options: CompletionOptions,
+  ): AsyncGenerator<ChatMessage> {
+    await this.updateWatsonxToken();
+
+    const url = this._getEndpoint("chat");
+    const headers = this._getHeaders();
+    const payload = this._buildChatPayload(messages, options);
 
     const response = await this.fetch(url, {
       method: "POST",

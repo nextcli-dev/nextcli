@@ -93,6 +93,14 @@ test("test config change disables narrowing for that area", () => {
   assert.deepEqual(testArgs(r, "core", "abc"), { jest: "", vitest: "" });
 });
 
+test("ESLint config change disables narrowing for that area", () => {
+  const r = run([
+    "extensions/cli/eslint.config.js",
+    "extensions/cli/src/index.ts",
+  ]);
+  assert.equal(r.testMode.cli, "full");
+});
+
 test("CI and lockfile changes force a full run", () => {
   for (const file of [
     "package-lock.json",
@@ -100,6 +108,7 @@ test("CI and lockfile changes force a full run", () => {
     ".github/workflows/ci.yml",
     ".github/actions/setup-packages/action.yml",
     "scripts/ci/affected.mjs",
+    "eslint.shared.mjs",
   ]) {
     const r = run([file]);
     assert.equal(r.full, true, file);
