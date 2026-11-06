@@ -259,15 +259,33 @@ describe("BaseLLM", () => {
       const llm = new CaptureLLM({ model: "m", logger, llmRequestHook });
       await drain(llm);
       const start = items.filter((i) => i.kind === "startChat");
-      // Existing behavior: on the provider (_streamChat) path, streamChat logs
-      // startChat and calls the hook once up front and once more before the
-      // request. Update these counts if that duplicate is removed.
-      expect(start).toHaveLength(2);
-      for (const item of start) {
-        expect(item).toMatchObject({ provider: "mock", messages });
-      }
-      expect(llmRequestHook).toHaveBeenCalledTimes(2);
+      expect(start).toHaveLength(1);
+      expect(start[0]).toMatchObject({ provider: "mock", messages });
+      expect(llmRequestHook).toHaveBeenCalledTimes(1);
       expect(llmRequestHook).toHaveBeenCalledWith("m", expect.any(String));
+    });
+
+    it("logs startChat once on the prompt-template path", async () => {
+      class TemplateLLM extends BaseLLM {
+        static providerName = "mock";
+        constructor(options: LLMOptions) {
+          super(options);
+          this.templateMessages = (msgs) =>
+            msgs.map((m) => `${m.role}: ${m.content}`).join("\n");
+        }
+        protected async *_streamComplete(): AsyncGenerator<string> {
+          yield "ok";
+        }
+      }
+      const logger = new LLMLogger();
+      const items: LLMInteractionItem[] = [];
+      logger.onLogItem((item) => items.push(item));
+      const llmRequestHook = jest.fn();
+      const llm = new TemplateLLM({ model: "m", logger, llmRequestHook });
+      await drain(llm);
+      expect(items.filter((i) => i.kind === "startChat")).toHaveLength(1);
+      expect(llmRequestHook).toHaveBeenCalledTimes(1);
+      expect(llmRequestHook).toHaveBeenCalledWith("m", "user: hi");
     });
 
     it("does not log or call the request hook when logging is off", async () => {
