@@ -117,7 +117,7 @@ export function LumpToolbar() {
 
     // Also stop regular streaming if it's happening
     if (isStreaming) {
-      dispatch(cancelStream());
+      void dispatch(cancelStream());
     }
   };
 

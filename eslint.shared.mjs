@@ -3,11 +3,11 @@
 // own ESLint plugins and has no access to the root node_modules.
 // Translated from the former .eslintrc.shared.json.
 
+// `out` and `dist` at any depth, as the old eslintrc's unanchored patterns did.
 // `--ext ts` used to limit linting to TypeScript; flat config lints JS by default.
 export const sharedIgnores = [
-  "out/**",
-  "dist/**",
-  "coverage/**",
+  "**/out/**",
+  "**/dist/**",
   "**/*.d.ts",
   "**/*.{js,cjs,mjs}",
 ];

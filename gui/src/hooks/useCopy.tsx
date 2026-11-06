@@ -11,7 +11,7 @@ export default function useCopy(text: string | (() => string)) {
     if (isJetBrains()) {
       ideMessenger.post("copyText", { text: textVal });
     } else {
-      navigator.clipboard.writeText(textVal);
+      void navigator.clipboard.writeText(textVal);
     }
 
     setCopied(true);

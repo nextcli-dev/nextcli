@@ -148,9 +148,6 @@ function useChatHandlers(
   };
 }
 
-// ESLint 10 reports complexity at the arrow, so a next-line disable no longer
-// covers this component; disable for the whole component instead.
-/* eslint-disable complexity */
 const TUIChat: React.FC<TUIChatProps> = ({
   remoteUrl,
   configPath,
@@ -159,6 +156,8 @@ const TUIChat: React.FC<TUIChatProps> = ({
   fork,
   additionalRules,
   additionalPrompts,
+  // ESLint 10 reports complexity at the arrow, so the directive goes here.
+  // eslint-disable-next-line complexity
 }) => {
   // Use custom hook for services
   const { services, allServicesReady, isRemoteMode } =
@@ -501,6 +500,5 @@ const TUIChat: React.FC<TUIChatProps> = ({
     </Box>
   );
 };
-/* eslint-enable complexity */
 
 export { TUIChat };

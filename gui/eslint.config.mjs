@@ -5,7 +5,9 @@ import tseslint from "typescript-eslint";
 export default defineConfig([
   { ignores: ["dist/**"] },
   {
-    files: ["**/*.{js,ts,jsx,tsx}"],
+    // TypeScript only: gui/tsconfig.json has allowJs: false, so a JS file
+    // would fail type-aware linting ("not found in any of the projects").
+    files: ["**/*.{ts,tsx}"],
     linterOptions: { reportUnusedDisableDirectives: "off" },
     plugins: {
       "@typescript-eslint": tseslint.plugin,
@@ -20,7 +22,7 @@ export default defineConfig([
     },
     rules: {
       "@typescript-eslint/naming-convention": "off",
-      "@typescript-eslint/no-floating-promises": "warn",
+      "@typescript-eslint/no-floating-promises": "error",
       // Warn until the remaining 11 barrel files are removed (follow-up PR);
       // the old lint script checked no files, so these were never reported.
       "no-barrel-files/no-barrel-files": "warn",

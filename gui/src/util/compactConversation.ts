@@ -1,3 +1,4 @@
+import { unwrapResult } from "@reduxjs/toolkit";
 import { useContext } from "react";
 import { IdeMessengerContext } from "../context/IdeMessenger";
 import { useAppDispatch, useAppSelector } from "../redux/hooks";
@@ -26,13 +27,15 @@ export const useCompactConversation = () => {
         sessionId: currentSessionId,
       });
 
-      // Reload the current session to refresh the conversation state
-      dispatch(
+      // Reload the current session to refresh the conversation state, and
+      // keep the loading state until it is done (errors go to the catch)
+      const wrapped = await dispatch(
         loadSession({
           sessionId: currentSessionId,
           saveCurrentSession: false,
         }),
       );
+      unwrapResult(wrapped);
     } catch (error) {
       console.error("Error compacting conversation:", error);
     } finally {
@@ -48,7 +51,7 @@ export const useDeleteCompaction = () => {
   return (index: number) => {
     // Update local state and save to persistence
     dispatch(deleteCompaction(index));
-    dispatch(
+    void dispatch(
       saveCurrentSession({
         openNewSession: false,
         generateTitle: false,

@@ -1,4 +1,10 @@
-import { ChatMessage, LLMOptions } from "..";
+import {
+  ChatMessage,
+  CompletionOptions,
+  LLMInteractionItem,
+  LLMOptions,
+  Tool,
+} from "..";
 
 import { allModelProviders } from "@nextcli/llm-info";
 import { LlmInfo } from "@nextcli/llm-info/dist/types";
@@ -169,7 +175,111 @@ describe("BaseLLM", () => {
     // TODO: Implement tests for complete method
   });
   describe("*streamChat", () => {
-    // TODO: Implement tests for *streamChat method
+    // Records the options streamChat passes down, then yields one chunk.
+    class CaptureLLM extends BaseLLM {
+      static providerName = "mock";
+      lastOptions?: CompletionOptions;
+      constructor(options: LLMOptions) {
+        super(options);
+        // Use the chat path, not prompt templating (as MockLLM does)
+        this.templateMessages = undefined;
+      }
+      protected async *_streamChat(
+        _messages: ChatMessage[],
+        _signal: AbortSignal,
+        options: CompletionOptions,
+      ): AsyncGenerator<ChatMessage> {
+        this.lastOptions = options;
+        yield { role: "assistant", content: "ok" };
+      }
+    }
+
+    const tool = (name: string, description: string) =>
+      ({
+        type: "function",
+        displayTitle: name,
+        readonly: true,
+        group: "test",
+        function: { name, description, parameters: {} },
+      }) as unknown as Tool;
+
+    const messages: ChatMessage[] = [{ role: "user", content: "hi" }];
+
+    async function drain(llm: BaseLLM, options = {}) {
+      const chunks: ChatMessage[] = [];
+      for await (const chunk of llm.streamChat(
+        messages,
+        new AbortController().signal,
+        options,
+      )) {
+        chunks.push(chunk);
+      }
+      return chunks;
+    }
+
+    it("passes tools through unchanged without tool overrides", async () => {
+      const llm = new CaptureLLM({ model: "m" });
+      const tools = [tool("read_file", "Read a file")];
+      await drain(llm, { tools });
+      expect(llm.lastOptions?.tools).toEqual(tools);
+    });
+
+    it("applies tool overrides and warns about unknown tool names", async () => {
+      const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+      const llm = new CaptureLLM({
+        model: "m",
+        toolOverrides: [
+          { name: "read_file", description: "Overridden" },
+          { name: "run_terminal_command", disabled: true },
+          { name: "no_such_tool", description: "x" },
+        ],
+      });
+      await drain(llm, {
+        tools: [
+          tool("read_file", "Read a file"),
+          tool("run_terminal_command", "Run a command"),
+        ],
+      });
+      const names = llm.lastOptions?.tools?.map((t) => t.function.name);
+      expect(names).toEqual(["read_file"]);
+      expect(llm.lastOptions?.tools?.[0].function.description).toBe(
+        "Overridden",
+      );
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining("Tool override warning"),
+      );
+      warn.mockRestore();
+    });
+
+    it("logs startChat and calls the request hook when logging is on", async () => {
+      const logger = new LLMLogger();
+      const items: LLMInteractionItem[] = [];
+      logger.onLogItem((item) => items.push(item));
+      const llmRequestHook = jest.fn();
+      const llm = new CaptureLLM({ model: "m", logger, llmRequestHook });
+      await drain(llm);
+      const start = items.filter((i) => i.kind === "startChat");
+      // Existing behavior: on the provider (_streamChat) path, streamChat logs
+      // startChat and calls the hook once up front and once more before the
+      // request. Update these counts if that duplicate is removed.
+      expect(start).toHaveLength(2);
+      for (const item of start) {
+        expect(item).toMatchObject({ provider: "mock", messages });
+      }
+      expect(llmRequestHook).toHaveBeenCalledTimes(2);
+      expect(llmRequestHook).toHaveBeenCalledWith("m", expect.any(String));
+    });
+
+    it("does not log or call the request hook when logging is off", async () => {
+      const logger = new LLMLogger();
+      const items: LLMInteractionItem[] = [];
+      logger.onLogItem((item) => items.push(item));
+      const llmRequestHook = jest.fn();
+      const llm = new CaptureLLM({ model: "m", logger, llmRequestHook });
+      await drain(llm, { log: false });
+      expect(items).toHaveLength(0);
+      expect(llmRequestHook).not.toHaveBeenCalled();
+    });
   });
 
   describe("default context length", () => {

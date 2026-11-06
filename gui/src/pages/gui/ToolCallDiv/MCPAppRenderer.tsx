@@ -303,28 +303,28 @@ export function McpAppRenderer({
   useEffect(() => {
     const bridge = appBridgeRef.current;
     if (!bridge || !isInitialized || !toolInput) return;
-    try {
-      bridge.sendToolInput({ arguments: toolInput });
-    } catch (err) {
+    // sendToolInput returns a promise, so a try/catch would miss rejections
+    bridge.sendToolInput({ arguments: toolInput }).catch((err: unknown) => {
       console.warn("[McpAppRenderer] Failed to send tool input:", err);
       setError(err instanceof Error ? err : new Error(String(err)));
-    }
+    });
   }, [isInitialized, toolInput]);
 
   useEffect(() => {
     const bridge = appBridgeRef.current;
     if (!bridge || !isInitialized || !toolResult) return;
-    try {
-      bridge.sendToolResult({
+    // sendToolResult returns a promise, so a try/catch would miss rejections
+    bridge
+      .sendToolResult({
         content: toolResult.map((o) => ({
           type: "text" as const,
           text: o.content,
         })),
+      })
+      .catch((err: unknown) => {
+        console.warn("[McpAppRenderer] Failed to send tool result:", err);
+        setError(err instanceof Error ? err : new Error(String(err)));
       });
-    } catch (err) {
-      console.warn("[McpAppRenderer] Failed to send tool result:", err);
-      setError(err instanceof Error ? err : new Error(String(err)));
-    }
   }, [isInitialized, toolResult]);
 
   if (!toolCallState.mcpUiState || !html) {

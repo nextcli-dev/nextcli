@@ -6,7 +6,7 @@ import App from "./App";
 import "./index.css";
 import { persistor, store } from "./redux/store";
 
-(async () => {
+void (async () => {
   const container = document.getElementById("root") as HTMLElement;
 
   // Create React root
