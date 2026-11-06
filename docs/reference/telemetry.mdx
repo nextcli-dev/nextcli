@@ -1,0 +1,31 @@
+---
+title: "Telemetry"
+---
+
+NextCLI sends no telemetry by default, and it has no endpoint of its own. Metrics go only to an OpenTelemetry (OTLP) collector that you run and configure.
+
+## VS Code extension
+
+The extension exports metrics only when both of these are true:
+
+- **Allow Anonymous Telemetry** is on in the NextCLI user settings, and VS Code's own `telemetry.telemetryLevel` is not `off`. Either one turned off stops telemetry.
+- An OTLP endpoint is set in the environment VS Code starts with:
+
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT="https://otel.example.com"
+# optional: authentication for your collector
+export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <token>"
+code .
+```
+
+`OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` overrides the metrics URL; otherwise NextCLI uses `$OTEL_EXPORTER_OTLP_ENDPOINT/v1/metrics`. Metrics are sent once a minute as OTLP over HTTP.
+
+The metrics are counters named `nextcli_core_*`, with the resource attributes `service.name=nextcli-core`, `service.version` (the extension version) and `nextcli.ide`. They carry no user, file, URL, prompt or code content.
+
+## CLI
+
+The CLI (`cn`) exports metrics only when you set `CONTINUE_CLI_ENABLE_TELEMETRY=1` (or `CONTINUE_METRICS_ENABLED=1`) and an OTLP endpoint with the same `OTEL_EXPORTER_OTLP_*` variables. Its metrics are named `continue_cli_*`.
+
+## Turn it off
+
+Turn off **Allow Anonymous Telemetry**, or unset the `OTEL_EXPORTER_OTLP_*` variables. Without an endpoint, NextCLI creates no exporter and makes no network requests for telemetry.

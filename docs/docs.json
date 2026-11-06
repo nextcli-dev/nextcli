@@ -162,6 +162,7 @@
               "reference",
               "reference/yaml-migration",
               "reference/continue-mcp",
+              "reference/telemetry",
               "reference/json-reference",
               "reference/deprecated-context-providers",
               "reference/deprecated-codebase",

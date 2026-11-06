@@ -91,6 +91,7 @@ import type { IMessenger, Message } from "./protocol/messenger";
 import { ContinueError, ContinueErrorReason } from "./util/errors";
 import { shareSession } from "./util/historyUtils";
 import { Logger } from "./util/Logger.js";
+import { coreTelemetry } from "./util/telemetry/coreTelemetry";
 
 export class Core {
   configHandler: ConfigHandler;
@@ -173,6 +174,17 @@ export class Core {
       );
 
       this.configHandler.onConfigUpdate((result) => {
+        // Opt-in OpenTelemetry metrics to the user's own OTLP endpoint
+        // (util/telemetry/coreTelemetry.ts); a no-op unless both are set.
+        void (async () => {
+          const ideInfo = await this.ide.getIdeInfo();
+          await coreTelemetry.configure({
+            allowAnonymousTelemetry: result.config?.allowAnonymousTelemetry,
+            ideType: ideInfo.ideType,
+            extensionVersion: ideInfo.extensionVersion,
+          });
+        })().catch((e) => console.warn("Failed to configure telemetry", e));
+
         void (async () => {
           const serializedResult =
             await this.configHandler.getSerializedConfig();
