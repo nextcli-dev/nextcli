@@ -21,6 +21,9 @@ export default {
   moduleNameMapper: {
     "^(\\.{1,2}/.*)\\.js$": "$1",
     "^uuid$": "uuid", // https://stackoverflow.com/a/73626360
+    // jsdom 29 has ESM-only dependencies that Jest can't require():
+    // bundled to CommonJS in test/jest.global-setup.ts
+    "^jsdom$": "<rootDir>/node_modules/.cache/jsdom-cjs/jsdom.cjs",
     "^@azure/(.*)$": "<rootDir>/node_modules/@azure/$1",
     "^mssql$": "<rootDir>/node_modules/mssql",
   },

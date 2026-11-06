@@ -109,6 +109,8 @@ test("CI and lockfile changes force a full run", () => {
     ".github/actions/setup-packages/action.yml",
     "scripts/ci/affected.mjs",
     "eslint.shared.mjs",
+    "scripts/esbuild-plugins/jsdom.cjs",
+    "shims/node-domexception/index.js",
   ]) {
     const r = run([file]);
     assert.equal(r.full, true, file);

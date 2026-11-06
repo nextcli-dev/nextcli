@@ -47,6 +47,8 @@ const FULL_RUN_PATTERNS = [
   /^\.prettierignore$/,
   /^scripts\/build-packages\.js$/,
   /^scripts\/ci\//,
+  /^scripts\/esbuild-plugins\//,
+  /^shims\//,
   /^\.github\/workflows\/ci\.yml$/,
   /^\.github\/actions\//,
 ];
