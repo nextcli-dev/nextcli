@@ -318,6 +318,7 @@ export function testChat(
 
     test("Tool Call second message works", async () => {
       let response = "";
+      let toolCallDeltas = 0;
       for await (const chunk of api.chatCompletionStream(
         {
           messages: [
@@ -373,9 +374,12 @@ export function testChat(
           continue;
         }
         response += chunk.choices[0].delta.content ?? "";
+        toolCallDeltas += chunk.choices[0].delta.tool_calls?.length ?? 0;
       }
 
-      expect(response.length).toBeGreaterThan(0);
+      // After a tool result the model may answer in text or call the tool
+      // again; both are valid replies, so only an empty turn is a failure.
+      expect(response.length + toolCallDeltas).toBeGreaterThan(0);
     });
   }
 }
