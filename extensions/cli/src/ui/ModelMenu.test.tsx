@@ -36,6 +36,16 @@ const waitFor = (check: () => void) => vi.waitFor(check, { timeout: 5000 });
 const DOWN = "\u001B[B";
 const ENTER = "\r";
 
+// ink-testing-library writes each frame when React commits it, before React has
+// re-registered the menu's key handler. A key sent in that gap reaches the old
+// handler, which still holds the previous selection, so it does nothing and
+// the menu never moves. Let React flush its effects before every key.
+const press = async (stdin: { write: (data: string) => void }, key: string) => {
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  stdin.write(key);
+};
+
 describe("ModelMenu", () => {
   beforeEach(() => {
     state.model = {
@@ -108,18 +118,18 @@ describe("ModelMenu", () => {
     );
     await waitFor(() => expect(lastFrame()).toContain("➤ Model"));
     for (const row of ["Effort", "Thinking"]) {
-      stdin.write(DOWN);
+      await press(stdin, DOWN);
       await waitFor(() => expect(lastFrame()).toContain(`➤ ${row}`));
     }
-    stdin.write(ENTER);
+    await press(stdin, ENTER);
     await waitFor(() => expect(lastFrame()).toContain("Thinking for Opus"));
     expect(lastFrame()).toContain("(no thinking tokens)");
     // The current mode (Shown) is selected; go up to Off
-    stdin.write("\u001B[A");
+    await press(stdin, "\u001B[A");
     await waitFor(() => expect(lastFrame()).toContain("➤ Hidden"));
-    stdin.write("\u001B[A");
+    await press(stdin, "\u001B[A");
     await waitFor(() => expect(lastFrame()).toContain("➤ Off"));
-    stdin.write(ENTER);
+    await press(stdin, ENTER);
     await waitFor(() =>
       expect(getModelSettings(state.model).thinking).toBe("off"),
     );
@@ -136,10 +146,10 @@ describe("ModelMenu", () => {
     );
     await waitFor(() => expect(lastFrame()).toContain("➤ Model"));
     for (const row of ["Effort", "Thinking"]) {
-      stdin.write(DOWN);
+      await press(stdin, DOWN);
       await waitFor(() => expect(lastFrame()).toContain(`➤ ${row}`));
     }
-    stdin.write(ENTER);
+    await press(stdin, ENTER);
     await waitFor(() => expect(lastFrame()).toContain("always think"));
   });
 
@@ -148,13 +158,13 @@ describe("ModelMenu", () => {
       <ModelMenu onSelectModel={vi.fn()} onCancel={vi.fn()} />,
     );
     await waitFor(() => expect(lastFrame()).toContain("➤ Model"));
-    stdin.write(DOWN); // Model -> Effort
+    await press(stdin, DOWN); // Model -> Effort
     await waitFor(() => expect(lastFrame()).toContain("➤ Effort"));
-    stdin.write(ENTER);
+    await press(stdin, ENTER);
     await waitFor(() => expect(lastFrame()).toContain("Effort for Opus"));
-    stdin.write(DOWN); // Default -> Low
+    await press(stdin, DOWN); // Default -> Low
     await waitFor(() => expect(lastFrame()).toContain("➤ Low"));
-    stdin.write(ENTER);
+    await press(stdin, ENTER);
     await waitFor(() =>
       expect(getModelSettings(state.model).effort).toBe("low"),
     );
@@ -169,10 +179,10 @@ describe("ModelMenu", () => {
     );
     await waitFor(() => expect(lastFrame()).toContain("➤ Model"));
     for (const row of ["Effort", "Thinking", "Fast"]) {
-      stdin.write(DOWN);
+      await press(stdin, DOWN);
       await waitFor(() => expect(lastFrame()).toContain(`➤ ${row}`));
     }
-    stdin.write(ENTER);
+    await press(stdin, ENTER);
     await waitFor(() => expect(getModelSettings(state.model).fast).toBe(true));
   });
 });
