@@ -83,8 +83,6 @@ export function UserSettingsSection() {
     });
   };
 
-  const disableTelemetryToggle = false;
-
   return (
     <div>
       <div className="flex flex-col">
@@ -225,6 +223,40 @@ export function UserSettingsSection() {
                   isValid={formDisableAutocomplete.trim() !== ""}
                 />
               </div>
+            </Card>
+          </div>
+
+          {/* Telemetry Settings */}
+          <div>
+            <ConfigHeader title="Telemetry" variant="sm" />
+            <Card>
+              <UserSetting
+                type="toggle"
+                title="Allow Anonymous Telemetry"
+                description={
+                  <>
+                    Exports usage metrics to an OpenTelemetry collector you run,
+                    set with OTEL_EXPORTER_OTLP_ENDPOINT. NextCLI has no
+                    endpoint of its own: with no collector set, nothing is sent.
+                    VS Code's telemetry setting must also be on.{" "}
+                    <a
+                      className="cursor-pointer underline"
+                      onClick={() =>
+                        ideMessenger.post(
+                          "openUrl",
+                          "https://docs.nextcli.dev/reference/telemetry",
+                        )
+                      }
+                    >
+                      Learn more
+                    </a>
+                  </>
+                }
+                value={allowAnonymousTelemetry}
+                onChange={(value) =>
+                  handleUpdate({ allowAnonymousTelemetry: value })
+                }
+              />
             </Card>
           </div>
 

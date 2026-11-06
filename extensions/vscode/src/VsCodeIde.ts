@@ -249,13 +249,13 @@ class VsCodeIde implements IDE {
     return this.ideUtils.getRepo(vscode.Uri.parse(dir));
   }
 
+  /**
+   * VS Code's own telemetry setting (telemetry.telemetryLevel). The user's
+   * opt-in is "Allow Anonymous Telemetry" in User Settings; the deprecated
+   * continue.telemetryEnabled setting is no longer read.
+   */
   async isTelemetryEnabled(): Promise<boolean> {
-    const globalEnabled = vscode.env.isTelemetryEnabled;
-    const continueEnabled: boolean =
-      (await vscode.workspace
-        .getConfiguration(EXTENSION_NAME)
-        .get("telemetryEnabled")) ?? false;
-    return globalEnabled && continueEnabled;
+    return vscode.env.isTelemetryEnabled;
   }
 
   isWorkspaceRemote(): Promise<boolean> {
