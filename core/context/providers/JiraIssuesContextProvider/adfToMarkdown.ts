@@ -7,7 +7,9 @@
  * each intentional difference.
  *
  * Unknown nodes render their text and children, so new ADF node types degrade
- * to plain text instead of disappearing. Malformed input never throws.
+ * to plain text instead of disappearing. Malformed input never throws: bad
+ * fields are skipped, and if conversion still fails the document's plain text
+ * is returned, so one bad node cannot fail a whole Jira issue.
  */
 
 export interface AdfMark {
@@ -24,8 +26,23 @@ export interface AdfNode {
 }
 
 const LIST_INDENT = "  ";
+// Table spans come from user content; cap them so a bad value can't allocate
+// an unbounded number of cells.
+const MAX_SPAN = 100;
 
 export function adfToMarkdown(doc: unknown): string {
+  try {
+    return convert(doc);
+  } catch {
+    try {
+      return isNode(doc) ? plainText(doc).trim() : "";
+    } catch {
+      return "";
+    }
+  }
+}
+
+function convert(doc: unknown): string {
   if (!isNode(doc)) {
     return "";
   }
@@ -41,6 +58,11 @@ function isNode(value: unknown): value is AdfNode {
   );
 }
 
+/** A string attribute or text value; anything else counts as missing. */
+function str(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
 function children(node: AdfNode): AdfNode[] {
   return Array.isArray(node.content) ? node.content.filter(isNode) : [];
 }
@@ -50,6 +72,15 @@ function renderBlocks(nodes: AdfNode[]): string {
     .map(renderBlock)
     .filter((block) => block !== "")
     .join("\n\n");
+}
+
+// A node's children: inline children (text, mentions, ...) join into one line
+// of text, block children into separate blocks.
+function renderChildren(node: AdfNode): string {
+  const kids = children(node);
+  return kids.length > 0 && kids.every(isInlineNode)
+    ? renderInline(kids)
+    : renderBlocks(kids);
 }
 
 function renderBlock(node: AdfNode): string {
@@ -63,12 +94,9 @@ function renderBlock(node: AdfNode): string {
     case "bulletList":
     case "orderedList":
     case "taskList":
-      return renderList(node, "");
-    case "codeBlock": {
-      const language = node.attrs?.language;
-      const fence = language ? `\`\`\` ${language}` : "```";
-      return `${fence}\n${plainText(node)}\n\`\`\``;
-    }
+      return renderList(node, LIST_INDENT);
+    case "codeBlock":
+      return renderCodeBlock(node);
     case "blockquote":
     case "panel":
       return quote(renderBlocksTight(children(node)));
@@ -81,19 +109,21 @@ function renderBlock(node: AdfNode): string {
       return renderCard(node);
     case "expand":
     case "nestedExpand": {
-      const title = node.attrs?.title ? `**${node.attrs.title}**` : "";
-      return [title, renderBlocks(children(node))]
+      const title = str(node.attrs?.title);
+      return [title ? `**${title}**` : "", renderBlocks(children(node))]
         .filter((part) => part !== "")
         .join("\n\n");
     }
     case "mediaSingle":
     case "mediaGroup":
+      return children(node)
+        .map(renderBlock)
+        .filter((block) => block !== "")
+        .join("\n");
     case "media":
-      return "";
+      return renderMedia(node);
     default:
-      return isInlineNode(node)
-        ? renderInline([node])
-        : renderBlocks(children(node));
+      return isInlineNode(node) ? renderInline([node]) : renderChildren(node);
   }
 }
 
@@ -112,48 +142,76 @@ function quote(text: string): string {
     .join("\n");
 }
 
+// The fence is longer than any run of backticks in the code, so the code can't
+// close it early. The language is a single line.
+function renderCodeBlock(node: AdfNode): string {
+  const body = plainText(node);
+  const language = str(node.attrs?.language)
+    .replace(/[\r\n`]+/g, "")
+    .trim();
+  const longestRun = (body.match(/`+/g) ?? []).reduce(
+    (longest, run) => Math.max(longest, run.length),
+    0,
+  );
+  const fence = "`".repeat(Math.max(3, longestRun + 1));
+  return `${fence}${language ? ` ${language}` : ""}\n${body}\n${fence}`;
+}
+
 function renderList(list: AdfNode, indent: string): string {
   const start = Number(list.attrs?.order) || 1;
   return children(list)
     .map((item, index) => {
-      const marker =
-        list.type === "orderedList"
-          ? `${start + index}.`
-          : list.type === "taskList"
-            ? item.attrs?.state === "DONE"
-              ? "* [x]"
-              : "* [ ]"
-            : "*";
-      return renderListItem(item, `${indent}${LIST_INDENT}`, marker);
+      const marker = list.type === "orderedList" ? `${start + index}.` : "*";
+      const checkbox =
+        list.type === "taskList"
+          ? item.attrs?.state === "DONE"
+            ? "[x] "
+            : "[ ] "
+          : "";
+      return renderListItem(item, indent, marker, checkbox);
     })
     .join("\n");
 }
 
-function renderListItem(item: AdfNode, indent: string, marker: string): string {
-  const lines: string[] = [];
+// Content of an item (further paragraphs, nested lists, code) is indented to
+// the item's content column, just past the marker, which keeps it inside the
+// item and keeps a code fence a fence. Blank lines stay empty.
+function renderListItem(
+  item: AdfNode,
+  indent: string,
+  marker: string,
+  checkbox: string,
+): string {
+  const contentIndent = indent + " ".repeat(marker.length + 1);
+  const markerLine = (text: string) =>
+    `${indent}${marker} ${checkbox}${text}`.trimEnd();
+
   const content = children(item);
   // taskItem holds inline content directly; listItem holds blocks
-  const blocks = content.every(isInlineNode)
-    ? [{ type: "paragraph", content }]
-    : content;
+  const blocks =
+    content.length > 0 && content.every(isInlineNode)
+      ? [{ type: "paragraph", content }]
+      : content;
+
+  const lines: string[] = [];
   for (const block of blocks) {
     if (isList(block)) {
-      lines.push(renderList(block, indent));
+      // A nested list can come first: the item still needs its own marker.
+      if (lines.length === 0) {
+        lines.push(markerLine(""));
+      }
+      lines.push(renderList(block, contentIndent));
       continue;
     }
-    const text = renderBlock(block);
-    if (text === "") {
-      continue;
+    for (const line of renderBlock(block).split("\n")) {
+      if (lines.length === 0) {
+        lines.push(markerLine(line));
+      } else {
+        lines.push(line === "" ? "" : contentIndent + line);
+      }
     }
-    const prefix = lines.length === 0 ? `${indent}${marker} ` : `${indent}  `;
-    lines.push(
-      text
-        .split("\n")
-        .map((line, i) => (i === 0 ? prefix + line : `${indent}  ${line}`))
-        .join("\n"),
-    );
   }
-  return lines.length > 0 ? lines.join("\n") : `${indent}${marker} `;
+  return lines.length > 0 ? lines.join("\n") : markerLine("");
 }
 
 function isList(node: AdfNode): boolean {
@@ -164,13 +222,42 @@ function isList(node: AdfNode): boolean {
   );
 }
 
+function span(value: unknown): number {
+  return Math.min(Math.max(Math.floor(Number(value)) || 1, 1), MAX_SPAN);
+}
+
+// Merged cells: a cell with colspan N is followed by N-1 empty cells, and a
+// cell with rowspan N leaves an empty cell in the next N-1 rows, so every
+// cell stays under its own column header.
 function renderTable(table: AdfNode): string {
-  const rows = children(table).filter((row) => row.type === "tableRow");
   const lines: string[] = [];
+  const coveredRows: number[] = [];
+  const rows = children(table).filter((row) => row.type === "tableRow");
+
   rows.forEach((row, index) => {
-    const cells = children(row);
-    lines.push(`|${cells.map(renderCell).join("|")}|`);
-    if (index === 0 && cells.some((cell) => cell.type === "tableHeader")) {
+    const cells: string[] = [];
+    let isHeader = false;
+    const skipCovered = () => {
+      while ((coveredRows[cells.length] ?? 0) > 0) {
+        coveredRows[cells.length]--;
+        cells.push("");
+      }
+    };
+
+    for (const cell of children(row)) {
+      skipCovered();
+      const text = renderCell(cell);
+      const rowspan = span(cell.attrs?.rowspan);
+      isHeader ||= cell.type === "tableHeader";
+      for (let i = 0; i < span(cell.attrs?.colspan); i++) {
+        coveredRows[cells.length] = rowspan - 1;
+        cells.push(i === 0 ? text : "");
+      }
+    }
+    skipCovered();
+
+    lines.push(`|${cells.join("|")}|`);
+    if (index === 0 && isHeader) {
       lines.push(`|${cells.map(() => ":-:").join("|")}|`);
     }
   });
@@ -184,8 +271,15 @@ function renderCell(cell: AdfNode): string {
 }
 
 function renderCard(node: AdfNode): string {
-  const url = node.attrs?.url;
-  return typeof url === "string" && url ? `[${url}](${url})` : "";
+  const url = str(node.attrs?.url);
+  return url ? `[${url}](${url})` : "";
+}
+
+// Files and images can't go into text, but the ticket shouldn't look empty or
+// lose what was attached.
+function renderMedia(node: AdfNode): string {
+  const alt = str(node.attrs?.alt).trim();
+  return alt ? `[attachment: ${alt}]` : "[attachment]";
 }
 
 const INLINE_TYPES = new Set([
@@ -194,6 +288,7 @@ const INLINE_TYPES = new Set([
   "emoji",
   "mention",
   "inlineCard",
+  "mediaInline",
   "status",
   "date",
   "placeholder",
@@ -210,36 +305,45 @@ function renderInline(nodes: AdfNode[]): string {
 function renderInlineNode(node: AdfNode): string {
   switch (node.type) {
     case "text":
-      return applyMarks(node.text ?? "", node.marks);
+      return applyMarks(str(node.text), node.marks);
     case "hardBreak":
       return "\n";
     case "emoji":
-      return node.attrs?.shortName ?? node.attrs?.text ?? "";
-    case "mention": {
-      const text = node.attrs?.text;
-      return typeof text === "string" && text ? text : "@unknown";
-    }
+      return str(node.attrs?.shortName) || str(node.attrs?.text);
+    case "mention":
+      return str(node.attrs?.text) || "@unknown";
     case "inlineCard":
       return renderCard(node);
-    case "status":
-      return node.attrs?.text ? `[${node.attrs.text}]` : "";
+    case "mediaInline":
+      return renderMedia(node);
+    case "status": {
+      const text = str(node.attrs?.text);
+      return text ? `[${text}]` : "";
+    }
     case "date":
       return formatDate(node.attrs?.timestamp);
     default:
-      return node.text ?? renderInline(children(node));
+      return str(node.text) || renderInline(children(node));
   }
 }
 
 function formatDate(timestamp: unknown): string {
-  const ms = Number(timestamp);
-  return Number.isFinite(ms) ? new Date(ms).toISOString().slice(0, 10) : "";
+  const date = new Date(Number(timestamp));
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
 }
 
 // Each mark wraps the result of the previous one, so the first mark is
-// innermost: [strong, link] gives [**text**](url).
-function applyMarks(text: string, marks: AdfMark[] | undefined): string {
+// innermost: [strong, link] gives [**text**](url). Anything that isn't a mark
+// object is skipped, and the text is kept.
+function applyMarks(text: string, marks: unknown): string {
+  if (!Array.isArray(marks)) {
+    return text;
+  }
   let result = text;
-  for (const mark of marks ?? []) {
+  for (const mark of marks) {
+    if (typeof mark !== "object" || mark === null) {
+      continue;
+    }
     switch (mark.type) {
       case "strong":
         result = `**${result}**`;
@@ -253,11 +357,13 @@ function applyMarks(text: string, marks: AdfMark[] | undefined): string {
       case "strike":
         result = `~~${result}~~`;
         break;
-      case "link":
-        if (mark.attrs?.href) {
-          result = `[${result}](${mark.attrs.href})`;
+      case "link": {
+        const href = str(mark.attrs?.href);
+        if (href) {
+          result = `[${result}](${href})`;
         }
         break;
+      }
       default:
         // underline, textColor, subsup, ...: no Markdown equivalent
         break;
@@ -267,5 +373,7 @@ function applyMarks(text: string, marks: AdfMark[] | undefined): string {
 }
 
 function plainText(node: AdfNode): string {
-  return node.text ?? children(node).map(plainText).join("");
+  return typeof node.text === "string"
+    ? node.text
+    : children(node).map(plainText).join("");
 }

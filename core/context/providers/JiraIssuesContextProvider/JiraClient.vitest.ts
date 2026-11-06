@@ -65,6 +65,40 @@ describe("JiraClient.issue", () => {
     ]);
   });
 
+  it("does not fail the issue over a malformed node in one comment", async () => {
+    const badComment = {
+      type: "doc",
+      version: 1,
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "still here", marks: [null] }],
+        },
+      ],
+    };
+    const issue = await client.issue(
+      "NX-4",
+      fetchReturning({
+        key: "NX-4",
+        fields: {
+          summary: "s",
+          description: adf("Description"),
+          comment: {
+            comments: [
+              { body: badComment, author, created: "c", updated: "u" },
+              { body: adf("Good"), author, created: "c", updated: "u" },
+            ],
+          },
+        },
+      }),
+    );
+    expect(issue.description).toBe("**Description** for @Ann Lee");
+    expect(issue.comments.map((c) => c.body)).toEqual([
+      "still here",
+      "**Good** for @Ann Lee",
+    ]);
+  });
+
   it("keeps plain-text descriptions and comments (API v2) as they are", async () => {
     const issue = await client.issue(
       "NX-2",
