@@ -117,5 +117,9 @@ describe("model menu inside the chat input", () => {
         store.getState().config.config.selectedModelByRole.chat?.title,
       ).toBe("Opus 5.5"),
     );
+    // Picking a model closes the menu; no second click needed
+    await waitFor(() =>
+      expect(screen.queryByTestId("model-select-menu")).not.toBeInTheDocument(),
+    );
   });
 });
