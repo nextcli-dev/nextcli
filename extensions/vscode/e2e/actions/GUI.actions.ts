@@ -43,7 +43,7 @@ export class GUIActions {
     for (let i = 0; i < iframes.length; i++) {
       const iframe = iframes[i];
       const src = await iframe.getAttribute("src");
-      if (src.includes("extensionId=nextcli.nextcli")) {
+      if (src?.includes("extensionId=nextcli.nextcli")) {
         continueIFrame = iframe;
         break;
       }

@@ -59,27 +59,12 @@
     {
       "name": "glob",
       "version": "10.5.0",
-      "fix": "P1 bump rimraf/semantic-release/vitest coverage/mocha; override glob ^13 for what's left (tailwindcss 3 via sucrase)"
-    },
-    {
-      "name": "glob",
-      "version": "11.0.2",
-      "fix": "P1 bump vscode-extension-tester"
-    },
-    {
-      "name": "glob",
-      "version": "11.0.3",
-      "fix": "P1 cli direct glob ^13; bump @openapitools/openapi-generator-cli"
+      "fix": "P1 docs/ via @c15t/react removal (#49)"
     },
     {
       "name": "eslint",
       "version": "9.33.0",
       "fix": "P2 ESLint 10 in extensions/cli"
-    },
-    {
-      "name": "uuid",
-      "version": "8.3.2",
-      "fix": "P1 bump vsce/ovsx/vscode-extension-tester; P6 drop dbinfoz"
     },
     {
       "name": "@types/dompurify",
@@ -112,11 +97,6 @@
       "fix": "P1 bump @opentelemetry/sdk-node in cli; docs/ via @c15t/react bump"
     },
     {
-      "name": "semver-diff",
-      "version": "5.0.0",
-      "fix": "P1 bump semantic-release in packages/*"
-    },
-    {
       "name": "puppeteer",
       "version": "22.14.0",
       "fix": "P1 bump mintlify in docs/"
@@ -130,6 +110,11 @@
       "name": "@lancedb/vectordb-darwin-arm64",
       "version": "0.4.20",
       "fix": "P5 @lancedb/lancedb 0.22.3"
+    },
+    {
+      "name": "uuid",
+      "version": "8.3.2",
+      "fix": "P6 drop dbinfoz (via @azure/msal-node 2)"
     }
   ]
 }
