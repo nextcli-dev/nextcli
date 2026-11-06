@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.3.0](https://github.com/nextcli-dev/nextcli/compare/cli-v0.2.3...cli-v0.3.0) (2026-11-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** the CLI now requires Node.js 22.15 or newer.
+
+### Features
+
+* **cli:** require Node.js 22.15 and upgrade OpenTelemetry to 3.0 ([#50](https://github.com/nextcli-dev/nextcli/issues/50)) ([e9bfc2d](https://github.com/nextcli-dev/nextcli/commit/e9bfc2dd20abff7d8865853322af2aa5b153f960))
+
+
+### Bug Fixes
+
+* **deps:** update security-flagged transitive packages ([#42](https://github.com/nextcli-dev/nextcli/issues/42)) ([98bf6ad](https://github.com/nextcli-dev/nextcli/commit/98bf6ad14d6dfd31779d6aebf0565e6ac3001249))
+
 ## [0.2.3](https://github.com/nextcli-dev/nextcli/compare/cli-v0.2.2...cli-v0.2.3) (2026-11-05)
 
 
