@@ -39,6 +39,10 @@ NextCLI is a community continuation of [Continue](https://github.com/continuedev
 
 ![Autocomplete](https://github.com/nextcli-dev/nextcli/raw/HEAD/extensions/vscode/media/readme/autocomplete.gif)
 
+## Requirements
+
+NextCLI 1.6.x runs on VS Code 1.70 and newer. NextCLI 1.8 and later will need VS Code 1.101 or newer, because they move to Node.js 22. On an older VS Code, NextCLI stays on 1.6.x and keeps working. See [Install](https://docs.nextcli.dev/ide-extensions/install#requirements) for forks and `.vsix` installs.
+
 ## Stable and pre-release versions
 
 Stable versions use even minor numbers (1.6, 1.8). Pre-release versions use odd minor numbers (1.7, 1.9) and are published to the Visual Studio Marketplace only. To try them, open the extension in the Extensions view and choose **Switch to Pre-Release Version**.
