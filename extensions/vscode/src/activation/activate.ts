@@ -7,7 +7,6 @@ import { isUnsupportedPlatform } from "../util/util";
 import { GlobalContext } from "core/util/GlobalContext";
 import { VsCodeContinueApi } from "./api";
 import setupInlineTips from "./InlineTipManager";
-import { showMinimumVersionNotice } from "./minimumVersionNotice";
 import { registerYamlSchema } from "./yamlSchema";
 
 export async function activateExtension(context: vscode.ExtensionContext) {
@@ -25,8 +24,6 @@ export async function activateExtension(context: vscode.ExtensionContext) {
       `Continue detected that you are using ${platformTarget}. Due to native dependencies, Continue may not be able to start`,
     );
   }
-
-  showMinimumVersionNotice(globalContext);
 
   // Add necessary files
   getTsConfigPath();
