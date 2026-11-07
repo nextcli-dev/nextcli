@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.0](https://github.com/nextcli-dev/nextcli/compare/cli-v0.6.0...cli-v0.7.0) (2026-11-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* NextCLI needs VS Code 1.103 or newer. On VS Code 1.101 and 1.102 it stays on 1.6.7; on 1.70 to 1.100 on 1.6.4.
+
+### Features
+
+* move core's SQLite to node:sqlite and require VS Code 1.103 ([#71](https://github.com/nextcli-dev/nextcli/issues/71)) ([e8f50c3](https://github.com/nextcli-dev/nextcli/commit/e8f50c390e63ba02a1bc1e5c585f70617f0432ec))
+* replace dbinfoz and remove sqlite3 ([#74](https://github.com/nextcli-dev/nextcli/issues/74)) ([dafdec3](https://github.com/nextcli-dev/nextcli/commit/dafdec37ae768a884ef2497661361ae64a3f3c74))
+
 ## [0.6.0](https://github.com/nextcli-dev/nextcli/compare/cli-v0.5.1...cli-v0.6.0) (2026-11-07)
 
 
