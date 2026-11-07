@@ -1,0 +1,11 @@
+{
+  "name": "keytar",
+  "version": "7.9.0",
+  "description": "Stand-in for keytar (archived; installs through the deprecated prebuild-install), backed by @napi-rs/keyring.",
+  "main": "index.js",
+  "license": "MIT",
+  "private": true,
+  "dependencies": {
+    "@napi-rs/keyring": "2.1.2"
+  }
+}
