@@ -17,11 +17,6 @@ declare global {
       };
       colorThemeName?: string;
       workspacePaths?: string[];
-      postIntellijMessage?: (
-        messageType: string,
-        data: any,
-        messageIde: string,
-      ) => void;
     }
   }
   
@@ -615,7 +610,7 @@ declare global {
     id: number;
   }
   
-  export type IdeType = "vscode" | "jetbrains";
+  export type IdeType = "vscode";
   
   export interface IdeInfo {
     ideType: IdeType;

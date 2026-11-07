@@ -1,31 +1,20 @@
 import { Editor } from "@tiptap/react";
 import { KeyboardEvent, useRef } from "react";
-import { isJetBrains, isMetaEquivalentKeyPressed } from "../../../../util";
-import {
-  handleJetBrainsOSRMetaKeyIssues,
-  handleVSCMetaKeyIssues,
-} from "../../util/handleMetaKeyIssues";
+import { isMetaEquivalentKeyPressed } from "../../../../util";
+import { handleVSCMetaKeyIssues } from "../../util/handleMetaKeyIssues";
 
 export function useEditorEventHandlers(options: {
   editor: Editor | null;
-  isOSREnabled: boolean;
   editorFocusedRef: React.MutableRefObject<boolean | undefined>;
   setActiveKey: (key: string | null) => void;
 }) {
-  const { editor, isOSREnabled, editorFocusedRef, setActiveKey } = options;
+  const { editor, editorFocusedRef, setActiveKey } = options;
   const metaActiveRef = useRef(false);
 
   /**
-   * This handles various issues with meta key actions
-   * - In JetBrains, when using OSR in JCEF, there is a bug where using the meta key to
-   *   highlight code using arrow keys is not working
-   * - In VS Code, while working with .ipynb files there is a problem where copy/paste/cut will affect
-   *   the actual notebook cells, even when performing them in our GUI
-   *
-   *  Currently keydown events for a number of keys are not registering if the
-   *  meta/shift key is pressed, for example "x", "c", "v", "z", etc.
-   *  Until this is resolved we can't turn on OSR for non-Mac users due to issues
-   *  with those key actions.
+   * In VS Code, while working with .ipynb files, copy/paste/cut affect the
+   * notebook cells even when performed in our GUI, so meta key actions are
+   * handled here
    */
   const handleKeyDown = async (e: KeyboardEvent<HTMLDivElement>) => {
     if (!editor) {
@@ -40,11 +29,7 @@ export function useEditorEventHandlers(options: {
       metaActiveRef.current = true;
     }
 
-    if (isOSREnabled) {
-      handleJetBrainsOSRMetaKeyIssues(e, editor);
-    } else if (!isJetBrains()) {
-      await handleVSCMetaKeyIssues(e, editor);
-    }
+    await handleVSCMetaKeyIssues(e, editor);
   };
 
   const handleKeyUp = () => {

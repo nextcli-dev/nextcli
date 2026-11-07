@@ -377,7 +377,6 @@ async function intermediateToFinalConfig({
           provider: (cp as ContextProviderWithParams).name,
           params: (cp as ContextProviderWithParams).params,
         })),
-      ideInfo.ideType,
     );
 
   for (const cp of config.contextProviders ?? []) {

@@ -142,7 +142,7 @@ describe("CoreTelemetry", () => {
     });
     await t.configure({
       allowAnonymousTelemetry: true,
-      ideType: "jetbrains-test",
+      ideType: "test-ide",
       extensionVersion: "9.9.9-test",
     });
     expect(t.enabled).toBe(true);
@@ -163,7 +163,7 @@ describe("CoreTelemetry", () => {
     expect(resource).toMatchObject({
       "service.name": "nextcli-core",
       "service.version": "9.9.9-test",
-      "nextcli.ide": "jetbrains-test",
+      "nextcli.ide": "test-ide",
     });
     const metric = payload.resourceMetrics[0].scopeMetrics[0].metrics[0];
     expect(metric.name).toBe("nextcli_core_docs_backup_sites");

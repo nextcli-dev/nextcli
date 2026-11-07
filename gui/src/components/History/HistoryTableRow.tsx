@@ -17,11 +17,8 @@ import {
   loadSession,
   updateSession,
 } from "../../redux/thunks/session";
-import { isShareSessionSupported } from "../../util";
 import HeaderButtonWithToolTip from "../gui/HeaderButtonWithToolTip";
 import { ToolTip } from "../gui/Tooltip";
-
-const shareSessionSupported = isShareSessionSupported();
 
 export function HistoryTableRow({
   sessionMetadata,
@@ -46,12 +43,9 @@ export function HistoryTableRow({
   }, [sessionMetadata]);
 
   const shareSession = async (sessionId: string) => {
-    // "session/share" is not supported in JetBrains yet
-    if (shareSessionSupported) {
-      await ideMessenger.request("session/share", {
-        sessionId,
-      });
-    }
+    await ideMessenger.request("session/share", {
+      sessionId,
+    });
   };
 
   const handleKeyUp = async (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -160,17 +154,15 @@ export function HistoryTableRow({
               >
                 <PencilSquareIcon width="1em" height="1em" />
               </HeaderButtonWithToolTip>
-              {shareSessionSupported && (
-                <HeaderButtonWithToolTip
-                  text="Save Chat as Markdown"
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    await shareSession(sessionMetadata.sessionId);
-                  }}
-                >
-                  <ArrowDownOnSquareIcon width="1em" height="1em" />
-                </HeaderButtonWithToolTip>
-              )}
+              <HeaderButtonWithToolTip
+                text="Save Chat as Markdown"
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  await shareSession(sessionMetadata.sessionId);
+                }}
+              >
+                <ArrowDownOnSquareIcon width="1em" height="1em" />
+              </HeaderButtonWithToolTip>
               <HeaderButtonWithToolTip
                 text="Delete"
                 onClick={async (e) => {

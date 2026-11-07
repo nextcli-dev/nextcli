@@ -9,7 +9,6 @@ import {
   setDialogMessage,
   setShowDialog,
 } from "../../../../redux/slices/uiSlice";
-import { isJetBrains } from "../../../../util";
 import IndexingProgressBar from "./IndexingProgressBar";
 import IndexingProgressErrorText from "./IndexingProgressErrorText";
 import IndexingProgressIndicator from "./IndexingProgressIndicator";
@@ -53,9 +52,7 @@ function IndexingProgress() {
   }, [paused]);
 
   function onClickRetry() {
-    // For now, we don't show in JetBrains since the re-index command
-    // is not yet implemented
-    if (update.shouldClearIndexes && !isJetBrains()) {
+    if (update.shouldClearIndexes) {
       dispatch(setShowDialog(true));
       dispatch(
         setDialogMessage(
