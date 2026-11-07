@@ -34,7 +34,7 @@ import { getBaseToolDefinitions } from "../../tools";
 import { getCleanUriPath } from "../../util/uri";
 import {
   loadConfigContextProviders,
-  REMOVED_DOCS_MESSAGE,
+  REMOVED_DOCS_BLOCK_MESSAGE,
   removedEmbedRoleMessage,
 } from "../loadContextProviders";
 import { getAllDotContinueDefinitionFiles } from "../loadLocalAssistants";
@@ -211,7 +211,7 @@ export async function configYamlToContinueConfig(options: {
     ),
   }));
   if (config.docs?.length) {
-    localErrors.push({ fatal: false, message: REMOVED_DOCS_MESSAGE });
+    localErrors.push({ fatal: false, message: REMOVED_DOCS_BLOCK_MESSAGE });
   }
 
   // Prompt files -
