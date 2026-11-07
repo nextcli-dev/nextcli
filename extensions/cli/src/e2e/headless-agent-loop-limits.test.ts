@@ -17,10 +17,12 @@ describe("E2E: agent loop limits", () => {
   let context: any;
   let mockServer: MockLLMServer;
   let requestCount: number;
+  let requestBodies: any[];
 
   beforeEach(async () => {
     context = await createTestContext();
     requestCount = 0;
+    requestBodies = [];
   });
 
   afterEach(async () => {
@@ -30,10 +32,15 @@ describe("E2E: agent loop limits", () => {
     await cleanupTestContext(context);
   });
 
+  // The last allowed call is a wrap-up without tools. The mock keeps asking for
+  // the tool anyway, so this also checks that those tool calls are dropped.
   it("stops a model that repeats the same tool call forever", async () => {
     mockServer = await setupMockLLMTest(context, {
       customHandler: (req: http.IncomingMessage, res: http.ServerResponse) => {
-        req.on("data", () => {});
+        let body = "";
+        req.on("data", (chunk) => {
+          body += chunk;
+        });
         req.on("end", () => {
           if (req.method !== "POST" || req.url !== "/chat/completions") {
             res.writeHead(404);
@@ -41,6 +48,7 @@ describe("E2E: agent loop limits", () => {
             return;
           }
           requestCount++;
+          requestBodies.push(JSON.parse(body));
           res.writeHead(200, { "Content-Type": "text/event-stream" });
           res.write(
             `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_same","type":"function","function":{"name":"List","arguments":"{\\"dirpath\\":\\".\\"}"}}]},"index":0}]}\n\n`,
@@ -60,6 +68,8 @@ describe("E2E: agent loop limits", () => {
         "--auto",
         "--max-turns",
         "5",
+        "--format",
+        "json",
         "--config",
         context.configPath,
         "List the files",
@@ -69,7 +79,10 @@ describe("E2E: agent loop limits", () => {
     });
 
     expect(requestCount).toBe(5);
-    expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toContain("Stopped after 5 model calls");
+    expect(requestBodies[3].tools?.length).toBeGreaterThan(0);
+    expect(requestBodies[4].tools ?? []).toHaveLength(0);
+    expect(result.exitCode).toBe(3);
+    const summary = JSON.parse(result.stderr.trim().split("\n").pop()!);
+    expect(summary).toMatchObject({ status: "limit", limit: "turns" });
   }, 40000);
 });
