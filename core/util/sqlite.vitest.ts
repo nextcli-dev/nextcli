@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { DevDataSqliteDb } from "../data/devdataSqlite";
 import { getDevDataSqlitePath } from "./paths";
-import { SqliteDatabase, sqliteHasFts5 } from "./sqlite";
+import { SqliteDatabase, SqliteError, sqliteHasFts5 } from "./sqlite";
 
 let dir: string;
 let db: SqliteDatabase;
@@ -44,26 +44,95 @@ describe("SqliteDatabase", () => {
     expect(await db.get("SELECT a FROM t WHERE b = ?", 99)).toBeUndefined();
   });
 
-  it("stores values with the types sqlite3 used", async () => {
-    // Columns without a declared type keep whatever type is bound
-    await db.exec("CREATE TABLE t (v)");
-    const values = [5, 1.5, true, false, undefined, null, "s", new Date(7)];
-    for (const v of values) {
-      await db.run("INSERT INTO t VALUES (?)", v);
+  it("stores values with the types sqlite3 6.0.1 stored", async () => {
+    // Recorded with sqlite3 6.0.1: `v` has no declared type, so it keeps the
+    // bound type; `i` is INTEGER, whose affinity turns integral REALs back
+    // into INTEGER
+    await db.exec("CREATE TABLE t (k TEXT, v, i INTEGER)");
+    const values: [string, any][] = [
+      ["int32", 5],
+      ["negative", -7],
+      ["int32 max", 2147483647],
+      ["over int32", 2147483648],
+      ["Date.now()-sized", 1700000000000],
+      ["float", 1.5],
+      ["true", true],
+      ["false", false],
+      ["undefined", undefined],
+      ["null", null],
+      ["Date(7)", new Date(7)],
+      ["recent Date", new Date(1700000000000)],
+    ];
+    for (const [k, v] of values) {
+      await db.run("INSERT INTO t VALUES (?, ?, ?)", k, v, v);
     }
 
     expect(
-      await db.all("SELECT typeof(v) AS type, v FROM t ORDER BY rowid"),
+      await db.all(
+        "SELECT k, typeof(v) AS tv, v, typeof(i) AS ti FROM t ORDER BY rowid",
+      ),
     ).toEqual([
-      { type: "integer", v: 5 },
-      { type: "real", v: 1.5 },
-      { type: "integer", v: 1 },
-      { type: "integer", v: 0 },
-      { type: "null", v: null },
-      { type: "null", v: null },
-      { type: "text", v: "s" },
-      { type: "integer", v: 7 },
+      { k: "int32", tv: "integer", v: 5, ti: "integer" },
+      { k: "negative", tv: "integer", v: -7, ti: "integer" },
+      { k: "int32 max", tv: "integer", v: 2147483647, ti: "integer" },
+      { k: "over int32", tv: "real", v: 2147483648, ti: "integer" },
+      { k: "Date.now()-sized", tv: "real", v: 1700000000000, ti: "integer" },
+      { k: "float", tv: "real", v: 1.5, ti: "real" },
+      { k: "true", tv: "integer", v: 1, ti: "integer" },
+      { k: "false", tv: "integer", v: 0, ti: "integer" },
+      { k: "undefined", tv: "null", v: null, ti: "null" },
+      { k: "null", tv: "null", v: null, ti: "null" },
+      { k: "Date(7)", tv: "real", v: 7, ti: "integer" },
+      { k: "recent Date", tv: "real", v: 1700000000000, ti: "integer" },
     ]);
+  });
+
+  it("reports errors the way sqlite3 did", async () => {
+    await db.exec("CREATE TABLE t (v UNIQUE)");
+    await db.run("INSERT INTO t VALUES (?)", 1);
+
+    const error = await db
+      .run("INSERT INTO t VALUES (?)", 1)
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(SqliteError);
+    expect(error).toMatchObject({
+      message: "SQLITE_CONSTRAINT: UNIQUE constraint failed: t.v",
+      code: "SQLITE_CONSTRAINT",
+      errno: 19,
+      errcode: 2067,
+    });
+
+    const notADatabase = path.join(dir, "not-a-database.sqlite");
+    fs.writeFileSync(notADatabase, "plain text, not a SQLite file ".repeat(10));
+    const broken = await SqliteDatabase.open(notADatabase);
+    await expect(
+      broken.all("SELECT * FROM sqlite_master"),
+    ).rejects.toMatchObject({
+      message: "SQLITE_NOTADB: file is not a database",
+      code: "SQLITE_NOTADB",
+    });
+    await broken.close();
+  });
+
+  it("rolls back when COMMIT fails, so the next transaction can start", async () => {
+    // Rollback-journal mode: a reader's lock makes the writer's COMMIT fail
+    // with SQLITE_BUSY (no busy timeout is set)
+    const file = path.join(dir, "locked.sqlite");
+    const writer = await SqliteDatabase.open(file);
+    const reader = await SqliteDatabase.open(file);
+    await writer.exec("CREATE TABLE t (v INTEGER)");
+    await reader.exec("BEGIN");
+    await reader.all("SELECT * FROM t");
+
+    await expect(
+      writer.transaction((tx) => tx.run("INSERT INTO t VALUES (?)", 1)),
+    ).rejects.toMatchObject({ code: "SQLITE_BUSY" });
+
+    await reader.exec("COMMIT");
+    await writer.transaction((tx) => tx.run("INSERT INTO t VALUES (?)", 2));
+    expect(await writer.all("SELECT v FROM t")).toEqual([{ v: 2 }]);
+    await reader.close();
+    await writer.close();
   });
 
   it("leaves foreign keys unenforced, like sqlite3", async () => {
@@ -99,6 +168,24 @@ describe("SqliteDatabase", () => {
 
     expect(timerFired).toBe(true);
     expect(performance.now() - start).toBeLessThan(200);
+  });
+
+  it("gives the event loop a turn when many calls start at once", async () => {
+    // Promise.all starts every call before any of them runs; each statement
+    // still has to check the clock right before it runs
+    const slow =
+      "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c LIMIT 100000) SELECT count(*) AS n FROM c";
+    const order: string[] = [];
+    setTimeout(() => order.push("timer"), 0);
+
+    await Promise.all(
+      Array.from({ length: 40 }, (_, i) =>
+        db.get(slow).then(() => order.push(`call ${i}`)),
+      ),
+    );
+
+    expect(order.indexOf("timer")).toBeGreaterThan(-1);
+    expect(order.indexOf("timer")).toBeLessThan(order.length - 1);
   });
 
   it("detects FTS5 in this runtime", () => {

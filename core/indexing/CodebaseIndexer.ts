@@ -84,12 +84,15 @@ export class CodebaseIndexer {
 
   // Note that we exclude certain Sqlite errors that we do not want to clear the indexes on,
   // e.g. a `SQLITE_BUSY` error.
+  // Matched against the error message, which core/util/sqlite.ts starts with
+  // the SQLite code (`SQLITE_CORRUPT: ...`), as sqlite3 did.
   errorsRegexesToClearIndexesOn = [
     /SQLITE_CONSTRAINT/,
     /SQLITE_ERROR/,
     /SQLITE_CORRUPT/,
     /SQLITE_IOERR/,
     /SQLITE_FULL/,
+    /SQLITE_NOTADB/,
   ];
 
   constructor(
@@ -456,6 +459,10 @@ export class CodebaseIndexer {
         }
 
         yield updateDesc;
+        if (updateDesc.status === "failed") {
+          // A failure that affects the whole index (see indexFiles)
+          return;
+        }
         if (updateDesc.progress >= nextLogThreshold) {
           // log progress every 2.5%
           nextLogThreshold += 0.025;
@@ -636,6 +643,12 @@ export class CodebaseIndexer {
                 (completedIndexCount + completedOps / totalOps) *
                 (1 / indexesToBuild.length);
             } catch (err) {
+              // Index corruption and model errors affect every file: stop,
+              // so the user is offered a rebuild
+              if (this.shouldFailBatch(err)) {
+                yield this.handleErrorAndGetProgressUpdate(err);
+                return;
+              }
               // Collect non-fatal errors as warnings and continue
               const warningMsg =
                 err instanceof Error ? err.message : String(err);
@@ -666,6 +679,11 @@ export class CodebaseIndexer {
         if (cause instanceof LLMError) {
           // LLM errors are critical, re-throw them
           throw cause;
+        }
+
+        if (this.shouldFailBatch(err)) {
+          yield this.handleErrorAndGetProgressUpdate(err);
+          return;
         }
 
         // Collect planning errors as warnings and continue to next index
@@ -753,11 +771,18 @@ export class CodebaseIndexer {
     const localController = new AbortController();
     this.indexingCancellationController = localController;
 
-    for await (const update of this.waitForDBIndex()) {
-      this.updateProgress(update);
-    }
+    try {
+      for await (const update of this.waitForDBIndex()) {
+        this.updateProgress(update);
+      }
 
-    await IndexLock.lock(paths.join(", ")); // acquire the index lock to prevent multiple windows to begin indexing
+      await IndexLock.lock(paths.join(", ")); // acquire the index lock to prevent multiple windows to begin indexing
+    } catch (e: any) {
+      // index.sqlite itself can't be used (corrupt, full, unreadable)
+      console.log(`Failed to lock the codebase index: ${e}`);
+      await this.handleIndexingError(e);
+      return;
+    }
     const indexLockTimestampUpdateInterval = setInterval(
       () => void IndexLock.updateTimestamp(),
       5_000,
@@ -831,12 +856,15 @@ export class CodebaseIndexer {
       void this.messenger.request("reportError", e);
     }
 
-    // broadcast indexing error
-    const updateToSend: IndexingProgressUpdate = {
-      progress: 0,
-      status: "failed",
-      desc: e.message,
-    };
+    // broadcast indexing error, offering a rebuild when the index is broken
+    const updateToSend: IndexingProgressUpdate =
+      e instanceof Error && !(e instanceof LLMError)
+        ? this.errorToProgressUpdate(e)
+        : {
+            progress: 0,
+            status: "failed",
+            desc: e.message,
+          };
 
     this.updateProgress(updateToSend);
     void this.sendIndexingErrorTelemetry(updateToSend);
