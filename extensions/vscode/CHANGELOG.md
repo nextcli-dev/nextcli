@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.9](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.8...vscode-v1.6.9) (2026-11-07)
+
+
+### Features
+
+* offer to delete legacy index data; remove the baseline script and JetBrains code ([#79](https://github.com/nextcli-dev/nextcli/issues/79)) ([6c99f66](https://github.com/nextcli-dev/nextcli/commit/6c99f663b823fcc7491c5a271cf1a5c212e0dcb1))
+
 ## [1.6.8](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.7...vscode-v1.6.8) (2026-11-07)
 
 
