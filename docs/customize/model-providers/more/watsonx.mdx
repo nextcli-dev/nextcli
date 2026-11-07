@@ -1,6 +1,6 @@
 ---
 title: "IBM WatsonX"
-description: "How to configure IBM's watsonx models in NextCLI, including authentication methods, deployment options, and support for chat, autocomplete, embeddings, and reranking models"
+description: "How to configure IBM's watsonx models in NextCLI, including authentication methods, deployment options, and support for chat, autocomplete, and reranking models"
 ---
 
 watsonx, developed by IBM, offers a variety of pre-trained AI foundation models that can be used for natural language processing (NLP), computer vision, and speech recognition tasks.
@@ -220,45 +220,6 @@ Granite models are recommended for tab auto complete. The configuration is simil
       "apiKey": "API_KEY/ZENAPI_KEY/USERNAME:PASSWORD",
       "apiVersion": "2024-03-14",
       "contextLength": 4000
-    }
-  }
-  ```
-	</Tab>
-</Tabs>
-
-## Embeddings Model
-
-To view the list of available embeddings models, visit [this page](https://dataplatform.cloud.ibm.com/docs/content/wsj/analyze-data/fm-models-embed.html?context=wx&pos=2#ibm-provided).
-
-<Tabs>
-	<Tab title="YAML">
-  ```yaml title="config.yaml"
-  name: My Config
-  version: 0.0.1
-  schema: v1
-
-  models:
-    - name: Watsonx Embedder
-      provider: watsonx
-      model: ibm/slate-30m-english-rtrvr-v2
-      apiBase: https://us-south.ml.cloud.ibm.com
-      projectId: PROJECT_ID
-      apiKey: API_KEY/ZENAPI_KEY/USERNAME:PASSWORD
-      apiVersion: 2024-03-14
-      roles:
-        - embed
-  ```
-	</Tab>
-	<Tab title="JSON">
-  ```json title="config.json"
-  {
-    "embeddingsProvider": {
-      "provider": "watsonx",
-      "model": "ibm/slate-30m-english-rtrvr-v2",
-      "apiBase": "watsonx endpoint e.g. https://us-south.ml.cloud.ibm.com",
-      "projectId": "PROJECT_ID",
-      "apiKey": "API_KEY/ZENAPI_KEY/USERNAME:PASSWORD",
-      "apiVersion": "2024-03-14"
     }
   }
   ```

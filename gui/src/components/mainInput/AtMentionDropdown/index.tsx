@@ -30,7 +30,6 @@ import { setDialogMessage, setShowDialog } from "../../../redux/slices/uiSlice";
 import { fontSize } from "../../../util";
 import FileIcon from "../../FileIcon";
 import SafeImg from "../../SafeImg";
-import AddDocsDialog from "../../dialogs/AddDocsDialog";
 import HeaderButtonWithToolTip from "../../gui/HeaderButtonWithToolTip";
 import { Button } from "../../ui";
 import { NAMED_ICONS } from "../icons";
@@ -265,25 +264,7 @@ const AtMentionDropdown = forwardRef((props: AtMentionDropdownProps, ref) => {
 
   useEffect(() => {
     const items = [...props.items];
-    if (subMenuTitle === "Type to search docs") {
-      items.push({
-        title: "Add Docs",
-        type: "action",
-        action: () => {
-          dispatch(setShowDialog(true));
-          dispatch(setDialogMessage(<AddDocsDialog />));
-
-          // Delete back to last '@'
-          const { tr } = props.editor.view.state;
-          const text = tr.doc.textBetween(0, tr.selection.from);
-          const start = text.lastIndexOf("@");
-          props.editor.view.dispatch(
-            tr.delete(start, tr.selection.from).scrollIntoView(),
-          );
-        },
-        description: "",
-      });
-    } else if (subMenuTitle === ".prompt files") {
+    if (subMenuTitle === ".prompt files") {
       items.push({
         title: "New .prompt file",
         type: "action",

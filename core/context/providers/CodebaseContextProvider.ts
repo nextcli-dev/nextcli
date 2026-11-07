@@ -4,7 +4,7 @@ import {
   ContextProviderDescription,
   ContextProviderExtras,
 } from "../../";
-import { retrieveContextItemsFromEmbeddings } from "../retrieval/retrieval";
+import { retrieveContextItems } from "../retrieval/retrieval";
 
 class CodebaseContextProvider extends BaseContextProvider {
   static description: ContextProviderDescription = {
@@ -13,14 +13,14 @@ class CodebaseContextProvider extends BaseContextProvider {
     description: "Automatically find relevant files",
     type: "normal",
     renderInlineAs: "",
-    dependsOnIndexing: ["embeddings", "fullTextSearch", "chunk"],
+    dependsOnIndexing: ["fullTextSearch", "chunk"],
   };
 
   async getContextItems(
     query: string,
     extras: ContextProviderExtras,
   ): Promise<ContextItem[]> {
-    return retrieveContextItemsFromEmbeddings(extras, this.options, undefined);
+    return retrieveContextItems(extras, this.options, undefined);
   }
   async load(): Promise<void> {}
 }

@@ -4,7 +4,6 @@ import type {
   ContextItemWithId,
   ContextProviderName,
   IndexingProgressUpdate,
-  IndexingStatus,
 } from "../index.js";
 import type { ProfileDescription } from "../config/ProfileLifecycleManager.js";
 
@@ -19,7 +18,6 @@ export type ToWebviewFromIdeOrCoreProtocol = {
   ];
   getDefaultModelTitle: [undefined, string | undefined];
   indexProgress: [IndexingProgressUpdate, void]; // Codebase
-  "indexing/statusUpdate": [IndexingStatus, void]; // Docs, etc.
   refreshSubmenuItems: [
     {
       providers: "all" | "dependsOnIndexing" | ContextProviderName[];

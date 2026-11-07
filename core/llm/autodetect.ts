@@ -104,7 +104,6 @@ const PROVIDER_HANDLES_TEMPLATING: string[] = [
   // TARS.ts
   // Test.ts
   // TextGenWebUI.ts
-  // TransformersJsEmbeddingsProvider.ts
   // Venice.ts
   // Vllm.ts
   // Voyage.ts

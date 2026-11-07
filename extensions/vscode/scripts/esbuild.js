@@ -21,7 +21,7 @@ const esbuildConfig = {
     ".node": "file",
   },
 
-  // To allow import.meta.path for transformers.js
+  // To allow import.meta.url in bundled ESM dependencies
   // https://github.com/evanw/esbuild/issues/1492#issuecomment-893144483
   inject: ["./scripts/importMetaUrl.js"],
   define: { "import.meta.url": "importMetaUrl" },

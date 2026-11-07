@@ -636,25 +636,24 @@ describe("CodebaseIndexer", () => {
         expect(mockGetWorkspaceDirs).toHaveBeenCalledTimes(0);
       });
 
-      test("should return early when no embed model is configured", async () => {
-        const configResult: ConfigResult<ContinueConfig> = {
-          config: {
-            contextProviders: [new CodebaseContextProvider({})],
-            selectedModelByRole: {
-              embed: undefined,
-            },
-          } as unknown as ContinueConfig,
+      test("should not reindex when the needed index types are unchanged", async () => {
+        const config = {
+          contextProviders: [new CodebaseContextProvider({})],
+        } as unknown as ContinueConfig;
+        (testIndexer as any).config = config;
+
+        await testIndexer.testHandleConfigUpdate({
+          config: { ...config, disableIndexing: false } as ContinueConfig,
           errors: [],
           configLoadInterrupted: false,
-        };
-
-        await testIndexer.testHandleConfigUpdate(configResult);
+        });
 
         expect(mockRefreshCodebaseIndex).toHaveBeenCalledTimes(0);
         expect(mockGetWorkspaceDirs).toHaveBeenCalledTimes(0);
       });
 
       test("should call refreshCodebaseIndex when all conditions are met", async () => {
+        (testIndexer as any).config = { contextProviders: [] };
         const configResult: ConfigResult<ContinueConfig> = {
           config: {
             contextProviders: [new CodebaseContextProvider({})],
@@ -679,6 +678,7 @@ describe("CodebaseIndexer", () => {
       });
 
       test("should set config property before checking conditions", async () => {
+        (testIndexer as any).config = { contextProviders: [] };
         const testConfig = {
           contextProviders: [new CodebaseContextProvider({})],
           selectedModelByRole: {
@@ -704,6 +704,7 @@ describe("CodebaseIndexer", () => {
       });
 
       test("should handle multiple context providers correctly", async () => {
+        (testIndexer as any).config = { contextProviders: [] };
         const configResult: ConfigResult<ContinueConfig> = {
           config: {
             contextProviders: [
@@ -742,7 +743,6 @@ describe("CodebaseIndexer", () => {
     describe("getIndexesToBuild", () => {
       let indexer: CodebaseIndexer;
       let mockConfig: any;
-      let mockEmbeddingsModel: any;
       let mockIdeSettings: any;
 
       beforeEach(async () => {
@@ -753,21 +753,14 @@ describe("CodebaseIndexer", () => {
           false,
         );
 
-        mockEmbeddingsModel = {
-          maxEmbeddingChunkSize: 1000,
-          model: "test-model",
-          provider: "test-provider",
-        };
-
         mockIdeSettings = {
           remoteConfigServerUrl: "http://test.com",
           userToken: "test-token",
         };
 
+        // No embeddings model: indexes are built without one
         mockConfig = {
-          selectedModelByRole: {
-            embed: mockEmbeddingsModel,
-          },
+          selectedModelByRole: {},
           contextProviders: [],
         };
 
@@ -802,6 +795,28 @@ describe("CodebaseIndexer", () => {
         expect(indexes).toHaveLength(2);
         expect(indexes[0].artifactId).toBe("chunks");
         expect(indexes[1].artifactId).toBe("codeSnippets");
+      });
+
+      test("builds the indexes @codebase needs", async () => {
+        mockConfig.contextProviders = [new CodebaseContextProvider({})];
+
+        jest.spyOn(testConfigHandler, "loadConfig").mockResolvedValue({
+          config: mockConfig,
+          errors: [],
+          configLoadInterrupted: false,
+        });
+
+        const indexes = (await (
+          indexer as any
+        ).getIndexesToBuild()) as CodebaseIndex[];
+
+        // Chunks first: the full-text index reads the chunks table
+        const ids: string[] = [];
+        for (const index of indexes) {
+          ids.push(index.artifactId);
+        }
+        expect(ids).toEqual(["chunks", "sqliteFts"]);
+        expect((indexes[0] as any).maxChunkSize).toBe(500);
       });
 
       test("should handle duplicate contexts", async () => {

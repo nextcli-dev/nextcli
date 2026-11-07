@@ -28,7 +28,6 @@ import {
   ContextItemWithId,
   ContextSubmenuItem,
   DiffLine,
-  DocsIndexingDetails,
   ExperimentalModelRoles,
   FileSymbolMap,
   IdeSettings,
@@ -41,7 +40,6 @@ import {
   RangeInFileWithNextEditInfo,
   SerializedContinueConfig,
   Session,
-  SiteIndexingConfig,
   SlashCommandDescWithSource,
   StreamDiffLinesPayload,
   ToolCall,
@@ -177,9 +175,6 @@ export type ToCoreFromIdeOrWebviewProtocol = {
   "context/getSymbolsForFiles": [{ uris: string[] }, FileSymbolMap];
   "context/loadSubmenuItems": [{ title: string }, ContextSubmenuItem[]];
   "autocomplete/complete": [AutocompleteInput, string[]];
-  "context/addDocs": [SiteIndexingConfig, void];
-  "context/removeDocs": [Pick<SiteIndexingConfig, "startUrl">, void];
-  "context/indexDocs": [{ reIndex: boolean }, void];
   "autocomplete/cancel": [undefined, void];
   "autocomplete/accept": [{ completionId: string }, void];
   "nextEdit/predict": [
@@ -300,14 +295,6 @@ export type ToCoreFromIdeOrWebviewProtocol = {
     void,
   ];
 
-  // Docs etc. Indexing. TODO move codebase to this
-  "indexing/reindex": [{ type: string; id: string }, void];
-  "indexing/abort": [{ type: string; id: string }, void];
-  "indexing/setPaused": [{ type: string; id: string; paused: boolean }, void];
-  "docs/getSuggestedDocs": [undefined, void];
-  "docs/initStatuses": [undefined, void];
-  "docs/getDetails": [{ startUrl: string }, DocsIndexingDetails];
-  "docs/getIndexedPages": [{ startUrl: string }, string[]];
   addAutocompleteModel: [{ model: ModelDescription }, void];
 
   "auth/getAuthUrl": [{ useOnboarding: boolean }, { url: string }];

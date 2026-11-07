@@ -11,7 +11,7 @@ import {
   getUriPathBasename,
 } from "../../util/uri.js";
 import { BaseContextProvider } from "../index.js";
-import { retrieveContextItemsFromEmbeddings } from "../retrieval/retrieval.js";
+import { retrieveContextItems } from "../retrieval/retrieval.js";
 
 class FolderContextProvider extends BaseContextProvider {
   static description: ContextProviderDescription = {
@@ -19,14 +19,14 @@ class FolderContextProvider extends BaseContextProvider {
     displayTitle: "Folder",
     description: "Type to search",
     type: "submenu",
-    dependsOnIndexing: ["embeddings", "fullTextSearch", "chunk"],
+    dependsOnIndexing: ["fullTextSearch", "chunk"],
   };
 
   async getContextItems(
     query: string,
     extras: ContextProviderExtras,
   ): Promise<ContextItem[]> {
-    return retrieveContextItemsFromEmbeddings(extras, this.options, query);
+    return retrieveContextItems(extras, this.options, query);
   }
   async loadSubmenuItems(
     args: LoadSubmenuItemsArgs,

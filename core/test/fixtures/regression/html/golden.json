@@ -1,205 +1,50 @@
 {
   "docs page with h2 sections": {
-    "docsIndexing": {
-      "title": "Fixture page",
-      "components": [
-        {
-          "title": "Embeddings",
-          "body": "Each chunk is embedded once and cached by its content hash.const index = await LanceDbIndex.create(provider, readFile);"
-        },
-        {
-          "title": "Docs sites",
-          "body": "Docs are crawled, split by h2 sections and embedded.Cheerio for static pagesChromium for apps that need JavaScript"
-        },
-        {
-          "title": "Limits",
-          "body": "SettingDefaultmaxChunkSize512"
-        }
-      ],
-      "chunks": [
-        {
-          "content": "Each chunk is embedded once and cached by its content hash.const index = await LanceDbIndex.create(provider, readFile);",
-          "otherMetadata": {
-            "title": "Embeddings"
-          }
-        },
-        {
-          "content": "Docs are crawled, split by h2 sections and embedded.Cheerio for static pagesChromium for apps that need JavaScript",
-          "otherMetadata": {
-            "title": "Docs sites"
-          }
-        },
-        {
-          "content": "SettingDefaultmaxChunkSize512",
-          "otherMetadata": {
-            "title": "Limits"
-          }
-        }
-      ]
-    },
     "urlProvider": {
       "name": "Fixture page",
       "content": "## Indexing guide\n\nnextcli builds a local index of your code so retrieval stays fast.\n\n## Embeddings\n\nEach chunk is embedded once and cached by its content hash.\n\n```\nconst index = await LanceDbIndex.create(provider, readFile);\n```\n\n## Docs sites\n\nDocs are crawled, split by **h2** sections and embedded.\n\n* Cheerio for static pages\n* Chromium for apps that need JavaScript\n\n## Limits\n\n| Setting      | Default |\n| ------------ | ------- |\n| maxChunkSize | 512     |"
     }
   },
   "article without h2": {
-    "docsIndexing": {
-      "title": "Fixture page",
-      "components": [
-        {
-          "title": "Fixture page",
-          "body": "Release notes\n    This release replaces the vector store and keeps existing indexes readable.\n    Existing users do not need to re-embed anything; the migration copies rows.\n    See the changelog for the full list of fixes and the upgrade notes."
-        }
-      ],
-      "chunks": [
-        {
-          "content": "Release notes\n    This release replaces the vector store and keeps existing indexes readable.\n    Existing users do not need to re-embed anything; the migration copies rows.\n    See the changelog for the full list of fixes and the upgrade notes.",
-          "otherMetadata": {
-            "title": "Fixture page"
-          }
-        }
-      ]
-    },
     "urlProvider": {
       "name": "Fixture page",
       "content": "## Release notes\n\nThis release replaces the vector store and keeps existing indexes readable.\n\nExisting users do not need to re-embed anything; the migration copies rows.\n\nSee the changelog for the full list of fixes and the upgrade notes."
     }
   },
   "entities and whitespace": {
-    "docsIndexing": {
-      "title": "Fixture page",
-      "components": [
-        {
-          "title": "Entities",
-          "body": "Tom & Jerry <b> \"quoted\" 🙂 ©   lots    of\n    whitespace   "
-        }
-      ],
-      "chunks": [
-        {
-          "content": "Tom & Jerry <b> \"quoted\" 🙂 ©   lots    of\n    whitespace",
-          "otherMetadata": {
-            "title": "Entities"
-          }
-        }
-      ]
-    },
     "urlProvider": {
       "name": "Fixture page",
       "content": "## Entities\n\nTom & Jerry <b> \"quoted\" 🙂 ©\n\n lots of whitespace "
     }
   },
   "unicode text": {
-    "docsIndexing": {
-      "title": "Fixture page",
-      "components": [
-        {
-          "title": "Unicode",
-          "body": "Ünïcödé — 日本語のテキスト — עברית — emoji 🙂Second paragraph so readability keeps the article together."
-        }
-      ],
-      "chunks": [
-        {
-          "content": "Ünïcödé — 日本語のテキスト — עברית — emoji 🙂Second paragraph so readability keeps the article together.",
-          "otherMetadata": {
-            "title": "Unicode"
-          }
-        }
-      ]
-    },
     "urlProvider": {
       "name": "Fixture page",
       "content": "## Unicode\n\nÜnïcödé — 日本語のテキスト — עברית — emoji 🙂\n\nSecond paragraph so readability keeps the article together."
     }
   },
   "windows-1251 page read as UTF-8": {
-    "docsIndexing": {
-      "title": "cp1251",
-      "components": [
-        {
-          "title": "Legacy",
-          "body": "������, ���Recorded as today's behavior: response.text() always decodes UTF-8."
-        }
-      ],
-      "chunks": [
-        {
-          "content": "������, ���Recorded as today's behavior: response.text() always decodes UTF-8.",
-          "otherMetadata": {
-            "title": "Legacy"
-          }
-        }
-      ]
-    },
     "urlProvider": {
       "name": "cp1251",
       "content": "## Legacy\n\n������, ���\n\nRecorded as today's behavior: response.text() always decodes UTF-8."
     }
   },
   "latin-1 page read as UTF-8": {
-    "docsIndexing": {
-      "title": "latin1",
-      "components": [
-        {
-          "title": "Latin",
-          "body": "caf�Recorded as today's behavior for ISO-8859-1 pages."
-        }
-      ],
-      "chunks": [
-        {
-          "content": "caf�Recorded as today's behavior for ISO-8859-1 pages.",
-          "otherMetadata": {
-            "title": "Latin"
-          }
-        }
-      ]
-    },
     "urlProvider": {
       "name": "latin1",
       "content": "## Latin\n\ncaf�\n\nRecorded as today's behavior for ISO-8859-1 pages."
     }
   },
   "malformed html": {
-    "docsIndexing": {
-      "title": "Broken",
-      "components": [
-        {
-          "title": "Unclosedparagraph oneparagraph two bold both italic?stray",
-          "body": ""
-        }
-      ],
-      "chunks": []
-    },
     "urlProvider": {
       "name": "Broken",
       "content": "## Unclosed\n\nparagraph one\n\nparagraph two **bold _both_** _italic?_\n\nstray"
     }
   },
   "nested markup and code": {
-    "docsIndexing": {
-      "title": "Fixture page",
-      "components": [
-        {
-          "title": "Code",
-          "body": "Call retrieve() with care and the API.line 1\n  indented line 2\nline 3 <tag>Quoted text."
-        }
-      ],
-      "chunks": [
-        {
-          "content": "Call retrieve() with care and the API.line 1\n  indented line 2\nline 3 <tag>Quoted text.",
-          "otherMetadata": {
-            "title": "Code"
-          }
-        }
-      ]
-    },
     "urlProvider": {
       "name": "Fixture page",
       "content": "## Code\n\nCall `retrieve()` with _care_ and [the API](https://x.dev/api).\n\n```\nline 1\n  indented line 2\nline 3 <tag>\n```\n\n> Quoted **text**."
     }
-  },
-  "cheerio link extraction": [
-    "/docs/start",
-    "/docs/start-two",
-    "/docs/abs",
-    "/docs/caf%C3%A9"
-  ]
+  }
 }

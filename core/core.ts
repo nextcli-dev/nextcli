@@ -12,7 +12,6 @@ import { addModel, deleteModel } from "./config/util";
 import { DevDataSqliteDb } from "./data/devdataSqlite";
 import { DataLogger } from "./data/log";
 import { CodebaseIndexer } from "./indexing/CodebaseIndexer";
-import DocsService from "./indexing/docs/DocsService";
 import { countTokens } from "./llm/countTokens";
 import Lemonade from "./llm/llms/Lemonade";
 import { fetchModels } from "./llm/fetchModels";
@@ -101,7 +100,6 @@ export class Core {
   codeBaseIndexer: CodebaseIndexer;
   completionProvider: CompletionProvider;
   nextEditProvider: NextEditProvider;
-  private docsService: DocsService;
   private globalContext = new GlobalContext();
   llmLogger = new LLMLogger();
 
@@ -146,12 +144,6 @@ export class Core {
       const ideInfoPromise = messenger.request("getIdeInfo", undefined);
       const ideSettingsPromise = messenger.request("getIdeSettings", undefined);
       this.configHandler = new ConfigHandler(this.ide, this.llmLogger);
-
-      this.docsService = DocsService.createSingleton(
-        this.configHandler,
-        this.ide,
-        this.messenger,
-      );
 
       MCPManagerSingleton.getInstance().onConnectionsRefreshed = () => {
         void this.configHandler.reloadConfig("MCP Connections refreshed");
@@ -546,18 +538,6 @@ export class Core {
     });
 
     // Context providers
-    on("context/addDocs", async (msg) => {
-      void this.docsService.indexAndAdd(msg.data);
-    });
-
-    on("context/removeDocs", async (msg) => {
-      await this.docsService.delete(msg.data.startUrl);
-    });
-
-    on("context/indexDocs", async (msg) => {
-      await this.docsService.syncDocsWithPrompt(msg.data.reIndex);
-    });
-
     on("context/loadSubmenuItems", async (msg) => {
       const { config } = await this.configHandler.loadConfig();
       if (!config) {
@@ -1046,32 +1026,6 @@ export class Core {
       });
     });
 
-    // Docs, etc. indexing
-    on("indexing/reindex", async (msg) => {
-      if (msg.data.type === "docs") {
-        void this.docsService.reindexDoc(msg.data.id);
-      }
-    });
-    on("indexing/abort", async (msg) => {
-      if (msg.data.type === "docs") {
-        this.docsService.abort(msg.data.id);
-      }
-    });
-    on("indexing/setPaused", async (msg) => {
-      if (msg.data.type === "docs") {
-      }
-    });
-    on("docs/initStatuses", async (msg) => {
-      void this.docsService.initStatuses();
-    });
-    on("docs/getDetails", async (msg) => {
-      return await this.docsService.getDetails(msg.data.startUrl);
-    });
-    on("docs/getIndexedPages", async (msg) => {
-      const pages = await this.docsService.getIndexedPages(msg.data.startUrl);
-      return Array.from(pages);
-    });
-
     on("didChangeSelectedProfile", async (msg) => {
       if (msg.data.id) {
         await this.configHandler.setSelectedProfileId(msg.data.id);
@@ -1478,35 +1432,10 @@ export class Core {
         return { ...item, id };
       });
     } catch (e) {
-      let knownError = false;
-
-      if (e instanceof Error) {
-        // After removing transformers JS embeddings provider from jetbrains
-        // Should no longer see this error
-        // if (e.message.toLowerCase().includes("embeddings provider")) {
-        //   knownError = true;
-        //   const toastOption = "See Docs";
-        //   void this.ide
-        //     .showToast(
-        //       "error",
-        //       `Set up an embeddings model to use @${name}`,
-        //       toastOption,
-        //     )
-        //     .then((userSelection) => {
-        //       if (userSelection === toastOption) {
-        //         void this.ide.openUrl(
-        //           "https://docs.nextcli.dev/customize/model-roles/embeddings",
-        //         );
-        //       }
-        //     });
-        // }
-      }
-      if (!knownError) {
-        void this.ide.showToast(
-          "error",
-          `Error getting context items from ${name}: ${e}`,
-        );
-      }
+      void this.ide.showToast(
+        "error",
+        `Error getting context items from ${name}: ${e}`,
+      );
       return [];
     }
   };

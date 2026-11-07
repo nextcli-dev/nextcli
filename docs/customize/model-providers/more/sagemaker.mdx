@@ -1,9 +1,9 @@
 ---
 title: "Amazon SageMaker"
-description: "Configure Amazon SageMaker with NextCLI to use deployed LLM endpoints for both chat and embedding models, supporting LMI and HuggingFace TEI deployments with AWS credentials"
+description: "Configure Amazon SageMaker with NextCLI to use deployed LLM endpoints for chat models, supporting LMI deployments with AWS credentials"
 ---
 
-SageMaker can be used for both chat and embedding models. Chat models are supported for endpoints deployed with [LMI](https://docs.djl.ai/docs/serving/serving/docs/lmi/index.html), and embedding models are supported for endpoints deployed with [HuggingFace TEI](https://huggingface.co/blog/sagemaker-huggingface-embedding)
+SageMaker can be used for chat models. They are supported for endpoints deployed with [LMI](https://docs.djl.ai/docs/serving/serving/docs/lmi/index.html).
 
 Here is an example Sagemaker configuration setup:
 
@@ -21,11 +21,6 @@ Here is an example Sagemaker configuration setup:
       region: us-west-2
       roles:
         - chat
-    - name: mxbai-embed
-      provider: sagemaker
-      model: mxbai-embed-large-v1-endpoint
-      roles:
-        - embed
   ```
   </Tab>
   <Tab title="JSON">
@@ -38,11 +33,7 @@ Here is an example Sagemaker configuration setup:
         "model": "lmi-model-deepseek-coder-xxxxxxx",
         "region": "us-west-2"
       }
-    ],
-    "embeddingsProvider": {
-      "provider": "sagemaker",
-      "model": "mxbai-embed-large-v1-endpoint"
-    }
+    ]
   }
   ```
   </Tab>

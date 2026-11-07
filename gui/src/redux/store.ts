@@ -16,7 +16,6 @@ import storage from "redux-persist/lib/storage";
 import { IdeMessenger, IIdeMessenger } from "../context/IdeMessenger";
 import configReducer from "./slices/configSlice";
 import editModeStateReducer from "./slices/editState";
-import indexingReducer from "./slices/indexingSlice";
 import modelSettingsReducer from "./slices/modelSettingsSlice";
 import { profilesReducer } from "./slices/profilesSlice";
 import sessionReducer from "./slices/sessionSlice";
@@ -28,7 +27,6 @@ const rootReducer = combineReducers({
   ui: uiReducer,
   editModeState: editModeStateReducer,
   config: configReducer,
-  indexing: indexingReducer,
   tabs: tabsReducer,
   profiles: profilesReducer,
   modelSettings: modelSettingsReducer,
@@ -59,7 +57,6 @@ const saveSubsetFilters = [
     "ruleSettings",
     "reasoningSettings",
   ]),
-  createFilter("indexing", []),
   // Saved on the host (shared with the CLI), so never persisted here
   createFilter("modelSettings", []),
   createFilter("tabs", ["tabs"]),

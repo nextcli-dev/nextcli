@@ -134,7 +134,6 @@
                   "customize/model-roles/autocomplete",
                   "customize/model-roles/edit",
                   "customize/model-roles/apply",
-                  "customize/model-roles/embeddings",
                   "customize/model-roles/reranking"
                 ]
               },
@@ -165,8 +164,7 @@
               "reference/telemetry",
               "reference/json-reference",
               "reference/deprecated-context-providers",
-              "reference/deprecated-codebase",
-              "reference/deprecated-docs"
+              "reference/deprecated-codebase"
             ]
           },
           {
@@ -949,7 +947,6 @@
       "source": "/guides/build-your-own-context-provider",
       "destination": "/customize/deep-dives/custom-providers"
     },
-
     {
       "source": "/customize/settings",
       "destination": "/customize/overview"
@@ -1209,6 +1206,14 @@
     {
       "source": "/overview",
       "destination": "/"
+    },
+    {
+      "source": "/reference/deprecated-docs",
+      "destination": "/guides/codebase-documentation-awareness"
+    },
+    {
+      "source": "/customize/model-roles/embeddings",
+      "destination": "/customize/model-roles/00-intro"
     }
   ]
 }

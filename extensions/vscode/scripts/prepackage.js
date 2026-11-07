@@ -12,9 +12,12 @@ const {
 
 const { copySqlite } = require("./download-copy-sqlite");
 const { generateAndCopyConfigYamlSchema } = require("./generate-copy-config");
-const { installAndCopyNodeModules } = require("./install-copy-nodemodule");
 const { npmInstall } = require("./npm-install");
-const { writeBuildTimestamp, continueDir } = require("./utils");
+const {
+  writeBuildTimestamp,
+  continueDir,
+  downloadRipgrepBinary,
+} = require("./utils");
 const {
   writeXhrSyncWorkerStub,
 } = require("../../../scripts/esbuild-plugins/jsdom.cjs");
@@ -66,10 +69,6 @@ target = `${os}-${arch}`;
 console.log("[info] Using target: ", target);
 
 const exe = os === "win32" ? ".exe" : "";
-
-const isWinTarget = target?.startsWith("win");
-const isLinuxTarget = target?.startsWith("linux");
-const isMacTarget = target?.startsWith("darwin");
 
 void (async () => {
   const startTime = Date.now();
@@ -124,69 +123,6 @@ void (async () => {
 
   // Copy over native / wasm modules //
   process.chdir("../extensions/vscode");
-
-  fs.mkdirSync("bin", { recursive: true });
-
-  // onnxruntime-node
-  const onnxCopyStart = Date.now();
-  console.log(
-    `[timer] Starting onnxruntime copy at ${new Date().toISOString()}`,
-  );
-  await new Promise((resolve, reject) => {
-    ncp(
-      path.join(__dirname, "../../../core/node_modules/onnxruntime-node/bin"),
-      path.join(__dirname, "../bin"),
-      {
-        dereference: true,
-      },
-      (error) => {
-        if (error) {
-          console.warn("[info] Error copying onnxruntime-node files", error);
-          reject(error);
-        }
-        resolve();
-      },
-    );
-  });
-  console.log(
-    `[timer] onnxruntime copy completed in ${Date.now() - onnxCopyStart}ms`,
-  );
-  if (target) {
-    // If building for production, only need the binaries for current platform
-    try {
-      if (!target.startsWith("darwin")) {
-        rimrafSync(path.join(__dirname, "../bin/napi-v3/darwin"));
-      }
-      if (!target.startsWith("linux")) {
-        rimrafSync(path.join(__dirname, "../bin/napi-v3/linux"));
-      }
-      if (!target.startsWith("win")) {
-        rimrafSync(path.join(__dirname, "../bin/napi-v3/win32"));
-      }
-
-      // Also don't want to include cuda/shared/tensorrt binaries, they are too large
-      if (target.startsWith("linux")) {
-        const filesToRemove = [
-          "libonnxruntime_providers_cuda.so",
-          "libonnxruntime_providers_shared.so",
-          "libonnxruntime_providers_tensorrt.so",
-        ];
-        filesToRemove.forEach((file) => {
-          const filepath = path.join(
-            __dirname,
-            "../bin/napi-v3/linux/x64",
-            file,
-          );
-          if (fs.existsSync(filepath)) {
-            fs.rmSync(filepath);
-          }
-        });
-      }
-    } catch (e) {
-      console.warn("[info] Error removing unused binaries", e);
-    }
-  }
-  console.log("[info] Copied onnxruntime-node");
 
   // tree-sitter-wasm
   fs.mkdirSync("out", { recursive: true });
@@ -252,49 +188,6 @@ void (async () => {
     );
   });
 
-  const lancedbPackagesByTarget = {
-    "darwin-arm64": "@lancedb/vectordb-darwin-arm64",
-    "darwin-x64": "@lancedb/vectordb-darwin-x64",
-    "linux-arm64": "@lancedb/vectordb-linux-arm64-gnu",
-    "linux-x64": "@lancedb/vectordb-linux-x64-gnu",
-    "win32-x64": "@lancedb/vectordb-win32-x64-msvc",
-    "win32-arm64": "@lancedb/vectordb-win32-arm64-msvc",
-  };
-
-  const packageToInstall = lancedbPackagesByTarget[target];
-  let packageDirName;
-  let expectedPackagePath;
-  if (packageToInstall) {
-    packageDirName = packageToInstall.split("/").pop();
-    expectedPackagePath = path.join(
-      __dirname,
-      "..",
-      "node_modules",
-      "@lancedb",
-      packageDirName,
-    );
-
-    if (!fs.existsSync(expectedPackagePath)) {
-      console.log(
-        `[info] Installing LanceDB binary for ${target}: ${packageToInstall}`,
-      );
-      await installAndCopyNodeModules(packageToInstall, "@lancedb");
-      if (!fs.existsSync(expectedPackagePath)) {
-        throw new Error(
-          `Failed to install LanceDB binary at ${expectedPackagePath}`,
-        );
-      }
-    } else {
-      console.log(
-        `[info] LanceDB binary already present for ${target} at ${expectedPackagePath}`,
-      );
-    }
-  } else {
-    console.warn(
-      `[warn] No LanceDB package mapping found for target ${target}`,
-    );
-  }
-
   if (!skipInstalls) {
     await copySqlite(target);
   } else {
@@ -335,8 +228,17 @@ void (async () => {
     );
   });
 
+  // @vscode/ripgrep downloads rg in its postinstall, which is skipped by
+  // installs using --ignore-scripts. Fetch it so the copy/validation works.
+  if (!fs.existsSync(`node_modules/@vscode/ripgrep/bin/rg${exe}`)) {
+    console.log(
+      "[info] ripgrep binary missing (@vscode/ripgrep install script was skipped); downloading it",
+    );
+    await downloadRipgrepBinary(target);
+  }
+
   // Copy node_modules for pre-built binaries
-  const NODE_MODULES_TO_COPY = ["@lancedb", "@vscode/ripgrep", "workerpool"];
+  const NODE_MODULES_TO_COPY = ["@vscode/ripgrep", "workerpool"];
 
   fs.mkdirSync("out/node_modules", { recursive: true });
 
@@ -365,34 +267,6 @@ void (async () => {
 
   console.log(`[info] Copied ${NODE_MODULES_TO_COPY.join(", ")}`);
 
-  if (packageDirName && expectedPackagePath) {
-    const expectedOutPackagePath = path.join(
-      __dirname,
-      "..",
-      "out",
-      "node_modules",
-      "@lancedb",
-      packageDirName,
-    );
-    const expectedOutIndexPath = path.join(
-      expectedOutPackagePath,
-      "index.node",
-    );
-    if (!fs.existsSync(expectedOutIndexPath)) {
-      rimrafSync(expectedOutPackagePath);
-      fs.mkdirSync(expectedOutPackagePath, { recursive: true });
-      fs.cpSync(expectedPackagePath, expectedOutPackagePath, {
-        recursive: true,
-        dereference: true,
-      });
-      console.log(`[info] Copied LanceDB binary to ${expectedOutPackagePath}`);
-    } else {
-      console.log(
-        `[info] LanceDB binary already copied at ${expectedOutIndexPath}`,
-      );
-    }
-  }
-
   // Stub for jsdom's synchronous-XHR worker (scripts/esbuild-plugins/jsdom.cjs)
   writeXhrSyncWorkerStub("out/xhr-sync-worker.js");
 
@@ -404,16 +278,6 @@ void (async () => {
     // Queries used for @outline and @highlights context providers
     "tag-qry/tree-sitter-c_sharp-tags.scm",
 
-    // onnx runtime bindngs
-    `bin/napi-v3/${os}/${arch}/onnxruntime_binding.node`,
-    `bin/napi-v3/${os}/${arch}/${
-      isMacTarget
-        ? "libonnxruntime.1.14.0.dylib"
-        : isLinuxTarget
-          ? "libonnxruntime.so.1.14.0"
-          : "onnxruntime.dll"
-    }`,
-
     // Code/styling for the sidebar
     "gui/assets/index.js",
     "gui/assets/index.css",
@@ -422,14 +286,6 @@ void (async () => {
     "media/move-chat-panel-right.md",
     "continue_tutorial.py",
     "config_schema.json",
-
-    // Embeddings model
-    "models/all-MiniLM-L6-v2/config.json",
-    "models/all-MiniLM-L6-v2/special_tokens_map.json",
-    "models/all-MiniLM-L6-v2/tokenizer_config.json",
-    "models/all-MiniLM-L6-v2/tokenizer.json",
-    "models/all-MiniLM-L6-v2/vocab.txt",
-    "models/all-MiniLM-L6-v2/onnx/model_quantized.onnx",
 
     // node_modules (it's a bit confusing why this is necessary)
     `node_modules/@vscode/ripgrep/bin/rg${exe}`,
@@ -445,7 +301,6 @@ void (async () => {
 
     // out/node_modules (to be accessed by extension.js)
     `out/node_modules/@vscode/ripgrep/bin/rg${exe}`,
-    `out/node_modules/@lancedb/vectordb-${target}${isWinTarget ? "-msvc" : ""}${isLinuxTarget ? "-gnu" : ""}/index.node`,
   ]);
 
   console.log(

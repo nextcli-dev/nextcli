@@ -1,7 +1,6 @@
 import {
   LOCAL_ONBOARDING_CHAT_MODEL,
   LOCAL_ONBOARDING_CHAT_TITLE,
-  LOCAL_ONBOARDING_EMBEDDINGS_MODEL,
   LOCAL_ONBOARDING_FIM_MODEL,
   LOCAL_ONBOARDING_PROVIDER_TITLE,
 } from "core/config/onboarding";
@@ -50,16 +49,8 @@ export function OnboardingLocalTab({ isDialog }: OnboardingLocalTabProps) {
       )
     : false;
 
-  const hasDownloadedEmbeddingsModel = Array.isArray(downloadedOllamaModels)
-    ? downloadedOllamaModels.some(
-        (ollamaModel) => ollamaModel === LOCAL_ONBOARDING_EMBEDDINGS_MODEL,
-      )
-    : false;
-
   const allDownloaded =
-    hasDownloadedAutocompleteModel &&
-    hasDownloadedChatModel &&
-    hasDownloadedEmbeddingsModel;
+    hasDownloadedAutocompleteModel && hasDownloadedChatModel;
 
   /**
    * The first time we detect that a chat model has been loaded,
@@ -156,12 +147,6 @@ export function OnboardingLocalTab({ isDialog }: OnboardingLocalTabProps) {
             title="Download Autocomplete model"
             modelName={LOCAL_ONBOARDING_FIM_MODEL}
             hasDownloaded={hasDownloadedAutocompleteModel}
-          />
-
-          <OllamaModelDownload
-            title="Download Embeddings model"
-            modelName={LOCAL_ONBOARDING_EMBEDDINGS_MODEL}
-            hasDownloaded={hasDownloadedEmbeddingsModel}
           />
 
           <div className="mt-4 w-full">

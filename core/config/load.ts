@@ -40,7 +40,6 @@ import { BaseLLM } from "../llm";
 import { LLMClasses, llmFromDescription } from "../llm/llms";
 import CustomLLMClass from "../llm/llms/CustomLLM";
 import { LLMReranker } from "../llm/llms/llm";
-import TransformersJsEmbeddingsProvider from "../llm/llms/TransformersJsEmbeddingsProvider";
 import { getAllPromptFiles } from "../promptFiles/getPromptFiles";
 import { copyOf } from "../util";
 import { GlobalContext } from "../util/GlobalContext";
@@ -62,13 +61,13 @@ import CustomContextProviderClass from "../context/providers/CustomContextProvid
 import { getBaseToolDefinitions, serializeTool } from "../tools";
 import { resolveRelativePathInDir } from "../util/ideUtils";
 import { getWorkspaceRcConfigs } from "./json/loadRcConfigs";
-import { loadConfigContextProviders } from "./loadContextProviders";
-import { modifyAnyConfigWithSharedConfig } from "./sharedConfig";
 import {
-  getModelByRole,
-  isSupportedLanceDbCpuTargetForLinux,
-  serializePromptTemplates,
-} from "./util";
+  loadConfigContextProviders,
+  REMOVED_DOCS_MESSAGE,
+  removedEmbedRoleMessage,
+} from "./loadContextProviders";
+import { modifyAnyConfigWithSharedConfig } from "./sharedConfig";
+import { getModelByRole, serializePromptTemplates } from "./util";
 import { validateConfig } from "./validation.js";
 
 export function resolveSerializedConfig(
@@ -157,10 +156,6 @@ function loadSerializedConfig(
       workspaceConfig.mergeBehavior,
       configMergeKeys,
     );
-  }
-
-  if (os.platform() === "linux" && !isSupportedLanceDbCpuTargetForLinux(ide)) {
-    config.disableIndexing = true;
   }
 
   return { config, errors, configLoadInterrupted: false };
@@ -382,7 +377,6 @@ async function intermediateToFinalConfig({
           provider: (cp as ContextProviderWithParams).name,
           params: (cp as ContextProviderWithParams).params,
         })),
-      !!config.docs?.length,
       ideInfo.ideType,
     );
 
@@ -393,40 +387,16 @@ async function intermediateToFinalConfig({
   }
   errors.push(...contextErrors);
 
-  // Embeddings Provider
-  function getEmbeddingsILLM(
-    embedConfig: EmbeddingsProviderDescription | ILLM | undefined,
-  ): ILLM | null {
-    if (embedConfig) {
-      // config.ts-injected ILLM
-      if ("providerName" in embedConfig) {
-        return embedConfig;
-      }
-      const { provider, ...options } = embedConfig;
-      if (provider === "transformers.js") {
-        return new TransformersJsEmbeddingsProvider();
-      } else {
-        const cls = LLMClasses.find((c) => c.providerName === provider);
-        if (cls) {
-          const llmOptions: LLMOptions = {
-            model: options.model ?? "UNSPECIFIED",
-            ...options,
-          };
-          return new cls(llmOptions);
-        } else {
-          errors.push({
-            fatal: false,
-            message: `Embeddings provider ${provider} not found`,
-          });
-        }
-      }
-    }
-    if (ideInfo.ideType === "vscode") {
-      return new TransformersJsEmbeddingsProvider();
-    }
-    return null;
+  // Embeddings were removed: an `embeddingsProvider` is ignored
+  if (config.embeddingsProvider) {
+    errors.push({
+      fatal: false,
+      message: removedEmbedRoleMessage("embeddingsProvider"),
+    });
   }
-  const newEmbedder = getEmbeddingsILLM(config.embeddingsProvider);
+  if (config.docs?.length) {
+    errors.push({ fatal: false, message: REMOVED_DOCS_MESSAGE });
+  }
 
   // Reranker
   function getRerankingILLM(
@@ -482,7 +452,7 @@ async function intermediateToFinalConfig({
       apply: models,
       summarize: models,
       autocomplete: [...tabAutocompleteModels],
-      embed: newEmbedder ? [newEmbedder] : [],
+      embed: [],
       rerank: newReranker ? [newReranker] : [],
       subagent: [],
     },
@@ -490,7 +460,7 @@ async function intermediateToFinalConfig({
       chat: null, // Not implemented (uses GUI defaultModel)
       edit: null,
       apply: null,
-      embed: newEmbedder ?? null,
+      embed: null,
       autocomplete: null,
       rerank: newReranker ?? null,
       summarize: null, // Not implemented
@@ -580,18 +550,6 @@ async function intermediateToFinalConfig({
     }
   }
 
-  // Add transformers JS to the embed models list if not already added
-  if (
-    ideInfo.ideType === "vscode" &&
-    !continueConfig.modelsByRole.embed.find(
-      (m) => m.providerName === "transformers.js",
-    )
-  ) {
-    continueConfig.modelsByRole.embed.push(
-      new TransformersJsEmbeddingsProvider(),
-    );
-  }
-
   return { config: continueConfig, errors };
 }
 
@@ -641,7 +599,6 @@ async function finalToBrowserConfig(
     ui: final.ui,
     experimental: final.experimental,
     rules: final.rules,
-    docs: final.docs,
     tools: final.tools.map(serializeTool),
     mcpServerStatuses: final.mcpServerStatuses,
     tabAutocompleteOptions: final.tabAutocompleteOptions,

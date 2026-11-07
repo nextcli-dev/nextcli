@@ -23,7 +23,6 @@ import {
   InternalMcpOptions,
 } from "../..";
 import { MCPManagerSingleton } from "../../context/mcp/MCPManagerSingleton";
-import TransformersJsEmbeddingsProvider from "../../llm/llms/TransformersJsEmbeddingsProvider";
 import { getAllPromptFiles } from "../../promptFiles/getPromptFiles";
 import { GlobalContext } from "../../util/GlobalContext";
 import { modifyAnyConfigWithSharedConfig } from "../sharedConfig";
@@ -33,7 +32,11 @@ import { slashCommandFromPromptFile } from "../../commands/slash/promptFileSlash
 import { loadJsonMcpConfigs } from "../../context/mcp/json/loadJsonMcpConfigs";
 import { getBaseToolDefinitions } from "../../tools";
 import { getCleanUriPath } from "../../util/uri";
-import { loadConfigContextProviders } from "../loadContextProviders";
+import {
+  loadConfigContextProviders,
+  REMOVED_DOCS_MESSAGE,
+  removedEmbedRoleMessage,
+} from "../loadContextProviders";
 import { getAllDotContinueDefinitionFiles } from "../loadLocalAssistants";
 import { unrollLocalYamlBlocks } from "./loadLocalYamlBlocks";
 import { LocalPlatformClient } from "./LocalPlatformClient";
@@ -207,14 +210,9 @@ export async function configYamlToContinueConfig(options: {
       continueConfig.requestOptions,
     ),
   }));
-  continueConfig.docs = config.docs?.map((doc) => ({
-    title: doc.name,
-    startUrl: doc.startUrl,
-    rootUrl: doc.rootUrl,
-    faviconUrl: doc.faviconUrl,
-    useLocalCrawling: doc.useLocalCrawling,
-    sourceFile: doc.sourceFile,
-  }));
+  if (config.docs?.length) {
+    localErrors.push({ fatal: false, message: REMOVED_DOCS_MESSAGE });
+  }
 
   // Prompt files -
   try {
@@ -310,21 +308,10 @@ export async function configYamlToContinueConfig(options: {
       }
 
       if (model.roles?.includes("embed")) {
-        const { provider } = model;
-        if (provider === "transformers.js") {
-          if (ideInfo.ideType === "vscode") {
-            continueConfig.modelsByRole.embed.push(
-              new TransformersJsEmbeddingsProvider(),
-            );
-          } else {
-            localErrors.push({
-              fatal: false,
-              message: `Transformers.js embeddings provider not supported in this IDE.`,
-            });
-          }
-        } else {
-          continueConfig.modelsByRole.embed.push(...llms);
-        }
+        localErrors.push({
+          fatal: false,
+          message: removedEmbedRoleMessage(model.name),
+        });
       }
 
       if (model.roles?.includes("rerank")) {
@@ -342,21 +329,8 @@ export async function configYamlToContinueConfig(options: {
     }
   }
 
-  // Add transformers js to the embed models in vs code if not already added
-  if (
-    ideInfo.ideType === "vscode" &&
-    !continueConfig.modelsByRole.embed.find(
-      (m) => m.providerName === "transformers.js",
-    )
-  ) {
-    continueConfig.modelsByRole.embed.push(
-      new TransformersJsEmbeddingsProvider(),
-    );
-  }
-
   const { providers, errors: contextErrors } = loadConfigContextProviders(
     config.context,
-    !!config.docs?.length,
     ideInfo.ideType,
   );
 

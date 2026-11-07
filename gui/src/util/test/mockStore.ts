@@ -8,9 +8,6 @@ import configReducer, {
 import editModeStateReducer, {
   INITIAL_EDIT_STATE,
 } from "../../redux/slices/editState";
-import indexingReducer, {
-  INITIAL_INDEXING_STATE,
-} from "../../redux/slices/indexingSlice";
 import modelSettingsReducer from "../../redux/slices/modelSettingsSlice";
 import {
   INITIAL_PROFILES_STATE,
@@ -29,7 +26,6 @@ export const getEmptyRootState: () => RootState = () => {
     config: INITIAL_CONFIG_SLICE,
     ui: DEFAULT_UI_SLICE,
     editModeState: INITIAL_EDIT_STATE,
-    indexing: INITIAL_INDEXING_STATE,
     profiles: INITIAL_PROFILES_STATE,
     tabs: INITIAL_TABS_STATE,
     modelSettings: { byKey: {} },
@@ -68,7 +64,6 @@ export const createMockStore = (
       ui: uiReducer,
       editModeState: editModeStateReducer,
       config: configReducer,
-      indexing: indexingReducer,
       tabs: tabsReducer,
       profiles: profilesReducer,
       modelSettings: modelSettingsReducer,

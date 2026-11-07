@@ -6,11 +6,17 @@ import { IContextProvider, IdeType } from "..";
 import { contextProviderClassFromName } from "../context/providers";
 import CurrentFileContextProvider from "../context/providers/CurrentFileContextProvider";
 import DiffContextProvider from "../context/providers/DiffContextProvider";
-import DocsContextProvider from "../context/providers/DocsContextProvider";
 import FileContextProvider from "../context/providers/FileContextProvider";
 import ProblemsContextProvider from "../context/providers/ProblemsContextProvider";
 import RulesContextProvider from "../context/providers/RulesContextProvider";
 import TerminalContextProvider from "../context/providers/TerminalContextProvider";
+
+export const REMOVED_DOCS_MESSAGE =
+  "@docs was removed in this release, so the `docs` context provider and the `docs` config block are ignored. Use the fetch tool or a docs MCP server instead.";
+
+export function removedEmbedRoleMessage(modelName: string): string {
+  return `Model "${modelName}" has the \`embed\` role, which is ignored: NextCLI no longer computes embeddings. @codebase and @folder use keyword search.`;
+}
 
 /*
     Loads context providers based on configuration
@@ -21,7 +27,6 @@ import TerminalContextProvider from "../context/providers/TerminalContextProvide
 */
 export function loadConfigContextProviders(
   configContext: AssistantUnrolledNonNullable["context"],
-  hasDocs: boolean,
   ideType: IdeType,
 ): {
   providers: IContextProvider[];
@@ -42,6 +47,13 @@ export function loadConfigContextProviders(
   // Add from config
   if (configContext) {
     for (const config of configContext) {
+      if (config.provider === "docs") {
+        errors.push({
+          fatal: false,
+          message: REMOVED_DOCS_MESSAGE,
+        });
+        continue;
+      }
       const cls = contextProviderClassFromName(config.provider) as any;
       if (
         !cls &&
@@ -71,10 +83,6 @@ export function loadConfigContextProviders(
     ) {
       providers.push(defaultProvider);
     }
-  }
-
-  if (hasDocs && !providers?.some((cp) => cp.description.title === "docs")) {
-    providers.push(new DocsContextProvider({}));
   }
 
   // @problems and @terminal are not supported in jetbrains

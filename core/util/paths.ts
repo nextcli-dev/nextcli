@@ -327,16 +327,8 @@ export function getIndexSqlitePath(): string {
   return path.join(getIndexFolderPath(), "index.sqlite");
 }
 
-export function getLanceDbPath(): string {
-  return path.join(getIndexFolderPath(), "lancedb");
-}
-
 export function getTabAutocompleteCacheSqlitePath(): string {
   return path.join(getIndexFolderPath(), "autocompleteCache.sqlite");
-}
-
-export function getDocsSqlitePath(): string {
-  return path.join(getIndexFolderPath(), "docs.sqlite");
 }
 
 export function getRemoteConfigsFolderPath(): string {

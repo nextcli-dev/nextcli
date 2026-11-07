@@ -5,7 +5,6 @@ import { ContinueError, ContinueErrorReason } from "../util/errors";
 import { canParseUrl } from "../util/url";
 import { BuiltInToolNames } from "./builtIn";
 
-import { codebaseToolImpl } from "./implementations/codebaseTool";
 import { createNewFileImpl } from "./implementations/createNewFile";
 import { createRuleBlockImpl } from "./implementations/createRuleBlock";
 import { fetchUrlContentImpl } from "./implementations/fetchUrlContent";
@@ -216,8 +215,6 @@ export async function callBuiltInTool(
       return await createRuleBlockImpl(args, extras);
     case BuiltInToolNames.RequestRule:
       return await requestRuleImpl(args, extras);
-    case BuiltInToolNames.CodebaseTool:
-      return await codebaseToolImpl(args, extras);
     case BuiltInToolNames.ReadSkill:
       return await readSkillImpl(args, extras);
     case BuiltInToolNames.ViewRepoMap:

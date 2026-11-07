@@ -93,25 +93,6 @@ function getSuggestion(
   };
 }
 
-function getSubActionsForSubmenuItem(
-  item: ContextSubmenuItem & { providerTitle: string },
-  ideMessenger: IIdeMessenger,
-): ComboBoxSubAction[] | undefined {
-  if (item.providerTitle === "docs") {
-    return [
-      {
-        label: "Open in new tab",
-        icon: "trash",
-        action: () => {
-          ideMessenger.post("context/removeDocs", { startUrl: item.id });
-        },
-      },
-    ];
-  }
-
-  return undefined;
-}
-
 export function getContextProviderDropdownOptions(
   availableContextProvidersRef: MutableRefObject<ContextProviderDescription[]>,
   getSubmenuContextItemsRef: MutableRefObject<
@@ -138,7 +119,6 @@ export function getContextProviderDropdownOptions(
           label: result.title,
           type: inSubmenu.current as ComboBoxItemType,
           query: result.id,
-          subActions: getSubActionsForSubmenuItem(result, ideMessenger),
         };
       });
     }

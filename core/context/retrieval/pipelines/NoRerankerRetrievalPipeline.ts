@@ -10,13 +10,12 @@ import BaseRetrievalPipeline, {
 
 export default class NoRerankerRetrievalPipeline extends BaseRetrievalPipeline {
   async run(args: RetrievalPipelineRunArguments): Promise<Chunk[]> {
-    const { input, nFinal, filterDirectory, config } = this.options;
+    const { input, nFinal, filterDirectory } = this.options;
 
-    // We give 1/4 weight to recently edited files, 1/4 to full text search,
-    // and the remaining 1/2 to embeddings
+    // We give 1/4 weight to recently edited files and the remaining 3/4 to
+    // full text search
     const recentlyEditedNFinal = nFinal * 0.25;
-    const ftsNFinal = nFinal * 0.25;
-    const embeddingsNFinal = nFinal - recentlyEditedNFinal - ftsNFinal;
+    const ftsNFinal = nFinal - recentlyEditedNFinal;
 
     let retrievalResults: Chunk[] = [];
 
@@ -25,15 +24,6 @@ export default class NoRerankerRetrievalPipeline extends BaseRetrievalPipeline {
       ftsChunks = await this.retrieveFts(args, ftsNFinal);
     } catch (error) {
       // console.error("Error retrieving FTS chunks:", error);
-    }
-
-    let embeddingsChunks: Chunk[] = [];
-    try {
-      embeddingsChunks = config.selectedModelByRole.embed
-        ? await this.retrieveEmbeddings(input, embeddingsNFinal)
-        : [];
-    } catch (error) {
-      console.error("Error retrieving embeddings:", error);
     }
 
     let recentlyEditedFilesChunks: Chunk[] = [];
@@ -69,7 +59,6 @@ export default class NoRerankerRetrievalPipeline extends BaseRetrievalPipeline {
       retrievalResults.push(
         ...recentlyEditedFilesChunks,
         ...ftsChunks,
-        ...embeddingsChunks,
         ...repoMapChunks,
       );
     }

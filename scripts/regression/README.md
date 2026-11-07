@@ -22,11 +22,6 @@ runtime:
   so tests create old-schema databases (devdata before `tokens_prompt`, the
   autocomplete cache, `shop` from the schema SQL in `database/golden.json`) with
   whichever driver is current.
-- **Search index** (Phase 5): tests write an index in the old on-disk shape
-  (`lance_db_cache` with JSON vectors, `tag_catalog`, `docs_chunks_cache`) and
-  compute the expected top-k by brute-force squared L2. vectordb 0.4.20 is an
-  exact search: on a 100k-chunk check its top-10 matched brute force for every
-  query, so brute force reproduces what users get today.
 
 The `results/` folder is git-ignored: baselines are machine-specific and stay on
 the machine that made them. `summary.json` records every path relative to the

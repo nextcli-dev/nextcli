@@ -1,5 +1,4 @@
 import { Chunk } from "../../..";
-import { RETRIEVAL_PARAMS } from "../../../util/parameters";
 
 import { findUriInDirs } from "../../../util/uri";
 import { requestFilesFromRepoMap } from "../repoMapRequest";
@@ -22,15 +21,6 @@ export default class RerankerRetrievalPipeline extends BaseRetrievalPipeline {
       ftsChunks = await this.retrieveFts(args, nRetrieve);
     } catch (error) {
       // console.error("Error retrieving FTS chunks:", error);
-    }
-
-    let embeddingsChunks: Chunk[] = [];
-    try {
-      embeddingsChunks = Boolean(config.selectedModelByRole.embed)
-        ? await this.retrieveEmbeddings(input, nRetrieve)
-        : [];
-    } catch (error) {
-      console.error("Error retrieving embeddings chunks:", error);
     }
 
     let recentlyEditedFilesChunks: Chunk[] = [];
@@ -66,7 +56,6 @@ export default class RerankerRetrievalPipeline extends BaseRetrievalPipeline {
       retrievalResults.push(
         ...recentlyEditedFilesChunks,
         ...ftsChunks,
-        ...embeddingsChunks,
         ...repoMapChunks,
       );
     }
@@ -102,12 +91,6 @@ export default class RerankerRetrievalPipeline extends BaseRetrievalPipeline {
 
       // Filter out low-scoring results
       let results = chunks;
-      // let results = chunks.filter(
-      //   (_, i) => scores[i] >= RETRIEVAL_PARAMS.rerankThreshold,
-      // );
-      // scores = scores.filter(
-      //   (score) => score >= RETRIEVAL_PARAMS.rerankThreshold,
-      // );
 
       const chunkIndexMap = new Map<Chunk, number>();
       chunks.forEach((chunk, idx) => chunkIndexMap.set(chunk, idx));
@@ -123,47 +106,9 @@ export default class RerankerRetrievalPipeline extends BaseRetrievalPipeline {
     }
   }
 
-  private async _expandWithEmbeddings(chunks: Chunk[]): Promise<Chunk[]> {
-    const topResults = chunks.slice(
-      -RETRIEVAL_PARAMS.nResultsToExpandWithEmbeddings,
-    );
-
-    const expanded = await Promise.all(
-      topResults.map(async (chunk, i) => {
-        const results = await this.retrieveEmbeddings(
-          chunk.content,
-          RETRIEVAL_PARAMS.nEmbeddingsExpandTo,
-        );
-        return results;
-      }),
-    );
-    return expanded.flat();
-  }
-
-  private async _expandRankedResults(chunks: Chunk[]): Promise<Chunk[]> {
-    let results: Chunk[] = [];
-
-    const embeddingsResults = await this._expandWithEmbeddings(chunks);
-    results.push(...embeddingsResults);
-
-    return results;
-  }
-
   async run(args: RetrievalPipelineRunArguments): Promise<Chunk[]> {
     let results = await this._retrieveInitial(args);
     results = await this._rerank(args.query, results);
-
-    // // // Expand top reranked results
-    // const expanded = await this._expandRankedResults(results);
-    // results.push(...expanded);
-
-    // // De-duplicate
-    // results = deduplicateChunks(results);
-
-    // // Rerank again
-    // results = await this._rerank(input, results);
-
-    // TODO: stitch together results
 
     return results;
   }

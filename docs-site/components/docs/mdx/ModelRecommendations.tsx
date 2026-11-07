@@ -49,16 +49,6 @@ const modelRecs: Record<
     ],
     notes: "Closed models are better than open models",
   },
-  embed: {
-    open: [
-      "[Nomic Embed Text](https://nextcli.dev/ollama/nomic-embed-text-latest)",
-    ],
-    closed: [
-      "[Voyage Code 3](https://nextcli.dev/voyageai/voyage-code-3)",
-      "[Morph Embeddings](https://nextcli.dev/morphllm/morph-embedding-v2)",
-    ],
-    notes: "Closed models are slightly better than open models",
-  },
   rerank: {
     open: ["zerank-1", "zerank-1-small"],
     closed: [

@@ -148,11 +148,7 @@ This can be fixed by selecting `Actions > Choose Boot runtime for the IDE` then 
 
 ## I received a "Codebase indexing disabled - Your Linux system lacks required CPU features (AVX2, FMA)" notification
 
-We use LanceDB as our vector database for codebase search features. On x64 Linux systems, LanceDB requires specific CPU features (FMA and AVX2) which may not be available on older processors.
-
-Most NextCLI features will work normally, including autocomplete and chat. However, commands that rely on codebase indexing, such as `@codebase`, `@files`, and `@folder`, will be disabled.
-
-For more details about this requirement, see the [LanceDB issue #2195](https://github.com/lancedb/lance/issues/2195).
+Earlier releases used LanceDB for codebase search, which needs the FMA and AVX2 CPU features on x64 Linux, and turned codebase indexing off on processors without them. Current releases no longer use LanceDB, so codebase indexing works on these processors. Update NextCLI to get it back.
 
 ## Ollama Issues
 

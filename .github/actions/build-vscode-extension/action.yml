@@ -116,7 +116,6 @@ runs:
       run: |
         cd core
         npm ci
-        npm i vectordb
 
     - name: Build GUI
       shell: bash

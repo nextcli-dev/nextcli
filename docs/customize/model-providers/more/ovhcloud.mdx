@@ -125,36 +125,3 @@ Here's an example configuration for a model that supports function calling:
     ```
     </Tab>
 </Tabs>
-
-## Embeddings Model
-
-We recommend configuring **bge-multilingual-gemma2** as your embeddings model.
-
-<Tabs>
-  <Tab title="YAML">
-  ```yaml title="config.yaml"
-  name: My Config
-  version: 0.0.1
-  schema: v1
-
-  models:
-    - name: BGE Multilingual Gemma2
-      provider: ovhcloud
-      model: bge-multilingual-gemma2
-      apiKey: <YOUR_AIENDPOINTS_API_KEY>
-      roles: 
-        - embed
-  ```
-  </Tab>
-  <Tab title="JSON">
-  ```json title="config.json"
-  {
-    "embeddingsProvider": {
-      "provider": "ovhcloud",
-      "model": "bge-multilingual-gemma2",
-      "apiKey": "<YOUR_AIENDPOINTS_API_KEY>"
-    }
-  }
-  ```
-  </Tab>
-</Tabs>

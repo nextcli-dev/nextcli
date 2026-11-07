@@ -6,7 +6,6 @@ import {
   OAuthTokens,
 } from "@modelcontextprotocol/sdk/shared/auth.js";
 
-import { SiteIndexingConfig } from "..";
 import {
   salvageSharedConfig,
   sharedConfigSchema,
@@ -47,19 +46,10 @@ export type GlobalContextType = {
     };
   };
 
-  /**
-   * This is needed to handle the case where a JetBrains user has created
-   * docs embeddings using one provider, and then updates to a new provider.
-   *
-   * For VS Code users, it is unnecessary since we use transformers.js by default.
-   */
-  hasDismissedConfigTsNoticeJetBrains: boolean;
   hasAlreadyCreatedAPromptFile: boolean;
   hasShownUnsupportedPlatformWarning: boolean;
   showConfigUpdateToast: boolean;
-  isSupportedLanceDbCpuTargetForLinux: boolean;
   sharedConfig: SharedConfigSchema;
-  failedDocs: SiteIndexingConfig[];
   shownDeprecatedProviderWarnings: { [providerTitle: string]: boolean };
   autoUpdateCli: boolean;
   mcpOauthStorage: {
