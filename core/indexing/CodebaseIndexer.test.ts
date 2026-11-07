@@ -810,12 +810,13 @@ describe("CodebaseIndexer", () => {
           indexer as any
         ).getIndexesToBuild()) as CodebaseIndex[];
 
-        const byId: Record<string, CodebaseIndex> = {};
+        // Chunks first: the full-text index reads the chunks table
+        const ids: string[] = [];
         for (const index of indexes) {
-          byId[index.artifactId] = index;
+          ids.push(index.artifactId);
         }
-        expect(Object.keys(byId).sort()).toEqual(["chunks", "sqliteFts"]);
-        expect((byId.chunks as any).maxChunkSize).toBe(500);
+        expect(ids).toEqual(["chunks", "sqliteFts"]);
+        expect((indexes[0] as any).maxChunkSize).toBe(500);
       });
 
       test("should handle duplicate contexts", async () => {

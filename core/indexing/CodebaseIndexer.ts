@@ -149,12 +149,17 @@ export class CodebaseIndexer {
       return [];
     }
 
-    const indexTypesToBuild = new Set( // use set to remove duplicates
+    const requested = new Set( // use set to remove duplicates
       config.contextProviders
         .map((provider) => provider.description.dependsOnIndexing)
         .filter((indexType) => Array.isArray(indexType)) // remove undefined indexTypes
         .flat(),
     );
+    // The full-text index reads the chunks table, so chunks are built first
+    const indexTypesToBuild = [
+      ...(requested.has("chunk") ? ["chunk" as const] : []),
+      ...[...requested].filter((indexType) => indexType !== "chunk"),
+    ];
 
     const indexTypeToIndexerMapping: Record<
       ContextIndexingType,
