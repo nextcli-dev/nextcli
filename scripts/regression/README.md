@@ -1,39 +1,22 @@
-# Regression baseline for the dependency upgrade
+# Regression fixtures from the dependency upgrade
 
-Scripts that capture how nextcli behaves before deprecated dependencies are
-replaced, so each phase of the upgrade can prove nothing changed.
+Output recorded from libraries before the dependency upgrade replaced them, so
+the replacements can be checked against it. Only output that can't be
+recreated once a library is removed is committed.
 
-| Script                                          | Records                                                                                                                                                                                                      | Run                                                                                                                                                                                                                                                                     |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `capture-baseline.mjs`                          | Build, typecheck, lint and test results for every package → `results/<label>/summary.json`                                                                                                                   | Before a phase (`--label baseline`) and after it (`--label p1`, …); `--only core,gui` reruns some areas into an existing label                                                                                                                                          |
-| `generate-adf-fixture.mjs` (removed)            | adf-to-md's Markdown for 35 Jira documents → `core/test/fixtures/regression/adf/golden.json`; `adfToMarkdown.vitest.ts` checks the replacement against it                                                    | Ran once before Phase 3 removed adf-to-md; the script is in git history                                                                                                                                                                                                 |
-| `generate-database-fixture.mjs` (removed)       | dbinfoz's table schemas from SQLite, Postgres and MySQL, with the schema SQL that seeded each → `core/test/fixtures/regression/database/golden.json`; `database.vitest.ts` checks the replacement against it | Ran once before Phase 6 removed dbinfoz; the script is in git history. Server engines: start `database/compose.yaml` and run the test with `NEXTCLI_DB_TESTS=1`; add `DBINFOZ_DIR` (an install of dbinfoz@0.14.0) to compare with dbinfoz live, which also covers MSSQL |
-| `core/test/regression/htmlExtraction.vitest.ts` | Text extracted from web pages by the @url provider                                                                                                                                                           | Runs with core's vitest; `UPDATE_REGRESSION_FIXTURES=1` re-records                                                                                                                                                                                                      |
+| Fixture                                              | Records                                                                                                                                                     | Checked by                                                                                                                                                                                                                                                                |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `core/test/fixtures/regression/adf/golden.json`      | adf-to-md's Markdown for 35 Jira documents (recorded by `generate-adf-fixture.mjs`, in git history)                                                         | `adfToMarkdown.vitest.ts`                                                                                                                                                                                                                                                 |
+| `core/test/fixtures/regression/database/golden.json` | dbinfoz's table schemas from SQLite, Postgres and MySQL, with the schema SQL that seeded each (recorded by `generate-database-fixture.mjs`, in git history) | `database.vitest.ts`: SQLite always; server engines with `database/compose.yaml` running and `NEXTCLI_DB_TESTS=1`, plus `DBINFOZ_DIR` (an install of dbinfoz@0.14.0) to compare with dbinfoz live. CI's `database-regression.yml` does this for Postgres, MySQL and MSSQL |
+| `core/test/fixtures/regression/html/golden.json`     | Text the @url provider extracts from web pages                                                                                                              | `core/test/regression/htmlExtraction.vitest.ts`; `UPDATE_REGRESSION_FIXTURES=1` re-records                                                                                                                                                                                |
 
-Only output that can't be recreated once a library is removed is committed:
-what adf-to-md, dbinfoz and today's HTML extraction produce. The generators must
-run before the dependency they record is removed; after that, the committed
-output is the reference.
+Data that can be rebuilt is not committed; tests build it at runtime. The
+SQLite file format doesn't depend on the driver, so tests create old-schema
+databases (dev data before `tokens_prompt`, the autocomplete cache, `shop` from
+the schema SQL in `database/golden.json`) with the current one.
 
-Data that can be rebuilt is not committed; the phase's tests build it at
-runtime:
-
-- **Databases** (Phase 6): the SQLite file format doesn't depend on the driver,
-  so tests create old-schema databases (devdata before `tokens_prompt`, the
-  autocomplete cache, `shop` from the schema SQL in `database/golden.json`) with
-  whichever driver is current.
-
-The `results/` folder is git-ignored: baselines are machine-specific and stay on
-the machine that made them. `summary.json` records every path relative to the
-repo root, so a result file can be shared without exposing local paths. The
-reference numbers for the baseline run are in a comment on
-[PR #41](https://github.com/nextcli-dev/nextcli/pull/41).
-
-Known gaps in the baseline:
-
-- MSSQL crashes under x86 emulation on Apple Silicon, so its schema output must
-  be recorded on an x86 Linux machine.
-- `packages/continue-sdk/typescript` (the SDK code and its jest tests) is not
-  installed or tested anywhere, so its steps are recorded as skipped. CI's
-  `packages (continue-sdk)` job only runs `npm ci` and an `echo` test script in
-  the parent folder.
+The upgrade also used a baseline script, `capture-baseline.mjs`, that recorded
+every package's build, typecheck, lint and test results before and after each
+phase. It was removed once the upgrade finished, because CI runs the same
+checks on every pull request; it is in git history. The Phase 0 numbers are in
+a comment on [PR #41](https://github.com/nextcli-dev/nextcli/pull/41).
