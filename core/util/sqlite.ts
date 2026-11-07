@@ -398,10 +398,10 @@ export class SqliteDatabase {
   }
 
   async prepare(sql: string, ...params: Params): Promise<SqliteStatement> {
-    return new SqliteStatement(
-      call(() => this.db.prepare(sql)),
-      params,
-    );
+    // Compile on the same queue as exec, so a SELECT cannot run before a
+    // CREATE TABLE that was queued ahead of it.
+    const statement = await schedule(() => call(() => this.db.prepare(sql)));
+    return new SqliteStatement(statement, params);
   }
 
   /**
