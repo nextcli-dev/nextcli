@@ -33,6 +33,8 @@ export interface BaseCommandOptions {
   maxSessionTokens?: string;
   /** Stop when one run has cost more than this many US dollars (--max-cost) */
   maxCost?: string;
+  /** Effort level for this run, for example low, medium or high (--effort) */
+  effort?: string;
 }
 
 /**
