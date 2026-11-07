@@ -306,9 +306,9 @@ function ModelSelect() {
                       onBack={showListOnly ? undefined : () => setView("root")}
                       onSelect={(title) => {
                         selectModel(title);
-                        // Keep the menu open on the new model's settings
-                        if (showListOnly) close();
-                        else setView("root");
+                        // Picking a model is the end of the task: close the
+                        // menu (its settings are one click away)
+                        close();
                       }}
                       onConfigure={() => openConfig(close)}
                       onAddModel={() => openAddModel(close)}

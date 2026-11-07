@@ -276,7 +276,7 @@ describe("ModelSelect", () => {
     expect(within(menu).getByText("Needs thinking")).toBeInTheDocument();
   });
 
-  it("switches models from the Model submenu and stays open", async () => {
+  it("switches models from the Model submenu and closes the menu", async () => {
     const { user, postSpy } = await setup(OPUS, {
       "anthropic/claude-opus-5-5": resolved("anthropic/claude-opus-5-5", {}),
     });
@@ -289,8 +289,9 @@ describe("ModelSelect", () => {
       profileId: "local",
       title: "Gemini 3.1 Pro",
     });
-    const stillOpen = screen.getByTestId("model-select-menu");
-    expect(within(stillOpen).getByText("Thinking")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByTestId("model-select-menu")).not.toBeInTheDocument(),
+    );
   });
 
   it("uses the menu's font in every row, not the browser's button font", async () => {
