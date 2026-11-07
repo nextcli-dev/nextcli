@@ -126,9 +126,9 @@ Then, install Vite globally
 npm i -g vite
 ```
 
-##### Native build prerequisites
+##### Native build prerequisites (optional)
 
-Native modules such as `sqlite3` normally install from prebuilt binaries. When no prebuilt binary matches your platform, npm builds them from source with node-gyp 12, which needs:
+No required dependency compiles native code: SQLite comes from Node's built-in `node:sqlite`. Two optional addons that read system certificates (`macos-export-certificate-and-key`, `win-export-certificate-and-key`) build from source with node-gyp when a toolchain is present, and npm skips them when it isn't. To build them, node-gyp needs:
 
 - **Python 3.13.** The repo pins it in `.python-version`, and [uv](https://docs.astral.sh/uv/) installs it with `uv sync`. To make node-gyp use that interpreter, run `export npm_config_python="$(uv python find 3.13)"`.
 - **A C++ toolchain:** Xcode Command Line Tools on macOS, `build-essential` on Linux, or Visual Studio 2022/2026 with the "Desktop development with C++" workload on Windows.

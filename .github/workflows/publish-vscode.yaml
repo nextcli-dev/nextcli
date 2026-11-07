@@ -99,71 +99,8 @@ jobs:
           fi
           out should_run true
 
-  sqlite-win32-arm64:
-    # node-sqlite3 publishes no win32-arm64 binary, so build it from source
-    # on Windows ARM. The win32-arm64 build packages this one.
-    needs: resolve
-    if: needs.resolve.outputs.should_run == 'true'
-    runs-on: windows-11-arm
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.resolve.outputs.ref }}
-          sparse-checkout: |
-            .nvmrc
-            extensions/vscode/scripts/download-copy-sqlite.js
-          sparse-checkout-cone-mode: false
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: ".nvmrc"
-          architecture: arm64
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.13"
-          architecture: arm64
-
-      - name: Build sqlite3 from source
-        shell: bash
-        run: |
-          # Read the version from the script; requiring it needs its dependencies
-          version=$(sed -n 's/^const SQLITE3_VERSION = "\(.*\)";/\1/p' extensions/vscode/scripts/download-copy-sqlite.js)
-          [ -n "$version" ] || { echo "::error::SQLITE3_VERSION not found in download-copy-sqlite.js"; exit 1; }
-          echo "Building sqlite3 $version for $(node -p process.arch)"
-          mkdir -p "$RUNNER_TEMP/sqlite3" && cd "$RUNNER_TEMP/sqlite3"
-          npm init -y > /dev/null
-          npm install "sqlite3@$version" --build-from-source --no-audit --no-fund
-
-      - name: Check that it loads
-        shell: bash
-        working-directory: ${{ runner.temp }}/sqlite3
-        run: |
-          node -e "
-            const sqlite3 = require('sqlite3');
-            const db = new sqlite3.Database(':memory:');
-            db.get('select sqlite_version() as v', (err, row) => {
-              if (err) throw err;
-              console.log('SQLite', row.v, 'on', process.arch);
-              db.close();
-            });
-          "
-
-      - name: Pack the binary
-        shell: bash
-        working-directory: ${{ runner.temp }}/sqlite3/node_modules/sqlite3
-        # A relative path: GNU tar reads "C:" in an absolute one as a host name
-        run: tar -czf node_sqlite3.tar.gz build/Release/node_sqlite3.node
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: sqlite3-win32-arm64
-          path: ${{ runner.temp }}/sqlite3/node_modules/sqlite3/node_sqlite3.tar.gz
-          if-no-files-found: error
-
   build:
-    needs: [resolve, sqlite-win32-arm64]
+    needs: resolve
     if: needs.resolve.outputs.should_run == 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
@@ -174,9 +111,9 @@ jobs:
       matrix:
         include:
           # Pinned to windows-2022 because node-gyp 8 didn't recognise the
-          # Visual Studio 2026 on windows-latest (windows-2025-vs2026). sqlite3 6
-          # brings node-gyp 12, which does, so this can move back to
-          # windows-latest once a dry run passes there.
+          # Visual Studio 2026 on windows-latest (windows-2025-vs2026). With
+          # sqlite3 gone, node-gyp only builds optional addons, so this can
+          # move back to windows-latest once a dry run passes there.
           - { os: windows-2022, platform: win32, arch: x64, npm_config_arch: x64 }
           - { os: windows-2022, platform: win32, arch: arm64, npm_config_arch: arm }
           - { os: ubuntu-latest, platform: linux, arch: x64, npm_config_arch: x64 }
@@ -202,18 +139,6 @@ jobs:
           client-id: ${{ vars.NEXTCLI_APP_CLIENT_ID }}
           private-key: ${{ secrets.NEXTCLI_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
-
-      - name: Download the win32-arm64 sqlite3 binary
-        if: matrix.platform == 'win32' && matrix.arch == 'arm64'
-        uses: actions/download-artifact@v8
-        with:
-          name: sqlite3-win32-arm64
-          path: ${{ runner.temp }}/sqlite3-win32-arm64
-
-      - name: Use it for packaging
-        if: matrix.platform == 'win32' && matrix.arch == 'arm64'
-        shell: bash
-        run: echo "SQLITE3_WIN32_ARM64_TARBALL=$RUNNER_TEMP/sqlite3-win32-arm64/node_sqlite3.tar.gz" >> "$GITHUB_ENV"
 
       - uses: ./.github/actions/build-vscode-extension
         with:

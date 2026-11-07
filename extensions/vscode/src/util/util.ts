@@ -100,16 +100,8 @@ export function isUnsupportedPlatform(): {
   isUnsupported: boolean;
   reason?: string;
 } {
-  const platform = getPlatform();
-  const arch = getArchitecture();
-
-  if (platform === "windows" && arch === "arm64") {
-    return {
-      isUnsupported: true,
-      reason:
-        "Windows ARM64 is not currently supported due to missing native dependencies (sqlite3). Please use the extension on Windows x64, macOS, or Linux instead.",
-    };
-  }
+  // Windows ARM64 used to be unsupported because of native dependencies
+  // (sqlite3, onnxruntime); none are left
 
   // if (platform === "unknown" || arch === "unknown") {
   //   return {

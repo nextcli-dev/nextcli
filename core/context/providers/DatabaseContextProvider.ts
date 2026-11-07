@@ -1,5 +1,3 @@
-import { getDatabaseAdapter } from "dbinfoz";
-
 import {
   ContextItem,
   ContextProviderDescription,
@@ -8,6 +6,8 @@ import {
   LoadSubmenuItemsArgs,
 } from "../../index.js";
 import { BaseContextProvider } from "../index.js";
+
+import { getAllTablesAndSchemas } from "./database/index.js";
 
 class DatabaseContextProvider extends BaseContextProvider {
   static description: ContextProviderDescription = {
@@ -38,13 +38,9 @@ class DatabaseContextProvider extends BaseContextProvider {
 
     for (const connection of connections) {
       if (connection.name === connectionName) {
-        // @ts-ignore (incorrect typings on module's declaration file)
-        const adapter = getDatabaseAdapter(
+        const tablesAndSchemas = await getAllTablesAndSchemas(
           connection.connection_type,
           connection.connection,
-        );
-        const tablesAndSchemas = await adapter.getAllTablesAndSchemas(
-          connection.connection.database,
         );
 
         if (table === "all") {
@@ -93,13 +89,9 @@ class DatabaseContextProvider extends BaseContextProvider {
     }
 
     for (const connection of connections) {
-      // @ts-ignore (incorrect typings on module's declaration file)
-      const adapter = getDatabaseAdapter(
+      const tablesAndSchemas = await getAllTablesAndSchemas(
         connection.connection_type,
         connection.connection,
-      );
-      const tablesAndSchemas = await adapter.getAllTablesAndSchemas(
-        connection.connection.database,
       );
       const tables = Object.keys(tablesAndSchemas);
 

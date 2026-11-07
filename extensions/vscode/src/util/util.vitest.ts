@@ -20,18 +20,14 @@ describe("isUnsupportedPlatform", () => {
     vi.resetAllMocks();
   });
 
-  it("should be true when os is winarm64", async () => {
+  it("supports Windows ARM64 now that no native dependency blocks it", async () => {
     const { platform, arch } = await import("node:os");
     vi.mocked(platform).mockReturnValue("win32");
     vi.mocked(arch).mockReturnValue("arm64");
 
     const { isUnsupportedPlatform } = await import("./util");
 
-    const platformCheck = isUnsupportedPlatform();
-
-    expect(platformCheck.isUnsupported).toBe(true);
-    expect(platformCheck.reason).toMatch(/windows/gi);
-    expect(platformCheck.reason).toMatch(/arm64/gi);
+    expect(isUnsupportedPlatform().isUnsupported).toBe(false);
   });
 
   it("should not be true when os is supported", async () => {

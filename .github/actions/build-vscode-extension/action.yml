@@ -43,10 +43,10 @@ runs:
       with:
         node-version-file: ".nvmrc"
 
-    # node-gyp compiles sqlite3 where no prebuilt binary exists (macOS). Pin the
-    # repo's Python (.python-version, 3.13, shared with uv) so every runner uses
-    # the same interpreter. sqlite3 6.x brings node-gyp 12, which supports
-    # Python 3.12+ (node-gyp 8 imported distutils and needed 3.11).
+    # node-gyp compiles optional native addons on install (system-ca's
+    # macos- and win-export-certificate-and-key). Pin the repo's Python
+    # (.python-version, 3.13, shared with uv) so every runner uses the same
+    # interpreter.
     - uses: actions/setup-python@v7
       id: setup-python
       with:

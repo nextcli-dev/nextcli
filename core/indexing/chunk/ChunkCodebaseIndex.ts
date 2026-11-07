@@ -15,6 +15,10 @@ import { getUriPathBasename } from "../../util/uri.js";
 import { tagToString } from "../utils.js";
 import { chunkDocument, shouldChunk } from "./chunk.js";
 
+// How long one chunk-insert transaction may hold the write lock and the
+// thread before the next one starts
+const INSERT_SLICE_MS = 15;
+
 export class ChunkCodebaseIndex implements CodebaseIndex {
   relativeExpectedTime: number = 1;
   static artifactId = "chunks";
@@ -46,7 +50,7 @@ export class ChunkCodebaseIndex implements CodebaseIndex {
           repoName,
         );
 
-        for (const [cacheKey, chunks] of Object.entries(resp.files)) {
+        for (const chunks of Object.values(resp.files)) {
           await this.insertChunks(db, tagString, chunks);
         }
         results.compute = results.compute.filter(
@@ -68,9 +72,16 @@ export class ChunkCodebaseIndex implements CodebaseIndex {
         status: "indexing",
         progress: accumulatedProgress,
       };
-      const chunks = await this.computeChunks(results.compute);
-      await this.insertChunks(db, tagString, chunks);
-      await markComplete(results.compute, IndexResultType.Compute);
+      const chunkLists = await Promise.all(
+        results.compute.map((item) => this.packToChunks(item)),
+      );
+      await this.insertChunksInSlices(
+        db,
+        tagString,
+        results.compute,
+        chunkLists,
+        markComplete,
+      );
     }
 
     // Add tag
@@ -195,11 +206,37 @@ export class ChunkCodebaseIndex implements CodebaseIndex {
     return chunks;
   }
 
-  private async computeChunks(paths: PathAndCacheKey[]): Promise<Chunk[]> {
-    const chunkLists = await Promise.all(
-      paths.map((p) => this.packToChunks(p)),
-    );
-    return chunkLists.flat();
+  /**
+   * Inserts files' chunks in short transactions, a few files at a time, and
+   * marks each transaction's files complete right after it commits. Each
+   * file stays all-or-nothing, and between transactions the event loop gets
+   * a turn (node:sqlite is synchronous) and other windows can take the write
+   * lock.
+   */
+  private async insertChunksInSlices(
+    db: DatabaseConnection,
+    tagString: string,
+    items: PathAndCacheKey[],
+    chunkLists: Chunk[][],
+    markComplete: MarkCompleteCallback,
+  ) {
+    let next = 0;
+    while (next < items.length) {
+      const first = next;
+      await this.insertChunksTransaction(db, tagString, (insert) => {
+        const start = performance.now();
+        do {
+          for (const chunk of chunkLists[next]) {
+            insert(chunk);
+          }
+          next++;
+        } while (
+          next < items.length &&
+          performance.now() - start < INSERT_SLICE_MS
+        );
+      });
+      await markComplete(items.slice(first, next), IndexResultType.Compute);
+    }
   }
 
   private async insertChunks(
@@ -207,13 +244,23 @@ export class ChunkCodebaseIndex implements CodebaseIndex {
     tagString: string,
     chunks: Chunk[],
   ) {
+    await this.insertChunksTransaction(db, tagString, (insert) => {
+      chunks.forEach(insert);
+    });
+  }
+
+  private async insertChunksTransaction(
+    db: DatabaseConnection,
+    tagString: string,
+    fill: (insert: (chunk: Chunk) => void) => void,
+  ) {
     const chunksSQL =
       "INSERT INTO chunks (cacheKey, path, idx, startLine, endLine, content) VALUES (?, ?, ?, ?, ?, ?)";
     const chunkTagsSQL =
       "INSERT INTO chunk_tags (chunkId, tag) VALUES (last_insert_rowid(), ?)";
     try {
       await db.transaction((tx) => {
-        for (const c of chunks) {
+        fill((c) => {
           tx.run(chunksSQL, [
             c.digest,
             c.filepath,
@@ -223,10 +270,15 @@ export class ChunkCodebaseIndex implements CodebaseIndex {
             c.content,
           ]);
           tx.run(chunkTagsSQL, [tagString]);
-        }
+        });
       });
     } catch (err) {
-      throw new Error("error inserting into chunks tables", { cause: err });
+      // Keep the SQLite code (`SQLITE_FULL: ...`) in the message: the indexer
+      // matches it to decide whether to offer a rebuild
+      throw new Error(
+        `error inserting into chunks tables: ${err instanceof Error ? err.message : err}`,
+        { cause: err },
+      );
     }
   }
 }
