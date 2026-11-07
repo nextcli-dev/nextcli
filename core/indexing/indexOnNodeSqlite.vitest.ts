@@ -21,7 +21,9 @@ vi.mock("../llm/countTokens", async (importOriginal) => ({
 import CodebaseContextProvider from "../context/providers/CodebaseContextProvider";
 import CodeContextProvider from "../context/providers/CodeContextProvider";
 import FileSystemIde from "../util/filesystem";
+import { getIndexSqlitePath } from "../util/paths";
 import { localPathToUri } from "../util/pathToUri";
+import { SqliteDatabase } from "../util/sqlite";
 import { CodebaseIndexer } from "./CodebaseIndexer";
 import { FullTextSearchCodebaseIndex } from "./FullTextSearchCodebaseIndex";
 import { SqliteDb } from "./refreshIndex";
@@ -51,6 +53,65 @@ afterAll(() => {
 });
 
 describe("indexing on node:sqlite", () => {
+  it("does not query tag_catalog before the schema exists", async () => {
+    await SqliteDb.db?.close();
+    SqliteDb.db = null;
+    const indexPath = getIndexSqlitePath();
+    fs.rmSync(indexPath, { force: true });
+    fs.rmSync(`${indexPath}-wal`, { force: true });
+    fs.rmSync(`${indexPath}-shm`, { force: true });
+
+    let releaseSchema: () => void = () => {};
+    let heldSchema = false;
+    const schemaGate = new Promise<void>((resolve) => {
+      releaseSchema = resolve;
+    });
+    const createTagCatalog = SqliteDatabase.prototype.exec;
+    const exec = vi
+      .spyOn(SqliteDatabase.prototype, "exec")
+      .mockImplementation(function (this: SqliteDatabase, sql: string) {
+        if (sql.includes("CREATE TABLE IF NOT EXISTS tag_catalog")) {
+          heldSchema = true;
+          return schemaGate.then(() => createTagCatalog.call(this, sql));
+        }
+        return createTagCatalog.call(this, sql);
+      });
+
+    try {
+      const pending = SqliteDb.get();
+      const started = Date.now();
+      while (!SqliteDb.db && Date.now() - started < 200) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+
+      // A connection published before CREATE TABLE used to reject this
+      const earlyRead = SqliteDb.db?.get<{ n: number }>(
+        "SELECT count(*) AS n FROM tag_catalog",
+      );
+      const assertion = earlyRead
+        ? expect(earlyRead).resolves.toEqual({ n: 0 })
+        : undefined;
+      releaseSchema();
+      if (assertion) {
+        await assertion;
+      }
+
+      const db = await pending;
+      expect(heldSchema).toBe(true);
+      expect(await db.get("SELECT count(*) AS n FROM tag_catalog")).toEqual({
+        n: 0,
+      });
+    } finally {
+      releaseSchema();
+      exec.mockRestore();
+      await SqliteDb.db?.close().catch(() => {});
+      SqliteDb.db = null;
+      fs.rmSync(indexPath, { force: true });
+      fs.rmSync(`${indexPath}-wal`, { force: true });
+      fs.rmSync(`${indexPath}-shm`, { force: true });
+    }
+  });
+
   it("builds every index and finds files by keyword", async () => {
     const ide = new FileSystemIde(workspace);
     const dir = localPathToUri(workspace);

@@ -245,7 +245,9 @@ export class Core {
             return;
           }
 
-          void this.codeBaseIndexer.refreshCodebaseIndex(dirs);
+          void this.codeBaseIndexer.refreshCodebaseIndex(dirs).catch((err) => {
+            console.log(`Failed to refresh the codebase index: ${err}`);
+          });
         });
       });
 

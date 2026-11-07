@@ -31,6 +31,9 @@ export async function testAutocompleteFiltering(
   // Setup necessary objects
   const llm = new MockLLM({
     model: "mock",
+    // modelTimeout also stops the stream after the first line. These cases
+    // assert the filtered text, so a slow run must not cut it off.
+    autocompleteOptions: { modelTimeout: 30_000 },
   });
   llm.completion = test.llmOutput;
   const ide = testIde;
