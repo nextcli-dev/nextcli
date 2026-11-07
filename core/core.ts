@@ -12,6 +12,7 @@ import { addModel, deleteModel } from "./config/util";
 import { DevDataSqliteDb } from "./data/devdataSqlite";
 import { DataLogger } from "./data/log";
 import { CodebaseIndexer } from "./indexing/CodebaseIndexer";
+import { removeLegacyEmbeddingsData } from "./indexing/removeLegacyEmbeddingsData";
 import { countTokens } from "./llm/countTokens";
 import Lemonade from "./llm/llms/Lemonade";
 import { fetchModels } from "./llm/fetchModels";
@@ -94,6 +95,8 @@ import {
   coreTelemetry,
   isTelemetryAllowed,
 } from "./util/telemetry/coreTelemetry";
+
+const LEGACY_DATA_CLEANUP_DELAY_MS = 30_000;
 
 export class Core {
   configHandler: ConfigHandler;
@@ -245,6 +248,20 @@ export class Core {
           void this.codeBaseIndexer.refreshCodebaseIndex(dirs);
         });
       });
+
+      // Remove what codebase embeddings and @docs left on disk, once start-up
+      // and the first indexing run have had a head start
+      setTimeout(() => {
+        removeLegacyEmbeddingsData()
+          .then((result) => {
+            if (result.removed.length > 0 || result.droppedLanceDbCache) {
+              console.log("Removed legacy embeddings data:", result);
+            }
+          })
+          .catch((e) =>
+            console.warn("Failed to remove legacy embeddings data:", e),
+          );
+      }, LEGACY_DATA_CLEANUP_DELAY_MS).unref?.();
 
       const getLlm = async () => {
         const { config } = await this.configHandler.loadConfig();

@@ -24,7 +24,7 @@ All indexes must be returned by `getIndexesToBuild` in [`CodebaseIndexer.ts`](./
 `FullTextSearchCodebaseIndex`: creates a full-text search index using SQLite FTS5
 `ChunkCodebaseIndex`: chunks files recursively by code structure
 
-NextCLI no longer computes embeddings. Earlier releases kept a LanceDB vector index in `~/.continue/index/lancedb`; current releases never read or delete it.
+NextCLI no longer computes embeddings. Earlier releases kept a LanceDB vector index in `~/.continue/index/lancedb`, @docs metadata in `docs.sqlite`, and a `lance_db_cache` table in `index.sqlite`. `removeLegacyEmbeddingsData.ts` deletes them shortly after start-up.
 
 ## Known problems
 
