@@ -15,7 +15,6 @@ import {
 } from "core/protocol/util";
 import { createContext } from "react";
 import { v4 as uuidv4 } from "uuid";
-import { isJetBrains } from "../util";
 
 interface vscode {
   postMessage(message: any): vscode;
@@ -81,25 +80,12 @@ export class IdeMessenger implements IIdeMessenger {
     messageId: string = uuidv4(),
   ) {
     if (typeof vscode === "undefined") {
-      if (isJetBrains()) {
-        if (window.postIntellijMessage === undefined) {
-          console.log(
-            "Unable to send message: postIntellijMessage is undefined. ",
-            messageType,
-            data,
-          );
-          throw new Error("postIntellijMessage is undefined");
-        }
-        window.postIntellijMessage?.(messageType, data, messageId);
-        return;
-      } else {
-        console.log(
-          "Unable to send message: vscode is undefined",
-          messageType,
-          data,
-        );
-        return;
-      }
+      console.log(
+        "Unable to send message: vscode is undefined",
+        messageType,
+        data,
+      );
+      return;
     }
 
     const msg: Message = {

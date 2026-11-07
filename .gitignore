@@ -179,6 +179,3 @@ keys
 
 # TypeScript incremental build info
 *.tsbuildinfo
-
-# Regression baselines are machine-specific; they stay on the machine that made them.
-scripts/regression/results/

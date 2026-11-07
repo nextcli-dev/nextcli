@@ -48,6 +48,8 @@ export type GlobalContextType = {
 
   hasAlreadyCreatedAPromptFile: boolean;
   hasShownUnsupportedPlatformWarning: boolean;
+  /** The user chose "Don't show again" on the legacy index data notice */
+  hasDismissedLegacyEmbeddingsCleanup: boolean;
   showConfigUpdateToast: boolean;
   sharedConfig: SharedConfigSchema;
   shownDeprecatedProviderWarnings: { [providerTitle: string]: boolean };

@@ -22,7 +22,7 @@ If you're currently using `@Codebase` or `@Folder` context providers, please mig
 NextCLI indexes your codebase so that it can later pull in relevant context from throughout your workspace. Retrieval is keyword search only: a full-text index of code chunks, plus recently edited files and the repository map. The index is stored locally in `~/.continue/index`.
 
 <Note>
-  NextCLI no longer computes embeddings. Earlier releases also ran an embeddings search, with `transformers.js` by default or the model with the `embed` role. That search was removed together with `@Docs`. A model with the `embed` role still loads, but the role is ignored and NextCLI shows a warning. The old vector index in `~/.continue/index/lancedb` is left on disk; you can delete it.
+  NextCLI no longer computes embeddings. Earlier releases also ran an embeddings search, with `transformers.js` by default or the model with the `embed` role. That search was removed together with `@Docs`. A model with the `embed` role still loads, but the role is ignored and NextCLI shows a warning. The old vector index (`~/.continue/index/lancedb`) and @Docs data are no longer used. NextCLI offers to delete them once; you can also run **NextCLI: Delete Legacy Index Data** from the command palette, or `cn cleanup` in a terminal. Only versions 1.6.7 and earlier can use that data.
 </Note>
 
 ## How to Use @Codebase and @Folder Context Providers

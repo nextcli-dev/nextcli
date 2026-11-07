@@ -12,6 +12,7 @@ import { addModel, deleteModel } from "./config/util";
 import { DevDataSqliteDb } from "./data/devdataSqlite";
 import { DataLogger } from "./data/log";
 import { CodebaseIndexer } from "./indexing/CodebaseIndexer";
+import { offerLegacyEmbeddingsCleanup } from "./indexing/legacyEmbeddingsData";
 import { countTokens } from "./llm/countTokens";
 import Lemonade from "./llm/llms/Lemonade";
 import { fetchModels } from "./llm/fetchModels";
@@ -94,6 +95,8 @@ import {
   coreTelemetry,
   isTelemetryAllowed,
 } from "./util/telemetry/coreTelemetry";
+
+const LEGACY_DATA_CHECK_DELAY_MS = 30_000;
 
 export class Core {
   configHandler: ConfigHandler;
@@ -246,6 +249,14 @@ export class Core {
         });
       });
 
+      // Offer to delete what codebase embeddings and @docs left on disk, once
+      // start-up and the first indexing run have had a head start
+      setTimeout(() => {
+        offerLegacyEmbeddingsCleanup(this.ide, { fromCommand: false }).catch(
+          (e) => console.warn("Failed to check for legacy index data:", e),
+        );
+      }, LEGACY_DATA_CHECK_DELAY_MS).unref?.();
+
       const getLlm = async () => {
         const { config } = await this.configHandler.loadConfig();
         if (!config) {
@@ -291,21 +302,6 @@ export class Core {
   /* eslint-disable max-lines-per-function */
   private registerMessageHandlers(ideSettingsPromise: Promise<IdeSettings>) {
     const on = this.messenger.on.bind(this.messenger);
-
-    // Note, VsCode's in-process messenger doesn't do anything with this
-    // It will only show for jetbrains
-    this.messenger.onError((message, err) => {
-      // just to prevent duplicate error messages in jetbrains (same logic in webview protocol)
-      if (
-        ["llm/streamChat", "chatDescriber/describe"].includes(
-          message.messageType,
-        )
-      ) {
-        return;
-      } else {
-        void this.ide.showToast("error", err.message);
-      }
-    });
 
     on("abort", (msg) => {
       this.abortById(msg.data ?? msg.messageId);
@@ -796,6 +792,10 @@ export class Core {
     on("stats/getTokensPerModel", async (msg) => {
       const rows = await DevDataSqliteDb.getTokensPerModel();
       return rows;
+    });
+
+    on("index/cleanUpLegacyData", async () => {
+      await offerLegacyEmbeddingsCleanup(this.ide, { fromCommand: true });
     });
 
     on("index/forceReIndex", async ({ data }) => {

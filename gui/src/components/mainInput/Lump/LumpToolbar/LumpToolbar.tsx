@@ -11,7 +11,6 @@ import { cancelToolCall } from "../../../../redux/slices/sessionSlice";
 import { callToolById } from "../../../../redux/thunks/callToolById";
 import { cancelStream } from "../../../../redux/thunks/cancelStream";
 import { logToolUsage } from "../../../../redux/util";
-import { isJetBrains } from "../../../../util";
 import { useMainEditor } from "../../TipTapEditor";
 import { BlockSettingsTopToolbar } from "./BlockSettingsTopToolbar";
 import { EditOutcomeToolbar } from "./EditOutcomeToolbar";
@@ -28,14 +27,9 @@ const isExecuteToolCallShortcut = (event: KeyboardEvent) => {
   return metaKey && event.key === "Enter";
 };
 
-const isCancelToolCallShortcut = (
-  event: KeyboardEvent,
-  isJetBrains: boolean,
-) => {
+const isCancelToolCallShortcut = (event: KeyboardEvent) => {
   const metaKey = event.metaKey || event.ctrlKey;
-  const altKey = event.altKey;
-  const modifierKey = isJetBrains ? altKey : metaKey;
-  return modifierKey && event.key === "Backspace";
+  return metaKey && event.key === "Backspace";
 };
 
 // Check if a tool call is a terminal command
@@ -52,7 +46,6 @@ export function LumpToolbar() {
   const ttsActive = useAppSelector((state) => state.ui.ttsActive);
   const isStreaming = useAppSelector((state) => state.session.isStreaming);
   const isInEdit = useAppSelector((state) => state.session.isInEdit);
-  const jetbrains = isJetBrains();
   const pendingToolCalls = useAppSelector(selectPendingToolCalls);
   const firstPendingToolCall = useAppSelector(selectFirstPendingToolCall);
   const editApplyState = useAppSelector(
@@ -134,7 +127,7 @@ export function LumpToolbar() {
         void dispatch(
           callToolById({ toolCallId: firstPendingToolCall.toolCallId }),
         );
-      } else if (isCancelToolCallShortcut(event, jetbrains)) {
+      } else if (isCancelToolCallShortcut(event)) {
         event.preventDefault();
         event.stopPropagation();
 

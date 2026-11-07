@@ -276,6 +276,7 @@ export type ToCoreFromIdeOrWebviewProtocol = {
     void,
   ];
   "index/indexingProgressBarInitialized": [undefined, void];
+  "index/cleanUpLegacyData": [undefined, void];
   "onboarding/complete": [CompleteOnboardingPayload, void];
 
   // File changes

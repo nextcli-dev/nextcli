@@ -27,11 +27,6 @@ import { handleApplyStateUpdate } from "../redux/thunks/handleApplyStateUpdate";
 import { loadModelSettings } from "../redux/thunks/modelSettings";
 import { loadSession, refreshSessionMetadata } from "../redux/thunks/session";
 import { updateFileSymbolsFromHistory } from "../redux/thunks/updateFileSymbols";
-import {
-  setDocumentStylesFromLocalStorage,
-  setDocumentStylesFromTheme,
-} from "../styles/theme";
-import { isJetBrains } from "../util";
 import { setLocalStorage } from "../util/localStorage";
 import { migrateLocalStorage } from "../util/migrateLocalStorage";
 import { useWebviewListener } from "./useWebviewListener";
@@ -151,45 +146,7 @@ function ParallelListeners() {
   useEffect(() => {
     // Override persisted state
     void dispatch(cancelStream());
-
-    const jetbrains = isJetBrains();
-    setDocumentStylesFromLocalStorage(jetbrains);
-
-    if (jetbrains) {
-      // Save theme colors to local storage for immediate loading in JetBrains
-      void ideMessenger
-        .request("jetbrains/getColors", undefined)
-        .then((result) => {
-          if (result.status === "success") {
-            setDocumentStylesFromTheme(result.content);
-          }
-        });
-
-      // Tell JetBrains the webview is ready
-      void ideMessenger
-        .request("jetbrains/onLoad", undefined)
-        .then((result) => {
-          if (result.status === "error") {
-            return;
-          }
-
-          const msg = result.content;
-          (window as any).windowId = msg.windowId;
-          (window as any).serverUrl = msg.serverUrl;
-          (window as any).workspacePaths = msg.workspacePaths;
-          (window as any).vscMachineId = msg.vscMachineId;
-          (window as any).vscMediaUrl = msg.vscMediaUrl;
-        });
-    }
   }, []);
-
-  useWebviewListener(
-    "jetbrains/setColors",
-    async (data) => {
-      setDocumentStylesFromTheme(data);
-    },
-    [],
-  );
 
   // IDE event listeners
   useWebviewListener(

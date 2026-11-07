@@ -317,6 +317,12 @@
         "group": "NextCLI"
       },
       {
+        "command": "continue.cleanUpLegacyIndexData",
+        "category": "NextCLI",
+        "title": "Delete Legacy Index Data",
+        "group": "NextCLI"
+      },
+      {
         "command": "continue.enterEnterpriseLicenseKey",
         "category": "NextCLI",
         "title": "Enter Enterprise License Key",

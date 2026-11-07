@@ -8,11 +8,3 @@ export const defaultConfigYaml: AssistantUnrolled = {
   version: "1.0.0",
   schema: "v1",
 };
-
-export const defaultConfigYamlJetBrains: AssistantUnrolled = {
-  models: [],
-  context: [],
-  name: "Main Config",
-  version: "1.0.0",
-  schema: "v1",
-};

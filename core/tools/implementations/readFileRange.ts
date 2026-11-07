@@ -7,8 +7,8 @@ import { getNumberArg, getStringArg } from "../parseArgs";
 import { throwIfFileExceedsHalfOfContext } from "./readFileLimit";
 import { ContinueError, ContinueErrorReason } from "../../util/errors";
 
-// Use Int.MAX_VALUE from Java/Kotlin (2^31 - 1) instead of JavaScript's Number.MAX_SAFE_INTEGER
-// to ensure compatibility with IntelliJ's Kotlin Position type which uses Int for character field
+// "End of line" as a character position: 2^31 - 1 rather than
+// Number.MAX_SAFE_INTEGER, so it also fits 32-bit position fields
 export const MAX_CHAR_POSITION = 2147483647;
 
 export const readFileRangeImpl: ToolImpl = async (args, extras) => {

@@ -1,6 +1,4 @@
-import { useMemo } from "react";
 import Shortcut from "../../../../components/gui/Shortcut";
-import { isJetBrains } from "../../../../util";
 
 interface KeyboardShortcutProps {
   shortcut: string;
@@ -85,55 +83,8 @@ const vscodeShortcuts: Omit<KeyboardShortcutProps, "isEven">[] = [
   },
 ];
 
-const jetbrainsShortcuts: Omit<KeyboardShortcutProps, "isEven">[] = [
-  {
-    shortcut: "cmd '",
-    description: "Toggle Selected Model",
-  },
-  {
-    shortcut: "cmd I",
-    description: "Edit highlighted code",
-  },
-  {
-    shortcut: "cmd J",
-    description:
-      "New Chat / New Chat With Selected Code / Close NextCLI Sidebar If Chat Already In Focus",
-  },
-  {
-    shortcut: "cmd backspace",
-    description: "Cancel response",
-  },
-  {
-    shortcut: "cmd shift I",
-    description: "Toggle inline edit focus",
-  },
-  {
-    shortcut: "cmd shift J",
-    description:
-      "Focus Current Chat / Add Selected Code To Current Chat / Close NextCLI Sidebar If Chat Already In Focus",
-  },
-  {
-    shortcut: "cmd shift backspace",
-    description: "Reject Diff",
-  },
-  {
-    shortcut: "cmd shift enter",
-    description: "Accept Diff",
-  },
-  {
-    shortcut: "alt shift J",
-    description: "Quick Input",
-  },
-  {
-    shortcut: "alt cmd J",
-    description: "Toggle Sidebar",
-  },
-];
-
 function KeyboardShortcuts() {
-  const shortcuts = useMemo(() => {
-    return isJetBrains() ? jetbrainsShortcuts : vscodeShortcuts;
-  }, []);
+  const shortcuts = vscodeShortcuts;
 
   return (
     <div className="h-full overflow-auto">

@@ -10,7 +10,7 @@ import { AddModelForm } from "../../../forms/AddModelForm";
 import { useAppDispatch, useAppSelector } from "../../../redux/hooks";
 import { setDialogMessage, setShowDialog } from "../../../redux/slices/uiSlice";
 import { updateSelectedModelByRole } from "../../../redux/thunks/updateSelectedModelByRole";
-import { getMetaKeyLabel, isJetBrains } from "../../../util";
+import { getMetaKeyLabel } from "../../../util";
 import { ConfigHeader } from "../components/ConfigHeader";
 import { ModelRoleRow } from "../components/ModelRoleRow";
 
@@ -36,7 +36,6 @@ export function ModelsSection() {
   const ideMessenger = useContext(IdeMessengerContext);
 
   const config = useAppSelector((state) => state.config.config);
-  const jetbrains = isJetBrains();
   const metaKey = getMetaKeyLabel();
   const [showAdditionalRoles, setShowAdditionalRoles] = useState(false);
 
@@ -83,7 +82,7 @@ export function ModelsSection() {
           displayName="Chat"
           shortcut={
             <span className="text-2xs text-description-muted">
-              (<Shortcut>{`cmd ${jetbrains ? "J" : "L"}`}</Shortcut>)
+              (<Shortcut>cmd L</Shortcut>)
             </span>
           }
           description={
@@ -133,40 +132,35 @@ export function ModelsSection() {
           setupURL={MODEL_DOCS_URLS.autocomplete.setup}
         />
 
-        {/* Jetbrains has a model selector inline */}
-        {!jetbrains && (
-          <>
-            <Divider />
-            <ModelRoleRow
-              role="edit"
-              displayName="Edit"
-              shortcut={
-                <span className="text-2xs text-description-muted">
-                  (<Shortcut>cmd I</Shortcut>)
-                </span>
-              }
-              description={
-                <span>
-                  Used to transform a selected section of code (
-                  <a
-                    href={MODEL_DOCS_URLS.edit.learnMore}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-inherit underline hover:brightness-125"
-                  >
-                    Learn more
-                  </a>
-                  )
-                </span>
-              }
-              models={config.modelsByRole.edit}
-              selectedModel={config.selectedModelByRole.edit ?? undefined}
-              onSelect={(model) => handleRoleUpdate("edit", model)}
-              onConfigure={handleConfigureModel}
-              setupURL={MODEL_DOCS_URLS.edit.setup}
-            />
-          </>
-        )}
+        <Divider />
+        <ModelRoleRow
+          role="edit"
+          displayName="Edit"
+          shortcut={
+            <span className="text-2xs text-description-muted">
+              (<Shortcut>cmd I</Shortcut>)
+            </span>
+          }
+          description={
+            <span>
+              Used to transform a selected section of code (
+              <a
+                href={MODEL_DOCS_URLS.edit.learnMore}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-inherit underline hover:brightness-125"
+              >
+                Learn more
+              </a>
+              )
+            </span>
+          }
+          models={config.modelsByRole.edit}
+          selectedModel={config.selectedModelByRole.edit ?? undefined}
+          onSelect={(model) => handleRoleUpdate("edit", model)}
+          onConfigure={handleConfigureModel}
+          setupURL={MODEL_DOCS_URLS.edit.setup}
+        />
       </Card>
 
       <Card>

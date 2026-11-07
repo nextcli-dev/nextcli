@@ -3,18 +3,11 @@ import {
   ExclamationCircleIcon,
   ExclamationTriangleIcon,
 } from "@heroicons/react/24/outline";
-import { useContext, useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../components";
-import { IdeMessengerContext } from "../context/IdeMessenger";
-import { isJetBrains } from "../util";
 import { ROUTES } from "../util/navigation";
-import {
-  clearThemeLocalCache,
-  setDocumentStylesFromTheme,
-  THEME_COLORS,
-  varWithFallback,
-} from "./theme";
+import { THEME_COLORS, varWithFallback } from "./theme";
 
 const ThemeTailwindClassExample = ({
   colorName,
@@ -57,40 +50,22 @@ const ThemeTailwindClassExample = ({
 function ThemePage() {
   const navigate = useNavigate();
   const [listToggled, setListToggled] = useState(false);
-  const ideMessenger = useContext(IdeMessengerContext);
-  const jetbrains = useMemo(() => {
-    return isJetBrains();
-  }, []);
-
   const [missingVars, setMissingVars] = useState<string[]>([]);
   const refreshColors = () => {
-    if (jetbrains) {
-      // Jetbrains: get colors and check which ones are missing from theme
-      void ideMessenger
-        .request("jetbrains/getColors", undefined)
-        .then((result) => {
-          console.log(result);
-          if (result.status === "success") {
-            const missingColors = setDocumentStylesFromTheme(result.content);
-            setMissingVars(missingColors);
-          }
-        });
-    } else {
-      // VS Code: find actual missing CSS variables
-      const notFound: string[] = [];
-      Object.entries(THEME_COLORS).forEach(([colorName, themeVals], idx) => {
-        let found = false;
-        themeVals.vars.forEach((cssVar) => {
-          const value = getComputedStyle(
-            document.documentElement,
-          ).getPropertyValue(cssVar);
-          if (!value) {
-            notFound.push(`cssVar (choice #${idx + 1} for color ${colorName}`);
-          }
-        });
+    // VS Code: find actual missing CSS variables
+    const notFound: string[] = [];
+    Object.entries(THEME_COLORS).forEach(([colorName, themeVals], idx) => {
+      let found = false;
+      themeVals.vars.forEach((cssVar) => {
+        const value = getComputedStyle(
+          document.documentElement,
+        ).getPropertyValue(cssVar);
+        if (!value) {
+          notFound.push(`cssVar (choice #${idx + 1} for color ${colorName}`);
+        }
       });
-      setMissingVars(notFound);
-    }
+    });
+    setMissingVars(notFound);
   };
 
   useEffect(() => {
@@ -202,9 +177,6 @@ function ThemePage() {
         <div className="">No missing variables</div>
       )}
       <Button onClick={refreshColors}>Refresh Missing Colors</Button>
-      {jetbrains ? (
-        <Button onClick={clearThemeLocalCache}>Clear Theme Cache</Button>
-      ) : null}
       <h2 className="mb-2 mt-6 text-xl font-semibold">All Theme Colors</h2>
       <div className="grid grid-cols-3">
         <div className="p-1">
