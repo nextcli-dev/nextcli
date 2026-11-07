@@ -1,6 +1,6 @@
 import {
   AUTO_MODE_POLICIES,
-  PLAN_MODE_POLICIES,
+  getPlanModePolicies,
 } from "src/permissions/defaultPolicies.js";
 
 import { ensurePermissionsYamlExists } from "../permissions/permissionsYamlLoader.js";
@@ -172,7 +172,7 @@ export class ToolPermissionService
   private generateModePolicies(): ToolPermissionPolicy[] {
     switch (this.currentState.currentMode) {
       case "plan":
-        return [...PLAN_MODE_POLICIES];
+        return getPlanModePolicies(this.currentState.isHeadless);
       case "auto":
         return [...AUTO_MODE_POLICIES];
       case "normal":
@@ -206,7 +206,14 @@ export class ToolPermissionService
     const modePolicies = this.generateModePolicies();
 
     let allPolicies: ToolPermissionPolicy[];
-    if (agentFileServiceState?.agentFile) {
+    if (
+      this.currentState.isHeadless &&
+      this.currentState.currentMode === "plan"
+    ) {
+      // Unattended --readonly stays read-only even when an agent file is loaded.
+      // An agent file ends in allow-all, which would put Bash and MCP back.
+      allPolicies = [...modePolicies];
+    } else if (agentFileServiceState?.agentFile) {
       // Agent file policies take full precedence on init
       allPolicies = this.generateAgentFilePolicies(
         agentFileServiceState,

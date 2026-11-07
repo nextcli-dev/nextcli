@@ -1,4 +1,13 @@
 import {
+  getServiceSync,
+  initializeServices,
+  SERVICE_NAMES,
+  serviceContainer,
+} from "../services/index.js";
+import type { ToolPermissionServiceState } from "../services/ToolPermissionService.js";
+import { getRequestTools } from "../stream/handleToolCalls.js";
+
+import {
   AUTO_MODE_POLICIES,
   getDefaultToolPolicies,
 } from "./defaultPolicies.js";
@@ -270,6 +279,43 @@ describe("Headless Permissions Integration", () => {
           permissions,
         ).permission,
       ).toBe("allow");
+    });
+  });
+
+  describe("headless --readonly", () => {
+    beforeEach(() => {
+      Object.values(SERVICE_NAMES).forEach((service) => {
+        (serviceContainer as any).services.delete(service);
+        (serviceContainer as any).factories.delete(service);
+        (serviceContainer as any).dependencies.delete(service);
+      });
+    });
+
+    it("offers no Bash, Fetch or MCP tools", async () => {
+      await initializeServices({
+        headless: true,
+        toolPermissionOverrides: { mode: "plan" },
+      });
+
+      const tools = await getRequestTools(true);
+      const toolNames = tools.map((tool) => tool.function.name);
+
+      expect(toolNames).not.toContain("Bash");
+      expect(toolNames).not.toContain("Fetch");
+      expect(toolNames).not.toContain("Write");
+      expect(toolNames).not.toContain("Edit");
+      expect(toolNames).toContain("Read");
+      expect(toolNames).toContain("List");
+
+      const permissions = getServiceSync<ToolPermissionServiceState>(
+        SERVICE_NAMES.TOOL_PERMISSIONS,
+      );
+      expect(
+        checkToolPermission(
+          { name: "github__create_issue", arguments: {} },
+          permissions.value!.permissions,
+        ).permission,
+      ).toBe("exclude");
     });
   });
 });

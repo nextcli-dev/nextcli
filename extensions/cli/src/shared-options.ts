@@ -91,15 +91,15 @@ export function addCommonOptions(command: Command): Command {
     )
     .option(
       "--max-turns <n>",
-      "Stop after this many model calls in one run (default 100)",
+      "Model calls allowed in one run; the last one gives a final answer without tools (default 100)",
     )
     .option(
       "--max-session-tokens <n>",
-      "Stop when one run has used more than this many tokens (off by default)",
+      "Tokens allowed in one run; near the limit the model gives a final answer (off by default)",
     )
     .option(
       "--max-cost <usd>",
-      "Stop when one run has cost more than this many US dollars (off by default)",
+      "US dollars allowed in one run; near the limit the model gives a final answer (off by default)",
     );
 }
 

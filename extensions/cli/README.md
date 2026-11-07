@@ -63,6 +63,27 @@ cn -p "Write a README" --silent
 
 These checks read the command text, so they are best-effort: a command can always hide what it deletes. For untrusted prompts or repositories, run `cn -p` in a container or sandbox, and restrict Bash in `~/.continue/permissions.yaml`.
 
+**Read-only headless runs**: `cn -p --readonly` can't write files, run Bash, call MCP tools or use Fetch. It can only read, search and list. Use it to review untrusted code, such as a pull request in CI.
+
+**Limits**: `--max-turns`, `--max-session-tokens` and `--max-cost` cap one run. When a run is about to reach a limit, the CLI makes one last model call without tools and asks for a final answer from what the model has found so far, so the run still ends with a result.
+
+- The last call is made when it is the last allowed call, or when the budget left is less than twice the last call, with a minimum reserve of 10% of the limit.
+- In headless mode, a run ended by a limit exits with code **3**. The answer is still on stdout. If the run is already over the limit, the CLI does not make another model call, and that also exits with code 3.
+- With `--format json`, the last line on stderr summarizes the run. `priced` says how the cost was worked out: `exact` from the host's price table, `estimated` from OpenRouter's price for the same model, or `fallback` at $1 / $2 per million input / output tokens. When `--max-cost` is set and a price isn't exact, a warning line comes first.
+
+```json
+{
+  "status": "limit",
+  "limit": "cost",
+  "usage": {
+    "cost": 0.94,
+    "priced": "exact",
+    "promptTokens": 612000,
+    "completionTokens": 33000
+  }
+}
+```
+
 ### Session Management
 
 The CLI automatically saves your chat history for each terminal session. You can resume where you left off:

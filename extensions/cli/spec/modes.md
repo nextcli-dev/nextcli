@@ -15,13 +15,16 @@ The default mode that follows configured permission policies from `permissions.y
 
 ### `plan`
 
-Planning mode that **completely overrides all user permissions** to enforce read-only access with command execution. This mode prevents file modifications but allows command execution for analysis, regardless of user configuration.
+Planning mode that **completely overrides all user permissions** to enforce read-only access. This mode prevents file modifications, regardless of user configuration.
 
 - **Command-line flag:** `--readonly` (for backward compatibility)
 - **UI Indicator:** `[plan]` shown in blue
 - **Current directory:** Hidden to save space and focus on analysis
-- **Permission override:** **Absolute** - excludes write tools (Write, Edit, etc.) and allows read tools (Read, Grep, LS, etc.) and Bash for command execution
-- **User config ignored:** Any user `--allow` flags for write tools are overridden
+- **Permission override:** **Absolute** - excludes write tools (Write, Edit, etc.) and allows read tools (Read, Search, List, etc.)
+- **Bash, Fetch and MCP tools:**
+  - Interactive: Bash and MCP tools ask before every call, because they can change files. Fetch is allowed.
+  - Headless (`cn -p --readonly`): Bash, Fetch and MCP tools are excluded. Unattended runs often read untrusted code, such as a pull request, with a provider key in the environment, so they get no shell and no way to send data out.
+- **User config ignored:** Any user `--allow` flags are overridden
 
 ### `auto`
 

@@ -17,6 +17,7 @@ import {
   SERVICE_NAMES,
 } from "../services/types.js";
 import {
+  getSessionUsage,
   loadSession,
   updateSessionHistory,
   updateSessionTitle,
@@ -36,6 +37,11 @@ import {
 } from "../util/tokenizer.js";
 
 import { ExtendedCommandOptions } from "./BaseCommandOptions.js";
+import {
+  exitHeadlessAtLimit,
+  headlessExitCode,
+  writeHeadlessRunSummary,
+} from "./headlessRunSummary.js";
 
 /**
  * Processes and validates JSON output for headless mode
@@ -507,41 +513,50 @@ async function runHeadlessMode(
     );
   }
 
-  let isFirstMessage = true;
-  while (true) {
-    // When in headless mode, don't ask for user input
-    if (!isFirstMessage && initialUserInput && options.headless) {
-      break;
+  const usageAtStart = { ...getSessionUsage() };
+  try {
+    let isFirstMessage = true;
+    while (true) {
+      // When in headless mode, don't ask for user input
+      if (!isFirstMessage && initialUserInput && options.headless) {
+        break;
+      }
+
+      // Get user input
+      const userInput =
+        isFirstMessage && initialUserInput
+          ? initialUserInput
+          : await question(`\n${chalk.bold.green("You:")} `);
+
+      isFirstMessage = false;
+
+      const result = await processMessage({
+        userInput,
+        chatHistory,
+        model,
+        llmApi,
+        isHeadless: true,
+        format: options.format,
+        silent: options.silent,
+        compactionIndex,
+        firstAssistantResponse: isFirstMessage && !options.resume, // Only generate title for new conversations
+      });
+
+      // Update compaction index if compaction occurred
+      if (result && result.compactionIndex !== undefined) {
+        compactionIndex = result.compactionIndex;
+      }
     }
-
-    // Get user input
-    const userInput =
-      isFirstMessage && initialUserInput
-        ? initialUserInput
-        : await question(`\n${chalk.bold.green("You:")} `);
-
-    isFirstMessage = false;
-
-    const result = await processMessage({
-      userInput,
-      chatHistory,
-      model,
-      llmApi,
-      isHeadless: true,
-      format: options.format,
-      silent: options.silent,
-      compactionIndex,
-      firstAssistantResponse: isFirstMessage && !options.resume, // Only generate title for new conversations
-    });
-
-    // Update compaction index if compaction occurred
-    if (result && result.compactionIndex !== undefined) {
-      compactionIndex = result.compactionIndex;
+  } catch (error) {
+    if (!(await exitHeadlessAtLimit(error, usageAtStart, options.format))) {
+      throw error;
     }
   }
 
+  writeHeadlessRunSummary(usageAtStart, options.format);
+
   // exit after headless mode completes
-  await gracefulExit(0);
+  await gracefulExit(headlessExitCode());
 }
 
 export async function chat(prompt?: string, options: ChatOptions = {}) {
@@ -615,9 +630,6 @@ export async function chat(prompt?: string, options: ChatOptions = {}) {
       await startTUIChat(tuiOptions);
       return;
     }
-
-    // Run headless mode
-    await runHeadlessMode(prompt, options);
   } catch (error: any) {
     const err = error instanceof Error ? error : new Error(String(error));
 

@@ -355,3 +355,127 @@ describe("calculateRequestCost", () => {
     },
   );
 });
+
+describe("calculateRequestCost by host", () => {
+  const usage: Usage = { promptTokens: 1_000_000, completionTokens: 1_000_000 };
+  const oneprovider = { apiBase: "https://api.oneprovider.dev/v1" };
+
+  it("prices oneprovider models from its own table", () => {
+    const result = calculateRequestCost(
+      "openai",
+      "deepseek-v4-pro",
+      usage,
+      oneprovider,
+    );
+    expect(result?.cost).toBeCloseTo(1.32 + 3.96, 6);
+    expect(result?.priced).toBe("exact");
+  });
+
+  it("uses the oneprovider price over the OpenAI list price", () => {
+    const result = calculateRequestCost(
+      "openai",
+      "gpt-5.6-sol",
+      usage,
+      oneprovider,
+    );
+    expect(result?.cost).toBeCloseTo(5 + 30, 6);
+  });
+
+  it("matches dated and thinking variants on oneprovider", () => {
+    expect(
+      calculateRequestCost("openai", "deepseek-v4-pro-0813", usage, oneprovider)
+        ?.cost,
+    ).toBeCloseTo(1.32 + 3.96, 6);
+    expect(
+      calculateRequestCost(
+        "openai",
+        "claude-haiku-4-5-20251001-thinking",
+        usage,
+        oneprovider,
+      )?.cost,
+    ).toBeCloseTo(1 + 5, 6);
+  });
+
+  it("does not price a different model that shares a prefix", () => {
+    expect(
+      calculateRequestCost("openai", "gpt-5.5-pro", usage, oneprovider),
+    ).toBeNull();
+  });
+
+  it("bills cached tokens at the input price when the host lists none", () => {
+    const result = calculateRequestCost(
+      "openai",
+      "deepseek-v4-pro",
+      {
+        promptTokens: 1_000_000,
+        completionTokens: 0,
+        promptTokensDetails: { cachedTokens: 500_000 },
+      },
+      oneprovider,
+    );
+    expect(result?.cost).toBeCloseTo(1.32, 6);
+  });
+
+  it("prices OpenRouter models from its catalog", () => {
+    const result = calculateRequestCost(
+      "openrouter",
+      "deepseek/deepseek-v4-pro",
+      usage,
+    );
+    expect(result?.cost).toBeCloseTo(0.3583 + 0.7165, 6);
+    expect(result?.priced).toBe("exact");
+  });
+
+  it("recognizes OpenRouter by its host", () => {
+    const result = calculateRequestCost(
+      "openai",
+      "anthropic/claude-opus-5.5",
+      usage,
+      { apiBase: "https://openrouter.ai/api/v1" },
+    );
+    expect(result?.cost).toBeCloseTo(4 + 20, 6);
+  });
+
+  it("returns null for an unknown model unless asked to estimate", () => {
+    const deepseek = { apiBase: "https://api.deepseek.example/v1" };
+    expect(
+      calculateRequestCost("openai", "deepseek-v4-pro", usage, deepseek),
+    ).toBeNull();
+
+    const estimate = calculateRequestCost("openai", "deepseek-v4-pro", usage, {
+      ...deepseek,
+      estimateUnknown: true,
+    });
+    expect(estimate?.cost).toBeCloseTo(0.3583 + 0.7165, 6);
+    expect(estimate?.priced).toBe("estimated");
+  });
+
+  it("matches maker names to OpenRouter names when estimating", () => {
+    const dashed = calculateRequestCost("gemini", "claude-opus-5-5", usage, {
+      estimateUnknown: true,
+    });
+    const dotted = calculateRequestCost("gemini", "claude-opus-5.5", usage, {
+      estimateUnknown: true,
+    });
+    expect(dashed?.cost).toBeCloseTo(4 + 20, 6);
+    expect(dotted?.cost).toBeCloseTo(dashed!.cost, 6);
+    expect(dotted?.priced).toBe("estimated");
+  });
+
+  it("never estimates for local hosts", () => {
+    expect(
+      calculateRequestCost("ollama", "deepseek-v4-pro", usage, {
+        apiBase: "http://localhost:11434",
+        estimateUnknown: true,
+      }),
+    ).toBeNull();
+  });
+
+  it("returns null when no table knows the model", () => {
+    expect(
+      calculateRequestCost("openai", "my-private-model", usage, {
+        estimateUnknown: true,
+      }),
+    ).toBeNull();
+  });
+});

@@ -39,31 +39,41 @@ export function getDefaultToolPolicies(
   return policies;
 }
 
-// Plan mode: Complete override - exclude all write operations, allow only reads and bash
-export const PLAN_MODE_POLICIES: ToolPermissionPolicy[] = [
-  { tool: "Edit", permission: "exclude" },
-  { tool: "MultiEdit", permission: "exclude" },
-  { tool: "Write", permission: "exclude" },
+/**
+ * Plan mode (--readonly): a complete override that excludes all writes.
+ *
+ * Bash can change files (cp, mv, tee, build scripts) and MCP tools can do
+ * anything, so a person approves each call in the TUI. Unattended (headless)
+ * runs often review untrusted code with a provider key in the environment, so
+ * they get no shell, no MCP tools and no Fetch, which could send data out.
+ */
+export function getPlanModePolicies(
+  isHeadless = false,
+): ToolPermissionPolicy[] {
+  return [
+    { tool: "Edit", permission: "exclude" },
+    { tool: "MultiEdit", permission: "exclude" },
+    { tool: "Write", permission: "exclude" },
 
-  // TODO address bash read only concerns, maybe make permissions more granular
-  { tool: "Bash", permission: "allow" },
-  { tool: "CheckBackgroundJob", permission: "allow" },
-  { tool: "AskQuestion", permission: "allow" },
-  { tool: "Checklist", permission: "allow" },
-  { tool: "Diff", permission: "allow" },
-  { tool: "Exit", permission: "allow" },
-  { tool: "Fetch", permission: "allow" },
-  { tool: "List", permission: "allow" },
-  { tool: "Read", permission: "allow" },
-  { tool: "ReportFailure", permission: "allow" },
-  { tool: "Search", permission: "allow" },
-  { tool: "Skills", permission: "allow" },
-  { tool: "Status", permission: "allow" },
-  { tool: "UploadArtifact", permission: "allow" },
+    { tool: "Bash", permission: isHeadless ? "exclude" : "ask" },
+    { tool: "Fetch", permission: isHeadless ? "exclude" : "allow" },
+    { tool: "CheckBackgroundJob", permission: "allow" },
+    { tool: "AskQuestion", permission: "allow" },
+    { tool: "Checklist", permission: "allow" },
+    { tool: "Diff", permission: "allow" },
+    { tool: "Exit", permission: "allow" },
+    { tool: "List", permission: "allow" },
+    { tool: "Read", permission: "allow" },
+    { tool: "ReportFailure", permission: "allow" },
+    { tool: "Search", permission: "allow" },
+    { tool: "Skills", permission: "allow" },
+    { tool: "Status", permission: "allow" },
+    { tool: "UploadArtifact", permission: "allow" },
 
-  // Allow MCP tools
-  { tool: "*", permission: "allow" },
-];
+    // MCP tools
+    { tool: "*", permission: isHeadless ? "exclude" : "ask" },
+  ];
+}
 
 // Auto mode: Complete override - allow everything without asking
 export const AUTO_MODE_POLICIES: ToolPermissionPolicy[] = [

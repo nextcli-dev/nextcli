@@ -1,7 +1,7 @@
 // Helper functions extracted from streamChatResponse.ts to reduce file size
 /* eslint-disable max-lines */
 
-import type { ToolStatus, Usage } from "core/index.js";
+import type { ChatHistoryItem, ToolStatus, Usage } from "core/index.js";
 import { calculateRequestCost } from "core/llm/utils/calculateRequestCost.js";
 import { ContinueError, ContinueErrorReason } from "core/util/errors.js";
 import { ChatCompletionToolMessageParam } from "openai/resources/chat/completions.mjs";
@@ -27,11 +27,13 @@ import {
 import { ToolInterruptedError } from "../tools/toolInterruptedError.js";
 import { PreprocessedToolCall, ToolCall } from "../tools/types.js";
 import { logger } from "../util/logger.js";
+import { getModelMaxTokens } from "../util/tokenizer.js";
 import {
   parseEnvNumber,
   truncateByLinesAndChars,
 } from "../util/truncateOutput.js";
 
+import { type PriceSource, recordPriceSource } from "./agentLoopLimits.js";
 import { StreamCallbacks } from "./streamChatResponse.types.js";
 
 export interface ToolResultWithStatus extends ChatCompletionToolMessageParam {
@@ -315,6 +317,19 @@ export function processToolCallDelta(
   }
 }
 
+// Providers that run models on the user's machine, where calls cost nothing
+const LOCAL_PROVIDERS = new Set([
+  "ollama",
+  "lmstudio",
+  "llamafile",
+  "llama.cpp",
+  "llamacpp",
+  "msty",
+]);
+
+// Providers whose own price tables calculateRequestCost knows
+const PRICED_PROVIDERS = new Set(["anthropic", "openai", "openrouter"]);
+
 // Helper function to detect provider from model name
 function detectProvider(modelName: string): string {
   const normalized = modelName.toLowerCase();
@@ -335,6 +350,90 @@ function calculateFallbackCost(
 ): number {
   // Default pricing: $1/MTok input, $2/MTok output
   return (inputTokens * 1 + outputTokens * 2) / 1_000_000;
+}
+
+/** Prices one request the same way the run's cost is tracked */
+export function priceRequest(
+  model: any,
+  usage: Usage,
+): { cost: number; priced: PriceSource } {
+  const configuredProvider = String(model.provider ?? "").toLowerCase();
+  const provider = PRICED_PROVIDERS.has(configuredProvider)
+    ? configuredProvider
+    : detectProvider(model.model);
+  const costBreakdown = calculateRequestCost(provider, model.model, usage, {
+    apiBase: model.apiBase,
+    estimateUnknown: !LOCAL_PROVIDERS.has(configuredProvider),
+  });
+  if (costBreakdown) {
+    return {
+      cost: costBreakdown.cost,
+      priced: costBreakdown.priced ?? "exact",
+    };
+  }
+  return {
+    cost: calculateFallbackCost(usage.promptTokens, usage.completionTokens),
+    priced: "fallback",
+  };
+}
+
+/** Output tokens kept for the final answer, reasoning included */
+export const FINAL_ANSWER_TOKENS = 16_000;
+
+/** A roomy final answer, used only when the money left covers it */
+export const MIN_FINAL_ANSWER_TOKENS = 4096;
+
+/** The shortest final answer, so a nearly exhausted budget can still reply */
+export const SHORT_FINAL_ANSWER_TOKENS = 256;
+
+/** What a final answer to this prompt would cost, for the --max-cost reserve */
+export function estimateFinalAnswerCost(
+  model: any,
+  promptTokens: number,
+): number {
+  return priceRequest(model, {
+    promptTokens,
+    completionTokens: Math.min(FINAL_ANSWER_TOKENS, getModelMaxTokens(model)),
+  }).cost;
+}
+
+/**
+ * Output tokens the last call of a run may use so the run stays within
+ * --max-cost: what the money left buys after the prompt. A short floor still
+ * leaves room for an answer when almost nothing is left. The larger floor
+ * applies only when the budget covers it. Undefined when there is no cost limit.
+ */
+export function finalAnswerMaxTokens(
+  model: any,
+  costLeft: number | undefined,
+  promptTokens: number,
+): number | undefined {
+  if (costLeft === undefined) {
+    return undefined;
+  }
+  const promptCost = priceRequest(model, {
+    promptTokens,
+    completionTokens: 0,
+  }).cost;
+  const outputCostPerToken =
+    priceRequest(model, { promptTokens: 0, completionTokens: 1_000_000 }).cost /
+    1_000_000;
+  const affordable =
+    outputCostPerToken > 0
+      ? Math.floor(Math.max(0, costLeft - promptCost) / outputCostPerToken)
+      : Infinity;
+  const thinkingBudget = model.defaultCompletionOptions?.reasoningBudgetTokens;
+  const roomyFloor = Math.max(
+    MIN_FINAL_ANSWER_TOKENS,
+    typeof thinkingBudget === "number" ? thinkingBudget + 1024 : 0,
+  );
+  const floor =
+    affordable >= roomyFloor ? roomyFloor : SHORT_FINAL_ANSWER_TOKENS;
+  return Math.min(
+    getModelMaxTokens(model),
+    FINAL_ANSWER_TOKENS,
+    Math.max(floor, affordable),
+  );
 }
 
 // Helper function to record telemetry
@@ -376,17 +475,9 @@ export function recordStreamTelemetry(options: {
         : undefined,
     };
 
-    // Detect provider and calculate cost
-    const provider = detectProvider(model.model);
-    const costBreakdown = calculateRequestCost(provider, model.model, usage);
-
-    // Use fallback for unknown models
-    cost =
-      costBreakdown?.cost ??
-      calculateFallbackCost(
-        fullUsage.prompt_tokens,
-        fullUsage.completion_tokens,
-      );
+    const price = priceRequest(model, usage);
+    cost = price.cost;
+    recordPriceSource(price.priced);
   } else {
     // Fallback when fullUsage not available
     usage = {
@@ -394,6 +485,7 @@ export function recordStreamTelemetry(options: {
       completionTokens: outputTokens,
     };
     cost = calculateFallbackCost(inputTokens, outputTokens);
+    recordPriceSource("fallback");
   }
 
   // Use tokens from fullUsage if available, otherwise use the passed params
@@ -740,4 +832,27 @@ export async function executeStreamedToolCalls(
     hasRejection,
     chatHistoryEntries,
   };
+}
+
+// Adds a user message through ChatHistoryService when it is available
+export function addUserMessage(
+  chatHistory: ChatHistoryItem[],
+  content: string,
+): ChatHistoryItem[] {
+  const chatHistorySvc = services.chatHistory;
+  if (
+    typeof chatHistorySvc?.isReady === "function" &&
+    chatHistorySvc.isReady()
+  ) {
+    chatHistorySvc.addUserMessage(content);
+    return chatHistorySvc.getHistory();
+  }
+  chatHistory.push({
+    message: {
+      role: "user",
+      content,
+    },
+    contextItems: [],
+  });
+  return chatHistory;
 }
