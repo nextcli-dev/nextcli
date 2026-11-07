@@ -48,11 +48,6 @@ export const SYSTEM_SLASH_COMMANDS: SystemCommand[] = [
     category: "system",
   },
   {
-    name: "effort",
-    description: "Show or set the model's effort level (experimental)",
-    category: "system",
-  },
-  {
     name: "config",
     description: "Switch configuration",
     category: "system",

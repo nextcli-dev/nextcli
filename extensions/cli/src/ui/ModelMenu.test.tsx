@@ -2,7 +2,6 @@ import { render } from "ink-testing-library";
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { handleEffort } from "../slashCommands.js";
 import {
   getModelSettings,
   resetModelSettingsCache,
@@ -184,58 +183,5 @@ describe("ModelMenu", () => {
     }
     await press(stdin, ENTER);
     await waitFor(() => expect(getModelSettings(state.model).fast).toBe(true));
-  });
-});
-
-describe("/effort", () => {
-  beforeEach(() => {
-    state.model = {
-      name: "Opus",
-      provider: "anthropic",
-      model: "claude-opus-5-5",
-    };
-    resetModelSettingsCache();
-    updateModelSettings(state.model, { effort: undefined });
-  });
-
-  it("shows the current effort and the levels", () => {
-    expect(handleEffort([]).output).toBe(
-      "Effort for Opus: Default. Levels: default, low, medium, high, xhigh, max.",
-    );
-  });
-
-  it("sets and clears the effort", () => {
-    expect(handleEffort(["HIGH"]).output).toBe("Effort for Opus set to High.");
-    expect(getModelSettings(state.model).effort).toBe("high");
-    handleEffort(["default"]);
-    expect(getModelSettings(state.model).effort).toBeUndefined();
-  });
-
-  it("turns thinking off for models without effort levels (DeepSeek)", () => {
-    state.model = {
-      name: "DeepSeek",
-      provider: "deepseek",
-      model: "deepseek-v4-pro",
-    };
-    updateModelSettings(state.model, {
-      thinking: undefined,
-      effort: undefined,
-    });
-    expect(handleEffort(["off"]).output).toBe(
-      "Thinking for DeepSeek turned off.",
-    );
-    expect(getModelSettings(state.model).thinking).toBe("off");
-    expect(handleEffort([]).output).toBe("DeepSeek has no effort levels.");
-  });
-
-  it("rejects levels the model doesn't have", () => {
-    state.model = {
-      name: "Haiku",
-      provider: "anthropic",
-      model: "claude-haiku-4-5",
-    };
-    expect(handleEffort(["max"]).output).toBe(
-      'Unknown effort "max". Levels: default, low, medium, high.',
-    );
   });
 });
