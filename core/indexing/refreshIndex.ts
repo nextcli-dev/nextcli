@@ -2,11 +2,10 @@ import crypto from "node:crypto";
 import * as fs from "node:fs";
 
 import plimit from "p-limit";
-import { open, type Database } from "sqlite";
-import sqlite3 from "sqlite3";
 
 import { FileStatsMap, IndexTag, IndexingProgressUpdate } from "../index.js";
 import { getIndexSqlitePath } from "../util/paths.js";
+import { SqliteDatabase } from "../util/sqlite.js";
 
 import {
   CodebaseIndex,
@@ -16,7 +15,7 @@ import {
   RefreshIndexResults,
 } from "./types.js";
 
-export type DatabaseConnection = Database<sqlite3.Database>;
+export type DatabaseConnection = SqliteDatabase;
 
 export class SqliteDb {
   static db: DatabaseConnection | null = null;
@@ -95,10 +94,7 @@ export class SqliteDb {
     }
 
     SqliteDb.indexSqlitePath = getIndexSqlitePath();
-    SqliteDb.db = await open({
-      filename: SqliteDb.indexSqlitePath,
-      driver: sqlite3.Database,
-    });
+    SqliteDb.db = await SqliteDatabase.open(SqliteDb.indexSqlitePath);
 
     await SqliteDb.db.exec("PRAGMA busy_timeout = 3000;");
 

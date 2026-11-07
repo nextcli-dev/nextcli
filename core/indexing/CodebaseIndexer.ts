@@ -13,6 +13,7 @@ import type { IMessenger } from "../protocol/messenger";
 import { extractMinimalStackTraceInfo } from "../util/extractMinimalStackTraceInfo.js";
 import { Logger } from "../util/Logger.js";
 import { getIndexSqlitePath } from "../util/paths.js";
+import { sqliteHasFts5 } from "../util/sqlite.js";
 import { findUriInDirs, getUriPathBasename } from "../util/uri.js";
 
 import { ConfigResult } from "@nextcli/config-yaml";
@@ -58,6 +59,19 @@ export class CodebaseIndexer {
   private codebaseIndexingState: IndexingProgressUpdate;
   private readonly pauseToken: PauseToken;
   private builtIndexes: CodebaseIndex[] = [];
+
+  private static warnedNoFullTextSearch = false;
+
+  private warnNoFullTextSearch() {
+    if (CodebaseIndexer.warnedNoFullTextSearch) {
+      return;
+    }
+    CodebaseIndexer.warnedNoFullTextSearch = true;
+    const message =
+      "Full-text search is unavailable: this editor's SQLite has no FTS5 (VS Code 1.103 or newer has it). @codebase and @folder will only use recently edited files and the repo map.";
+    console.warn(message);
+    void this.ide.showToast("warning", message);
+  }
 
   private getUserFriendlyIndexName(artifactId: string): string {
     if (artifactId === FullTextSearchCodebaseIndex.artifactId)
@@ -155,6 +169,10 @@ export class CodebaseIndexer {
         .filter((indexType) => Array.isArray(indexType)) // remove undefined indexTypes
         .flat(),
     );
+    if (requested.has("fullTextSearch") && !sqliteHasFts5()) {
+      requested.delete("fullTextSearch");
+      this.warnNoFullTextSearch();
+    }
     // The full-text index reads the chunks table, so chunks are built first
     const indexTypesToBuild = [
       ...(requested.has("chunk") ? ["chunk" as const] : []),

@@ -1,11 +1,10 @@
 import { Mutex } from "async-mutex";
-import { open } from "sqlite";
-import sqlite3 from "sqlite3";
 import {
   DatabaseConnection,
   truncateSqliteLikePattern,
 } from "../../indexing/refreshIndex.js";
 import { getTabAutocompleteCacheSqlitePath } from "../../util/paths.js";
+import { SqliteDatabase } from "../../util/sqlite.js";
 
 interface CacheEntry {
   value: string;
@@ -39,10 +38,9 @@ export class AutocompleteLruCache {
   static async get(): Promise<AutocompleteLruCache> {
     if (!AutocompleteLruCache.instancePromise) {
       AutocompleteLruCache.instancePromise = (async () => {
-        const db = await open({
-          filename: getTabAutocompleteCacheSqlitePath(),
-          driver: sqlite3.Database,
-        });
+        const db = await SqliteDatabase.open(
+          getTabAutocompleteCacheSqlitePath(),
+        );
         await db.exec("PRAGMA busy_timeout = 3000;");
         await db.run(`
           CREATE TABLE IF NOT EXISTS cache (

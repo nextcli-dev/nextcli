@@ -1,11 +1,9 @@
 import fs from "fs";
 
-import { open } from "sqlite";
-import sqlite3 from "sqlite3";
-
 import { DatabaseConnection } from "../indexing/refreshIndex.js";
 
 import { getDevDataSqlitePath } from "../util/paths.js";
+import { SqliteDatabase } from "../util/sqlite.js";
 
 /* The Dev Data SQLITE table is only used for local tokens generated */
 export class DevDataSqliteDb {
@@ -78,10 +76,7 @@ export class DevDataSqliteDb {
       return DevDataSqliteDb.db;
     }
 
-    DevDataSqliteDb.db = await open({
-      filename: devDataSqlitePath,
-      driver: sqlite3.Database,
-    });
+    DevDataSqliteDb.db = await SqliteDatabase.open(devDataSqlitePath);
 
     await DevDataSqliteDb.db.exec("PRAGMA busy_timeout = 3000;");
 

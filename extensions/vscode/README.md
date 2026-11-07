@@ -41,7 +41,7 @@ NextCLI is a community continuation of [Continue](https://github.com/continuedev
 
 ## Requirements
 
-NextCLI 1.6.5 and later need VS Code 1.101 or newer, the first VS Code with Node.js 22. On VS Code 1.70 to 1.100, NextCLI stays on 1.6.4, the last version for them, and keeps working. See [Install](https://docs.nextcli.dev/ide-extensions/install#requirements) for forks and `.vsix` installs.
+NextCLI 1.6.8 and later need VS Code 1.103 or newer, the first VS Code whose built-in SQLite has full-text search. On VS Code 1.101 and 1.102, NextCLI stays on 1.6.7; on VS Code 1.70 to 1.100, it stays on 1.6.4. Both keep working. See [Install](https://docs.nextcli.dev/ide-extensions/install#requirements) for forks and `.vsix` installs.
 
 ## Stable and pre-release versions
 
