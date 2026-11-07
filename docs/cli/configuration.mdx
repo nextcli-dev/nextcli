@@ -43,7 +43,13 @@ Which models can turn thinking off, and the effort levels each model takes, are 
 
 Settings are saved per model in `~/.continue/index/globalContext.json` and shared with the model menu in the VS Code extension. `cn` reads them when it starts, so a change made in VS Code applies from the next run.
 
-To set a default in `config.yaml`, use `reasoningEffort`. The menu takes precedence over it:
+For one run, including headless runs, pass `--effort`:
+
+```bash
+cn -p --effort low "Summarize the changes in this branch"
+```
+
+To set a default in `config.yaml`, use `reasoningEffort`. The flag and the menu take precedence over it:
 
 ```yaml
 models:

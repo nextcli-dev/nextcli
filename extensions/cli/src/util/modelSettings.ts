@@ -36,6 +36,13 @@ export interface CliModelSettings {
   contextLength?: number;
 }
 
+/** An effort level set for this run, for example with --effort */
+let sessionEffort: string | undefined;
+
+export function setSessionEffort(effort: string | undefined): void {
+  sessionEffort = effort;
+}
+
 export function modelIdentity(model: ModelConfig): ModelIdentity {
   return {
     provider: model.provider,
@@ -79,6 +86,7 @@ function readStoredSettings(model: ModelConfig): CliModelSettings {
 /** For tests: forget the cached settings */
 export function resetModelSettingsCache(): void {
   storedSettings = undefined;
+  sessionEffort = undefined;
 }
 
 /**
@@ -90,7 +98,8 @@ function defaultShowThinking(model: ModelConfig): boolean {
 }
 
 /**
- * The effective settings for a model: the model menu, then the config's `reasoningEffort` (or `reasoning: true`, which
+ * The effective settings for a model: the --effort flag, then the model
+ * menu, then the config's `reasoningEffort` (or `reasoning: true`, which
  * means medium).
  */
 export function getModelSettings(model: ModelConfig): CliModelSettings {
@@ -98,6 +107,7 @@ export function getModelSettings(model: ModelConfig): CliModelSettings {
   return {
     ...stored,
     effort:
+      sessionEffort ??
       stored.effort ??
       model.defaultCompletionOptions?.reasoningEffort ??
       (model.defaultCompletionOptions?.reasoning ? "medium" : undefined),
@@ -156,6 +166,10 @@ export function updateModelSettings(
     new GlobalContext().update("cliModelSettings", storedSettings);
   } catch (error) {
     logger.warn("Could not save model settings", { error });
+  }
+  if ("effort" in patch) {
+    // A menu choice replaces the --effort value for the rest of the run
+    sessionEffort = undefined;
   }
   return getModelSettings(model);
 }

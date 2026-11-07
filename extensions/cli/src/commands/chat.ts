@@ -29,6 +29,7 @@ import { startTUIChat } from "../ui/index.js";
 import { gracefulExit } from "../util/exit.js";
 import { formatAnthropicError, formatError } from "../util/formatError.js";
 import { logger } from "../util/logger.js";
+import { setSessionEffort } from "../util/modelSettings.js";
 import { question } from "../util/prompt.js";
 import { prependPrompt } from "../util/promptProcessor.js";
 import {
@@ -568,6 +569,7 @@ export async function chat(prompt?: string, options: ChatOptions = {}) {
 
   try {
     configureAgentLoopLimits(options);
+    setSessionEffort(options.effort?.toLowerCase());
 
     // Record session start
     telemetryService.recordSessionStart();
