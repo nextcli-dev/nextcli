@@ -771,50 +771,67 @@ export class CodebaseIndexer {
     const localController = new AbortController();
     this.indexingCancellationController = localController;
 
-    try {
-      for await (const update of this.waitForDBIndex()) {
-        this.updateProgress(update);
-      }
-
-      await IndexLock.lock(paths.join(", ")); // acquire the index lock to prevent multiple windows to begin indexing
-    } catch (e: any) {
-      // index.sqlite itself can't be used (corrupt, full, unreadable)
-      console.log(`Failed to lock the codebase index: ${e}`);
-      await this.handleIndexingError(e);
-      return;
-    }
-    const indexLockTimestampUpdateInterval = setInterval(
-      () => void IndexLock.updateTimestamp(),
-      5_000,
-    );
+    let indexLockTimestampUpdateInterval:
+      | ReturnType<typeof setInterval>
+      | undefined;
+    let locked = false;
 
     try {
-      for await (const update of this.refreshDirs(
-        paths,
-        localController.signal,
-      )) {
-        this.updateProgress(update);
-
-        if (update.status === "failed") {
-          await this.sendIndexingErrorTelemetry(update);
+      try {
+        for await (const update of this.waitForDBIndex()) {
+          this.updateProgress(update);
         }
+
+        await IndexLock.lock(paths.join(", ")); // acquire the index lock to prevent multiple windows to begin indexing
+        locked = true;
+      } catch (e: any) {
+        // index.sqlite itself can't be used (corrupt, full, unreadable)
+        console.log(`Failed to lock the codebase index: ${e}`);
+        await this.handleIndexingError(e);
+        return;
+      }
+      indexLockTimestampUpdateInterval = setInterval(() => {
+        void IndexLock.updateTimestamp().catch((err) => {
+          console.log(`Failed to update the index lock timestamp: ${err}`);
+        });
+      }, 5_000);
+
+      try {
+        for await (const update of this.refreshDirs(
+          paths,
+          localController.signal,
+        )) {
+          this.updateProgress(update);
+
+          if (update.status === "failed") {
+            await this.sendIndexingErrorTelemetry(update);
+          }
+        }
+      } catch (e: any) {
+        console.log(`Failed refreshing codebase index directories: ${e}`);
+        await this.handleIndexingError(e);
+      }
+
+      await IndexLock.unlock();
+
+      // Directly refresh submenu items
+      if (this.messenger) {
+        this.messenger.send("refreshSubmenuItems", {
+          providers: "all",
+        });
       }
     } catch (e: any) {
-      console.log(`Failed refreshing codebase index directories: ${e}`);
+      // The startup refresh is not awaited. A corrupt index.sqlite used to
+      // reject it from unlock() with nothing handling the rejection.
+      console.log(`Failed to finish refreshing the codebase index: ${e}`);
       await this.handleIndexingError(e);
-    }
-
-    clearInterval(indexLockTimestampUpdateInterval); // interval will also be cleared when window closes before indexing is finished
-    await IndexLock.unlock();
-
-    // Directly refresh submenu items
-    if (this.messenger) {
-      this.messenger.send("refreshSubmenuItems", {
-        providers: "all",
-      });
-    }
-    if (this.indexingCancellationController === localController) {
-      this.indexingCancellationController.abort();
+    } finally {
+      if (indexLockTimestampUpdateInterval) {
+        clearInterval(indexLockTimestampUpdateInterval);
+      }
+      if (locked && this.indexingCancellationController === localController) {
+        this.indexingCancellationController.abort();
+      }
     }
   }
 
@@ -915,7 +932,9 @@ export class CodebaseIndexer {
 
       if (needsReindex) {
         const dirs = await this.ide.getWorkspaceDirs();
-        void this.refreshCodebaseIndex(dirs);
+        void this.refreshCodebaseIndex(dirs).catch((err) => {
+          console.log(`Failed to refresh the codebase index: ${err}`);
+        });
       }
     }
   }

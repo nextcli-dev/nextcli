@@ -20,6 +20,9 @@ export type DatabaseConnection = SqliteDatabase;
 export class SqliteDb {
   static db: DatabaseConnection | null = null;
 
+  /** In-flight open, so overlapping callers share one schema setup */
+  private static opening: Promise<DatabaseConnection> | null = null;
+
   private static async createTables(db: DatabaseConnection) {
     await db.exec("PRAGMA journal_mode=WAL;");
 
@@ -88,19 +91,54 @@ export class SqliteDb {
 
   private static indexSqlitePath = getIndexSqlitePath();
 
-  static async get() {
-    if (SqliteDb.db && fs.existsSync(SqliteDb.indexSqlitePath)) {
-      return SqliteDb.db;
+  /**
+   * Opens index.sqlite and creates its tables before anyone can see the
+   * connection. Publishing the connection earlier lets a second caller run
+   * `prepare` (which does not wait on the write queue) and hit
+   * "no such table: tag_catalog". A failed open is not cached.
+   */
+  private static async open(): Promise<DatabaseConnection> {
+    const indexPath = getIndexSqlitePath();
+    // A deleted index.sqlite leaves its WAL behind. Opening a new file next
+    // to that WAL fails with SQLITE_NOTADB or comes up without these tables.
+    if (!fs.existsSync(indexPath)) {
+      fs.rmSync(`${indexPath}-wal`, { force: true });
+      fs.rmSync(`${indexPath}-shm`, { force: true });
     }
 
-    SqliteDb.indexSqlitePath = getIndexSqlitePath();
-    SqliteDb.db = await SqliteDatabase.open(SqliteDb.indexSqlitePath);
+    const db = await SqliteDatabase.open(indexPath);
+    try {
+      await db.exec("PRAGMA busy_timeout = 3000;");
+      await SqliteDb.createTables(db);
+    } catch (error) {
+      await db.close().catch(() => {});
+      throw error;
+    }
 
-    await SqliteDb.db.exec("PRAGMA busy_timeout = 3000;");
+    SqliteDb.indexSqlitePath = indexPath;
+    SqliteDb.db = db;
+    return db;
+  }
 
-    await SqliteDb.createTables(SqliteDb.db);
+  static get(): Promise<DatabaseConnection> {
+    if (SqliteDb.db && fs.existsSync(SqliteDb.indexSqlitePath)) {
+      return Promise.resolve(SqliteDb.db);
+    }
 
-    return SqliteDb.db;
+    if (!SqliteDb.opening) {
+      const stale = SqliteDb.db;
+      SqliteDb.db = null;
+      SqliteDb.opening = (async () => {
+        if (stale) {
+          await stale.close().catch(() => {});
+        }
+        return SqliteDb.open();
+      })().finally(() => {
+        SqliteDb.opening = null;
+      });
+    }
+
+    return SqliteDb.opening;
   }
 }
 
