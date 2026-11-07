@@ -63,7 +63,7 @@ import { resolveRelativePathInDir } from "../util/ideUtils";
 import { getWorkspaceRcConfigs } from "./json/loadRcConfigs";
 import {
   loadConfigContextProviders,
-  REMOVED_DOCS_MESSAGE,
+  REMOVED_DOCS_BLOCK_MESSAGE,
   removedEmbedRoleMessage,
 } from "./loadContextProviders";
 import { modifyAnyConfigWithSharedConfig } from "./sharedConfig";
@@ -395,7 +395,7 @@ async function intermediateToFinalConfig({
     });
   }
   if (config.docs?.length) {
-    errors.push({ fatal: false, message: REMOVED_DOCS_MESSAGE });
+    errors.push({ fatal: false, message: REMOVED_DOCS_BLOCK_MESSAGE });
   }
 
   // Reranker

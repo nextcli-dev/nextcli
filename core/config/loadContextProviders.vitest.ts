@@ -8,7 +8,7 @@ import RulesContextProvider from "../context/providers/RulesContextProvider";
 import TerminalContextProvider from "../context/providers/TerminalContextProvider";
 import {
   loadConfigContextProviders,
-  REMOVED_DOCS_MESSAGE,
+  REMOVED_DOCS_PROVIDER_MESSAGE,
 } from "./loadContextProviders";
 
 // Mock the contextProviderClassFromName function
@@ -133,7 +133,7 @@ describe("loadConfigContextProviders", () => {
     );
 
     expect(result.errors).toEqual([
-      { fatal: false, message: REMOVED_DOCS_MESSAGE },
+      { fatal: false, message: REMOVED_DOCS_PROVIDER_MESSAGE },
     ]);
     expect(result.providers.map((p) => p.description.title)).not.toContain(
       "docs",

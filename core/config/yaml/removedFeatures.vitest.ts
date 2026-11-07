@@ -13,7 +13,8 @@ import {
   getConfigDependentToolDefinitions,
 } from "../../tools";
 import {
-  REMOVED_DOCS_MESSAGE,
+  REMOVED_DOCS_BLOCK_MESSAGE,
+  REMOVED_DOCS_PROVIDER_MESSAGE,
   removedEmbedRoleMessage,
 } from "../loadContextProviders";
 import { configYamlToContinueConfig } from "./loadYaml";
@@ -61,7 +62,7 @@ describe("configs with removed features", () => {
     expect(config.modelsByRole.chat.map((m) => m.title)).toEqual(["Chat"]);
   });
 
-  it("loads a config with a docs block and a docs provider, with one warning each", async () => {
+  it("loads a config with a docs block and a docs provider, with a distinct warning for each", async () => {
     const { config, errors } = await load({
       name: "old config",
       version: "1.0.0",
@@ -69,10 +70,19 @@ describe("configs with removed features", () => {
       docs: [{ name: "JSON Lines", startUrl: "https://jsonlines.org/" }],
     });
 
-    const docsWarnings = errors.filter(
-      (e) => e.message === REMOVED_DOCS_MESSAGE,
+    expect(errors.map((e) => e.message)).toEqual(
+      expect.arrayContaining([
+        REMOVED_DOCS_PROVIDER_MESSAGE,
+        REMOVED_DOCS_BLOCK_MESSAGE,
+      ]),
     );
-    expect(docsWarnings).toHaveLength(2);
+    expect(
+      errors.filter((e) =>
+        [REMOVED_DOCS_PROVIDER_MESSAGE, REMOVED_DOCS_BLOCK_MESSAGE].includes(
+          e.message,
+        ),
+      ),
+    ).toHaveLength(2);
     expect(errors.some((e) => e.fatal)).toBe(false);
 
     const providers = config.contextProviders.map((p) => p.description.title);
