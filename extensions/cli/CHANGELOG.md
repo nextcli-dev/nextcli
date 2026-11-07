@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/nextcli-dev/nextcli/compare/cli-v0.5.0...cli-v0.5.1) (2026-11-07)
+
+
+### Bug Fixes
+
+* close the model menu after a pick; stub jsdom's sync-XHR worker ([#66](https://github.com/nextcli-dev/nextcli/issues/66)) ([6fbc6ee](https://github.com/nextcli-dev/nextcli/commit/6fbc6ee060a16f990187def646ac3034361dcd28))
+
 ## [0.5.0](https://github.com/nextcli-dev/nextcli/compare/cli-v0.4.0...cli-v0.5.0) (2026-11-06)
 
 
