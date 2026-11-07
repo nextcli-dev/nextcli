@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.6.7](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.6...vscode-v1.6.7) (2026-11-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* Embeddings-based search, @docs and the `codebase` tool are removed. @codebase and @folder use keyword search only. A model with the `embed` role, `embeddingsProvider` and `docs` config entries are ignored with a warning. For documentation, use the fetch tool or a docs MCP server such as Context7.
+
+### Features
+
+* remove embeddings, LanceDB and [@docs](https://github.com/docs) ([#62](https://github.com/nextcli-dev/nextcli/issues/62)) ([fc3576e](https://github.com/nextcli-dev/nextcli/commit/fc3576eda8c57c9810d6657220b36469666c198a))
+
+
+### Bug Fixes
+
+* **core:** give the docs provider and docs block their own warnings ([#70](https://github.com/nextcli-dev/nextcli/issues/70)) ([96eb165](https://github.com/nextcli-dev/nextcli/commit/96eb1652edfe427651475563d9166255ae709116))
+
 ## [1.6.6](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.5...vscode-v1.6.6) (2026-11-07)
 
 
