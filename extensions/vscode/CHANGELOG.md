@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.6.6](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.5...vscode-v1.6.6) (2026-11-07)
+
+
+### Features
+
+* **core:** add opt-in OpenTelemetry metrics ([e0cb5e6](https://github.com/nextcli-dev/nextcli/commit/e0cb5e6006d7ee226a3b3961be3d0a2cdf7a7623))
+
+
+### Bug Fixes
+
+* close the model menu after a pick; stub jsdom's sync-XHR worker ([#66](https://github.com/nextcli-dev/nextcli/issues/66)) ([6fbc6ee](https://github.com/nextcli-dev/nextcli/commit/6fbc6ee060a16f990187def646ac3034361dcd28))
+* **core:** make the telemetry opt-in work and the exporter stoppable ([bcb9926](https://github.com/nextcli-dev/nextcli/commit/bcb9926b1659a8ae5240f2d2f4569eee19910673))
+* review follow-ups for Phase 4 and core telemetry ([#65](https://github.com/nextcli-dev/nextcli/issues/65)) ([1b67791](https://github.com/nextcli-dev/nextcli/commit/1b67791dbaff690c68fba1ab9ae0195d5dd3bf2b))
+* **vscode:** state that 1.6.5 is the first release needing VS Code 1.101 ([f80bf0b](https://github.com/nextcli-dev/nextcli/commit/f80bf0baa30fd160e5b35f5d34c404585d076bb3))
+
 ## [1.6.5](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.4...vscode-v1.6.5) (2026-11-06)
 
 
