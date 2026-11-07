@@ -26,7 +26,13 @@ import { localPathToUri } from "../util/pathToUri";
 import { SqliteDatabase } from "../util/sqlite";
 import { CodebaseIndexer } from "./CodebaseIndexer";
 import { FullTextSearchCodebaseIndex } from "./FullTextSearchCodebaseIndex";
-import { SqliteDb } from "./refreshIndex";
+import { DatabaseConnection, SqliteDb } from "./refreshIndex";
+
+// SqliteDb.db is assigned null above, and TypeScript keeps that narrowing for
+// the rest of the test. The open happens asynchronously inside SqliteDb.get.
+function publishedDb(): DatabaseConnection | null {
+  return SqliteDb.db;
+}
 
 const FILES: Record<string, string> = {
   "billing.ts": `export function calculateInvoiceTotal(lines: number[]) {
@@ -85,7 +91,7 @@ describe("indexing on node:sqlite", () => {
       }
 
       // A connection published before CREATE TABLE used to reject this
-      const earlyRead = SqliteDb.db?.get<{ n: number }>(
+      const earlyRead = publishedDb()?.get<{ n: number }>(
         "SELECT count(*) AS n FROM tag_catalog",
       );
       const assertion = earlyRead
@@ -104,7 +110,9 @@ describe("indexing on node:sqlite", () => {
     } finally {
       releaseSchema();
       exec.mockRestore();
-      await SqliteDb.db?.close().catch(() => {});
+      await publishedDb()
+        ?.close()
+        .catch(() => {});
       SqliteDb.db = null;
       fs.rmSync(indexPath, { force: true });
       fs.rmSync(`${indexPath}-wal`, { force: true });
