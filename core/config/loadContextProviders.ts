@@ -11,8 +11,11 @@ import ProblemsContextProvider from "../context/providers/ProblemsContextProvide
 import RulesContextProvider from "../context/providers/RulesContextProvider";
 import TerminalContextProvider from "../context/providers/TerminalContextProvider";
 
-export const REMOVED_DOCS_MESSAGE =
-  "@docs was removed in this release, so the `docs` context provider and the `docs` config block are ignored. Use the fetch tool or a docs MCP server instead.";
+export const REMOVED_DOCS_PROVIDER_MESSAGE =
+  "The `docs` context provider was removed with @docs and is ignored. Use the fetch tool or a docs MCP server instead.";
+
+export const REMOVED_DOCS_BLOCK_MESSAGE =
+  "The `docs` config block was removed with @docs and is ignored. Use the fetch tool or a docs MCP server instead.";
 
 export function removedEmbedRoleMessage(modelName: string): string {
   return `Model "${modelName}" has the \`embed\` role, which is ignored: NextCLI no longer computes embeddings. @codebase and @folder use keyword search.`;
@@ -50,7 +53,7 @@ export function loadConfigContextProviders(
       if (config.provider === "docs") {
         errors.push({
           fatal: false,
-          message: REMOVED_DOCS_MESSAGE,
+          message: REMOVED_DOCS_PROVIDER_MESSAGE,
         });
         continue;
       }
