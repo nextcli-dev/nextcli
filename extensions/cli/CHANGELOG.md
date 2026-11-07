@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.8.0](https://github.com/nextcli-dev/nextcli/compare/cli-v0.7.0...cli-v0.8.0) (2026-11-07)
+
+
+### Features
+
+* **cli:** a run that reaches --max-turns, --max-session-tokens or --max-cost returns a final answer without tools and exits 3 ([#82](https://github.com/nextcli-dev/nextcli/issues/82)) ([aaa01d9](https://github.com/nextcli-dev/nextcli/commit/aaa01d95cb3364b20f7ff935ffcca87b92cb7363))
+* **cli:** headless --readonly no longer offers Bash, Fetch or MCP tools, including when an agent file is loaded ([#82](https://github.com/nextcli-dev/nextcli/issues/82)) ([aaa01d9](https://github.com/nextcli-dev/nextcli/commit/aaa01d95cb3364b20f7ff935ffcca87b92cb7363))
+* **cli:** remove the experimental /effort slash command; set the effort in the model menu, and use --effort for headless runs ([#83](https://github.com/nextcli-dev/nextcli/issues/83)) ([c3f3a53](https://github.com/nextcli-dev/nextcli/commit/c3f3a53fb1d37cba8ca3ba471ef820abc2fe6ed8))
+* **core:** price oneprovider and OpenRouter models from their own tables, so --max-cost no longer relies on the $1/$2 fallback ([#82](https://github.com/nextcli-dev/nextcli/issues/82)) ([aaa01d9](https://github.com/nextcli-dev/nextcli/commit/aaa01d95cb3364b20f7ff935ffcca87b92cb7363))
+* offer to delete legacy index data; remove the baseline script and JetBrains code ([#79](https://github.com/nextcli-dev/nextcli/issues/79)) ([6c99f66](https://github.com/nextcli-dev/nextcli/commit/6c99f663b823fcc7491c5a271cf1a5c212e0dcb1))
+
+
+### Bug Fixes
+
+* **core:** publish index.sqlite only after tag_catalog exists, so index setup no longer fails after a corrupt database ([#82](https://github.com/nextcli-dev/nextcli/issues/82)) ([aaa01d9](https://github.com/nextcli-dev/nextcli/commit/aaa01d95cb3364b20f7ff935ffcca87b92cb7363))
+
 ## [0.7.0](https://github.com/nextcli-dev/nextcli/compare/cli-v0.6.0...cli-v0.7.0) (2026-11-07)
 
 
