@@ -229,6 +229,9 @@ const getCommandsMap: (
     "continue.codebaseForceReIndex": async () => {
       core.invoke("index/forceReIndex", undefined);
     },
+    "continue.cleanUpLegacyIndexData": async () => {
+      core.invoke("index/cleanUpLegacyData", undefined);
+    },
     "continue.rebuildCodebaseIndex": async () => {
       core.invoke("index/forceReIndex", { shouldClearIndexes: true });
     },

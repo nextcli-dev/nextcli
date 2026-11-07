@@ -47,10 +47,31 @@ interface NodeSqlite {
 // Loaded lazily through process.getBuiltinModule: it works the same in
 // CommonJS, ESM and bundles, and code paths that never open a database don't
 // load the module (or print its ExperimentalWarning on Node 22)
+// Node 22 prints "ExperimentalWarning: SQLite is an experimental feature"
+// when node:sqlite first loads, which shows up in CLI output. Drop only that
+// warning, only while loading; every other warning goes through
+const SQLITE_EXPERIMENTAL_WARNING = "SQLite is an experimental feature";
+
 function loadNodeSqlite(): NodeSqlite {
-  return (
-    process as unknown as { getBuiltinModule(id: string): unknown }
-  ).getBuiltinModule("node:sqlite") as NodeSqlite;
+  const emitWarning = process.emitWarning;
+  process.emitWarning = ((warning: string | Error, ...rest: unknown[]) => {
+    const text = typeof warning === "string" ? warning : warning.message;
+    if (text.includes(SQLITE_EXPERIMENTAL_WARNING)) {
+      return;
+    }
+    return (emitWarning as (...args: unknown[]) => void).call(
+      process,
+      warning,
+      ...rest,
+    );
+  }) as typeof process.emitWarning;
+  try {
+    return (
+      process as unknown as { getBuiltinModule(id: string): unknown }
+    ).getBuiltinModule("node:sqlite") as NodeSqlite;
+  } finally {
+    process.emitWarning = emitWarning;
+  }
 }
 
 // Primary result codes (https://sqlite.org/rescode.html), by number

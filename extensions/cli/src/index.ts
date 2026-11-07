@@ -7,6 +7,7 @@ import { Command } from "commander";
 
 import { chat } from "./commands/chat.js";
 import { checks } from "./commands/checks.js";
+import { cleanupCommand } from "./commands/cleanup.js";
 import { listSessionsCommand } from "./commands/ls.js";
 import { review } from "./commands/review.js";
 import { serve } from "./commands/serve.js";
@@ -324,6 +325,17 @@ program
     await listSessionsCommand({
       format: options.json ? "json" : undefined,
     });
+  });
+
+// Cleanup subcommand
+program
+  .command("cleanup")
+  .description(
+    "Delete the codebase index and @docs data older versions left in ~/.continue/index",
+  )
+  .option("-y, --yes", "Delete without asking")
+  .action(async (options) => {
+    await cleanupCommand({ yes: options.yes });
   });
 
 // Serve subcommand
