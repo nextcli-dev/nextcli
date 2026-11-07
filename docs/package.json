@@ -13,6 +13,7 @@
   "license": "ISC",
   "type": "commonjs",
   "devDependencies": {
+    "keytar": "file:../shims/keytar",
     "mintlify": "^4.2.454"
   },
   "dependencies": {
