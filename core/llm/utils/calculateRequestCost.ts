@@ -1,8 +1,37 @@
 import { Usage } from "../..";
 
+import {
+  estimateRatesFromOpenRouter,
+  findOneproviderRates,
+  findOpenRouterRates,
+  hostOf,
+  isHostOrSubdomain,
+  isLocalHost,
+  priceWithHostRates,
+} from "./rates/hostRates";
+import type { HostRates } from "./rates/hostRates";
+
+/**
+ * exact: from the price table of the host or model maker.
+ * estimated: from OpenRouter's price for a model with the same name, because
+ * the host has no price table.
+ */
+export type PriceSource = "exact" | "estimated";
+
 export interface CostBreakdown {
   cost: number;
   breakdown: string;
+  priced?: PriceSource;
+}
+
+export interface RequestCostOptions {
+  /** The model's API base URL. Hosts with their own prices are matched on it. */
+  apiBase?: string;
+  /**
+   * Estimate unknown models from OpenRouter prices instead of returning null.
+   * Never applied to local hosts.
+   */
+  estimateUnknown?: boolean;
 }
 
 interface AnthropicRates {
@@ -454,12 +483,12 @@ function calculateOpenAICost(
   };
 }
 
-export function calculateRequestCost(
+function calculateMakerCost(
   provider: string,
   model: string,
   usage: Usage,
 ): CostBreakdown | null {
-  switch (provider.toLowerCase()) {
+  switch (provider) {
     case "anthropic":
       return calculateAnthropicCost(model, usage);
     case "openai":
@@ -467,4 +496,55 @@ export function calculateRequestCost(
     default:
       return null;
   }
+}
+
+/**
+ * Prices one request. Hosts that resell models at their own prices are
+ * checked first, because the same model costs different amounts on each:
+ *
+ * 1. oneprovider.dev, by its price table
+ * 2. OpenRouter (provider or host), by its catalog
+ * 3. Anthropic and OpenAI, by their list prices
+ * 4. with `estimateUnknown`, OpenRouter's price for a model of the same name
+ */
+export function calculateRequestCost(
+  provider: string,
+  model: string,
+  usage: Usage,
+  options: RequestCostOptions = {},
+): CostBreakdown | null {
+  const normalizedProvider = provider.toLowerCase();
+  const host = hostOf(options.apiBase);
+
+  let exactRates: HostRates | undefined;
+  if (host && isHostOrSubdomain(host, "oneprovider.dev")) {
+    exactRates = findOneproviderRates(model);
+  } else if (
+    normalizedProvider === "openrouter" ||
+    (host && isHostOrSubdomain(host, "openrouter.ai"))
+  ) {
+    exactRates = findOpenRouterRates(model);
+  } else {
+    const makerCost = calculateMakerCost(normalizedProvider, model, usage);
+    if (makerCost) {
+      return { ...makerCost, priced: "exact" };
+    }
+  }
+  if (exactRates) {
+    return { ...priceWithHostRates(model, exactRates, usage), priced: "exact" };
+  }
+
+  if (!options.estimateUnknown || (host && isLocalHost(host))) {
+    return null;
+  }
+  const estimatedRates = estimateRatesFromOpenRouter(model);
+  if (!estimatedRates) {
+    return null;
+  }
+  const estimate = priceWithHostRates(model, estimatedRates, usage);
+  return {
+    cost: estimate.cost,
+    breakdown: `${estimate.breakdown}\n(estimated from OpenRouter prices)`,
+    priced: "estimated",
+  };
 }

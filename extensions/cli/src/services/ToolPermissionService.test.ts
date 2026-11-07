@@ -121,16 +121,16 @@ describe("ToolPermissionService", () => {
       expect(policies).toContainEqual({ tool: "Write", permission: "exclude" });
       expect(policies).toContainEqual({ tool: "Edit", permission: "exclude" });
 
-      // Should allow read tools and bash
-      expect(policies).toContainEqual({ tool: "Bash", permission: "allow" });
+      // Should allow read tools, and ask before bash
+      expect(policies).toContainEqual({ tool: "Bash", permission: "ask" });
       expect(policies).toContainEqual({ tool: "Read", permission: "allow" });
       expect(policies).toContainEqual({ tool: "Search", permission: "allow" });
       expect(policies).toContainEqual({ tool: "List", permission: "allow" });
 
-      // Plan mode has wildcard allow at the end for MCP and other tools
+      // Plan mode asks before MCP and other tools
       expect(policies[policies.length - 1]).toEqual({
         tool: "*",
-        permission: "allow",
+        permission: "ask",
       });
     });
 
@@ -401,11 +401,13 @@ describe("ToolPermissionService", () => {
       );
       expect(writeExcludeIndex).toBeGreaterThanOrEqual(0);
 
-      // Plan mode allows all other tools via wildcard
-      expect(state.permissions.policies).toContainEqual({
-        tool: "*",
-        permission: "allow",
-      });
+      // Unattended plan mode has no shell, MCP tools or Fetch
+      for (const tool of ["*", "Bash", "Fetch"]) {
+        expect(state.permissions.policies).toContainEqual({
+          tool,
+          permission: "exclude",
+        });
+      }
       expect(state.isHeadless).toBe(true);
     });
 

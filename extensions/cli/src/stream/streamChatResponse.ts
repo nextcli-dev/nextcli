@@ -20,12 +20,16 @@ import {
   withExponentialBackoff,
 } from "../util/exponentialBackoff.js";
 import { logger } from "../util/logger.js";
-import { validateContextLength } from "../util/tokenizer.js";
-
 import {
-  enforceAgentLoopLimits,
-  getAgentLoopLimits,
-  takeUsageSnapshot,
+  countTotalInputTokens,
+  validateContextLength,
+} from "../util/tokenizer.js";
+
+import { AgentLoopLimitError } from "./agentLoopLimitError.js";
+import {
+  AgentLoopBudget,
+  LimitWrapUp,
+  wrapUpMessage,
 } from "./agentLoopLimits.js";
 import { getRequestTools, handleToolCalls } from "./handleToolCalls.js";
 import { ReasoningAccumulator } from "./reasoning.js";
@@ -36,6 +40,9 @@ import {
   handlePreApiCompaction,
 } from "./streamChatResponse.compactionHelpers.js";
 import {
+  addUserMessage,
+  estimateFinalAnswerCost,
+  finalAnswerMaxTokens,
   recordStreamTelemetry,
   trackFirstTokenTime,
 } from "./streamChatResponse.helpers.js";
@@ -111,26 +118,36 @@ function handleAutoContinuation(
     "Auto-compaction occurred during this turn - automatically continuing session",
   );
 
-  // Add a continuation message to the history
-  const chatHistorySvc = services.chatHistory;
-  if (
-    typeof chatHistorySvc?.isReady === "function" &&
-    chatHistorySvc.isReady()
-  ) {
-    chatHistorySvc.addUserMessage("continue");
-    chatHistory = chatHistorySvc.getHistory();
-  } else {
-    chatHistory.push({
-      message: {
-        role: "user",
-        content: "continue",
-      },
-      contextItems: [],
-    });
-  }
+  chatHistory = addUserMessage(chatHistory, "continue");
 
   logger.debug("Added continuation message after compaction");
   return { shouldAutoContinue: true, chatHistory };
+}
+
+// Starts one model call. A run already past its limit throws instead of calling.
+function applyTurnLimit(
+  budget: AgentLoopBudget,
+  chatHistory: ChatHistoryItem[],
+): { wrapUp: LimitWrapUp | undefined; chatHistory: ChatHistoryItem[] } {
+  const wrapUp = budget.nextTurn();
+  if (wrapUp?.stop) {
+    throw new AgentLoopLimitError(wrapUp);
+  }
+  return {
+    wrapUp,
+    chatHistory: wrapUp
+      ? addUserMessage(chatHistory, wrapUpMessage(wrapUp))
+      : chatHistory,
+  };
+}
+
+// Shows and stores the answer of a run's last call. Tool calls in it are
+// dropped, not run.
+async function saveFinalAnswer(
+  options: Omit<Parameters<typeof handleToolCalls>[0], "toolCalls">,
+): Promise<void> {
+  handleContentDisplay(options.content, options.callbacks, options.isHeadless);
+  await handleToolCalls({ ...options, toolCalls: [] });
 }
 
 interface ProcessStreamingResponseOptions {
@@ -142,10 +159,12 @@ interface ProcessStreamingResponseOptions {
   isHeadless?: boolean;
   tools?: ChatCompletionTool[];
   systemMessage: string;
+  /** Overrides the model's max_tokens for this call */
+  maxTokens?: number;
 }
 
 // Process a single streaming response and return whether we need to continue
-// eslint-disable-next-line max-statements, complexity
+// eslint-disable-next-line max-statements
 export async function processStreamingResponse(
   options: ProcessStreamingResponseOptions,
 ): Promise<{
@@ -222,8 +241,12 @@ export async function processStreamingResponse(
         model: model.model,
         messages: openaiChatHistory,
         stream: true,
-        tools,
+        // OpenAI rejects an empty tools array, so send none at all
+        tools: tools?.length ? tools : undefined,
         ...getCompletionOptions(model),
+        ...(options.maxTokens !== undefined && {
+          max_tokens: options.maxTokens,
+        }),
       },
       retryAbortSignal,
     );
@@ -398,33 +421,36 @@ export async function streamChatResponse(
   let finalResponse = "";
   let compactionOccurredThisTurn = false; // Track if compaction happened during this conversation turn
 
-  const limits = getAgentLoopLimits();
-  const usageAtStart =
-    limits.maxSessionTokens || limits.maxCostUsd
-      ? takeUsageSnapshot()
-      : undefined;
-  let turn = 0;
+  // The final answer must still fit under --max-cost
+  const budget = new AgentLoopBudget(() =>
+    estimateFinalAnswerCost(
+      model,
+      countTotalInputTokens({ chatHistory, model }),
+    ),
+  );
 
   // Aborted on exit, so an interrupted turn never starts another tool (#12701)
   const unregisterAbort = registerAbortController(abortController);
   try {
     while (true) {
-      turn++;
-      enforceAgentLoopLimits(limits, turn, usageAtStart);
-
       // If ChatHistoryService is available, refresh local chatHistory view
       chatHistory = refreshChatHistoryFromService(chatHistory, isCompacting);
       logger.debug("Starting conversation iteration");
+
+      // At a limit, the next call is the last one and has no tools. A run
+      // already over the limit throws instead of spending another call.
+      let wrapUp: LimitWrapUp | undefined;
+      ({ wrapUp, chatHistory } = applyTurnLimit(budget, chatHistory));
 
       // Get system message once per iteration (can change based on tool permissions mode)
       const systemMessage = await services.systemMessage.getSystemMessage(
         services.toolPermissions.getState().currentMode,
       );
 
-      // Recompute tools on each iteration to handle mode changes during streaming
-      const rawTools = await getRequestTools(isHeadless);
+      // Recompute tools on each iteration to handle mode changes during
+      // streaming. A run's last call gets none.
       const tools = applyChatCompletionToolOverrides(
-        rawTools,
+        wrapUp ? [] : await getRequestTools(isHeadless),
         model.chatOptions?.toolOverrides,
       );
 
@@ -450,19 +476,42 @@ export async function streamChatResponse(
 
       // Get response from LLM
       const { content, toolCalls, shouldContinue, usage, reasoning } =
-        await processStreamingResponse({
-          isHeadless,
-          chatHistory,
-          model,
-          llmApi,
-          abortController,
-          callbacks,
-          tools,
-          systemMessage,
-        });
+        await budget.measure(() =>
+          processStreamingResponse({
+            isHeadless,
+            chatHistory,
+            model,
+            llmApi,
+            abortController,
+            callbacks,
+            tools,
+            systemMessage,
+            // The last call may only spend what is left under --max-cost
+            maxTokens: wrapUp
+              ? finalAnswerMaxTokens(
+                  model,
+                  budget.costLeft(),
+                  countTotalInputTokens({ chatHistory, systemMessage, model }),
+                )
+              : undefined,
+          }),
+        );
 
       if (abortController?.signal.aborted) {
         return finalResponse || content || fullResponse;
+      }
+
+      if (wrapUp) {
+        await saveFinalAnswer({
+          chatHistory,
+          content,
+          callbacks,
+          isHeadless,
+          usage,
+          reasoning,
+          signal: abortController.signal,
+        });
+        return content || finalResponse || fullResponse;
       }
 
       fullResponse += content;

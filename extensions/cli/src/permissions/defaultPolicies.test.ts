@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { getDefaultToolPolicies } from "./defaultPolicies.js";
+import {
+  getDefaultToolPolicies,
+  getPlanModePolicies,
+} from "./defaultPolicies.js";
 const DEFAULT_TOOL_POLICIES = getDefaultToolPolicies();
 
 describe("defaultPolicies", () => {
@@ -61,5 +64,33 @@ describe("defaultPolicies", () => {
       (p) => p.tool === "*",
     );
     expect(catchAllIndex).toBe(DEFAULT_TOOL_POLICIES.length - 1);
+  });
+});
+
+describe("plan mode policies", () => {
+  it("asks before Bash and MCP tools in the TUI and allows Fetch", () => {
+    const policies = getPlanModePolicies(false);
+
+    expect(policies).toContainEqual({ tool: "Edit", permission: "exclude" });
+    expect(policies).toContainEqual({
+      tool: "MultiEdit",
+      permission: "exclude",
+    });
+    expect(policies).toContainEqual({ tool: "Write", permission: "exclude" });
+    expect(policies).toContainEqual({ tool: "Bash", permission: "ask" });
+    expect(policies).toContainEqual({ tool: "Fetch", permission: "allow" });
+    expect(policies).toContainEqual({ tool: "*", permission: "ask" });
+    expect(policies).toContainEqual({ tool: "Read", permission: "allow" });
+  });
+
+  it("excludes Bash, Fetch and MCP tools when nobody is watching", () => {
+    const policies = getPlanModePolicies(true);
+
+    expect(policies).toContainEqual({ tool: "Bash", permission: "exclude" });
+    expect(policies).toContainEqual({ tool: "Fetch", permission: "exclude" });
+    expect(policies).toContainEqual({ tool: "*", permission: "exclude" });
+    expect(policies).toContainEqual({ tool: "Read", permission: "allow" });
+    expect(policies).toContainEqual({ tool: "List", permission: "allow" });
+    expect(policies).toContainEqual({ tool: "Search", permission: "allow" });
   });
 });

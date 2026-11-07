@@ -45,14 +45,14 @@ describe("streamChatResponse - Mode Switch During Streaming", () => {
     serviceContainer.set(SERVICE_NAMES.TOOL_PERMISSIONS, updatedState);
 
     // Recompute tools - should now exclude write tools
-    tools = await getRequestTools(true);
+    tools = await getRequestTools(false);
     toolNames = tools.map((t) => t.function.name);
 
     // Should exclude write tools in plan mode
     expect(toolNames).not.toContain("Write");
     expect(toolNames).not.toContain("MultiEdit");
 
-    // Should still include read-only tools
+    // Should still include read-only tools, and Bash with approval
     expect(toolNames).toContain("Read");
     expect(toolNames).toContain("Bash");
     expect(toolNames).toContain("List");

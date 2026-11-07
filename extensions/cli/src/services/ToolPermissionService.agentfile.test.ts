@@ -475,6 +475,38 @@ describe("ToolPermissionService - Agent File Integration", () => {
   });
 
   describe("initializeSync with agent file", () => {
+    it("keeps headless plan mode read-only when an agent file is loaded", () => {
+      const agentFileState: AgentFileServiceState = {
+        agentFile: { name: "test-agent" } as any,
+        slug: "test-slug",
+        agentFileModel: null,
+        parsedTools: null,
+        parsedRules: null,
+      };
+
+      const state = service.initializeSync(
+        { isHeadless: true, mode: "plan" },
+        agentFileState,
+      );
+
+      expect(state.permissions.policies).toContainEqual({
+        tool: "Bash",
+        permission: "exclude",
+      });
+      expect(state.permissions.policies).toContainEqual({
+        tool: "Fetch",
+        permission: "exclude",
+      });
+      expect(state.permissions.policies).toContainEqual({
+        tool: "*",
+        permission: "exclude",
+      });
+      expect(state.permissions.policies).not.toContainEqual({
+        tool: "*",
+        permission: "allow",
+      });
+    });
+
     it("should use agent file policies when agent file is present with no parsed tools", () => {
       const agentFileState: AgentFileServiceState = {
         agentFile: { name: "test-agent" } as any,

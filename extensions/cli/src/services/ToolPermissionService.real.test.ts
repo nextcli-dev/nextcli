@@ -40,7 +40,7 @@ describe("ToolPermissionService - Real Tool Permission Test", () => {
       expect(result.permission).toBe("exclude");
     });
 
-    it("should allow Bash tool in plan mode", () => {
+    it("should ask before Bash in plan mode", () => {
       const permissions = service.getPermissions();
       const toolCall = {
         name: "Bash",
@@ -48,8 +48,8 @@ describe("ToolPermissionService - Real Tool Permission Test", () => {
       };
       const result = checkToolPermission(toolCall, permissions);
 
-      console.log(`Bash permission check result:`, result);
-      expect(result.permission).toBe("allow");
+      // Bash can change files, so a person approves each command
+      expect(result.permission).toBe("ask");
     });
 
     it("should allow Read tool in plan mode", () => {
@@ -76,7 +76,7 @@ describe("ToolPermissionService - Real Tool Permission Test", () => {
       expect(result.permission).toBe("allow");
     });
 
-    it("should allow unknown tools in plan mode (for MCP tools via wildcard)", () => {
+    it("should ask before unknown tools in plan mode (MCP tools via wildcard)", () => {
       const permissions = service.getPermissions();
       const toolCall = {
         name: "some_mcp_tool",
@@ -84,8 +84,33 @@ describe("ToolPermissionService - Real Tool Permission Test", () => {
       };
       const result = checkToolPermission(toolCall, permissions);
 
-      console.log(`some_mcp_tool permission check result:`, result);
-      // Plan mode allows MCP and other non-write tools via wildcard
+      expect(result.permission).toBe("ask");
+    });
+  });
+
+  describe("Headless Plan Mode Real Tool Tests", () => {
+    beforeEach(() => {
+      service.initializeSync({ mode: "plan", isHeadless: true });
+    });
+
+    it.each([
+      ["Bash", { command: "ls" }],
+      ["Fetch", { url: "https://example.com" }],
+      ["some_mcp_tool", {}],
+      ["Write", { path: "test.txt", content: "test" }],
+    ])("should exclude %s", (name, args) => {
+      const result = checkToolPermission(
+        { name, arguments: args },
+        service.getPermissions(),
+      );
+      expect(result.permission).toBe("exclude");
+    });
+
+    it.each(["Read", "List", "Search", "Diff"])("should allow %s", (name) => {
+      const result = checkToolPermission(
+        { name, arguments: {} },
+        service.getPermissions(),
+      );
       expect(result.permission).toBe("allow");
     });
   });
