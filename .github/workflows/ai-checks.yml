@@ -1,8 +1,11 @@
 name: AI Checks
 
-# Runs the AI checks in .checks/ on a pull request, on demand. Each check runs
-# as its own parallel job and reports as check run `check/<name>`. They are
-# advisory: `ci` is the only required check.
+# Runs the `review` check from .checks/ on a pull request, on demand, with
+# NextCLI. It reports as check run `check/review` and posts one pull request
+# comment, edited in place on each run. A review stops at CHECKS_MAX_COST
+# dollars (default 1) and posts what it found so far. The other checks in
+# .checks/ are not run for now. They are advisory: `ci` is the only required
+# check.
 #
 #   - Add the `ai-review` label to a pull request. The label is removed when
 #     the run finishes, so add it again to re-run.
@@ -33,14 +36,17 @@ permissions:
 jobs:
   ai-checks:
     if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'ai-review'
-    uses: nextcli-dev/nextcli-checks/.github/workflows/checks.yml@v2
+    uses: nextcli-dev/nextcli-checks/.github/workflows/checks.yml@v3
     permissions:
       contents: read
       pull-requests: write
       checks: write
     with:
       pr-number: ${{ github.event.pull_request.number || inputs.pr }}
-      agent: ${{ vars.CHECKS_AGENT || 'opencode' }}
+      agent: nextcli
+      agent-version: ${{ vars.CHECKS_NEXTCLI_VERSION }}
+      check: review
+      max-cost: ${{ vars.CHECKS_MAX_COST || '1' }}
       provider: ${{ vars.CHECKS_PROVIDER }}
       model: ${{ vars.CHECKS_MODEL }}
       base-url: ${{ vars.CHECKS_BASE_URL }}
