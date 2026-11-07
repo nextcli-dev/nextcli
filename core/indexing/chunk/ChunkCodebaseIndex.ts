@@ -1,7 +1,5 @@
 import * as path from "path";
 
-import { RunResult } from "sqlite3";
-
 import { IContinueServerClient } from "../../continueServer/interface.js";
 import { Chunk, IndexTag, IndexingProgressUpdate } from "../../index.js";
 import { DatabaseConnection, SqliteDb } from "../refreshIndex.js";
@@ -164,6 +162,12 @@ export class ChunkCodebaseIndex implements CodebaseIndex {
       content TEXT NOT NULL
     )`);
 
+    // Chunks are looked up by file (the full-text index reads them per file);
+    // without this index every lookup scans the whole table
+    await db.exec(
+      "CREATE INDEX IF NOT EXISTS idx_chunks_path_cacheKey ON chunks (path, cacheKey)",
+    );
+
     await db.exec(`CREATE TABLE IF NOT EXISTS chunk_tags (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         tag TEXT NOT NULL,
@@ -203,57 +207,26 @@ export class ChunkCodebaseIndex implements CodebaseIndex {
     tagString: string,
     chunks: Chunk[],
   ) {
-    await new Promise<void>((resolve, reject) => {
-      db.db.serialize(() => {
-        db.db.exec("BEGIN", (err: Error | null) => {
-          if (err) {
-            reject(new Error("error creating transaction", { cause: err }));
-          }
-        });
-        const chunksSQL =
-          "INSERT INTO chunks (cacheKey, path, idx, startLine, endLine, content) VALUES (?, ?, ?, ?, ?, ?)";
-        chunks.map((c) => {
-          db.db.run(
-            chunksSQL,
-            [c.digest, c.filepath, c.index, c.startLine, c.endLine, c.content],
-            (result: RunResult, err: Error) => {
-              if (err) {
-                reject(
-                  new Error("error inserting into chunks table", {
-                    cause: err,
-                  }),
-                );
-              }
-            },
-          );
-          const chunkTagsSQL =
-            "INSERT INTO chunk_tags (chunkId, tag) VALUES (last_insert_rowid(), ?)";
-          db.db.run(
-            chunkTagsSQL,
-            [tagString],
-            (result: RunResult, err: Error) => {
-              if (err) {
-                reject(
-                  new Error("error inserting into chunk_tags table", {
-                    cause: err,
-                  }),
-                );
-              }
-            },
-          );
-        });
-        db.db.exec("COMMIT", (err: Error | null) => {
-          if (err) {
-            reject(
-              new Error("error while committing insert chunks transaction", {
-                cause: err,
-              }),
-            );
-          } else {
-            resolve();
-          }
-        });
+    const chunksSQL =
+      "INSERT INTO chunks (cacheKey, path, idx, startLine, endLine, content) VALUES (?, ?, ?, ?, ?, ?)";
+    const chunkTagsSQL =
+      "INSERT INTO chunk_tags (chunkId, tag) VALUES (last_insert_rowid(), ?)";
+    try {
+      await db.transaction((tx) => {
+        for (const c of chunks) {
+          tx.run(chunksSQL, [
+            c.digest,
+            c.filepath,
+            c.index,
+            c.startLine,
+            c.endLine,
+            c.content,
+          ]);
+          tx.run(chunkTagsSQL, [tagString]);
+        }
       });
-    });
+    } catch (err) {
+      throw new Error("error inserting into chunks tables", { cause: err });
+    }
   }
 }
