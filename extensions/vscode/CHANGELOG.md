@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.6.9](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.8...vscode-v1.6.9) (2026-11-07)
+
+
+### Features
+
+* **cli:** a run that reaches --max-turns, --max-session-tokens or --max-cost returns a final answer without tools and exits 3 ([#82](https://github.com/nextcli-dev/nextcli/issues/82)) ([aaa01d9](https://github.com/nextcli-dev/nextcli/commit/aaa01d95cb3364b20f7ff935ffcca87b92cb7363))
+* **cli:** headless --readonly no longer offers Bash, Fetch or MCP tools, including when an agent file is loaded ([#82](https://github.com/nextcli-dev/nextcli/issues/82)) ([aaa01d9](https://github.com/nextcli-dev/nextcli/commit/aaa01d95cb3364b20f7ff935ffcca87b92cb7363))
+* **core:** price oneprovider and OpenRouter models from their own tables, so --max-cost no longer relies on the $1/$2 fallback ([#82](https://github.com/nextcli-dev/nextcli/issues/82)) ([aaa01d9](https://github.com/nextcli-dev/nextcli/commit/aaa01d95cb3364b20f7ff935ffcca87b92cb7363))
+* offer to delete legacy index data; remove the baseline script and JetBrains code ([#79](https://github.com/nextcli-dev/nextcli/issues/79)) ([6c99f66](https://github.com/nextcli-dev/nextcli/commit/6c99f663b823fcc7491c5a271cf1a5c212e0dcb1))
+
+
+### Bug Fixes
+
+* **core:** publish index.sqlite only after tag_catalog exists, so index setup no longer fails after a corrupt database ([#82](https://github.com/nextcli-dev/nextcli/issues/82)) ([aaa01d9](https://github.com/nextcli-dev/nextcli/commit/aaa01d95cb3364b20f7ff935ffcca87b92cb7363))
+
 ## [1.6.8](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.7...vscode-v1.6.8) (2026-11-07)
 
 
