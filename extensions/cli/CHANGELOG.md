@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/nextcli-dev/nextcli/compare/cli-v0.7.0...cli-v0.8.0) (2026-11-07)
+
+
+### Features
+
+* offer to delete legacy index data; remove the baseline script and JetBrains code ([#79](https://github.com/nextcli-dev/nextcli/issues/79)) ([6c99f66](https://github.com/nextcli-dev/nextcli/commit/6c99f663b823fcc7491c5a271cf1a5c212e0dcb1))
+
 ## [0.7.0](https://github.com/nextcli-dev/nextcli/compare/cli-v0.6.0...cli-v0.7.0) (2026-11-07)
 
 
