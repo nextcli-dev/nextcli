@@ -36,7 +36,6 @@ export type ToWebviewFromIdeOrCoreProtocol = {
   setTTSActive: [boolean, void];
   getWebviewHistoryLength: [undefined, number];
   getCurrentSessionId: [undefined, string];
-  "jetbrains/setColors": [Record<string, string | null | undefined>, void];
   sessionUpdate: [{ sessionInfo: any | undefined }, void];
   toolCallPartialOutput: [{ toolCallId: string; contextItems: any[] }, void];
 };

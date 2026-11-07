@@ -331,7 +331,6 @@ export async function configYamlToContinueConfig(options: {
 
   const { providers, errors: contextErrors } = loadConfigContextProviders(
     config.context,
-    ideInfo.ideType,
   );
 
   continueConfig.contextProviders = providers;

@@ -27,11 +27,6 @@ declare global {
     };
     colorThemeName?: string;
     workspacePaths?: string[];
-    postIntellijMessage?: (
-      messageType: string,
-      data: any,
-      messageIde: string,
-    ) => void;
   }
 }
 
@@ -794,7 +789,7 @@ export interface Thread {
   id: number;
 }
 
-export type IdeType = "vscode" | "jetbrains";
+export type IdeType = "vscode";
 
 export interface IdeInfo {
   ideType: IdeType;
@@ -937,8 +932,8 @@ export interface IDE {
 
   // LSP
   gotoDefinition(location: Location): Promise<RangeInFile[]>;
-  gotoTypeDefinition(location: Location): Promise<RangeInFile[]>; // TODO: add to jetbrains
-  getSignatureHelp(location: Location): Promise<SignatureHelp | null>; // TODO: add to jetbrains
+  gotoTypeDefinition(location: Location): Promise<RangeInFile[]>;
+  getSignatureHelp(location: Location): Promise<SignatureHelp | null>;
   getReferences(location: Location): Promise<RangeInFile[]>;
   getDocumentSymbols(textDocumentIdentifier: string): Promise<DocumentSymbol[]>;
 

@@ -20,8 +20,7 @@ export const LocalStorageProvider: React.FC<{ children: React.ReactNode }> = ({
 
   // Helper function to sync state with localStorage
   const syncWithLocalStorage = () => {
-    const isJetbrains = getLocalStorage("ide") === "jetbrains";
-    const fontSize = getLocalStorage("fontSize") ?? (isJetbrains ? 15 : 14);
+    const fontSize = getLocalStorage("fontSize") ?? 14;
 
     setValues((prev) => ({
       ...prev,

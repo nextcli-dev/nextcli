@@ -10,7 +10,6 @@ import {
   useState,
 } from "react";
 import { IdeMessengerContext } from "../../../context/IdeMessenger";
-import useIsOSREnabled from "../../../hooks/useIsOSREnabled";
 import useUpdatingRef from "../../../hooks/useUpdatingRef";
 import { useAppDispatch, useAppSelector } from "../../../redux/hooks";
 import { selectSelectedChatModel } from "../../../redux/slices/configSlice";
@@ -50,7 +49,6 @@ function TipTapEditorInner(props: TipTapEditorProps) {
   const mainEditorContext = useMainEditor();
 
   const ideMessenger = useContext(IdeMessengerContext);
-  const isOSREnabled = useIsOSREnabled();
 
   const defaultModel = useAppSelector(selectSelectedChatModel);
   const isStreaming = useAppSelector((state) => state.session.isStreaming);
@@ -167,7 +165,6 @@ function TipTapEditorInner(props: TipTapEditorProps) {
 
   const { handleKeyUp, handleKeyDown } = useEditorEventHandlers({
     editor,
-    isOSREnabled: isOSREnabled,
     editorFocusedRef,
     setActiveKey,
   });

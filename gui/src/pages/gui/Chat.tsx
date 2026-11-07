@@ -5,14 +5,7 @@ import {
 import { Editor, JSONContent } from "@tiptap/react";
 import { ChatHistoryItem, InputModifiers } from "core";
 import { renderChatMessage } from "core/util/messageContent";
-import {
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 import styled from "styled-components";
 import { Button, lightGray, vscBackground } from "../../components";
@@ -40,7 +33,7 @@ import {
 import { streamEditThunk } from "../../redux/thunks/edit";
 import { loadLastSession } from "../../redux/thunks/session";
 import { streamResponseThunk } from "../../redux/thunks/streamResponse";
-import { isJetBrains, isMetaEquivalentKeyPressed } from "../../util";
+import { isMetaEquivalentKeyPressed } from "../../util";
 import { ToolCallDiv } from "./ToolCallDiv";
 
 import { useStore } from "react-redux";
@@ -127,9 +120,6 @@ export function Chat() {
   const hasDismissedExploreDialog = useAppSelector(
     (state) => state.ui.hasDismissedExploreDialog,
   );
-  const jetbrains = useMemo(() => {
-    return isJetBrains();
-  }, []);
 
   useAutoScroll(stepsDivRef, history);
 
@@ -138,7 +128,7 @@ export function Chat() {
     const listener = (e: KeyboardEvent) => {
       if (
         e.key === "Backspace" &&
-        (jetbrains ? e.altKey : isMetaEquivalentKeyPressed(e)) &&
+        isMetaEquivalentKeyPressed(e) &&
         !e.shiftKey
       ) {
         void dispatch(cancelStream());
@@ -149,7 +139,7 @@ export function Chat() {
     return () => {
       window.removeEventListener("keydown", listener);
     };
-  }, [isStreaming, jetbrains, isInEdit]);
+  }, [isStreaming, isInEdit]);
 
   const { widget, highlights } = useFindWidget(
     stepsDivRef,

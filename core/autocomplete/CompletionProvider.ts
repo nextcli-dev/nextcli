@@ -73,7 +73,7 @@ export class CompletionProvider {
       return undefined;
     }
 
-    // Temporary fix for JetBrains autocomplete bug as described in https://github.com/continuedev/continue/pull/3022
+    // Configs may set the model only in completionOptions
     if (llm.model === undefined && llm.completionOptions?.model !== undefined) {
       llm.model = llm.completionOptions.model;
     }
@@ -293,11 +293,6 @@ export class CompletionProvider {
         void cache
           .put(outcome.prefix, outcome.completion)
           .catch((e) => console.warn(`Failed to save to cache: ${e.message}`));
-      }
-
-      const ideType = (await this.ide.getIdeInfo()).ideType;
-      if (ideType === "jetbrains") {
-        this.markDisplayed(input.completionId, outcome);
       }
 
       return outcome;

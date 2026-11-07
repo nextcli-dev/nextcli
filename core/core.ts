@@ -292,21 +292,6 @@ export class Core {
   private registerMessageHandlers(ideSettingsPromise: Promise<IdeSettings>) {
     const on = this.messenger.on.bind(this.messenger);
 
-    // Note, VsCode's in-process messenger doesn't do anything with this
-    // It will only show for jetbrains
-    this.messenger.onError((message, err) => {
-      // just to prevent duplicate error messages in jetbrains (same logic in webview protocol)
-      if (
-        ["llm/streamChat", "chatDescriber/describe"].includes(
-          message.messageType,
-        )
-      ) {
-        return;
-      } else {
-        void this.ide.showToast("error", err.message);
-      }
-    });
-
     on("abort", (msg) => {
       this.abortById(msg.data ?? msg.messageId);
     });

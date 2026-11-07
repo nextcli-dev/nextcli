@@ -25,18 +25,6 @@ export type ToIdeFromWebviewProtocol = ToIdeFromWebviewOrCoreProtocol & {
   toggleFullScreen: [{ newWindow?: boolean } | undefined, void];
   insertAtCursor: [{ text: string }, void];
   copyText: [{ text: string }, void];
-  "jetbrains/isOSREnabled": [undefined, boolean];
-  "jetbrains/onLoad": [
-    undefined,
-    {
-      windowId: string;
-      serverUrl: string;
-      workspacePaths: string[];
-      vscMachineId: string;
-      vscMediaUrl: string;
-    },
-  ];
-  "jetbrains/getColors": [undefined, Record<string, string | null | undefined>];
   "vscode/openMoveRightMarkdown": [undefined, void];
   acceptDiff: [AcceptOrRejectDiffPayload, void];
   rejectDiff: [AcceptOrRejectDiffPayload, void];
@@ -68,8 +56,6 @@ export type ToWebviewFromIdeProtocol = ToWebviewFromIdeOrCoreProtocol & {
   newSession: [undefined, void];
   setTheme: [{ theme: any }, void];
   setColors: [{ [key: string]: string }, void];
-  "jetbrains/editorInsetRefresh": [undefined, void];
-  "jetbrains/isOSREnabled": [boolean, void];
   setupApiKey: [undefined, void];
   setupLocalConfig: [undefined, void];
   incrementFtc: [undefined, void];

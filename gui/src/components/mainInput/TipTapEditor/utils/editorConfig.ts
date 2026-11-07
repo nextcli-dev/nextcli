@@ -20,7 +20,7 @@ import { selectUseActiveFile } from "../../../../redux/selectors";
 import { selectSelectedChatModel } from "../../../../redux/slices/configSlice";
 import { AppDispatch } from "../../../../redux/store";
 import { exitEdit } from "../../../../redux/thunks/edit";
-import { getFontSize, isJetBrains } from "../../../../util";
+import { getFontSize } from "../../../../util";
 import { CodeBlock, Mention, PromptBlock, SlashCommand } from "../extensions";
 import { TipTapEditorProps } from "../TipTapEditor";
 import {
@@ -307,12 +307,6 @@ export function createEditorConfig(options: {
               if (inDropdownRef.current) {
                 return false;
               }
-              // In JetBrains, this is how we close the sidebar when the input box is focused
-              if (isJetBrains()) {
-                ideMessenger.post("closeSidebar", undefined);
-                return true;
-              }
-
               if (isInEditRef.current) {
                 void dispatch(
                   exitEdit({

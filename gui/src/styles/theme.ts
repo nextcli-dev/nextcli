@@ -182,9 +182,6 @@ export const THEME_COLORS = {
   },
 };
 
-// TODO: add fonts - GUI fonts in jetbrains differ from IDE:
-// --vscode-editor-font-family;
-// --vscode-font-family;
 export const THEME_CSS_VARS = Object.values(THEME_COLORS)
   .map((value) => value.vars)
   .flat();
@@ -221,66 +218,4 @@ export const varWithFallback = (colorName: keyof typeof THEME_COLORS) => {
     throw new Error(`Invalid theme color name ${colorName}`);
   }
   return getRecursiveVar(themeVals.vars, themeVals.default);
-};
-
-export const setDocumentStylesFromTheme = (
-  theme: Record<string, string | undefined | null>,
-) => {
-  // Check for extraneous theme items
-  Object.entries(theme).forEach(([colorName, value]) => {
-    const themeVals = THEME_COLORS[colorName as keyof typeof THEME_COLORS];
-    if (!themeVals) {
-      console.warn(
-        `Receieved theme color ${colorName} which is not used by the theme`,
-      );
-      return;
-    }
-  });
-
-  // Write theme values to document
-  const missingColors: string[] = [];
-  Object.entries(THEME_COLORS).forEach(([colorName, settings]) => {
-    let colorVal = settings.default;
-    const newColor = theme[colorName];
-    if (newColor) {
-      colorVal = newColor;
-      // Remove alpha channel from all hex colors (seems to cause bad colors)
-      if (newColor.startsWith("#") && newColor.length > 7) {
-        colorVal = colorVal.slice(0, 7);
-      }
-    } else {
-      missingColors.push(colorName);
-      // console.warn(
-      //   `Missing theme color: ${colorName}. Falling back to default ${colorVal}`,
-      // );
-    }
-
-    localStorage.setItem(colorName, colorVal);
-    for (const cssVar of settings.vars) {
-      document.body.style.setProperty(cssVar, colorVal);
-      document.documentElement.style.setProperty(cssVar, colorVal);
-    }
-  });
-
-  return missingColors;
-};
-
-export const setDocumentStylesFromLocalStorage = (checkCache: boolean) => {
-  for (const [colorName, themeVals] of Object.entries(THEME_COLORS)) {
-    for (const cssVar of themeVals.vars) {
-      // Get cached values (for non-vscode IDEs)
-      if (checkCache) {
-        const cached = localStorage.getItem(colorName);
-        if (cached) {
-          document.body.style.setProperty(cssVar, cached);
-        }
-      }
-    }
-  }
-};
-
-export const clearThemeLocalCache = () => {
-  for (const colorName of Object.keys(THEME_COLORS)) {
-    localStorage.removeItem(colorName);
-  }
 };

@@ -2,7 +2,7 @@ import {
   AssistantUnrolledNonNullable,
   ConfigValidationError,
 } from "@nextcli/config-yaml";
-import { IContextProvider, IdeType } from "..";
+import { IContextProvider } from "..";
 import { contextProviderClassFromName } from "../context/providers";
 import CurrentFileContextProvider from "../context/providers/CurrentFileContextProvider";
 import DiffContextProvider from "../context/providers/DiffContextProvider";
@@ -30,7 +30,6 @@ export function removedEmbedRoleMessage(modelName: string): string {
 */
 export function loadConfigContextProviders(
   configContext: AssistantUnrolledNonNullable["context"],
-  ideType: IdeType,
 ): {
   providers: IContextProvider[];
   errors: ConfigValidationError[];
@@ -88,19 +87,8 @@ export function loadConfigContextProviders(
     }
   }
 
-  // @problems and @terminal are not supported in jetbrains
-  const filteredProviders = providers.filter((pv) => {
-    if (ideType === "jetbrains") {
-      return (
-        pv.description.title !== TerminalContextProvider.description.title &&
-        pv.description.title !== ProblemsContextProvider.description.title
-      );
-    }
-    return true;
-  });
-
   return {
-    providers: filteredProviders,
+    providers,
     errors,
   };
 }
