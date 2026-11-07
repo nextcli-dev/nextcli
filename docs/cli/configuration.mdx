@@ -41,15 +41,9 @@ This shows your available local configs. The selection is saved for next time.
 
 Which models can turn thinking off, and the effort levels each model takes, are listed in [Model settings](/ide-extensions/chat/model-settings). The CLI uses the same rules. On Bedrock, the CLI applies `Off` and the effort but doesn't turn thinking on yet. The VS Code extension does.
 
-Settings are saved per model in `~/.continue/index/globalContext.json` and shared with the model menu in the VS Code extension. `cn` reads them when it starts, so a change made in VS Code applies from the next run. `/effort high` sets the effort directly, and `/effort default` clears it. On models without effort levels, such as DeepSeek, `/effort off` sets Thinking to `Off`.
+Settings are saved per model in `~/.continue/index/globalContext.json` and shared with the model menu in the VS Code extension. `cn` reads them when it starts, so a change made in VS Code applies from the next run.
 
-For one run, including headless runs, pass `--effort`:
-
-```bash
-cn -p --effort low "Summarize the changes in this branch"
-```
-
-To set a default in `config.yaml`, use `reasoningEffort`. The flag and the menu take precedence over it:
+To set a default in `config.yaml`, use `reasoningEffort`. The menu takes precedence over it:
 
 ```yaml
 models:

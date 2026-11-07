@@ -10,7 +10,6 @@ import {
   getModelSettings,
   modelStatusLabel,
   resetModelSettingsCache,
-  setSessionEffort,
   shouldShowReasoning,
   updateModelSettings,
 } from "./modelSettings.js";
@@ -65,7 +64,7 @@ describe("model settings", () => {
     expect(getModelSettings(gpt).effort).toBeUndefined();
   });
 
-  it("uses --effort, then the menu, then the config", () => {
+  it("uses the menu, then the config", () => {
     const configured = model({
       provider: "anthropic",
       model: "claude-opus-5-5",
@@ -74,8 +73,6 @@ describe("model settings", () => {
     expect(getModelSettings(configured).effort).toBe("low");
     updateModelSettings(configured, { effort: "high" });
     expect(getModelSettings(configured).effort).toBe("high");
-    setSessionEffort("max");
-    expect(getModelSettings(configured).effort).toBe("max");
   });
 
   it("treats reasoning: true in the config as medium effort", () => {
@@ -107,7 +104,7 @@ describe("model settings", () => {
 
   it("shows the level actually sent when the model lacks the chosen one", () => {
     const sonnet = model({ provider: "anthropic", model: "claude-sonnet-4-6" });
-    setSessionEffort("xhigh");
+    updateModelSettings(sonnet, { effort: "xhigh" });
     expect(effectiveEffort(sonnet)).toBe("high");
     expect(modelStatusLabel(sonnet)).toBe("claude-sonnet-4-6 · High");
   });
