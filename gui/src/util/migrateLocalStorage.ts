@@ -25,7 +25,6 @@ function migrateToolPolicies(dispatch: AppDispatch) {
     [BuiltInToolNames.CreateRuleBlock]: ["builtin_create_rule_block"],
     [BuiltInToolNames.RequestRule]: ["builtin_request_rule"],
     [BuiltInToolNames.FetchUrlContent]: ["builtin_fetch_url_content"],
-    [BuiltInToolNames.CodebaseTool]: ["builtin_codebase"],
     [BuiltInToolNames.ViewRepoMap]: ["builtin_view_repo_map"],
     [BuiltInToolNames.ViewSubdirectory]: ["builtin_view_subdirectory"],
   };

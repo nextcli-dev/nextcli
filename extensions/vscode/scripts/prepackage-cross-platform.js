@@ -21,12 +21,10 @@ const {
 } = require("../../../scripts/esbuild-plugins/jsdom.cjs");
 const {
   buildGui,
-  copyOnnxRuntimeFromNodeModules,
   copyTreeSitterWasms,
   copyNodeModules,
   downloadRipgrepBinary,
   copySqliteBinary,
-  installNodeModuleInTempDirAndCopyToCurrent,
   downloadSqliteBinary,
   copyTokenizers,
   copyScripts,
@@ -90,29 +88,11 @@ async function package(target, os, arch, exe) {
   // Copy tree-sitter-wasm files
   await copyTreeSitterWasms();
 
-  // Install and copy over native modules
-  // *** onnxruntime-node ***
-  await copyOnnxRuntimeFromNodeModules(target);
-
   // copy llama tokenizers to out
   copyTokenizers();
 
   // Copy Linux scripts
   await copyScripts();
-
-  // *** Install @lancedb binary ***
-  const lancePackageToInstall = {
-    "darwin-arm64": "@lancedb/vectordb-darwin-arm64",
-    "darwin-x64": "@lancedb/vectordb-darwin-x64",
-    "linux-arm64": "@lancedb/vectordb-linux-arm64-gnu",
-    "linux-x64": "@lancedb/vectordb-linux-x64-gnu",
-    "win32-x64": "@lancedb/vectordb-win32-x64-msvc",
-    "win32-arm64": "@lancedb/vectordb-win32-x64-msvc", // they don't have a win32-arm64 build
-  }[target];
-  await installNodeModuleInTempDirAndCopyToCurrent(
-    lancePackageToInstall,
-    "@lancedb",
-  );
 
   // *** sqlite ***
   await downloadSqliteBinary(target);
@@ -134,16 +114,6 @@ async function package(target, os, arch, exe) {
     // Queries used for @outline and @highlights context providers
     "tag-qry/tree-sitter-c_sharp-tags.scm",
 
-    // onnx runtime bindngs
-    `bin/napi-v3/${os}/${arch}/onnxruntime_binding.node`,
-    `bin/napi-v3/${os}/${arch}/${
-      os === "darwin"
-        ? "libonnxruntime.1.14.0.dylib"
-        : os === "linux"
-          ? "libonnxruntime.so.1.14.0"
-          : "onnxruntime.dll"
-    }`,
-
     // Code/styling for the sidebar
     "gui/assets/index.js",
     "gui/assets/index.css",
@@ -152,14 +122,6 @@ async function package(target, os, arch, exe) {
     "media/move-chat-panel-right.md",
     "continue_tutorial.py",
     "config_schema.json",
-
-    // Embeddings model
-    "models/all-MiniLM-L6-v2/config.json",
-    "models/all-MiniLM-L6-v2/special_tokens_map.json",
-    "models/all-MiniLM-L6-v2/tokenizer_config.json",
-    "models/all-MiniLM-L6-v2/tokenizer.json",
-    "models/all-MiniLM-L6-v2/vocab.txt",
-    "models/all-MiniLM-L6-v2/onnx/model_quantized.onnx",
 
     // node_modules (it's a bit confusing why this is necessary)
     `node_modules/@vscode/ripgrep/bin/rg${exe}`,
@@ -175,11 +137,6 @@ async function package(target, os, arch, exe) {
 
     // out/node_modules (to be accessed by extension.js)
     `out/node_modules/@vscode/ripgrep/bin/rg${exe}`,
-    `out/node_modules/@lancedb/vectordb-${
-      os === "win32"
-        ? "win32-x64-msvc"
-        : `${target}${os === "linux" ? "-gnu" : ""}`
-    }/index.node`,
   ]);
 }
 

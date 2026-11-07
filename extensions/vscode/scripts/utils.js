@@ -57,64 +57,6 @@ async function buildGui(isGhAction) {
   }
 }
 
-async function copyOnnxRuntimeFromNodeModules(target) {
-  process.chdir(path.join(continueDir, "extensions", "vscode"));
-  fs.mkdirSync("bin", { recursive: true });
-
-  await new Promise((resolve, reject) => {
-    ncp(
-      path.join(__dirname, "../../../core/node_modules/onnxruntime-node/bin"),
-      path.join(__dirname, "../bin"),
-      {
-        dereference: true,
-      },
-      (error) => {
-        if (error) {
-          console.warn("[info] Error copying onnxruntime-node files", error);
-          reject(error);
-        }
-        resolve();
-      },
-    );
-  });
-  if (target) {
-    // If building for production, only need the binaries for current platform
-    try {
-      if (!target.startsWith("darwin")) {
-        rimrafSync(path.join(__dirname, "../bin/napi-v3/darwin"));
-      }
-      if (!target.startsWith("linux")) {
-        rimrafSync(path.join(__dirname, "../bin/napi-v3/linux"));
-      }
-      if (!target.startsWith("win")) {
-        rimrafSync(path.join(__dirname, "../bin/napi-v3/win32"));
-      }
-
-      // Also don't want to include cuda/shared/tensorrt binaries, they are too large
-      if (target.startsWith("linux")) {
-        const filesToRemove = [
-          "libonnxruntime_providers_cuda.so",
-          "libonnxruntime_providers_shared.so",
-          "libonnxruntime_providers_tensorrt.so",
-        ];
-        filesToRemove.forEach((file) => {
-          const filepath = path.join(
-            __dirname,
-            "../bin/napi-v3/linux/x64",
-            file,
-          );
-          if (fs.existsSync(filepath)) {
-            fs.rmSync(filepath);
-          }
-        });
-      }
-    } catch (e) {
-      console.warn("[info] Error removing unused binaries", e);
-    }
-  }
-  console.log("[info] Copied onnxruntime-node");
-}
-
 async function copyTreeSitterWasms() {
   process.chdir(path.join(continueDir, "extensions", "vscode"));
   fs.mkdirSync("out", { recursive: true });
@@ -146,7 +88,7 @@ async function copyNodeModules() {
   // Copy node_modules for pre-built binaries
   process.chdir(path.join(continueDir, "extensions", "vscode"));
 
-  const NODE_MODULES_TO_COPY = ["@lancedb", "@vscode/ripgrep", "workerpool"];
+  const NODE_MODULES_TO_COPY = ["@vscode/ripgrep", "workerpool"];
   fs.mkdirSync("out/node_modules", { recursive: true });
 
   await Promise.all(
@@ -242,65 +184,6 @@ async function downloadRipgrepBinary(target) {
   }
 }
 
-async function installNodeModuleInTempDirAndCopyToCurrent(packageName, toCopy) {
-  console.log(`Copying ${packageName} to ${toCopy}`);
-  // This is a way to install only one package without npm trying to install all the dependencies
-  // Create a temporary directory for installing the package
-  const adjustedName = packageName.replace(/@/g, "").replace("/", "-");
-
-  const tempDir = `/tmp/continue-node_modules-${adjustedName}`;
-  const currentDir = process.cwd();
-
-  // Remove the dir we will be copying to
-  rimrafSync(`node_modules/${toCopy}`);
-
-  // Ensure the temporary directory exists
-  fs.mkdirSync(tempDir, { recursive: true });
-
-  try {
-    // Move to the temporary directory
-    process.chdir(tempDir);
-
-    // Initialize a new package.json and install the package
-    execCmdSync(`npm init -y && npm i -f ${packageName} --no-save`);
-
-    console.log(
-      `Contents of: ${packageName}`,
-      fs.readdirSync(path.join(tempDir, "node_modules", toCopy)),
-    );
-
-    // Without this it seems the file isn't completely written to disk
-    // Ideally we validate file integrity in the validation at the end
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-
-    // Copy the installed package back to the current directory
-    await new Promise((resolve, reject) => {
-      ncp(
-        path.join(tempDir, "node_modules", toCopy),
-        path.join(currentDir, "node_modules", toCopy),
-        { dereference: true },
-        (error) => {
-          if (error) {
-            console.error(
-              `[error] Error copying ${packageName} package`,
-              error,
-            );
-            reject(error);
-          } else {
-            resolve();
-          }
-        },
-      );
-    });
-  } finally {
-    // Clean up the temporary directory
-    // rimrafSync(tempDir);
-
-    // Return to the original directory
-    process.chdir(currentDir);
-  }
-}
-
 async function copyScripts() {
   process.chdir(path.join(continueDir, "extensions", "vscode"));
   console.log("[info] Copying scripts from core");
@@ -328,11 +211,9 @@ function writeBuildTimestamp() {
 module.exports = {
   continueDir,
   buildGui,
-  copyOnnxRuntimeFromNodeModules,
   copyTreeSitterWasms,
   copyNodeModules,
   copySqliteBinary,
-  installNodeModuleInTempDirAndCopyToCurrent,
   downloadSqliteBinary,
   downloadRipgrepBinary,
   copyTokenizers,

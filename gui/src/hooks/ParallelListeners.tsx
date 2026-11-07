@@ -9,7 +9,6 @@ import {
   shouldApplyConfigResult,
 } from "../redux/slices/configSlice";
 import { setLastNonEditSessionEmpty } from "../redux/slices/editState";
-import { updateIndexingStatus } from "../redux/slices/indexingSlice";
 import {
   initializeProfilePreferences,
   setProfiles,
@@ -119,11 +118,9 @@ function ParallelListeners() {
     const interval = setInterval(() => {
       if (hasDoneInitialConfigLoad.current) {
         // Init to run on initial config load
-        ideMessenger.post("docs/initStatuses", undefined);
         void dispatch(updateFileSymbolsFromHistory());
         void dispatch(refreshSessionMetadata({}));
 
-        // This triggers sending pending status to the GUI for relevant docs indexes
         clearInterval(interval);
       } else {
         void initialLoadConfig();
@@ -226,10 +223,6 @@ function ParallelListeners() {
         contextItems: [data.item],
       }),
     );
-  });
-
-  useWebviewListener("indexing/statusUpdate", async (data) => {
-    dispatch(updateIndexingStatus(data));
   });
 
   useWebviewListener(

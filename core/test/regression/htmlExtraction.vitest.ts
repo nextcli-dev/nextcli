@@ -1,19 +1,17 @@
 /**
- * Regression check for turning web pages into text, the step jsdom, cheerio
- * and their encoding helpers sit under. It runs the app's own extraction code
- * (docs indexing and the @url context provider) over fixed pages and compares
- * the result with golden output recorded before the dependency upgrade.
+ * Regression check for turning web pages into text, the step jsdom and its
+ * encoding helpers sit under. It runs the @url context provider over fixed
+ * pages and compares the result with golden output recorded before the
+ * dependency upgrade.
  *
  * Record the golden output (only before an upgrade, or after an intended change):
  *   UPDATE_REGRESSION_FIXTURES=1 npx vitest run test/regression/htmlExtraction.vitest.ts
  */
-import * as cheerio from "cheerio";
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { getUrlContextItems } from "../../context/providers/URLContextProvider";
-import { htmlPageToArticleWithChunks } from "../../indexing/docs/article";
 
 vi.mock("../../util/fetchFavicon", () => ({
   fetchFavicon: async () => undefined,
@@ -85,44 +83,10 @@ line 3 &lt;tag&gt;</code></pre>
     <blockquote>Quoted <strong>text</strong>.</blockquote></article>`),
 };
 
-// For CheerioCrawler's link extraction (same selector, URL and filter logic).
-const LINKS_HTML = page(`
-  <a href="/docs/start">relative</a>
-  <a href="start-two">relative no slash</a>
-  <a href="https://docs.example.dev/docs/abs">absolute same host</a>
-  <a href="https://other.example.com/x">other host</a>
-  <a href="/docs/start#section">anchor</a>
-  <a href="/favicon.ico">ignored ending</a>
-  <a href="/docs/start">duplicate</a>
-  <a>no href</a>
-  <a href="/docs/caf%C3%A9">encoded</a>`);
-
-function extractLinks(html: string, location: string): string[] {
-  const baseUrl = new URL(location);
-  const $ = cheerio.load(html);
-  let links: string[] = [];
-  $("a").each((_: any, element: any) => {
-    const href = $(element).attr("href");
-    if (!href) return;
-    const parsedUrl = new URL(href, location);
-    if (parsedUrl.hostname === baseUrl.hostname) links.push(parsedUrl.pathname);
-  });
-  links = [...new Set(links)].filter(
-    (l) =>
-      !l.includes("#") &&
-      !["favicon.ico", "robots.txt", ".rst.txt"].some((e) => l.endsWith(e)),
-  );
-  return links;
-}
-
 async function computeAll() {
   const out: Record<string, unknown> = {};
   for (const [name, html] of Object.entries(PAGES)) {
     const url = `https://docs.example.dev/docs/${encodeURIComponent(name)}`;
-    const article = await htmlPageToArticleWithChunks(
-      { url, path: `/docs/${name}`, content: html },
-      512,
-    );
     const fetchFn = (async () =>
       new Response(html, {
         status: 200,
@@ -130,23 +94,9 @@ async function computeAll() {
       })) as any;
     const [urlItem] = await getUrlContextItems(url, fetchFn);
     out[name] = {
-      docsIndexing: article
-        ? {
-            title: article.article.title,
-            components: article.article.article_components,
-            chunks: article.chunks.map((c) => ({
-              content: c.content,
-              otherMetadata: c.otherMetadata,
-            })),
-          }
-        : null,
       urlProvider: { name: urlItem.name, content: urlItem.content },
     };
   }
-  out["cheerio link extraction"] = extractLinks(
-    LINKS_HTML,
-    "https://docs.example.dev/docs/index",
-  );
   return out;
 }
 

@@ -12,18 +12,17 @@ import type { FromCoreProtocol, ToCoreProtocol } from "../protocol";
 import type { IMessenger } from "../protocol/messenger";
 import { extractMinimalStackTraceInfo } from "../util/extractMinimalStackTraceInfo.js";
 import { Logger } from "../util/Logger.js";
-import { getIndexSqlitePath, getLanceDbPath } from "../util/paths.js";
+import { getIndexSqlitePath } from "../util/paths.js";
 import { findUriInDirs, getUriPathBasename } from "../util/uri.js";
 
 import { ConfigResult } from "@nextcli/config-yaml";
 import { ContinueServerClient } from "../continueServer/stubs/client";
+import { DEFAULT_MAX_CHUNK_SIZE } from "../llm/constants.js";
 import { LLMError } from "../llm/index.js";
 import { getRootCause } from "../util/errors.js";
 import { ChunkCodebaseIndex } from "./chunk/ChunkCodebaseIndex.js";
 import { CodeSnippetsCodebaseIndex } from "./CodeSnippetsIndex.js";
-import { embedModelsAreEqual } from "./docs/DocsService.js";
 import { FullTextSearchCodebaseIndex } from "./FullTextSearchCodebaseIndex.js";
-import { LanceDbIndex } from "./LanceDbIndex.js";
 import { getComputeDeleteAddRemove, IndexLock } from "./refreshIndex.js";
 import {
   CodebaseIndex,
@@ -47,9 +46,8 @@ export class PauseToken {
 
 export class CodebaseIndexer {
   /**
-   * We batch for two reasons:
-   * - To limit memory usage for indexes that perform computations locally, e.g. FTS
-   * - To make as few requests as possible to the embeddings providers
+   * We batch to limit memory usage for indexes that perform computations
+   * locally, e.g. FTS
    */
   filesPerBatch = 200;
   // We normally allow this to run in the background,
@@ -67,14 +65,12 @@ export class CodebaseIndexer {
     if (artifactId === CodeSnippetsCodebaseIndex.artifactId)
       return "Code snippets";
     if (artifactId === ChunkCodebaseIndex.artifactId) return "Chunking";
-    if (artifactId.startsWith("vectordb")) return "Embedding";
     return artifactId; // fallback to original
   }
 
   // Note that we exclude certain Sqlite errors that we do not want to clear the indexes on,
   // e.g. a `SQLITE_BUSY` error.
   errorsRegexesToClearIndexesOn = [
-    /Invalid argument error: Values length (d+) is less than the length ((d+)) multiplied by the value size (d+)/,
     /SQLITE_CONSTRAINT/,
     /SQLITE_ERROR/,
     /SQLITE_CORRUPT/,
@@ -121,8 +117,9 @@ export class CodebaseIndexer {
   }
 
   async clearIndexes() {
+    // The legacy LanceDB folder (index/lancedb) is left alone, so a rollback
+    // to a release with embeddings still finds its data
     const sqliteFilepath = getIndexSqlitePath();
-    const lanceDbFolder = getLanceDbPath();
 
     try {
       await fs.unlink(sqliteFilepath);
@@ -132,25 +129,11 @@ export class CodebaseIndexer {
       });
       console.error(`Error deleting ${sqliteFilepath} folder: ${error}`);
     }
-
-    try {
-      await fs.rm(lanceDbFolder, { recursive: true, force: true });
-    } catch (error) {
-      Logger.error(error, {
-        folderPath: lanceDbFolder,
-      });
-      console.error(`Error deleting ${lanceDbFolder}: ${error}`);
-    }
   }
 
   protected async getIndexesToBuild(): Promise<CodebaseIndex[]> {
     const { config } = await this.configHandler.loadConfig();
     if (!config) {
-      return [];
-    }
-
-    const embeddingsModel = config.selectedModelByRole.embed;
-    if (!embeddingsModel) {
       return [];
     }
 
@@ -181,17 +164,10 @@ export class CodebaseIndexer {
         new ChunkCodebaseIndex(
           this.ide.readFile.bind(this.ide),
           continueServerClient,
-          embeddingsModel.maxEmbeddingChunkSize,
+          DEFAULT_MAX_CHUNK_SIZE,
         ),
       codeSnippets: async () => new CodeSnippetsCodebaseIndex(this.ide),
       fullTextSearch: async () => new FullTextSearchCodebaseIndex(),
-      embeddings: async () => {
-        const lanceDbIndex = await LanceDbIndex.create(
-          embeddingsModel,
-          this.ide.readFile.bind(this.ide),
-        );
-        return lanceDbIndex;
-      },
     };
 
     const indexes: CodebaseIndex[] = [];
@@ -847,19 +823,19 @@ export class CodebaseIndexer {
     return this.codebaseIndexingState;
   }
 
+  /** The index types the config's context providers need, as a stable key */
+  private indexTypesKey(config: ContinueConfig | undefined): string {
+    const types = new Set(
+      (config?.contextProviders ?? []).flatMap(
+        ({ description: { dependsOnIndexing } }) => dependsOnIndexing ?? [],
+      ),
+    );
+    return [...types].sort().join(",");
+  }
+
   private hasIndexingContextProvider() {
     return !!this.config.contextProviders?.some(
       ({ description: { dependsOnIndexing } }) => dependsOnIndexing,
-    );
-  }
-
-  private isIndexingConfigSame(
-    config1: ContinueConfig | undefined,
-    config2: ContinueConfig,
-  ) {
-    return embedModelsAreEqual(
-      config1?.selectedModelByRole.embed,
-      config2.selectedModelByRole.embed,
     );
   }
 
@@ -873,19 +849,16 @@ export class CodebaseIndexer {
         this.paused = true;
       }
 
-      const needsReindex = !this.isIndexingConfigSame(this.config, newConfig);
+      // Re-index when the context providers need a different set of indexes.
+      // Nothing else in the config changes what the indexes contain
+      const needsReindex =
+        this.indexTypesKey(this.config) !== this.indexTypesKey(newConfig);
 
       this.config = newConfig; // IMPORTANT - need to set up top, other methods below use this without passing it in
 
       // No point in indexing if no codebase context provider
       const hasIndexingProviders = this.hasIndexingContextProvider();
       if (!hasIndexingProviders) {
-        return;
-      }
-
-      // Skip codebase indexing if not supported
-      // No warning message here because would show on ANY config update
-      if (!this.config.selectedModelByRole.embed) {
         return;
       }
 

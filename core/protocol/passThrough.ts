@@ -37,9 +37,6 @@ export const WEBVIEW_TO_CORE_PASS_THROUGH: (keyof ToCoreFromWebviewProtocol)[] =
     "context/getContextItems",
     "context/getSymbolsForFiles",
     "context/loadSubmenuItems",
-    "context/addDocs",
-    "context/removeDocs",
-    "context/indexDocs",
     "autocomplete/complete",
     "autocomplete/cancel",
     "autocomplete/accept",
@@ -68,13 +65,6 @@ export const WEBVIEW_TO_CORE_PASS_THROUGH: (keyof ToCoreFromWebviewProtocol)[] =
     "index/setPaused",
     "index/forceReIndex",
     "index/indexingProgressBarInitialized",
-    // Docs, etc.
-    "indexing/reindex",
-    "indexing/abort",
-    "indexing/setPaused",
-    "docs/initStatuses",
-    "docs/getDetails",
-    "docs/getIndexedPages",
     //
     "onboarding/complete",
     "addAutocompleteModel",
@@ -94,7 +84,6 @@ export const CORE_TO_WEBVIEW_PASS_THROUGH: (keyof ToWebviewFromCoreProtocol)[] =
   [
     "configUpdate",
     "indexProgress", // Codebase
-    "indexing/statusUpdate", // Docs, etc.
     "addContextItem",
     "refreshSubmenuItems",
     "isContinueInputFocused",

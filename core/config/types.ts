@@ -54,20 +54,6 @@ declare global {
     debugInfo?: string;
   }
   
-  // This is more or less a V2 of IndexingProgressUpdate for docs etc.
-  export interface IndexingStatus {
-    id: string;
-    type: "docs";
-    progress: number;
-    description: string;
-    status: "indexing" | "complete" | "paused" | "failed" | "aborted" | "pending";
-    embeddingsProviderId: string;
-    isReindexing?: boolean;
-    debugInfo?: string;
-    title: string;
-    icon?: string;
-    url?: string;
-  }
   
   export type PromptTemplateFunction = (
     history: ChatMessage[],
@@ -1199,7 +1185,7 @@ declare global {
     disableSessionTitles?: boolean;
     /** An optional token to identify a user. Not used by NextCLI unless you write custom coniguration that requires such a token */
     userToken?: string;
-    /** The provider used to calculate embeddings. If left empty, NextCLI will use transformers.js to calculate the embeddings with all-MiniLM-L6-v2 */
+    /** Ignored: NextCLI no longer computes embeddings. Kept so existing configs still load */
     embeddingsProvider?: EmbeddingsProviderDescription | ILLM;
     /** The model that NextCLI will use for tab autocompletions. */
     tabAutocompleteModel?:

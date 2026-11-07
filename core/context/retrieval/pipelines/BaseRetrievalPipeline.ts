@@ -14,7 +14,6 @@ import {
 import { openedFilesLruCache } from "../../../autocomplete/util/openedFilesLruCache";
 import { chunkDocument } from "../../../indexing/chunk/chunk";
 import { FullTextSearchCodebaseIndex } from "../../../indexing/FullTextSearchCodebaseIndex";
-import { LanceDbIndex } from "../../../indexing/LanceDbIndex";
 import { BuiltInToolNames } from "../../../tools/builtIn";
 import { callBuiltInTool } from "../../../tools/callTool";
 import { globSearchTool } from "../../../tools/definitions/globSearch";
@@ -50,7 +49,6 @@ export interface RetrievalPipelineRunArguments {
   query: string;
   tags: BranchAndDir[];
   filterDirectory?: string;
-  includeEmbeddings: boolean;
 }
 
 export interface IRetrievalPipeline {
@@ -59,41 +57,8 @@ export interface IRetrievalPipeline {
 
 export default class BaseRetrievalPipeline implements IRetrievalPipeline {
   private ftsIndex = new FullTextSearchCodebaseIndex();
-  private lanceDbIndex: LanceDbIndex | null = null;
-  private lanceDbInitPromise: Promise<void> | null = null;
 
-  constructor(protected readonly options: RetrievalPipelineOptions) {
-    void this.initLanceDb();
-  }
-
-  protected async initLanceDb() {
-    const embedModel = this.options.config.selectedModelByRole.embed;
-
-    if (!embedModel) {
-      return;
-    }
-
-    this.lanceDbIndex = await LanceDbIndex.create(embedModel, (uri) =>
-      this.options.ide.readFile(uri),
-    );
-  }
-
-  protected async ensureLanceDbInitialized(): Promise<boolean> {
-    if (this.lanceDbIndex) {
-      return true;
-    }
-
-    if (this.lanceDbInitPromise) {
-      await this.lanceDbInitPromise;
-      return this.lanceDbIndex !== null;
-    }
-
-    this.lanceDbInitPromise = this.initLanceDb();
-    await this.lanceDbInitPromise;
-    this.lanceDbInitPromise = null; // clear after init
-
-    return this.lanceDbIndex !== null;
-  }
+  constructor(protected readonly options: RetrievalPipelineOptions) {}
 
   private getCleanedTrigrams(
     query: RetrievalPipelineRunArguments["query"],
@@ -163,9 +128,7 @@ export default class BaseRetrievalPipeline implements IRetrievalPipeline {
       const fileChunks = chunkDocument({
         filepath,
         contents,
-        maxChunkSize:
-          this.options.config.selectedModelByRole.embed
-            ?.maxEmbeddingChunkSize ?? DEFAULT_CHUNK_SIZE,
+        maxChunkSize: DEFAULT_CHUNK_SIZE,
         digest: filepath,
       });
 
@@ -175,27 +138,6 @@ export default class BaseRetrievalPipeline implements IRetrievalPipeline {
     }
 
     return chunks.slice(0, n);
-  }
-
-  protected async retrieveEmbeddings(
-    input: string,
-    n: number,
-  ): Promise<Chunk[]> {
-    const initialized = await this.ensureLanceDbInitialized();
-
-    if (!initialized || !this.lanceDbIndex) {
-      console.warn(
-        "LanceDB index not available, skipping embeddings retrieval",
-      );
-      return [];
-    }
-
-    return this.lanceDbIndex.retrieve(
-      input,
-      n,
-      this.options.tags,
-      this.options.filterDirectory,
-    );
   }
 
   run(args: RetrievalPipelineRunArguments): Promise<Chunk[]> {

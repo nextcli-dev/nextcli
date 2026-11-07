@@ -28,7 +28,6 @@
     "extensions/vscode/bin/**": true,
     "extensions/vscode/build/**": true,
     "extensions/vscode/gui/**": true,
-    "extensions/vscode/models/all-MiniLM-L6-v2/**": true,
     "extensions/vscode/out/**": true,
     "extensions/vscode/tag-qry/**": true,
     "extensions/vscode/textmate-syntaxes/**": true,

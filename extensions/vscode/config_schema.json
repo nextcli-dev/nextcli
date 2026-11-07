@@ -2853,8 +2853,9 @@
         },
         "embeddingsProvider": {
           "title": "Embeddings Provider",
-          "markdownDescription": "The method that will be used to generate codebase embeddings. The default is `transformers.js`, which will run locally in the browser. Learn about the other options [here](https://docs.nextcli.dev/features/codebase-embeddings#embeddings-providers).",
-          "x-intellij-html-description": "The method that will be used to generate codebase embeddings. The default is <code>transformers.js</code>, which will run locally in the browser. Learn about the other options <a href='https://docs.nextcli.dev/features/codebase-embeddings#embeddings-providers'>here</a>.<br><br><strong>Note</strong>: <code>transformers.js</code> currently cannot be used in JetBrains.",
+          "markdownDescription": "Ignored: NextCLI no longer computes embeddings. A config that sets it still loads, with a warning.",
+          "x-intellij-html-description": "Ignored: NextCLI no longer computes embeddings. A config that sets it still loads, with a warning.",
+          "deprecated": true,
           "type": "object",
           "properties": {
             "provider": {

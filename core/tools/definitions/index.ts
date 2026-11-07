@@ -1,4 +1,3 @@
-export { codebaseTool } from "./codebaseTool";
 export { createNewFileTool } from "./createNewFile";
 export { createRuleBlock } from "./createRuleBlock";
 export { editFileTool } from "./editFile";

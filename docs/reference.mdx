@@ -95,7 +95,7 @@ The `models` section defines the language models used in your configuration. Mod
   - `baseAgentSystemMessage`: Can be used to override the default system prompt for **Agent** mode.
   - `basePlanSystemMessage`: Can be used to override the default system prompt for **Plan** mode.
 
-- `embedOptions`: If the model includes role `embed`, these settings apply for embeddings:
+- `embedOptions`: Ignored. NextCLI no longer computes embeddings, so the `embed` role and these settings have no effect:
 
   - `maxChunkSize`: Maximum tokens per document chunk. Minimum is 128 tokens.
   - `maxBatchSize`: Maximum number of chunks per request. Minimum is 1 chunk.

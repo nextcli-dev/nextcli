@@ -232,12 +232,6 @@ const getCommandsMap: (
     "continue.rebuildCodebaseIndex": async () => {
       core.invoke("index/forceReIndex", { shouldClearIndexes: true });
     },
-    "continue.docsIndex": async () => {
-      core.invoke("context/indexDocs", { reIndex: false });
-    },
-    "continue.docsReIndex": async () => {
-      core.invoke("context/indexDocs", { reIndex: true });
-    },
     "continue.focusContinueInput": async () => {
       const isContinueInputFocused = await sidebar.webviewProtocol.request(
         "isContinueInputFocused",

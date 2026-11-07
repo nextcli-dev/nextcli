@@ -8,22 +8,11 @@ import RerankerRetrievalPipeline from "./pipelines/RerankerRetrievalPipeline";
 
 const DEFAULT_N_FINAL = 25;
 
-export async function retrieveContextItemsFromEmbeddings(
+export async function retrieveContextItems(
   extras: ContextProviderExtras,
   options: any | undefined,
   filterDirectory: string | undefined,
 ): Promise<ContextItem[]> {
-  // Currently you can use codebase without an embeddings provider and it will just skip the embeddings inputs
-  // if (!extras.embeddingsProvider) {
-  //   void extras.ide.showToast(
-  //     "warning",
-  //     "Set up an embeddings model to use this feature. Visit the docs to learn more: " +
-  //       "https://docs.nextcli.dev/customize/model-roles/embeddings",
-  //   );
-  //   return [];
-  // }
-  const includeEmbeddings = !!extras.config.selectedModelByRole.embed;
-
   // Get tags to retrieve for
   const workspaceDirs = await extras.ide.getWorkspaceDirs();
 
@@ -74,7 +63,6 @@ export async function retrieveContextItemsFromEmbeddings(
     tags,
     filterDirectory,
     query: extras.fullInput,
-    includeEmbeddings,
   });
 
   if (results.length === 0) {

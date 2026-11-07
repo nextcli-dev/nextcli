@@ -1,7 +1,7 @@
 ---
 title: "@Codebase (Deprecated)"
 description: Deprecated codebase context provider - use the new codebase awareness approach instead
-keywords: [deprecated, codebase, embeddings, context, legacy]
+keywords: [deprecated, codebase, keyword search, context, legacy]
 noindex: true
 ---
 
@@ -17,15 +17,17 @@ If you're currently using `@Codebase` or `@Folder` context providers, please mig
 - More intelligent context selection
 - Improved performance and accuracy
 
-## Legacy Documentation
+## How @Codebase Works
 
-*Below is the original documentation for the `@Codebase` context provider, preserved for reference*
+NextCLI indexes your codebase so that it can later pull in relevant context from throughout your workspace. Retrieval is keyword search only: a full-text index of code chunks, plus recently edited files and the repository map. The index is stored locally in `~/.continue/index`.
 
-NextCLI indexes your codebase so that it can later automatically pull in the most relevant context from throughout your workspace. This is done via a combination of embeddings-based retrieval and keyword search. By default, all embeddings are calculated locally using `transformers.js` and stored locally in `~/.continue/index`.
+<Note>
+  NextCLI no longer computes embeddings. Earlier releases also ran an embeddings search, with `transformers.js` by default or the model with the `embed` role. That search was removed together with `@Docs`. A model with the `embed` role still loads, but the role is ignored and NextCLI shows a warning. The old vector index in `~/.continue/index/lancedb` is left on disk; you can delete it.
+</Note>
 
 ## How to Use @Codebase and @Folder Context Providers
 
-Currently, the codebase retrieval feature is available as the "codebase" and "folder" context providers. You can use them by typing `@Codebase` or `@Folder` in the input box, and then asking a question. The contents of the input box will be compared with the embeddings from the rest of the codebase (or folder) to determine relevant files.
+Currently, the codebase retrieval feature is available as the "codebase" and "folder" context providers. You can use them by typing `@Codebase` or `@Folder` in the input box, and then asking a question. The keywords in the input box are matched against the rest of the codebase (or folder) to find relevant files.
 
 ### When @Codebase Context Provider Is Useful
 
@@ -93,7 +95,7 @@ There are a few options that let you configure the behavior of the `@codebase` c
 
 ### `nRetrieve`
 
-Number of results to initially retrieve from vector database (default: 25)
+Number of results to initially retrieve from the index (default: 25)
 
 ### `nFinal`
 
@@ -101,7 +103,7 @@ Final number of results to use after re-ranking (default: 5)
 
 ### `useReranking`
 
-Whether to use re-ranking, which will allow initial selection of `nRetrieve` results, then will use an LLM to select the top `nFinal` results (default: true)
+Whether to use re-ranking, which will allow initial selection of `nRetrieve` results, then will use the model with the `rerank` role to select the top `nFinal` results (default: true when a `rerank` model is configured)
 
 ## How to Ignore Files During Indexing
 

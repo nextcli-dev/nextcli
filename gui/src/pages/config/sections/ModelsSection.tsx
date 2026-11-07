@@ -174,7 +174,7 @@ export function ModelsSection() {
           isOpen={showAdditionalRoles}
           onToggle={() => setShowAdditionalRoles(!showAdditionalRoles)}
           title="Additional model roles"
-          subtitle="Apply, Embed, Rerank"
+          subtitle="Apply, Rerank"
         >
           <div className="flex flex-col">
             <ModelRoleRow
@@ -191,22 +191,9 @@ export function ModelsSection() {
             <Divider />
 
             <ModelRoleRow
-              role="embed"
-              displayName="Embed"
-              description="Used to generate and query embeddings for the @codebase and @docs context providers"
-              models={config.modelsByRole.embed}
-              selectedModel={config.selectedModelByRole.embed ?? undefined}
-              onSelect={(model) => handleRoleUpdate("embed", model)}
-              onConfigure={handleConfigureModel}
-              setupURL="https://docs.nextcli.dev/customize/model-roles/embeddings"
-            />
-
-            <Divider />
-
-            <ModelRoleRow
               role="rerank"
               displayName="Rerank"
-              description="Used for reranking results from the @codebase and @docs context providers"
+              description="Used for reranking results from the @codebase and @folder context providers"
               models={config.modelsByRole.rerank}
               selectedModel={config.selectedModelByRole.rerank ?? undefined}
               onSelect={(model) => handleRoleUpdate("rerank", model)}

@@ -30,7 +30,6 @@ export const getConfigDependentToolDefinitions = async (
     tools.push(
       toolDefinitions.viewRepoMapTool,
       toolDefinitions.viewSubdirectoryTool,
-      toolDefinitions.codebaseTool,
       toolDefinitions.readFileRangeTool,
     );
   }

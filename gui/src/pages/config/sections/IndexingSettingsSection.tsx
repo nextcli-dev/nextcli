@@ -11,7 +11,6 @@ import { updateConfig } from "../../../redux/slices/configSlice";
 import { ConfigHeader } from "../components/ConfigHeader";
 import { UserSetting } from "../components/UserSetting";
 import IndexingProgress from "../features/indexing";
-import { DocsSection } from "./DocsSection";
 
 function CodebaseSubSection() {
   const config = useAppSelector((state) => state.config.config);
@@ -108,7 +107,6 @@ export function IndexingSettingsSection() {
       {!disableIndexing && (
         <div className="space-y-8">
           <CodebaseSubSection />
-          <DocsSection />
         </div>
       )}
     </>

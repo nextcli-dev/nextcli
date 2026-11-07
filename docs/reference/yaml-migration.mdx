@@ -28,7 +28,7 @@ Add all model configurations in `config.json`, including models in `models`, `ta
 
 - `tabAutocompleteModel`(s) in config should have `roles: [autocomplete]`
 
-- `embeddingsProvider` in config should have `roles: [embed]`
+- `embeddingsProvider` in config should have `roles: [embed]` (NextCLI no longer computes embeddings, so the role is ignored with a warning)
 
 - `reranker` in config should have `roles: [rerank]`
 
