@@ -10,7 +10,6 @@ const {
   autodetectPlatformAndArch,
 } = require("../../../scripts/util/index");
 
-const { copySqlite } = require("./download-copy-sqlite");
 const { generateAndCopyConfigYamlSchema } = require("./generate-copy-config");
 const { npmInstall } = require("./npm-install");
 const {
@@ -188,46 +187,6 @@ void (async () => {
     );
   });
 
-  if (!skipInstalls) {
-    await copySqlite(target);
-  } else {
-    console.log("[info] Skipping sqlite download because SKIP_INSTALLS=true");
-  }
-
-  console.log("[info] Copying sqlite node binding from core");
-  await new Promise((resolve, reject) => {
-    ncp(
-      path.join(__dirname, "../../../core/node_modules/sqlite3/build"),
-      path.join(__dirname, "../out/build"),
-      { dereference: true },
-      (error) => {
-        if (error) {
-          console.warn("[error] Error copying sqlite3 files", error);
-          reject(error);
-        } else {
-          resolve();
-        }
-      },
-    );
-  });
-
-  // Copied here as well for the VS Code test suite
-  await new Promise((resolve, reject) => {
-    ncp(
-      path.join(__dirname, "../../../core/node_modules/sqlite3/build"),
-      path.join(__dirname, "../out"),
-      { dereference: true },
-      (error) => {
-        if (error) {
-          console.warn("[error] Error copying sqlite3 files", error);
-          reject(error);
-        } else {
-          resolve();
-        }
-      },
-    );
-  });
-
   // @vscode/ripgrep downloads rg in its postinstall, which is skipped by
   // installs using --ignore-scripts. Fetch it so the copy/validation works.
   if (!fs.existsSync(`node_modules/@vscode/ripgrep/bin/rg${exe}`)) {
@@ -296,8 +255,6 @@ void (async () => {
     "out/tree-sitter.wasm",
     // Worker required by jsdom
     "out/xhr-sync-worker.js",
-    // SQLite3 Node native module
-    "out/build/Release/node_sqlite3.node",
 
     // out/node_modules (to be accessed by extension.js)
     `out/node_modules/@vscode/ripgrep/bin/rg${exe}`,

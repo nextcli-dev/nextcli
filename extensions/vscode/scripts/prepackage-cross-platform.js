@@ -24,8 +24,6 @@ const {
   copyTreeSitterWasms,
   copyNodeModules,
   downloadRipgrepBinary,
-  copySqliteBinary,
-  downloadSqliteBinary,
   copyTokenizers,
   copyScripts,
 } = require("./utils");
@@ -94,10 +92,6 @@ async function package(target, os, arch, exe) {
   // Copy Linux scripts
   await copyScripts();
 
-  // *** sqlite ***
-  await downloadSqliteBinary(target);
-  await copySqliteBinary();
-
   await downloadRipgrepBinary(target);
 
   // copy node_modules to out/node_modules
@@ -132,8 +126,6 @@ async function package(target, os, arch, exe) {
     "out/tree-sitter.wasm",
     // Worker required by jsdom
     "out/xhr-sync-worker.js",
-    // SQLite3 Node native module
-    "out/build/Release/node_sqlite3.node",
 
     // out/node_modules (to be accessed by extension.js)
     `out/node_modules/@vscode/ripgrep/bin/rg${exe}`,

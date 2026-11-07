@@ -4,7 +4,6 @@
  */
 import { spawn } from "node:child_process";
 import fs from "node:fs";
-import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 
@@ -183,37 +182,6 @@ describe("existing databases", () => {
     );
     await DevDataSqliteDb.db!.close();
     DevDataSqliteDb.db = null;
-  });
-
-  it("reads and writes a database file created by sqlite3", async () => {
-    const require = createRequire(__filename);
-    let sqlite3: any;
-    try {
-      sqlite3 = require("sqlite3");
-    } catch {
-      // sqlite3 is removed with dbinfoz; the file format doesn't change
-      return;
-    }
-    const file = path.join(dir, "legacy.sqlite");
-    await new Promise<void>((resolve, reject) => {
-      const legacy = new sqlite3.Database(file);
-      legacy.serialize(() => {
-        legacy.run("PRAGMA journal_mode=WAL");
-        legacy.run("CREATE TABLE t (n INTEGER, v)");
-        legacy.run("INSERT INTO t VALUES (?, ?)", [1, 42]);
-        legacy.close((err: Error | null) => (err ? reject(err) : resolve()));
-      });
-    });
-
-    const reopened = await SqliteDatabase.open(file);
-    await reopened.run("INSERT INTO t VALUES (?, ?)", 2, 43);
-    expect(
-      await reopened.all("SELECT n, typeof(v) AS type, v FROM t ORDER BY n"),
-    ).toEqual([
-      { n: 1, type: "integer", v: 42 },
-      { n: 2, type: "integer", v: 43 },
-    ]);
-    await reopened.close();
   });
 
   it("lets two processes write one WAL database at the same time", async () => {

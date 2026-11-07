@@ -1,0 +1,74 @@
+name: Database regression
+
+# Checks the @database context provider's adapters on real Postgres, MySQL and
+# MSSQL servers: against the output recorded with dbinfoz 0.14.0
+# (core/test/fixtures/regression/database/golden.json), and against dbinfoz
+# itself on the same servers. MSSQL has no recording (its image doesn't run on
+# Apple Silicon), so this job is where it gets checked.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "core/context/providers/database/**"
+      - "core/context/providers/DatabaseContextProvider.ts"
+      - "core/test/fixtures/regression/database/**"
+      - "core/util/sqlite.ts"
+      - "scripts/regression/database/**"
+      - ".github/workflows/database-regression.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: database-regression-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Same images, credentials and ports as scripts/regression/database/compose.yaml
+    services:
+      postgres:
+        image: docker.io/library/postgres:16-alpine
+        env:
+          POSTGRES_USER: fixture
+          POSTGRES_PASSWORD: fixture-password
+          POSTGRES_DB: shop
+        ports: ["15432:5432"]
+      mysql:
+        image: docker.io/library/mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: fixture-root
+          MYSQL_USER: fixture
+          MYSQL_PASSWORD: fixture-password
+          MYSQL_DATABASE: shop
+        ports: ["13306:3306"]
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: Fixture-Passw0rd!
+        ports: ["11433:1433"]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup packages
+        uses: ./.github/actions/setup-packages
+      - name: Setup core component
+        uses: ./.github/actions/setup-component
+        with:
+          component: core
+          include-root: true
+      - name: Install dbinfoz 0.14.0 for comparison
+        run: |
+          mkdir -p "$RUNNER_TEMP/dbinfoz"
+          cd "$RUNNER_TEMP/dbinfoz"
+          npm init -y > /dev/null
+          npm install --no-audit --no-fund dbinfoz@0.14.0
+      - name: Compare the adapters
+        working-directory: core
+        run: npx vitest run context/providers/database/database.vitest.ts
+        env:
+          NEXTCLI_DB_TESTS: "1"
+          DBINFOZ_DIR: ${{ runner.temp }}/dbinfoz

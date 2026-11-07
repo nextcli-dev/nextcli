@@ -4,7 +4,7 @@
     {
       "name": "prebuild-install",
       "version": "7.1.3",
-      "fix": "P6 replace sqlite3 and dbinfoz (docs/ still gets it from mintlify)"
+      "fix": "docs/ dev tooling only: mintlify -> @mintlify/cli -> keytar 7.9.0, still in mintlify 4.3.5. Waits for mintlify to drop keytar"
     }
   ]
 }

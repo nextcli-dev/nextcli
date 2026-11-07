@@ -1,4 +1,4 @@
-# Throwaway databases for scripts/regression/generate-database-fixture.mjs.
+# Throwaway databases for core/context/providers/database/database.vitest.ts (NEXTCLI_DB_TESTS=1).
 # Start:  podman-compose -f scripts/regression/database/compose.yaml up -d   (or docker compose)
 # Stop:   podman-compose -f scripts/regression/database/compose.yaml down
 # Ports are offset (+10000) so they don't clash with local databases.

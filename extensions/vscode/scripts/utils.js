@@ -117,36 +117,6 @@ async function copyNodeModules() {
   console.log(`[info] Copied ${NODE_MODULES_TO_COPY.join(", ")}`);
 }
 
-async function downloadSqliteBinary(target) {
-  console.log("[info] Downloading pre-built sqlite3 binary");
-  rimrafSync("../../core/node_modules/sqlite3/build");
-  // Single source of truth for sqlite3 prebuilt URLs (version + win32-arm64).
-  const { downloadSqlite } = require("./download-copy-sqlite");
-  await downloadSqlite(target, "../../core/node_modules/sqlite3/build.tar.gz");
-  execCmdSync("cd ../../core/node_modules/sqlite3 && tar -xvzf build.tar.gz");
-  fs.unlinkSync("../../core/node_modules/sqlite3/build.tar.gz");
-}
-
-async function copySqliteBinary() {
-  process.chdir(path.join(continueDir, "extensions", "vscode"));
-  console.log("[info] Copying sqlite node binding from core");
-  await new Promise((resolve, reject) => {
-    ncp(
-      path.join(__dirname, "../../../core/node_modules/sqlite3/build"),
-      path.join(__dirname, "../out/build"),
-      { dereference: true },
-      (error) => {
-        if (error) {
-          console.warn("[error] Error copying sqlite3 files", error);
-          reject(error);
-        } else {
-          resolve();
-        }
-      },
-    );
-  });
-}
-
 async function downloadRipgrepBinary(target) {
   console.log("[info] Downloading pre-built ripgrep binary");
   rimrafSync("node_modules/@vscode/ripgrep/bin");
@@ -213,8 +183,6 @@ module.exports = {
   buildGui,
   copyTreeSitterWasms,
   copyNodeModules,
-  copySqliteBinary,
-  downloadSqliteBinary,
   downloadRipgrepBinary,
   copyTokenizers,
   copyScripts,
