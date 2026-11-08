@@ -8,11 +8,10 @@ import {
   resetAgentLoopLimits,
 } from "./agentLoopLimits.js";
 import {
-  estimateFinalAnswerCost,
+  estimateFinalCallCost,
+  FINAL_ANSWER_TOKENS,
   FINAL_PROMPT_GROWTH,
   finalAnswerMaxTokens,
-  guaranteedFinalAnswerTokens,
-  MIN_FINAL_ANSWER_TOKENS,
 } from "./streamChatResponse.helpers.js";
 
 vi.mock("../session.js", () => ({ getSessionUsage: vi.fn() }));
@@ -46,16 +45,13 @@ describe("the --max-cost reserve", () => {
     // call cost $0.05 and the history was 45k tokens. The call after it adds
     // tool results, so the final prompt is bigger than the history now.
     const lastCall = { tokens: 40_000, cost: 0.05 };
-    const finalCall = () =>
-      estimateFinalAnswerCost(
-        deepseek,
-        Math.ceil(45_000 * FINAL_PROMPT_GROWTH),
-        guaranteedFinalAnswerTokens(deepseek),
-      );
+    const finalCall = () => estimateFinalCallCost(deepseek, 45_000);
 
-    // $0.11 left. One more call like the last one would leave $0.06, and the
-    // final prompt alone costs about $0.07, so there'd be no room to answer.
-    spend(0.19);
+    // $0.15 left. One more call like the last one leaves $0.10, but by then
+    // the final prompt costs about $0.07 and a full-size answer on top of it
+    // another $0.06. The old reserve (the final call alone, about $0.14) let
+    // that call go ahead.
+    spend(0.15);
     const wrapUp = checkAgentLoopLimits(
       { maxTurns: 100, maxIdenticalToolCalls: 2, maxCostUsd: 0.3 },
       12,
@@ -70,21 +66,15 @@ describe("the --max-cost reserve", () => {
 
   it("leaves the final call enough money for a full answer", () => {
     // A call is made just above the reserve. After it, what is left has to
-    // pay for the final prompt (which that call grew) and the guaranteed
-    // output, so the final answer is not squeezed into a few tokens.
+    // pay for the final prompt (which that call grew) and a full-size answer.
+    // A reasoning model that is squeezed into a few thousand tokens spends
+    // them all thinking and returns nothing.
     const grownPrompt = Math.ceil(45_000 * FINAL_PROMPT_GROWTH);
-    const finalCall = estimateFinalAnswerCost(
-      deepseek,
-      grownPrompt,
-      guaranteedFinalAnswerTokens(deepseek),
-    );
+    const finalCall = estimateFinalCallCost(deepseek, 45_000);
 
-    const maxTokens = finalAnswerMaxTokens(
-      deepseek,
-      finalCall + 1e-6,
-      grownPrompt,
+    expect(finalAnswerMaxTokens(deepseek, finalCall + 1e-6, grownPrompt)).toBe(
+      FINAL_ANSWER_TOKENS,
     );
-    expect(maxTokens).toBeGreaterThanOrEqual(MIN_FINAL_ANSWER_TOKENS);
   });
 
   it("lets a cheap run continue", () => {
@@ -96,12 +86,7 @@ describe("the --max-cost reserve", () => {
         3,
         { tokens: 0, cost: 0 },
         lastCall,
-        () =>
-          estimateFinalAnswerCost(
-            deepseek,
-            Math.ceil(5_000 * FINAL_PROMPT_GROWTH),
-            guaranteedFinalAnswerTokens(deepseek),
-          ),
+        () => estimateFinalCallCost(deepseek, 5_000),
       ),
     ).toBeUndefined();
   });

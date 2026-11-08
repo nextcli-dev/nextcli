@@ -241,17 +241,16 @@ describe("streamChatResponse - agent loop limits", () => {
   });
 
   it("answers at once when the limit can't cover more than a final answer", async () => {
-    configureAgentLoopLimits({ maxCost: "0.2" });
+    configureAgentLoopLimits({ maxCost: "0.5" });
 
-    // On gpt-4 ($30/$60 per million) a final answer with room to be written
-    // (4096 tokens) costs about $0.28, with the prompt it will have
+    // On gpt-4 ($30/$60 per million) a 16k final answer costs about $0.99
     await expect(run()).resolves.toBe("Final answer");
     expect(modelCalls).toBe(1);
     expect(callsWithoutTools).toBe(1);
 
-    // What $0.20 buys after a $0.03 prompt, at $60 per million output tokens
+    // What $0.50 buys after a $0.03 prompt, at $60 per million output tokens
     const calls = vi.mocked(llmApi.chatCompletionStream).mock.calls;
-    expect(calls[0][0]).toMatchObject({ max_tokens: 2833 });
+    expect(calls[0][0]).toMatchObject({ max_tokens: 7833 });
   });
 
   it("drops tool calls in the final answer", async () => {

@@ -406,8 +406,10 @@ export const FINAL_PROMPT_GROWTH = 1.25;
 
 /**
  * What the final call of a run would cost if it were made after one more
- * model call: a bigger prompt, and the output every final answer is given.
- * This is what --max-cost keeps in reserve.
+ * model call: a bigger prompt, and the most output a final answer can use.
+ * This is what --max-cost keeps in reserve. A reasoning model thinks before it
+ * writes, and a final answer that runs out of tokens while thinking is empty,
+ * so the reserve is for a full-size answer, not the smallest one.
  */
 export function estimateFinalCallCost(
   model: any,
@@ -416,7 +418,6 @@ export function estimateFinalCallCost(
   return estimateFinalAnswerCost(
     model,
     Math.ceil(historyTokens * FINAL_PROMPT_GROWTH),
-    guaranteedFinalAnswerTokens(model),
   );
 }
 
