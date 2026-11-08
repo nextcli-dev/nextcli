@@ -2,7 +2,7 @@
   "name": "nextcli",
   "icon": "media/icon.png",
   "author": "NextCLI",
-  "version": "1.6.10",
+  "version": "1.6.11",
   "repository": {
     "type": "git",
     "url": "https://github.com/nextcli-dev/nextcli"

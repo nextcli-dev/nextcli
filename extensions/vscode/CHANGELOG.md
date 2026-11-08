@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.11](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.10...vscode-v1.6.11) (2026-11-08)
+
+
+### Bug Fixes
+
+* **cli:** make the final answer at --max-cost reliable ([#92](https://github.com/nextcli-dev/nextcli/issues/92)) ([ab7300a](https://github.com/nextcli-dev/nextcli/commit/ab7300aa0db2093060d2770c1a88c37e8b0c5490))
+
 ## [1.6.10](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.9...vscode-v1.6.10) (2026-11-08)
 
 
