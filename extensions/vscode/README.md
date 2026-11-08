@@ -1,6 +1,6 @@
 <div align="center">
 
-![NextCLI](https://github.com/nextcli-dev/nextcli/raw/HEAD/extensions/vscode/media/readme.png)
+![NextCLI](https://raw.githubusercontent.com/nextcli-dev/nextcli/main/extensions/vscode/media/readme.png)
 
 <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="Apache 2.0" /></a>
 <a href="https://docs.nextcli.dev"><img src="https://img.shields.io/badge/Docs-docs.nextcli.dev-0a0a0a" alt="Docs" /></a>
@@ -19,25 +19,25 @@ NextCLI is a community continuation of [Continue](https://github.com/continuedev
 
 [Agent](https://docs.nextcli.dev/ide-extensions/agent/quick-start) to work on development tasks together with AI.
 
-![Agent](https://github.com/nextcli-dev/nextcli/raw/HEAD/extensions/vscode/media/readme/agent.gif)
+![Agent](https://raw.githubusercontent.com/nextcli-dev/nextcli/main/extensions/vscode/media/readme/agent.gif)
 
 ## Chat
 
 [Chat](https://docs.nextcli.dev/ide-extensions/chat/quick-start) to ask general questions and clarify code sections.
 
-![Chat](https://github.com/nextcli-dev/nextcli/raw/HEAD/extensions/vscode/media/readme/chat.gif)
+![Chat](https://raw.githubusercontent.com/nextcli-dev/nextcli/main/extensions/vscode/media/readme/chat.gif)
 
 ## Edit
 
 [Edit](https://docs.nextcli.dev/ide-extensions/edit/quick-start) to modify a code section without leaving the current file.
 
-![Edit](https://github.com/nextcli-dev/nextcli/raw/HEAD/extensions/vscode/media/readme/edit.gif)
+![Edit](https://raw.githubusercontent.com/nextcli-dev/nextcli/main/extensions/vscode/media/readme/edit.gif)
 
 ## Autocomplete
 
 [Autocomplete](https://docs.nextcli.dev/ide-extensions/autocomplete/quick-start) to receive inline code suggestions as you type.
 
-![Autocomplete](https://github.com/nextcli-dev/nextcli/raw/HEAD/extensions/vscode/media/readme/autocomplete.gif)
+![Autocomplete](https://raw.githubusercontent.com/nextcli-dev/nextcli/main/extensions/vscode/media/readme/autocomplete.gif)
 
 ## Requirements
 

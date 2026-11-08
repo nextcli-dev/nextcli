@@ -82,6 +82,8 @@ Versions and changelogs come from merged pull request titles. [release-please](h
 
 A `fix:` or `feat:` title that touches a product's files, or the shared `core/` and `packages/`, adds to that product's Release PR. `docs:`, `chore:`, `ci:` and `test:` titles don't trigger a release. The configs are in `.github/release-please/`.
 
+**README images.** The Marketplace, Open VSX and npm pages load every image from the URL in the README, and the page can't be fixed without a new release. Use `https://raw.githubusercontent.com/nextcli-dev/nextcli/main/<path>` for images in `extensions/vscode/README.md` and `extensions/cli/README.md`. Don't use `github.com/.../raw/...` or `.../blob/...`: that goes through a redirect that answers 504 under load, which broke the extension page once. CI (`scripts/ci/check-readme-images.mjs`) rejects those URLs and images whose file isn't in the repository, and the publish workflow fetches every image in the package's README before it publishes.
+
 ### VS Code extension
 
 Even minor versions are stable, odd minor versions are pre-releases.
