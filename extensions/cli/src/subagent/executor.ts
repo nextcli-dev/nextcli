@@ -52,6 +52,18 @@ async function buildAgentSystemMessage(
 }
 
 /**
+ * Policies for a subagent's session. The child keeps the parent's rules,
+ * including a headless run's closed defaults and any --exclude, and cannot
+ * start another subagent. Replacing them with allow-all would hand the child
+ * Bash, Fetch and every MCP tool.
+ */
+export function policiesForSubagentChild(
+  parent: ToolPermissionServiceState["permissions"]["policies"],
+): ToolPermissionServiceState["permissions"]["policies"] {
+  return [{ tool: "Subagent", permission: "exclude" }, ...parent];
+}
+
+/**
  * Execute a subagent in a child session
  */
 // eslint-disable-next-line complexity
@@ -75,15 +87,16 @@ export async function executeSubAgent(
       throw new Error("Model or LLM API not available");
     }
 
-    // allow all tools for now
-    // todo: eventually we want to show the same prompt in a dialog whether asking whether that tool call is allowed or not
-
+    // The child keeps the parent's policies, including headless mode and
+    // --exclude. It cannot start another subagent.
     serviceContainer.set<ToolPermissionServiceState>(
       SERVICE_NAMES.TOOL_PERMISSIONS,
       {
         ...mainAgentPermissionsState,
         permissions: {
-          policies: [{ tool: "*", permission: "allow" }],
+          policies: policiesForSubagentChild(
+            mainAgentPermissionsState.permissions.policies,
+          ),
         },
       },
     );

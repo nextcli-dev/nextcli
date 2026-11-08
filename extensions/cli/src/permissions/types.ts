@@ -17,10 +17,8 @@ export interface ToolPermissionPolicy {
    * an "allow" the operator wrote is taken as given. A policy with no source
    * counts as written by the operator (flags and permissions.yaml).
    */
-  source?: PolicySource;
+  source?: "default";
 }
-
-export type PolicySource = "default";
 
 export interface ToolPermissions {
   /** Array of permission policies that are evaluated in order */

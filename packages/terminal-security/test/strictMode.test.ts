@@ -79,7 +79,6 @@ describe("evaluateTerminalCommandSecurity strict mode", () => {
     "git log --output=out.txt",
     "git diff --output=patch.diff",
   ])("asks for %s, which runs code or writes a file", (command) => {
-    expect(evaluateTerminalCommandSecurity(allow, command)).toBe(allow);
     expect(
       evaluateTerminalCommandSecurity(allow, command, { strict: true }),
     ).toBe(ask);

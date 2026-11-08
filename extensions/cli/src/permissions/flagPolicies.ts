@@ -24,9 +24,7 @@ function patternMatchesToolName(toolName: string, pattern: string): boolean {
   if (!pattern.includes("*") && !pattern.includes("?")) {
     return false;
   }
-  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-  const regexPattern = escaped.replace(/\*/g, ".*").replace(/\?/g, ".");
-  return new RegExp(`^${regexPattern}$`).test(toolName);
+  return globToRegExp(pattern).test(toolName);
 }
 
 /** A command glob such as `*` or `?*` that matches every real command. */
@@ -34,15 +32,19 @@ function globMatchesEveryCommand(glob: string): boolean {
   if (!glob.includes("*") && !glob.includes("?")) {
     return false;
   }
-  const escaped = glob.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-  const regexPattern = escaped.replace(/\*/g, ".*").replace(/\?/g, ".");
-  const regex = new RegExp(`^${regexPattern}$`);
+  const regex = globToRegExp(glob);
   return [
     "ls",
     "cp a.txt b.txt",
     "git log --output=out",
     "npm run build",
   ].every((command) => regex.test(command));
+}
+
+/** Same `*` and `?` rules as matchesToolPattern. */
+function globToRegExp(glob: string): RegExp {
+  const escaped = glob.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^${escaped.replace(/\*/g, ".*").replace(/\?/g, ".")}$`);
 }
 
 export function commandLineFlagsToPolicies(flags: {

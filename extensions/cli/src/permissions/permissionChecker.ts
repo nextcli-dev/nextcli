@@ -127,19 +127,35 @@ function permissionPolicyToToolPolicy(
  * as `Bash(git log*)` matches the whole command line, so without this check it
  * would also match `git log; curl https://evil.example`.
  */
-const SHELL_CONTROL = /[;&|`<>\r\n]|\$\(/;
+const SHELL_CONTROL = /[&;|`<>\r\n]|\$\(/;
 
 /**
  * An `allow` written as `Bash(pattern)` approves one simple command. A command
  * that chains or redirects doesn't match it, so it falls to the next policy.
  */
+/**
+ * The command glob of a Bash rule, whether it was written as `Bash(git log*)`
+ * on the command line or parsed from permissions.yaml into argumentMatches.
+ */
+function bashCommandGlob(policy: ToolPermissionPolicy): string | undefined {
+  const inline = /^Bash\((.+)\)$/.exec(policy.tool);
+  if (inline) {
+    return inline[1];
+  }
+  const command = policy.argumentMatches?.command;
+  if (policy.tool === "Bash" && typeof command === "string") {
+    return command;
+  }
+  return undefined;
+}
+
 function isCommandAllowThatChains(
   policy: ToolPermissionPolicy,
   toolCall: ToolCallRequest,
 ): boolean {
   return (
     policy.permission === "allow" &&
-    /^Bash\(.+\)$/.test(policy.tool) &&
+    bashCommandGlob(policy) !== undefined &&
     typeof toolCall.arguments?.command === "string" &&
     SHELL_CONTROL.test(toolCall.arguments.command)
   );
@@ -166,16 +182,17 @@ function matchesChainedCommand(
   policy: ToolPermissionPolicy,
   toolCall: ToolCallRequest,
 ): boolean {
+  const glob = bashCommandGlob(policy);
   const command = toolCall.arguments?.command;
   if (
     policy.permission === "allow" ||
-    !/^Bash\(.+\)$/.test(policy.tool) ||
+    glob === undefined ||
     typeof command !== "string"
   ) {
     return false;
   }
   return commandSegments(command).some((segment) =>
-    matchesToolPattern(toolCall.name, policy.tool, {
+    matchesToolPattern(toolCall.name, `Bash(${glob})`, {
       ...toolCall.arguments,
       command: segment,
     }),
@@ -238,10 +255,14 @@ export function checkToolPermission(
     if (isCommandAllowThatChains(policy, toolCall)) {
       continue;
     }
+    // A chain match already compared each command to the Bash glob, including
+    // a permissions.yaml rule stored as argumentMatches. Checking those
+    // patterns again would compare them to the whole line and miss the chain.
+    const chained = matchesChainedCommand(policy, toolCall);
     if (
-      (matchesToolPattern(toolCall.name, policy.tool, toolCall.arguments) ||
-        matchesChainedCommand(policy, toolCall)) &&
-      matchesArguments(toolCall.arguments, policy.argumentMatches)
+      chained ||
+      (matchesToolPattern(toolCall.name, policy.tool, toolCall.arguments) &&
+        matchesArguments(toolCall.arguments, policy.argumentMatches))
     ) {
       basePermission = policy.permission;
       matchedPolicy = policy;

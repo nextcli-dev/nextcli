@@ -58,7 +58,7 @@ Flags accept:
 
 - `Write`: a tool name. It matches every call to that tool.
 - `github_*`: a name with `*` or `?`. This is how you match MCP tools, which are named as the server defines them.
-- `Bash(npm test*)`: a `Bash` call whose command matches the glob. Without a `*` or `?`, the command must match exactly. For `--allow`, the command must be one simple command: `npm test && curl ...` doesn't match. For `--exclude` and `--ask`, any command in a chain matches, so `Bash(npm install*)` also catches `ls && npm install` and `echo $(npm install)`.
+- `Bash(npm test*)`: a `Bash` call whose command matches the glob. Without a `*` or `?`, the command must match exactly. For `--allow`, the command must be one simple command: `npm test && curl ...` doesn't match. For `--exclude` and `--ask`, and for the same pattern in `permissions.yaml`, any command in a chain matches, so `Bash(npm install*)` also catches `ls && npm install` and `echo $(npm install)`.
 - `*`: every tool.
 
 ```bash

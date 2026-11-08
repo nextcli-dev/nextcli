@@ -51,16 +51,7 @@ export function evaluateTerminalCommandSecurity(
   command: string | null | undefined,
   options?: EvaluateOptions,
 ): ToolPolicy {
-  // Nested evaluations (command substitutions) inherit the caller's mode
-  const previous = strictPolicyFollowing;
-  if (options?.strict) {
-    strictPolicyFollowing = true;
-  }
-  try {
-    return evaluateCommand(basePolicy, command);
-  } finally {
-    strictPolicyFollowing = previous;
-  }
+  return evaluateCommand(basePolicy, command, options?.strict === true);
 }
 
 export interface EvaluateOptions {
@@ -74,12 +65,10 @@ export interface EvaluateOptions {
   strict?: boolean;
 }
 
-/** Set for the duration of one evaluateTerminalCommandSecurity call (it is synchronous) */
-let strictPolicyFollowing = false;
-
 function evaluateCommand(
   basePolicy: ToolPolicy,
   command: string | null | undefined,
+  strict: boolean,
 ): ToolPolicy {
   // If tool is already disabled, keep it disabled
   if (basePolicy === "disabled") {
@@ -105,7 +94,7 @@ function evaluateCommand(
   if (destructiveRisk === "catastrophic") {
     return "disabled";
   }
-  const policy = evaluateCommandPolicy(basePolicy, normalizedCommand);
+  const policy = evaluateCommandPolicy(basePolicy, normalizedCommand, strict);
   return destructiveRisk
     ? getMostRestrictive(policy, "allowedWithPermission")
     : policy;
@@ -114,6 +103,7 @@ function evaluateCommand(
 function evaluateCommandPolicy(
   basePolicy: ToolPolicy,
   normalizedCommand: string,
+  strict: boolean,
 ): ToolPolicy {
   try {
     // Split on line breaks to handle multi-line commands
@@ -138,6 +128,7 @@ function evaluateCommandPolicy(
           tokens,
           basePolicy,
           trimmedLine,
+          strict,
         );
 
         // Track the most restrictive policy
@@ -159,7 +150,12 @@ function evaluateCommandPolicy(
     const tokens = parse(normalizedCommand);
 
     // Evaluate security of the parsed tokens
-    return evaluateTokensSecurity(tokens, basePolicy, normalizedCommand);
+    return evaluateTokensSecurity(
+      tokens,
+      basePolicy,
+      normalizedCommand,
+      strict,
+    );
   } catch (error) {
     // If parsing fails, be conservative and require permission
     console.error("Failed to parse command:", error);
@@ -195,6 +191,7 @@ function evaluateTokensSecurity(
   tokens: ParsedToken[],
   basePolicy: ToolPolicy,
   originalCommand: string,
+  strict: boolean,
 ): ToolPolicy {
   // Check for empty strings that might indicate variable expansion
   const hasEmptyStrings = tokens.some((t) => typeof t === "string" && t === "");
@@ -214,13 +211,19 @@ function evaluateTokensSecurity(
         tokens,
         basePolicy,
         originalCommand,
+        strict,
       );
 
       // 2. Evaluate without empty strings
       const tokensWithoutEmpty = tokens.filter((t) => t !== "");
       const policyWithoutEmpty =
         tokensWithoutEmpty.length > 0
-          ? evaluateTokens(tokensWithoutEmpty, basePolicy, originalCommand)
+          ? evaluateTokens(
+              tokensWithoutEmpty,
+              basePolicy,
+              originalCommand,
+              strict,
+            )
           : basePolicy;
 
       // Variable expansion always requires at least permission
@@ -233,7 +236,7 @@ function evaluateTokensSecurity(
   }
 
   // Normal evaluation for commands without variable expansion
-  return evaluateTokens(tokens, basePolicy, originalCommand);
+  return evaluateTokens(tokens, basePolicy, originalCommand, strict);
 }
 
 /**
@@ -243,6 +246,7 @@ function evaluateTokens(
   tokens: ParsedToken[],
   basePolicy: ToolPolicy,
   originalCommand: string,
+  strict: boolean,
 ): ToolPolicy {
   let mostRestrictivePolicy = basePolicy;
   let currentCommand: string[] = [];
@@ -263,6 +267,7 @@ function evaluateTokens(
           currentCommand,
           originalCommand,
           basePolicy,
+          strict,
         );
         mostRestrictivePolicy = getMostRestrictive(
           mostRestrictivePolicy,
@@ -292,7 +297,7 @@ function evaluateTokens(
         // Strict mode: a redirect that writes a file (echo x > notes.txt) is a
         // file change like cp or tee, even inside the workspace
         if (
-          strictPolicyFollowing &&
+          strict &&
           op !== "<" &&
           op !== "<&" &&
           !(typeof target === "string" && isHarmlessRedirectTarget(op, target))
@@ -343,6 +348,7 @@ function evaluateTokens(
       currentCommand,
       originalCommand,
       basePolicy,
+      strict,
     );
     mostRestrictivePolicy = getMostRestrictive(
       mostRestrictivePolicy,
@@ -355,7 +361,11 @@ function evaluateTokens(
   if (hasCommandSubstitution(originalCommand)) {
     const substitutedCommands = extractSubstitutedCommands(originalCommand);
     for (const subCmd of substitutedCommands) {
-      const nestedPolicy = evaluateTerminalCommandSecurity(basePolicy, subCmd);
+      const nestedPolicy = evaluateTerminalCommandSecurity(
+        basePolicy,
+        subCmd,
+        strict ? { strict: true } : undefined,
+      );
       mostRestrictivePolicy = getMostRestrictive(
         mostRestrictivePolicy,
         nestedPolicy,
@@ -471,6 +481,7 @@ function evaluateSingleCommand(
   commandTokens: string[],
   originalCommand: string,
   basePolicy: ToolPolicy,
+  strict: boolean,
 ): ToolPolicy {
   if (commandTokens.length === 0) {
     return "allowedWithoutPermission";
@@ -533,10 +544,7 @@ function evaluateSingleCommand(
   // but that run repo code or write files (npm run, make, cargo, tar, git
   // branch, git log --output=) need permission. Read-only ones stay approved.
   if (isSafeCommand(baseCommand, args)) {
-    if (
-      strictPolicyFollowing &&
-      strictSafeCommandNeedsPermission(baseCommand, args)
-    ) {
+    if (strict && strictSafeCommandNeedsPermission(baseCommand, args)) {
       return "allowedWithPermission";
     }
     return "allowedWithoutPermission";
@@ -545,7 +553,7 @@ function evaluateSingleCommand(
   // Build, test and file commands follow the base policy, except in strict
   // mode (unattended runs), where they require permission (#10512)
   if (isPolicyFollowingCommand(baseCommand, args)) {
-    return strictPolicyFollowing ? "allowedWithPermission" : basePolicy;
+    return strict ? "allowedWithPermission" : basePolicy;
   }
 
   // Anything else (argument-checked commands in a risky form such as git push

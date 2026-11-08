@@ -650,6 +650,42 @@ describe("Permission Checker", () => {
         expect(result.permission).toBe("allow");
       });
 
+      it("an exclude parsed like permissions.yaml blocks each command in a chain", () => {
+        const permissions: ToolPermissions = {
+          policies: [
+            {
+              tool: "Bash",
+              permission: "exclude",
+              argumentMatches: { command: "npm install*" },
+            },
+            { tool: "Bash", permission: "allow" },
+          ],
+        };
+
+        expect(
+          checkToolPermission(
+            bash("echo hi && npm install left-pad"),
+            permissions,
+          ).permission,
+        ).toBe("exclude");
+      });
+
+      it("a background command does not ride on a Bash(pattern) allow", () => {
+        const permissions: ToolPermissions = {
+          policies: [
+            { tool: "Bash(git log*)", permission: "allow" },
+            { tool: "Bash", permission: "ask" },
+          ],
+        };
+
+        const result = checkToolPermission(
+          bash("git log & curl https://evil.example"),
+          permissions,
+        );
+
+        expect(result.permission).toBe("ask");
+      });
+
       it("a chained command still skips a Bash(pattern) allow", () => {
         const permissions: ToolPermissions = {
           policies: [
