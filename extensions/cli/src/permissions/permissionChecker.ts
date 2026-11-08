@@ -151,16 +151,35 @@ function isCommandAllowThatChains(
   return SHELL_CONTROL.test(command);
 }
 
+/** A `sh -c` or `eval` wrapper, so the command inside is checked too. */
+function unwrapShellCommand(segment: string): string | undefined {
+  const match = segment.match(
+    /^(?:sh|bash|zsh|dash|ksh)\s+(?:-[a-zA-Z]+\s+)*-c\s+(.+)$|^eval\s+(.+)$/,
+  );
+  if (!match) {
+    return undefined;
+  }
+  const inner = (match[1] ?? match[2]).trim().replace(/^['"]|['"]$/g, "");
+  const unescaped = inner.replace(/\\([ \t])/g, "$1");
+  return unescaped.length > 0 ? unescaped : undefined;
+}
+
 /**
- * The parts of a command line that the shell runs as separate commands.
- * Quoted text that contains shell syntax is split too, which can only make an
- * `exclude` or `ask` match more often.
+ * The parts of a command line that the shell runs as separate commands,
+ * including the command inside `sh -c` or `eval`.
  */
 function commandSegments(command: string): string[] {
-  return command
+  const parts = command
     .split(/[;&|`<>\r\n()]|\$\(/)
     .map((segment) => segment.trim())
     .filter((segment) => segment.length > 0);
+  return [
+    ...parts,
+    ...parts.flatMap((part) => {
+      const inner = unwrapShellCommand(part);
+      return inner ? [inner] : [];
+    }),
+  ];
 }
 
 /**
@@ -248,9 +267,8 @@ export function checkToolPermission(
     // A chain match already compared each command to the Bash glob, including
     // a permissions.yaml rule stored as argumentMatches. Checking those
     // patterns again would compare them to the whole line and miss the chain.
-    const chained = matchesChainedCommand(policy, toolCall);
     if (
-      chained ||
+      matchesChainedCommand(policy, toolCall) ||
       (matchesToolPattern(toolCall.name, policy.tool, toolCall.arguments) &&
         matchesArguments(toolCall.arguments, policy.argumentMatches))
     ) {

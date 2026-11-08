@@ -651,6 +651,24 @@ describe("Permission Checker", () => {
         expect(result.permission).toBe("allow");
       });
 
+      it.each([
+        "sh -c 'npm install left-pad'",
+        'bash -c "npm install left-pad"',
+        "eval 'npm install left-pad'",
+        "eval npm\\ install left-pad",
+      ])("an exclude also matches %s", (command) => {
+        const permissions: ToolPermissions = {
+          policies: [
+            { tool: "Bash(npm install*)", permission: "exclude" },
+            { tool: "Bash", permission: "allow" },
+          ],
+        };
+
+        expect(checkToolPermission(bash(command), permissions).permission).toBe(
+          "exclude",
+        );
+      });
+
       it("an exclude parsed like permissions.yaml blocks each command in a chain", () => {
         const permissions: ToolPermissions = {
           policies: [

@@ -43,6 +43,11 @@ describe("closed headless defaults", () => {
         source: "default",
       });
       expect(policies).toContainEqual({
+        tool: "UploadArtifact",
+        permission: "exclude",
+        source: "default",
+      });
+      expect(policies).toContainEqual({
         tool: "Bash",
         permission: "allow",
         source: "default",
@@ -96,6 +101,8 @@ describe("closed headless defaults", () => {
       "./script.sh",
       "prettier --write .",
       "echo hi > notes.txt",
+      "cat ~/.ssh/id_rsa",
+      "head ~/.aws/credentials",
       "cat a.txt >> b.txt",
     ])("asks, so refuses, %s", (command) => {
       expect(

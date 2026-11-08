@@ -24,6 +24,17 @@ interface CommentToken {
 
 type ParsedToken = string | ShellOperator | GlobPattern | CommentToken;
 
+export interface EvaluateOptions {
+  /**
+   * Build, test and file commands (cp, mv, tee, pytest, prettier...) normally
+   * follow the base policy. In strict mode they need permission, so a base
+   * "allow" only lets through commands the evaluator approves on its own
+   * (ls, cat, git status...). Unattended runs use this so a default allow
+   * doesn't run commands that change files.
+   */
+  strict?: boolean;
+}
+
 /**
  * Evaluates the security policy for a terminal command.
  *
@@ -40,17 +51,6 @@ type ParsedToken = string | ShellOperator | GlobPattern | CommentToken;
  * @param command The command string to evaluate
  * @returns The security policy to apply: 'disabled', 'allowedWithPermission', or 'allowedWithoutPermission'
  */
-export interface EvaluateOptions {
-  /**
-   * Build, test and file commands (cp, mv, tee, pytest, prettier...) normally
-   * follow the base policy. In strict mode they need permission, so a base
-   * "allow" only lets through commands the evaluator approves on its own
-   * (ls, cat, git status...). Unattended runs use this so a default allow
-   * doesn't run commands that change files.
-   */
-  strict?: boolean;
-}
-
 export function evaluateTerminalCommandSecurity(
   basePolicy: ToolPolicy,
   command: string | null | undefined,
@@ -1370,15 +1370,49 @@ function isOutsideWorkspacePath(path: string): boolean {
   );
 }
 
+/** Commands whose arguments are files they print. */
+const FILE_READ_COMMANDS = new Set([
+  "cat",
+  "dir",
+  "file",
+  "find",
+  "grep",
+  "head",
+  "less",
+  "ls",
+  "more",
+  "nl",
+  "od",
+  "stat",
+  "strings",
+  "tail",
+  "wc",
+]);
+
+function argumentPointsOutsideWorkspace(arg: string): boolean {
+  if (arg.startsWith("-")) {
+    const eq = arg.indexOf("=");
+    return eq !== -1 && isOutsideWorkspacePath(arg.slice(eq + 1));
+  }
+  return isOutsideWorkspacePath(arg);
+}
+
 /**
- * `isSafeCommand` approves some commands that run repository code or write
- * files. Strict mode (unattended runs) asks for those and keeps the read-only
- * ones, such as ls, cat and git status.
+ * `isSafeCommand` approves some commands that run repository code, write
+ * files, or print a file outside the workspace. Strict mode (unattended
+ * runs) asks for those. A workspace read such as `ls` or `cat package.json`
+ * stays approved.
  */
 function strictSafeCommandNeedsPermission(
   baseCommand: string,
   args: string[],
 ): boolean {
+  if (
+    FILE_READ_COMMANDS.has(baseCommand) &&
+    args.some(argumentPointsOutsideWorkspace)
+  ) {
+    return true;
+  }
   if (baseCommand === "git") {
     const subcommand = args.find((arg) => !arg.startsWith("-"));
     if (subcommand === "branch" || subcommand === "remote") {

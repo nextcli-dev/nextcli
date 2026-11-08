@@ -36,6 +36,18 @@ describe("evaluateTerminalCommandSecurity strict mode", () => {
     ).toBe(ask);
   });
 
+  it.each([
+    "cat ~/.ssh/id_rsa",
+    "head ~/.aws/credentials",
+    "grep secret ~/.ssh/id_rsa",
+    "ls /etc",
+  ])("asks before reading %s, which is outside the workspace", (command) => {
+    expect(evaluateTerminalCommandSecurity(allow, command)).toBe(allow);
+    expect(
+      evaluateTerminalCommandSecurity(allow, command, { strict: true }),
+    ).toBe(ask);
+  });
+
   it("asks when a chained command follows the base policy", () => {
     expect(
       evaluateTerminalCommandSecurity(allow, "ls && cp a b", { strict: true }),

@@ -8,11 +8,12 @@ export function getDefaultToolPolicies(
   isHeadless = false,
 ): ToolPermissionPolicy[] {
   // The TUI asks before Bash, MCP and any other tool, and allows Fetch. A
-  // headless run differs in three ways. Fetch is excluded, because it can
-  // send data to any URL. MCP and unknown tools are excluded, because nobody
-  // can approve them. Bash stays allow, but only for commands the evaluator
-  // approves without asking (see checkToolPermission), and anything else is
-  // refused. --allow opts a headless run back in.
+  // headless run differs in three ways. Fetch and UploadArtifact are
+  // excluded, because they can send a file or a request off the machine.
+  // MCP and unknown tools are excluded, because nobody can approve them.
+  // Bash stays allow, but only for commands the evaluator approves without
+  // asking (see checkToolPermission), and anything else is refused. --allow
+  // opts a headless run back in.
   const source = "default" as const;
   return [
     { tool: "Edit", permission: "ask", source },
@@ -30,7 +31,11 @@ export function getDefaultToolPolicies(
     { tool: "Search", permission: "allow", source },
     { tool: "Status", permission: "allow", source },
     { tool: "ReportFailure", permission: "allow", source },
-    { tool: "UploadArtifact", permission: "allow", source },
+    {
+      tool: "UploadArtifact",
+      permission: isHeadless ? "exclude" : "allow",
+      source,
+    },
     { tool: "Bash", permission: isHeadless ? "allow" : "ask", source },
     { tool: "*", permission: isHeadless ? "exclude" : "ask", source },
   ];
@@ -65,7 +70,7 @@ export function getPlanModePolicies(
     { tool: "Search", permission: "allow" },
     { tool: "Skills", permission: "allow" },
     { tool: "Status", permission: "allow" },
-    { tool: "UploadArtifact", permission: "allow" },
+    { tool: "UploadArtifact", permission: isHeadless ? "exclude" : "allow" },
 
     // MCP tools
     { tool: "*", permission: isHeadless ? "exclude" : "ask" },
