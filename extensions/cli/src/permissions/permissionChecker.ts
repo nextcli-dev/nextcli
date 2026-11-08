@@ -6,6 +6,7 @@ import {
   PermissionCheckResult,
   PermissionPolicy,
   ToolCallRequest,
+  ToolPermissionPolicy,
   ToolPermissions,
 } from "./types.js";
 
@@ -122,6 +123,69 @@ function permissionPolicyToToolPolicy(
 }
 
 /**
+ * Shell syntax that can run a second command or write to a file. A glob such
+ * as `Bash(git log*)` matches the whole command line, so without this check it
+ * would also match `git log; curl https://evil.example`.
+ */
+const SHELL_CONTROL = /[;&|`<>\r\n]|\$\(/;
+
+/**
+ * An `allow` written as `Bash(pattern)` approves one simple command. A command
+ * that chains or redirects doesn't match it, so it falls to the next policy.
+ * An `exclude` or `ask` of the same form still matches the whole line, so
+ * `--exclude "Bash(npm install*)"` also blocks `ls && npm install`.
+ */
+function isCommandAllowThatChains(
+  policy: ToolPermissionPolicy,
+  toolCall: ToolCallRequest,
+): boolean {
+  return (
+    policy.permission === "allow" &&
+    /^Bash\(.+\)$/.test(policy.tool) &&
+    typeof toolCall.arguments?.command === "string" &&
+    SHELL_CONTROL.test(toolCall.arguments.command)
+  );
+}
+
+/**
+ * True when a tool is allowed only for some arguments, such as `Bash(git
+ * log*)`. The tools offered to the model are probed without arguments, which
+ * can't match such a policy, so the tool would be hidden. It is offered
+ * instead, and each real call is still checked. A policy for the whole tool
+ * that comes first, such as `--exclude Bash`, wins.
+ */
+export function isAllowedForSomeArguments(
+  toolName: string,
+  permissions: ToolPermissions,
+): boolean {
+  for (const policy of permissions.policies) {
+    const scoped = policy.tool.match(/^(.+?)\((.+)\)$/);
+    if (scoped) {
+      if (
+        policy.permission === "allow" &&
+        matchesToolPattern(toolName, scoped[1])
+      ) {
+        return true;
+      }
+      continue;
+    }
+    if (policy.argumentMatches) {
+      if (
+        policy.permission === "allow" &&
+        matchesToolPattern(toolName, policy.tool)
+      ) {
+        return true;
+      }
+      continue;
+    }
+    if (matchesToolPattern(toolName, policy.tool)) {
+      return false;
+    }
+  }
+  return false;
+}
+
+/**
  * Evaluates a tool call request against a set of permission policies.
  * Returns the permission for the first matching policy.
  */
@@ -136,6 +200,9 @@ export function checkToolPermission(
   let matchedPolicy = undefined;
 
   for (const policy of policies) {
+    if (isCommandAllowThatChains(policy, toolCall)) {
+      continue;
+    }
     if (
       matchesToolPattern(toolCall.name, policy.tool, toolCall.arguments) &&
       matchesArguments(toolCall.arguments, policy.argumentMatches)
@@ -149,19 +216,39 @@ export function checkToolPermission(
   // Check if tool has dynamic policy evaluation
   const tool = ALL_BUILT_IN_TOOLS.find((t) => t.name === toolCall.name);
   if (tool?.evaluateToolCallPolicy) {
+    // A default "allow" is only a starting point for a tool that judges its
+    // own calls: evaluate strictly, so only calls the tool approves on its
+    // own (for Bash, its read-only allow-list) run without a person. An
+    // operator's own allow keeps its meaning. Skipped when there are no
+    // arguments, which is how the offered tools are probed: the tool stays
+    // offered, and each real call is checked.
+    const narrowDefaultAllow =
+      basePermission === "allow" &&
+      matchedPolicy?.source === "default" &&
+      Object.keys(toolCall.arguments ?? {}).length > 0;
+
     // Convert CLI permission to core policy
     const basePolicy = permissionPolicyToToolPolicy(basePermission);
 
     // Evaluate the dynamic policy
-    const evaluatedPolicy = tool.evaluateToolCallPolicy(
-      basePolicy,
-      toolCall.arguments,
-    );
+    const evaluatedPolicy = narrowDefaultAllow
+      ? tool.evaluateToolCallPolicy(basePolicy, toolCall.arguments, {
+          strict: true,
+        })
+      : tool.evaluateToolCallPolicy(basePolicy, toolCall.arguments);
 
     // If dynamic evaluation says disabled, that ALWAYS takes precedence
     if (evaluatedPolicy === "disabled") {
       return {
         permission: "exclude",
+        matchedPolicy,
+      };
+    }
+
+    // The tool only approved this call with permission: ask.
+    if (narrowDefaultAllow && evaluatedPolicy === "allowedWithPermission") {
+      return {
+        permission: "ask",
         matchedPolicy,
       };
     }

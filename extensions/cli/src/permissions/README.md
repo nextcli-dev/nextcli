@@ -10,11 +10,17 @@ The tool permissions system allows you to control which tools the AI can use and
 
 The system comes with sensible default policies:
 
-- Read-only tools (`readFile`, `listFiles`, `searchCode`, `fetch`) are **allowed** by default
-- Write operations (`writeFile`) require **confirmation** (ask)
-- Terminal commands (`runTerminalCommand`) require **confirmation** (ask)
-- MCP tools and Bash require **confirmation** (ask) in TUI mode, but are **allowed** automatically in headless mode
-- Any unmatched tools default to **ask**
+- Read-only tools (`Read`, `List`, `Search`, `Diff`, ...) are **allowed** by default
+- Write operations (`Edit`, `MultiEdit`, `Write`) require **confirmation** (ask)
+- `Bash`, `Fetch`-in-headless and MCP tools differ between the TUI and headless mode:
+
+| Tool                   | TUI       | Headless (nobody to approve)                                                                                                      |
+| ---------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `Bash`                 | **ask**   | **allow** only for commands the evaluator approves on its own (`ls`, `cat`, `git status`...), otherwise **ask**, which is refused |
+| `Fetch`                | **allow** | **exclude**                                                                                                                       |
+| MCP and any other tool | **ask**   | **exclude**                                                                                                                       |
+
+Any `ask` in a headless run is refused, because nobody can answer it. Policies carry a `source`: the defaults are tagged `"default"`, and a default `allow` for a tool that judges its own calls (Bash) is narrowed with the tool's strict evaluation (`checkToolPermission`). A policy without a source is the operator's (`--allow`, `permissions.yaml`) and is taken as given. Opt in to more with `--allow`.
 
 ## How It Works
 

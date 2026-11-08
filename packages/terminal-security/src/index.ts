@@ -1,5 +1,8 @@
 export { ToolPolicy } from "./types.js";
-export { evaluateTerminalCommandSecurity } from "./evaluateTerminalCommandSecurity.js";
+export {
+  evaluateTerminalCommandSecurity,
+  type EvaluateOptions,
+} from "./evaluateTerminalCommandSecurity.js";
 export {
   classifyDestructiveCommand,
   isDestructiveTerminalCommand,

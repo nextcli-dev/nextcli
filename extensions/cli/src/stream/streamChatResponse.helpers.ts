@@ -841,7 +841,9 @@ export async function executeStreamedToolCalls(
         const denialReason = permissionResult.denialReason || "user";
         const deniedMessage =
           denialReason === "policy"
-            ? `Command blocked by security policy`
+            ? isHeadless
+              ? `Blocked by security policy: this tool call isn't allowed in an unattended run. Use a different approach. An operator can allow it with --allow.`
+              : `Command blocked by security policy`
             : `Permission denied by user`;
         cancelCall(index, call, deniedMessage);
         continue;

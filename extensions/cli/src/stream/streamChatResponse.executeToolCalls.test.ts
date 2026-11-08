@@ -104,7 +104,7 @@ describe("executeStreamedToolCalls", () => {
 
     expect(hasRejection).toBe(true);
     expect(chatHistoryEntries[0]).toMatchObject({
-      content: "Command blocked by security policy",
+      content: expect.stringContaining("--allow"),
       status: "canceled",
     });
     expect(executeToolCall).not.toHaveBeenCalled();

@@ -271,8 +271,14 @@ describe("Headless Permissions Integration", () => {
       ).toBe("ask");
     });
 
-    it("should still allow ordinary commands in headless mode", () => {
-      const permissions = { policies: getDefaultToolPolicies(true) };
+    it("should allow an operator's --allow Bash to run ordinary commands in headless mode", () => {
+      // A policy without a source is the operator's own (--allow, permissions.yaml)
+      const permissions = {
+        policies: [
+          { tool: "Bash", permission: "allow" as const },
+          ...getDefaultToolPolicies(true),
+        ],
+      };
       expect(
         checkToolPermission(
           { name: "Bash", arguments: { command: "rm -rf ./build" } },

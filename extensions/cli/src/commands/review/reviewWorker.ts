@@ -115,7 +115,10 @@ export async function runReviewWorker(): Promise<void> {
       // Change working directory to the worktree
       process.chdir(config.worktreePath);
 
-      // Initialize services in auto mode (full tool access)
+      // The worker edits the changed files in a worktree to fix violations, and
+      // the diff under review is untrusted. So it gets the closed headless
+      // defaults (no MCP tools, no Fetch, Bash only for read-only commands)
+      // plus the three write tools, and nothing else.
       await initializeServices({
         options: {
           config: config.options.config,
@@ -124,7 +127,7 @@ export async function runReviewWorker(): Promise<void> {
         },
         headless: true,
         toolPermissionOverrides: {
-          mode: "auto",
+          allow: ["Edit", "MultiEdit", "Write"],
         },
       });
 

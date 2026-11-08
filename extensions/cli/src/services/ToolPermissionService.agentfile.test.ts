@@ -704,4 +704,65 @@ describe("ToolPermissionService - Agent File Integration", () => {
       });
     });
   });
+  describe("headless runs", () => {
+    const toolsState = (tools: string): AgentFileServiceState => ({
+      agentFile: { name: "test-agent" } as any,
+      slug: "test-slug",
+      agentFileModel: null,
+      parsedTools: { tools: [], mcpServers: [], allBuiltIn: true } as any,
+      parsedRules: null,
+    });
+
+    it("uses the closed headless defaults when the agent file lists no tools", () => {
+      const policies = service.generateAgentFilePolicies(
+        {
+          agentFile: { name: "test-agent" } as any,
+          slug: "test-slug",
+          agentFileModel: null,
+          parsedTools: null,
+          parsedRules: null,
+        },
+        undefined,
+        true,
+      );
+
+      expect(policies).toContainEqual(
+        expect.objectContaining({ tool: "*", permission: "exclude" }),
+      );
+      expect(policies).toContainEqual(
+        expect.objectContaining({ tool: "Fetch", permission: "exclude" }),
+      );
+    });
+
+    it("excludes what the agent file leaves out instead of allowing it", () => {
+      const policies = service.generateAgentFilePolicies(
+        toolsState(""),
+        undefined,
+        true,
+      );
+
+      const last = policies[policies.length - 1];
+      expect(last).toMatchObject({ tool: "*", permission: "exclude" });
+      expect(policies).not.toContainEqual({ tool: "*", permission: "allow" });
+    });
+
+    it("still allows everything for an agent file in the TUI", () => {
+      const policies = service.generateAgentFilePolicies(toolsState(""));
+      expect(policies[policies.length - 1]).toEqual({
+        tool: "*",
+        permission: "allow",
+      });
+    });
+
+    it("applies --allow and --exclude on top of an agent file", () => {
+      service.initializeSync(
+        { isHeadless: true, allow: ["Fetch"], exclude: ["Skills"] },
+        toolsState(""),
+      );
+      const policies = service.getPermissions().policies;
+
+      expect(policies[0]).toEqual({ tool: "Skills", permission: "exclude" });
+      expect(policies[1]).toEqual({ tool: "Fetch", permission: "allow" });
+    });
+  });
 });

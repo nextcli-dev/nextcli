@@ -476,9 +476,32 @@ describe("ToolPermissionService", () => {
       expect(
         precedenceResolver.resolvePermissionPrecedence,
       ).toHaveBeenCalledWith({
+        commandLineFlags: {},
         personalSettings: true,
         useDefaults: true,
+        isHeadless: false,
       });
+    });
+
+    test("should keep headless mode and command line flags on reload", async () => {
+      vi.mocked(precedenceResolver.resolvePermissionPrecedence).mockReturnValue(
+        [],
+      );
+      const flags = { allow: ["Fetch"], exclude: ["Bash"] };
+      const service = new ToolPermissionService();
+      service.initializeSync({ ...flags, isHeadless: true });
+      vi.mocked(precedenceResolver.resolvePermissionPrecedence).mockClear();
+
+      await service.reloadPermissions();
+
+      expect(
+        precedenceResolver.resolvePermissionPrecedence,
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({
+          commandLineFlags: expect.objectContaining(flags),
+          isHeadless: true,
+        }),
+      );
     });
 
     test("should skip reload in non-normal modes", async () => {

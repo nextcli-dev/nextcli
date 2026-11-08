@@ -15,16 +15,17 @@ The default mode that follows configured permission policies from `permissions.y
 
 ### `plan`
 
-Planning mode that **completely overrides all user permissions** to enforce read-only access. This mode prevents file modifications, regardless of user configuration.
+Planning mode that **overrides user permissions** to enforce read-only access. This mode prevents file modifications, regardless of user configuration.
 
 - **Command-line flag:** `--readonly` (for backward compatibility)
 - **UI Indicator:** `[plan]` shown in blue
 - **Current directory:** Hidden to save space and focus on analysis
-- **Permission override:** **Absolute** - excludes write tools (Write, Edit, etc.) and allows read tools (Read, Search, List, etc.)
+- **Permission override:** excludes write tools (Write, Edit, MultiEdit) first, so no flag can bring them back, and allows read tools (Read, Search, List, etc.)
 - **Bash, Fetch and MCP tools:**
   - Interactive: Bash and MCP tools ask before every call, because they can change files. Fetch is allowed.
   - Headless (`cn -p --readonly`): Bash, Fetch and MCP tools are excluded. Unattended runs often read untrusted code, such as a pull request, with a provider key in the environment, so they get no shell and no way to send data out.
-- **User config ignored:** Any user `--allow` flags are overridden
+- **User flags:** `--allow` and `--exclude` apply after the write exclusions and before the plan defaults, so a read-only run can be given one extra tool, for example `--allow "Bash(git log*)"`. `--allow Write`, `--allow Edit` and `--allow "*"` don't enable writing. `--ask` is ignored in headless mode. `permissions.yaml` is ignored.
+- **`cn review`** runs in plan mode.
 
 ### `auto`
 

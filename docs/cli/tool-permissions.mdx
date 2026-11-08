@@ -12,7 +12,21 @@ Every tool has one of three permission levels:
 
 ## Defaults
 
-Read-only tools (`Read`, `List`, `Search`, `Fetch`, `Diff`, `AskQuestion`, `Checklist`, `Status`, `CheckBackgroundJob`, `ReportFailure`, `UploadArtifact`) default to `allow`. `AskQuestion` is a built-in read-only tool that lets the agent pause and ask for clarification before continuing. Write tools (`Edit`, `MultiEdit`, `Write`) and `Bash` default to `ask`. In [headless mode](/cli/headless-mode), `ask` tools are excluded since there's no one to approve them.
+Read-only tools (`Read`, `List`, `Search`, `Diff`, `AskQuestion`, `Checklist`, `Status`, `CheckBackgroundJob`, `ReportFailure`, `UploadArtifact`) default to `allow`. `AskQuestion` is a built-in read-only tool that lets the agent pause and ask for clarification before continuing. Write tools (`Edit`, `MultiEdit`, `Write`), `Bash`, `Fetch` and MCP tools default to `ask`, except that `Fetch` defaults to `allow` in the TUI.
+
+[Headless mode](/cli/headless-mode) has nobody to approve a tool, so it is closed by default:
+
+| Tool | Headless default |
+|------|------------------|
+| `Read`, `List`, `Search`, `Diff` and the other read-only tools | `allow` |
+| `Edit`, `MultiEdit`, `Write` | `ask`, so refused |
+| `Bash` | Only commands NextCLI can tell are read-only run (`ls`, `cat`, `grep`, `git status`, `git diff`, `git log`…). Everything else, including `cp`, `mv`, `tee`, `curl`, `npm install` and `npm test`, asks, so it is refused. |
+| `Fetch` | `exclude` |
+| MCP tools and any other tool | `exclude` |
+
+Any `ask` with nobody present is refused. A tool that is `exclude`d, or that would always be refused, is not offered to the model. A refused call tells the model it isn't allowed in an unattended run.
+
+To let a headless run use more, opt in with `--allow` (see below). This keeps a run that reads untrusted code, such as a pull request in CI, from running arbitrary commands or sending data out while it holds a provider key.
 
 ## Overriding with flags
 
@@ -25,27 +39,34 @@ cn --allow Write --allow Edit
 # Exclude terminal commands
 cn --exclude Bash
 
-# Allow everything (headless automation)
+# Let a headless run fetch URLs, or call one MCP server's tools
+cn -p "Summarize this page" --allow Fetch
+cn -p "Triage the issue" --allow "github_*"
+
+# Let a headless run run its tests
+cn -p "Fix the failing test" --allow "Bash(npm test*)" --allow Edit
+
+# Allow everything (headless automation you trust)
 cn -p "Set up the project" --allow "*"
 ```
 
-Flags take precedence over all other permission sources.
+Flags take precedence over the defaults and `permissions.yaml`. An `--allow` you write yourself is taken as given: `--allow Bash` runs any command that isn't destroyed by the built-in checks, not only the read-only ones.
 
 ## Tool matching patterns
 
-Flags accept tool matching patterns:
+Flags accept:
 
-- `Write` — matches any call to the `Write` tool
-- `Write(*)` — same as above
-- `Write(**/*.ts)` — matches `Write` calls where the primary argument matches the glob `**/*.ts`
+- `Write`: a tool name. It matches every call to that tool.
+- `github_*`: a name with `*` or `?`. This is how you match MCP tools, which are named as the server defines them.
+- `Bash(npm test*)`: a `Bash` call whose command matches the glob. Without a `*` or `?`, the command must match exactly.
+- `*`: every tool.
 
 ```bash
-# Allow writing only to TypeScript files
-cn --allow "Write(**/*.ts)"
-
 # Allow bash but not for install commands
 cn --allow Bash --exclude "Bash(npm install*)"
 ```
+
+Matching a tool by its arguments, such as `Write(**/*.ts)` for files, works in `permissions.yaml` below, not in flags.
 
 ## `permissions.yaml`
 
@@ -69,7 +90,7 @@ You can edit this file directly, but it's primarily managed by the TUI. Changes 
 
 When multiple sources define a permission for the same tool, the highest-priority source wins:
 
-1. **Mode policies** — `--auto` and `--readonly` override everything (see below)
+1. **Mode policies** — `--auto` and `--readonly` override everything (see below). `--readonly` still applies your `--allow` and `--exclude` flags, but never allows writes.
 2. **CLI flags** — `--allow`, `--ask`, `--exclude`
 3. **`permissions.yaml`** — persistent personal settings
 4. **Defaults** — built-in policies
@@ -86,7 +107,9 @@ cn --readonly   # Plan mode — read-only tools only, no file writes
 | Mode | Effect |
 |------|--------|
 | **normal** (default) | Uses configured permissions |
-| **plan** (`--readonly`) | Excludes all write tools, allows reads and `Bash` |
+| **plan** (`--readonly`) | Excludes all write tools and allows reads. `Bash` asks in the TUI. In headless mode, `Bash`, `Fetch` and MCP tools are excluded. |
 | **auto** (`--auto`) | Allows everything — `*: allow` |
 
-Plan and auto modes are absolute overrides. They ignore `--allow`, `--exclude`, and `permissions.yaml` entirely.
+Plan and auto modes ignore `permissions.yaml`. Auto ignores `--allow` and `--exclude` too. Plan mode applies your `--allow` and `--exclude` flags first, so a read-only run can be given one extra tool, for example `cn -p --readonly --allow "Bash(git log*)"`. It can never be given `Edit`, `MultiEdit` or `Write`: `--allow Write` and `--allow "*"` don't turn writing on. `--ask` is ignored in a headless plan-mode run, where it could only refuse.
+
+`cn review` runs in plan mode.

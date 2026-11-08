@@ -3,7 +3,10 @@ import { generateOpenAIToolCallId } from "core/tools/systemMessageTools/systemTo
 import { stripImages } from "core/util/messageContent.js";
 import { createHistoryItem } from "core/util/messageConversion.js";
 
-import { checkToolPermission } from "src/permissions/permissionChecker.js";
+import {
+  checkToolPermission,
+  isAllowedForSomeArguments,
+} from "src/permissions/permissionChecker.js";
 
 import {
   SERVICE_NAMES,
@@ -338,7 +341,8 @@ export async function getRequestTools(isHeadless: boolean) {
 
     if (
       result.permission === "allow" ||
-      (result.permission === "ask" && !isHeadless)
+      (result.permission === "ask" && !isHeadless) ||
+      isAllowedForSomeArguments(tool.name, permissionsState.permissions)
     ) {
       allowedTools.push(tool);
     }

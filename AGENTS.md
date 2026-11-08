@@ -33,7 +33,7 @@ Dependencies flow `packages/*` → `core` → `gui`, `extensions/vscode`, `exten
 
 ## Current work, in order
 
-1. **Safety of unattended runs.** Headless mode still allows `Bash` and every MCP tool by default (`extensions/cli/src/permissions/defaultPolicies.ts`). The target: unknown and MCP tools are excluded, `Bash` only runs commands that `packages/terminal-security` allows, any `ask` with nobody present is denied, and the shell gets no secret-like environment variables.
+1. **Safety of unattended runs.** Headless defaults are closed: unknown, MCP and `Fetch` tools are excluded, `Bash` only runs commands that `packages/terminal-security` approves on its own, and any `ask` with nobody present is denied. `--allow` opts in, and `cn review` and `--readonly` follow the same rules. Still to do: the shell gets no secret-like environment variables, and nextcli-checks lets a check list the tools it needs.
 2. **Dependencies and the AI-SDK migration.** Deprecated packages are tracked in `scripts/ci/deprecations-allowlist.json`. Remove an entry in the same change that fixes it.
 3. **Continue leftovers in the CLI.** Delete WorkOS auth, the hub and platform clients, remote sessions, `ArtifactUploadService` and the `Continue-CLI` user agent once nothing uses them. For each `CONTINUE_*` environment variable, add a `NEXTCLI_*` name and keep reading the old one as a fallback.
 4. **Separating the CLI from `core`.** Don't add new `core/*` imports to `extensions/cli`. Move shared types into a small package instead.

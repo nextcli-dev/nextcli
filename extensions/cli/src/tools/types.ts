@@ -58,6 +58,10 @@ export interface Tool {
   evaluateToolCallPolicy?: (
     basePolicy: ToolPolicy,
     parsedArgs: Record<string, unknown>,
+    options?: {
+      /** Only approve a call the tool judges safe on its own, never one that merely follows the base policy */
+      strict?: boolean;
+    },
   ) => ToolPolicy;
   /**
    * True when this call must be approved by a person even if a policy allows

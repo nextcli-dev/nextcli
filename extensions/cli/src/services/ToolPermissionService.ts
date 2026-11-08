@@ -1,8 +1,10 @@
 import {
   AUTO_MODE_POLICIES,
+  getDefaultToolPolicies,
   getPlanModePolicies,
 } from "src/permissions/defaultPolicies.js";
 
+import { commandLineFlagsToPolicies } from "../permissions/flagPolicies.js";
 import { ensurePermissionsYamlExists } from "../permissions/permissionsYamlLoader.js";
 import { resolvePermissionPrecedence } from "../permissions/precedenceResolver.js";
 import {
@@ -44,6 +46,13 @@ export class ToolPermissionService
   extends BaseService<ToolPermissionServiceState>
   implements ServiceWithDependencies
 {
+  /** --allow, --ask and --exclude from the command line, kept for reloads and mode switches */
+  private commandLineFlags?: {
+    allow?: string[];
+    ask?: string[];
+    exclude?: string[];
+  };
+
   constructor() {
     super("ToolPermissionService", {
       permissions: { policies: [] },
@@ -77,10 +86,16 @@ export class ToolPermissionService
   generateAgentFilePolicies(
     agentFileServiceState?: AgentFileServiceState,
     mcpServiceState?: MCPServiceState,
+    isHeadless = false,
   ): ToolPermissionPolicy[] {
     // With --agent, all available tools are allowed if not specified
     const parsedTools = agentFileServiceState?.parsedTools;
     if (!parsedTools) {
+      if (isHeadless) {
+        // Nobody can approve a tool in an unattended run, so an agent file
+        // without a tool list gets the closed headless defaults.
+        return getDefaultToolPolicies(true);
+      }
       return [
         {
           tool: "*",
@@ -116,6 +131,16 @@ export class ToolPermissionService
       // Handle MCP first
       // If ANY mcp tools are specifically called out, only allow those ones for that mcp server
       // Otherwise the blanket allow will cover all MCP tools
+      if (!specificTools.length && isHeadless) {
+        // The tail of an unattended run excludes unknown tools, so a listed
+        // server's tools are allowed by name instead.
+        policies.push(
+          ...server.tools.map((t) => ({
+            tool: t.name,
+            permission: "allow" as const,
+          })),
+        );
+      }
       if (specificTools.length) {
         const specificSet = new Set(specificTools.map((t) => t.toolName));
         const notMentioned = server.tools.filter(
@@ -157,13 +182,43 @@ export class ToolPermissionService
       policies.push(...disallowed);
     }
 
-    // Allow all other tools
-    policies.push({
-      tool: "*",
-      permission: "allow",
-    });
+    if (isHeadless) {
+      // Anything the agent file doesn't list gets the closed headless defaults
+      policies.push(...getDefaultToolPolicies(true));
+    } else {
+      // Allow all other tools
+      policies.push({
+        tool: "*",
+        permission: "allow",
+      });
+    }
 
     return policies;
+  }
+
+  /**
+   * Plan mode (--readonly). Writes are excluded first, so no flag can bring
+   * them back. Then the operator's --allow and --exclude, so a read-only run
+   * can still be given a specific tool. Then the plan mode defaults. An --ask
+   * flag is dropped in an unattended run, where it could only deny.
+   */
+  private generateReadOnlyPolicies(): ToolPermissionPolicy[] {
+    const headless = this.currentState.isHeadless;
+    const flags = this.commandLineFlags;
+    const writeTools: ToolPermissionPolicy[] = [
+      "Edit",
+      "MultiEdit",
+      "Write",
+    ].map((tool) => ({ tool, permission: "exclude" }));
+    return [
+      ...writeTools,
+      ...commandLineFlagsToPolicies({
+        allow: flags?.allow,
+        exclude: flags?.exclude,
+        ask: headless ? undefined : flags?.ask,
+      }),
+      ...getPlanModePolicies(headless),
+    ];
   }
 
   /**
@@ -172,7 +227,7 @@ export class ToolPermissionService
   private generateModePolicies(): ToolPermissionPolicy[] {
     switch (this.currentState.currentMode) {
       case "plan":
-        return getPlanModePolicies(this.currentState.isHeadless);
+        return this.generateReadOnlyPolicies();
       case "auto":
         return [...AUTO_MODE_POLICIES];
       case "normal":
@@ -192,6 +247,14 @@ export class ToolPermissionService
     mcpServiceState?: MCPServiceState,
   ): ToolPermissionServiceState {
     logger.debug("Synchronously initializing ToolPermissionService");
+
+    this.commandLineFlags = runtimeOverrides
+      ? {
+          allow: runtimeOverrides.allow,
+          ask: runtimeOverrides.ask,
+          exclude: runtimeOverrides.exclude,
+        }
+      : undefined;
 
     // Set mode from overrides or default
     if (runtimeOverrides?.mode) {
@@ -214,11 +277,22 @@ export class ToolPermissionService
       // An agent file ends in allow-all, which would put Bash and MCP back.
       allPolicies = [...modePolicies];
     } else if (agentFileServiceState?.agentFile) {
-      // Agent file policies take full precedence on init
-      allPolicies = this.generateAgentFilePolicies(
-        agentFileServiceState,
-        mcpServiceState,
-      );
+      // Agent file policies take full precedence on init. An unattended run
+      // still honors --allow and --exclude, and closes what the file leaves out.
+      const headless = this.currentState.isHeadless;
+      allPolicies = [
+        ...(headless
+          ? commandLineFlagsToPolicies({
+              allow: runtimeOverrides?.allow,
+              exclude: runtimeOverrides?.exclude,
+            })
+          : []),
+        ...this.generateAgentFilePolicies(
+          agentFileServiceState,
+          mcpServiceState,
+          headless,
+        ),
+      ];
     } else if (
       this.currentState.currentMode === "plan" ||
       this.currentState.currentMode === "auto"
@@ -391,8 +465,10 @@ export class ToolPermissionService
 
     // Reload permissions from files
     const freshPolicies = resolvePermissionPrecedence({
+      commandLineFlags: this.commandLineFlags,
       personalSettings: true, // Enable loading from ~/.continue/permissions.yaml
       useDefaults: true,
+      isHeadless: this.currentState.isHeadless,
     });
 
     // Combine mode policies with freshly loaded user policies

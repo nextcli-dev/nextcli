@@ -43,6 +43,37 @@ type ParsedToken = string | ShellOperator | GlobPattern | CommentToken;
 export function evaluateTerminalCommandSecurity(
   basePolicy: ToolPolicy,
   command: string | null | undefined,
+  options?: EvaluateOptions,
+): ToolPolicy {
+  // Nested evaluations (command substitutions) inherit the caller's mode
+  const previous = strictPolicyFollowing;
+  if (options?.strict) {
+    strictPolicyFollowing = true;
+  }
+  try {
+    return evaluateCommand(basePolicy, command);
+  } finally {
+    strictPolicyFollowing = previous;
+  }
+}
+
+export interface EvaluateOptions {
+  /**
+   * Build, test and file commands (cp, mv, tee, pytest, prettier...) normally
+   * follow the base policy. In strict mode they need permission, so a base
+   * "allow" only lets through commands the evaluator approves on its own
+   * (ls, cat, git status...). Unattended runs use this so a default allow
+   * doesn't run commands that change files.
+   */
+  strict?: boolean;
+}
+
+/** Set for the duration of one evaluateTerminalCommandSecurity call (it is synchronous) */
+let strictPolicyFollowing = false;
+
+function evaluateCommand(
+  basePolicy: ToolPolicy,
+  command: string | null | undefined,
 ): ToolPolicy {
   // If tool is already disabled, keep it disabled
   if (basePolicy === "disabled") {
@@ -252,6 +283,19 @@ function evaluateTokens(
           targetIndex++;
         }
         const target = tokens[targetIndex];
+        // Strict mode: a redirect that writes a file (echo x > notes.txt) is a
+        // file change like cp or tee, even inside the workspace
+        if (
+          strictPolicyFollowing &&
+          op !== "<" &&
+          op !== "<&" &&
+          !(typeof target === "string" && isHarmlessRedirectTarget(op, target))
+        ) {
+          mostRestrictivePolicy = getMostRestrictive(
+            mostRestrictivePolicy,
+            "allowedWithPermission",
+          );
+        }
         if (typeof target === "string") {
           if (
             op !== "<" &&
@@ -487,7 +531,7 @@ function evaluateSingleCommand(
   // Build, test and file commands users run all the time follow the policy
   // the user chose for the tool, once the checks above passed (#10512)
   if (isPolicyFollowingCommand(baseCommand, args)) {
-    return basePolicy;
+    return strictPolicyFollowing ? "allowedWithPermission" : basePolicy;
   }
 
   // Anything else (argument-checked commands in a risky form such as git push
@@ -1283,6 +1327,14 @@ function isGitInternalPath(path: string): boolean {
 }
 
 const REDIRECT_OPERATORS = [">", ">>", ">&", "<", "<&"];
+
+/** `2>/dev/null` and `2>&1` write no file */
+function isHarmlessRedirectTarget(op: string, target: string): boolean {
+  return (
+    target === "/dev/null" ||
+    (op === ">&" && (/^\d+$/.test(target) || target === "-"))
+  );
+}
 
 const HARMLESS_WRITE_TARGETS = ["/dev/null", "/dev/stdout", "/dev/stderr"];
 

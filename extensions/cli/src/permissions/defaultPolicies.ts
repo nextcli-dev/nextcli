@@ -7,7 +7,7 @@ import { ToolPermissionPolicy } from "./types.js";
 export function getDefaultToolPolicies(
   isHeadless = false,
 ): ToolPermissionPolicy[] {
-  const policies: ToolPermissionPolicy[] = [
+  const policies: ToolPermissionPolicy[] = tagged([
     // Write tools
     { tool: "Edit", permission: "ask" },
     { tool: "MultiEdit", permission: "ask" },
@@ -18,25 +18,34 @@ export function getDefaultToolPolicies(
     { tool: "Diff", permission: "allow" },
     { tool: "Skills", permission: "allow" },
     { tool: "Exit", permission: "allow" }, // Exit tool is generally safe (headless mode only)
-    { tool: "Fetch", permission: "allow" }, // Technically not read only but edge casey to post w query params
+    // Fetch can send data to any URL, so unattended runs don't get it
+    { tool: "Fetch", permission: isHeadless ? "exclude" : "allow" },
     { tool: "List", permission: "allow" },
     { tool: "Read", permission: "allow" },
     { tool: "Search", permission: "allow" },
     { tool: "Status", permission: "allow" },
     { tool: "ReportFailure", permission: "allow" },
     { tool: "UploadArtifact", permission: "allow" },
-  ];
+  ]);
 
-  // MCP and Bash are ask in TUI mode, auto in headless
+  // Bash, MCP and any other tool ask in the TUI. Nobody is there to answer in
+  // a headless run, so MCP and unknown tools are excluded unless the operator
+  // opts in with --allow. Bash stays "allow" here, but as a default it only
+  // runs the commands its evaluator approves without asking (see
+  // checkToolPermission), and anything else is refused.
   if (isHeadless) {
-    policies.push({ tool: "Bash", permission: "allow" });
-    policies.push({ tool: "*", permission: "allow" });
+    policies.push(...tagged([{ tool: "Bash", permission: "allow" }]));
+    policies.push(...tagged([{ tool: "*", permission: "exclude" }]));
   } else {
-    policies.push({ tool: "Bash", permission: "ask" });
-    policies.push({ tool: "*", permission: "ask" });
+    policies.push(...tagged([{ tool: "Bash", permission: "ask" }]));
+    policies.push(...tagged([{ tool: "*", permission: "ask" }]));
   }
 
   return policies;
+}
+
+function tagged(policies: ToolPermissionPolicy[]): ToolPermissionPolicy[] {
+  return policies.map((policy) => ({ ...policy, source: "default" }));
 }
 
 /**

@@ -56,14 +56,16 @@ cn -p "Write a README" --silent
 
 **TTY-less Environments**: Headless mode is designed to work in environments without a terminal (TTY), such as when called from the VS Code extension using terminal commands. The CLI will not attempt to read stdin or initialize the interactive UI when running in headless mode with a supplied prompt.
 
-**Command safety in headless mode**: headless mode runs Bash commands without asking. Two kinds of command are still refused:
+**Closed by default in headless mode**: nobody is there to approve a tool, so a headless run only gets what is safe without a person. Reading, searching and listing work. `Fetch`, MCP tools and any other tool are excluded. `Bash` runs only commands the evaluator approves on its own, such as `ls`, `cat`, `grep` and `git status`. Every other command, including `cp`, `mv`, `tee`, `curl`, `npm install` and `npm test`, is refused, and so is any tool that would `ask`. Opt in with `--allow`: `--allow Fetch`, `--allow "Bash(npm test*)"`, `--allow "github_*"` for an MCP server's tools, or `--allow "*"` for everything. **Breaking in 0.9.0**: `cn -p` scripts that used Bash, Fetch or MCP tools without flags now need `--allow`. See [tool permissions](../../docs/cli/tool-permissions.mdx).
+
+**Command safety**: with `--allow Bash`, two kinds of command are still refused:
 
 - Commands that would destroy the system, a home directory or a disk (`rm -rf /`, `rm -rf ~`, `find / -delete`, `wipefs -a`) never run, in any mode.
 - Broad deletes (a top-level directory such as `/tmp`, a path the CLI can't resolve, such as `rm -rf $DIR`) need a person. The interactive CLI asks first; headless mode refuses them.
 
 These checks read the command text, so they are best-effort: a command can always hide what it deletes. For untrusted prompts or repositories, run `cn -p` in a container or sandbox, and restrict Bash in `~/.continue/permissions.yaml`.
 
-**Read-only headless runs**: `cn -p --readonly` can't write files, run Bash, call MCP tools or use Fetch. It can only read, search and list. Use it to review untrusted code, such as a pull request in CI.
+**Read-only headless runs**: `cn -p --readonly` can't write files, run Bash, call MCP tools or use Fetch. It can only read, search and list. Use it to review untrusted code, such as a pull request in CI. `--allow` and `--exclude` still apply, so `cn -p --readonly --allow "Bash(git log*)"` adds that one command. `--allow Write`, `--allow Edit` and `--allow "*"` never turn writing on. `cn review` runs read-only.
 
 **Limits**: `--max-turns`, `--max-session-tokens` and `--max-cost` cap one run. When a run is about to reach a limit, the CLI makes one last model call without tools and asks for a final answer from what the model has found so far, so the run still ends with a result.
 
