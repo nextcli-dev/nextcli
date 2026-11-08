@@ -96,6 +96,8 @@ Release-As: 1.6.0
 
 **Pre-release.** In Actions, run Publish VS Code Extension on `main` with channel `pre-release`. It builds the next version on the odd minor above the current stable one (stable 1.4.x gives 1.5.0, then 1.5.1, ...), creates the tag and GitHub pre-release, and publishes in the `staging` environment. The pre-release version is not committed.
 
+**Republish a stable release.** When the publish job of a stable release fails, the tag and the GitHub release exist but nothing is on the Marketplace or Open VSX. Re-running the job doesn't help if the failure is in the workflow itself, because a re-run uses the workflow from the tagged commit. Instead, in Actions, run Publish VS Code Extension on `main` with channel `republish` and `tag` set to the release tag (for example `vscode-v1.6.10`). It doesn't rebuild: it downloads the `.vsix` files attached to that release, checks the README images, and publishes them in the `production` environment (approve the deployment). It refuses a tag that isn't a stable, published release with `.vsix` assets, and it skips versions that are already published, so it is safe to run again.
+
 **Test build.** Run the same workflow with channel `dry-run` and any ref. It builds all 8 `.vsix` files as workflow artifacts and publishes nothing.
 
 Publishing uses trusted publishing (OIDC), with no stored tokens:
