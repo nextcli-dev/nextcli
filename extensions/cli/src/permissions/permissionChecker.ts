@@ -122,17 +122,9 @@ function permissionPolicyToToolPolicy(
   }
 }
 
-/**
- * Shell syntax that can run a second command or write to a file. A glob such
- * as `Bash(git log*)` matches the whole command line, so without this check it
- * would also match `git log; curl https://evil.example`.
- */
+/** Shell syntax that runs a second command or writes a file. */
 const SHELL_CONTROL = /[&;|`<>\r\n]|\$\(/;
 
-/**
- * An `allow` written as `Bash(pattern)` approves one simple command. A command
- * that chains or redirects doesn't match it, so it falls to the next policy.
- */
 /**
  * The command glob of a Bash rule, whether it was written as `Bash(git log*)`
  * on the command line or parsed from permissions.yaml into argumentMatches.

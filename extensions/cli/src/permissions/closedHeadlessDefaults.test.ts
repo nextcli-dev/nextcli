@@ -90,6 +90,9 @@ describe("closed headless defaults", () => {
       "git branch -D feature",
       "git remote add origin https://example.com",
       "git log --output=out.txt",
+      "git commit -am x",
+      "sed -i 's/a/b/' src/x.ts",
+      "python -c 'print(1)'",
       "./script.sh",
       "prettier --write .",
       "echo hi > notes.txt",
@@ -189,6 +192,19 @@ describe("closed headless defaults", () => {
       service.initializeSync({ ...flags, mode: "plan", isHeadless: true });
       return service.getPermissions();
     }
+
+    it("does not let a scoped Bash allow run a different command or a chain", () => {
+      const permissions = readOnly({ allow: ["Bash(ls*)"] });
+      expect(checkToolPermission(bash("ls -la"), permissions).permission).toBe(
+        "allow",
+      );
+      expect(
+        checkToolPermission(bash("cp a.txt b.txt"), permissions).permission,
+      ).toBe("exclude");
+      expect(
+        checkToolPermission(bash("ls; cp a.txt b.txt"), permissions).permission,
+      ).toBe("exclude");
+    });
 
     it("offers a tool a check asked for", () => {
       const permissions = readOnly({ allow: ["Bash(git log*)"] });

@@ -96,8 +96,6 @@ export class ToolPermissionService
     const parsedTools = agentFileServiceState?.parsedTools;
     if (!parsedTools) {
       if (isHeadless) {
-        // Nobody can approve a tool in an unattended run, so an agent file
-        // without a tool list gets the closed headless defaults.
         return getDefaultToolPolicies(true);
       }
       return [

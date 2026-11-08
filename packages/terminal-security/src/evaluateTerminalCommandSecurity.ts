@@ -46,14 +46,6 @@ type ParsedToken = string | ShellOperator | GlobPattern | CommentToken;
  *   allow doesn't run commands that change files.
  * @returns The security policy to apply: 'disabled', 'allowedWithPermission', or 'allowedWithoutPermission'
  */
-export function evaluateTerminalCommandSecurity(
-  basePolicy: ToolPolicy,
-  command: string | null | undefined,
-  options?: EvaluateOptions,
-): ToolPolicy {
-  return evaluateCommand(basePolicy, command, options?.strict === true);
-}
-
 export interface EvaluateOptions {
   /**
    * Build, test and file commands (cp, mv, tee, pytest, prettier...) normally
@@ -65,11 +57,12 @@ export interface EvaluateOptions {
   strict?: boolean;
 }
 
-function evaluateCommand(
+export function evaluateTerminalCommandSecurity(
   basePolicy: ToolPolicy,
   command: string | null | undefined,
-  strict: boolean,
+  options?: EvaluateOptions,
 ): ToolPolicy {
+  const strict = options?.strict === true;
   // If tool is already disabled, keep it disabled
   if (basePolicy === "disabled") {
     return "disabled";
