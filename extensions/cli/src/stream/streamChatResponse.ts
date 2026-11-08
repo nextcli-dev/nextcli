@@ -50,6 +50,7 @@ import {
   getCompletionOptions,
   StreamCallbacks,
 } from "./streamChatResponse.types.js";
+import { continueAfterResponse, TurnState } from "./turnContinuation.js";
 
 dotenv.config();
 
@@ -102,26 +103,6 @@ function refreshChatHistoryFromService(
     } catch {}
   }
   return chatHistory;
-}
-
-// Helper function to handle auto-continuation after compaction
-function handleAutoContinuation(
-  compactionOccurred: boolean,
-  shouldContinue: boolean,
-  chatHistory: ChatHistoryItem[],
-): { shouldAutoContinue: boolean; chatHistory: ChatHistoryItem[] } {
-  if (!compactionOccurred || shouldContinue) {
-    return { shouldAutoContinue: false, chatHistory };
-  }
-
-  logger.debug(
-    "Auto-compaction occurred during this turn - automatically continuing session",
-  );
-
-  chatHistory = addUserMessage(chatHistory, "continue");
-
-  logger.debug("Added continuation message after compaction");
-  return { shouldAutoContinue: true, chatHistory };
 }
 
 // Starts one model call. A run already past its limit throws instead of calling.
@@ -421,7 +402,7 @@ export async function streamChatResponse(
 
   let fullResponse = "";
   let finalResponse = "";
-  let compactionOccurredThisTurn = false; // Track if compaction happened during this conversation turn
+  const turn: TurnState = { compacted: false, askedForAnswer: false };
 
   // The final answer must still fit under --max-cost, with room to be written
   const budget = new AgentLoopBudget(() =>
@@ -465,7 +446,7 @@ export async function streamChatResponse(
       });
       chatHistory = preCompactionResult.chatHistory;
       if (preCompactionResult.wasCompacted) {
-        compactionOccurredThisTurn = true;
+        turn.compacted = true;
       }
 
       logger.debug("Tools prepared", {
@@ -560,7 +541,7 @@ export async function streamChatResponse(
       );
       chatHistory = postToolResult.chatHistory;
       if (postToolResult.wasCompacted) {
-        compactionOccurredThisTurn = true;
+        turn.compacted = true;
       }
 
       // Normal auto-compaction check at 80% threshold
@@ -579,26 +560,17 @@ export async function streamChatResponse(
       );
       chatHistory = compactionResult.chatHistory;
       if (compactionResult.wasCompacted) {
-        compactionOccurredThisTurn = true;
+        turn.compacted = true;
       }
 
-      // If compaction happened during this turn and we're about to stop,
-      // automatically send a continuation message to keep the agent going
-      const autoContinueResult = handleAutoContinuation(
-        compactionOccurredThisTurn,
+      // Stop unless tools ran, compaction ran, or a missing answer is asked for
+      const next = continueAfterResponse(turn, {
         shouldContinue,
+        content,
         chatHistory,
-      );
-      chatHistory = autoContinueResult.chatHistory;
-      const shouldAutoContinue = autoContinueResult.shouldAutoContinue;
-
-      // Reset flag to avoid infinite continuation
-      if (shouldAutoContinue) {
-        compactionOccurredThisTurn = false;
-      }
-
-      // Check if we should continue (skip break if auto-continuing after compaction)
-      if (!shouldContinue && !shouldAutoContinue) {
+      });
+      chatHistory = next.chatHistory;
+      if (!next.continue) {
         break;
       }
     }

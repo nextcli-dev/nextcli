@@ -3,9 +3,10 @@ import { BaseLlmApi } from "@nextcli/openai-adapters";
 import type { ChatHistoryItem } from "core/index.js";
 import { convertToUnifiedHistory } from "core/util/messageConversion.js";
 import type { ChatCompletionChunk } from "openai/resources/chat/completions.mjs";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { streamChatResponse } from "./streamChatResponse.js";
+import { EMPTY_ANSWER_PROMPT, requireFinalAnswer } from "./turnContinuation.js";
 
 // Mock all dependencies
 vi.mock("../compaction.js", () => ({
@@ -315,5 +316,100 @@ describe("streamChatResponse - auto-continuation after compaction", () => {
 
     // Should have called the LLM at least once
     expect(streamCallCount).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("streamChatResponse - empty final turn when an answer is required", () => {
+  const model = {
+    provider: "openai",
+    name: "gpt-4",
+    model: "gpt-4",
+    defaultCompletionOptions: { contextLength: 8192, maxTokens: 2048 },
+  } as any;
+
+  function chunk(content: string): ChatCompletionChunk {
+    return {
+      id: "test",
+      object: "chat.completion.chunk",
+      created: Date.now(),
+      model: "test-model",
+      choices: [{ index: 0, delta: { content }, finish_reason: null }],
+    };
+  }
+
+  async function run(replies: string[], required: boolean) {
+    const { services } = await import("../services/index.js");
+    requireFinalAnswer(required);
+    const sent: string[] = [];
+    vi.mocked(services.chatHistory.addUserMessage).mockImplementation((msg) => {
+      sent.push(msg);
+      return { message: { role: "user", content: msg }, contextItems: [] };
+    });
+    let calls = 0;
+    const llmApi = {
+      chatCompletionStream: vi.fn().mockImplementation(async function* () {
+        const reply = replies[calls++] ?? "";
+        if (reply) {
+          yield chunk(reply);
+        }
+      }),
+    } as unknown as BaseLlmApi;
+    const response = await streamChatResponse(
+      convertToUnifiedHistory([{ role: "user", content: "Review this" }]),
+      model,
+      llmApi,
+      { signal: { aborted: false }, abort: vi.fn() } as any,
+    );
+    return { response, calls, sent };
+  }
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const { handleNormalAutoCompaction } = await import(
+      "./streamChatResponse.compactionHelpers.js"
+    );
+    vi.mocked(handleNormalAutoCompaction).mockImplementation((history) =>
+      Promise.resolve({ chatHistory: history, wasCompacted: false }),
+    );
+    const { handleToolCalls } = await import("./handleToolCalls.js");
+    vi.mocked(handleToolCalls).mockResolvedValue(false);
+  });
+
+  afterEach(() => {
+    requireFinalAnswer(false);
+  });
+
+  it("asks once for the answer and returns it", async () => {
+    const { response, calls, sent } = await run(
+      ["", '{"verdict":"PASS"}'],
+      true,
+    );
+
+    expect(sent).toEqual([EMPTY_ANSWER_PROMPT]);
+    expect(calls).toBe(2);
+    expect(response).toBe('{"verdict":"PASS"}');
+  });
+
+  it("asks only once when the answer stays empty", async () => {
+    const { response, calls, sent } = await run(["", "", "never asked"], true);
+
+    expect(sent).toEqual([EMPTY_ANSWER_PROMPT]);
+    expect(calls).toBe(2);
+    expect(response).toBe("");
+  });
+
+  it("does not ask when the first answer has text", async () => {
+    const { response, calls, sent } = await run(["done"], true);
+
+    expect(sent).toEqual([]);
+    expect(calls).toBe(1);
+    expect(response).toBe("done");
+  });
+
+  it("does not ask when no answer is required", async () => {
+    const { calls, sent } = await run([""], false);
+
+    expect(sent).toEqual([]);
+    expect(calls).toBe(1);
   });
 });

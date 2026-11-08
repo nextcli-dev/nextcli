@@ -17,7 +17,6 @@ import {
   SERVICE_NAMES,
 } from "../services/types.js";
 import {
-  getSessionUsage,
   loadSession,
   updateSessionHistory,
   updateSessionTitle,
@@ -39,9 +38,10 @@ import {
 
 import { ExtendedCommandOptions } from "./BaseCommandOptions.js";
 import {
-  exitHeadlessAtLimit,
-  headlessExitCode,
-  writeHeadlessRunSummary,
+  assertHeadlessAnswer,
+  exitHeadlessDone,
+  exitHeadlessOnError,
+  startHeadlessRun,
 } from "./headlessRunSummary.js";
 
 /**
@@ -400,6 +400,8 @@ async function processMessage(
       llmApi,
     );
 
+    assertHeadlessAnswer(finalResponse, format);
+
     // Generate session title after first assistant response
     if (firstAssistantResponse && finalResponse && finalResponse.trim()) {
       await handleTitleGeneration(finalResponse, llmApi, model);
@@ -514,7 +516,7 @@ async function runHeadlessMode(
     );
   }
 
-  const usageAtStart = { ...getSessionUsage() };
+  const usageAtStart = startHeadlessRun(options.format);
   try {
     let isFirstMessage = true;
     while (true) {
@@ -549,15 +551,11 @@ async function runHeadlessMode(
       }
     }
   } catch (error) {
-    if (!(await exitHeadlessAtLimit(error, usageAtStart, options.format))) {
-      throw error;
-    }
+    await exitHeadlessOnError(error, usageAtStart, options.format);
+    return;
   }
 
-  writeHeadlessRunSummary(usageAtStart, options.format);
-
-  // exit after headless mode completes
-  await gracefulExit(headlessExitCode());
+  await exitHeadlessDone(usageAtStart, options.format);
 }
 
 export async function chat(prompt?: string, options: ChatOptions = {}) {

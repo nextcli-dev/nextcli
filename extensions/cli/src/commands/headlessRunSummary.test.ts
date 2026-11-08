@@ -9,8 +9,12 @@ import {
 } from "../stream/agentLoopLimits.js";
 
 import {
+  assertHeadlessAnswer,
   EXIT_CODE_LIMIT_REACHED,
+  exitHeadlessDone,
+  exitHeadlessOnError,
   headlessExitCode,
+  writeHeadlessError,
   writeHeadlessRunSummary,
 } from "./headlessRunSummary.js";
 
@@ -19,6 +23,11 @@ const stderr: string[] = [];
 
 vi.mock("../init.js", () => ({
   safeStderr: vi.fn((message: string) => stderr.push(message)),
+}));
+
+const gracefulExit = vi.fn();
+vi.mock("../util/exit.js", () => ({
+  gracefulExit: (code: number) => gracefulExit(code),
 }));
 
 vi.mock("../session.js", () => ({
@@ -30,6 +39,38 @@ const start = { promptTokens: 100, completionTokens: 10, totalCost: 0.5 };
 function summaryLine() {
   return JSON.parse(stderr.at(-1)!);
 }
+
+describe("writeHeadlessError", () => {
+  beforeEach(() => {
+    stderr.length = 0;
+    Object.assign(sessionUsage, {
+      promptTokens: 600,
+      completionTokens: 60,
+      totalCost: 0.6,
+    });
+  });
+
+  afterEach(() => {
+    resetAgentLoopLimits();
+  });
+
+  it("reports the error and what the run cost so far", () => {
+    recordPriceSource("exact");
+    writeHeadlessError(new Error("429 Too Many Requests"), start);
+
+    expect(stderr).toHaveLength(1);
+    expect(summaryLine()).toEqual({
+      status: "error",
+      message: "429 Too Many Requests",
+      usage: {
+        cost: 0.1,
+        priced: "exact",
+        promptTokens: 500,
+        completionTokens: 50,
+      },
+    });
+  });
+});
 
 describe("writeHeadlessRunSummary", () => {
   beforeEach(() => {
@@ -134,5 +175,92 @@ describe("writeHeadlessRunSummary", () => {
   it("exits 1 for an unrelated failure", () => {
     expect(headlessExitCode(new Error("boom"))).toBe(1);
     expect(headlessExitCode()).toBe(0);
+  });
+});
+
+describe("exitHeadlessOnError", () => {
+  beforeEach(() => {
+    stderr.length = 0;
+    gracefulExit.mockClear();
+    Object.assign(sessionUsage, {
+      promptTokens: 300,
+      completionTokens: 30,
+      totalCost: 0.7,
+    });
+  });
+
+  afterEach(() => {
+    resetAgentLoopLimits();
+  });
+
+  it("writes an error line with usage and exits 1", async () => {
+    await exitHeadlessOnError(new Error("socket hang up"), start, "json");
+
+    expect(gracefulExit).toHaveBeenCalledWith(1);
+    expect(summaryLine()).toMatchObject({
+      status: "error",
+      message: "socket hang up",
+      usage: { promptTokens: 200, completionTokens: 20 },
+    });
+  });
+
+  it("writes the limit summary and exits 3 at a limit", async () => {
+    const error = new AgentLoopLimitError({
+      limit: "cost",
+      description: "cost limit of $1 (--max-cost)",
+      stop: true,
+    });
+
+    await exitHeadlessOnError(error, start, "json");
+
+    expect(gracefulExit).toHaveBeenCalledWith(EXIT_CODE_LIMIT_REACHED);
+    expect(summaryLine().status).not.toBe("error");
+  });
+});
+
+describe("exitHeadlessDone", () => {
+  beforeEach(() => {
+    stderr.length = 0;
+    gracefulExit.mockClear();
+  });
+
+  afterEach(() => {
+    resetAgentLoopLimits();
+  });
+
+  it("writes the done line and exits 0", async () => {
+    await exitHeadlessDone(start, "json");
+
+    expect(summaryLine().status).toBe("done");
+    expect(gracefulExit).toHaveBeenCalledWith(0);
+  });
+
+  it("exits 3 when a limit ended the run", async () => {
+    configureAgentLoopLimits({ maxTurns: "1" });
+    new AgentLoopBudget().nextTurn();
+
+    await exitHeadlessDone(start, "json");
+
+    expect(summaryLine().status).toBe("limit");
+    expect(gracefulExit).toHaveBeenCalledWith(EXIT_CODE_LIMIT_REACHED);
+  });
+});
+
+describe("assertHeadlessAnswer", () => {
+  it("fails an empty answer under --format json", () => {
+    expect(() => assertHeadlessAnswer("", "json")).toThrow(
+      "The model finished without writing an answer.",
+    );
+    expect(() => assertHeadlessAnswer("  \n", "json")).toThrow();
+  });
+
+  it("accepts an answer under --format json", () => {
+    expect(() =>
+      assertHeadlessAnswer('{"verdict":"PASS"}', "json"),
+    ).not.toThrow();
+  });
+
+  it("accepts an empty answer without --format json", () => {
+    expect(() => assertHeadlessAnswer("")).not.toThrow();
   });
 });
