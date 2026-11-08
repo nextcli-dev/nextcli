@@ -1,5 +1,8 @@
 import { getDefaultToolPolicies } from "./defaultPolicies.js";
-import { commandLineFlagsToPolicies } from "./flagPolicies.js";
+import {
+  commandLineFlagsToPolicies,
+  headlessKeepsYamlPolicy,
+} from "./flagPolicies.js";
 import {
   loadPermissionsYaml,
   yamlConfigToPolicies,
@@ -31,10 +34,13 @@ export interface PermissionSources {
  *
  * Earlier sources completely override later ones on a per-tool basis.
  *
- * In a headless run, only the `exclude` rules of permissions.yaml apply. Its
- * allows and asks are answers given in the terminal UI ("don't ask again"),
- * and they don't carry over to an unattended run, which may be reviewing
- * untrusted input. Use --allow to opt a headless run in to a tool.
+ * In a headless run, permissions.yaml keeps its excludes and the safe
+ * remembered allows (`headlessKeepsYamlPolicy`): a scoped pattern such as
+ * `Bash(ls*)`, or a whole tool headless does not close, such as `Write`.
+ * Asks are dropped, and so are whole-tool Bash, Fetch, `*`, and MCP names,
+ * which would reopen the shell or the network. The file is per machine, so
+ * an exclude written for the terminal also removes that tool from `cn -p`.
+ * Use --allow to opt a headless run in to anything the file does not keep.
  */
 export function resolvePermissionPrecedence(
   sources: PermissionSources,
@@ -54,7 +60,7 @@ export function resolvePermissionPrecedence(
       const yamlPolicies = yamlConfigToPolicies(yamlConfig);
       policies.push(
         ...(sources.isHeadless
-          ? yamlPolicies.filter((policy) => policy.permission === "exclude")
+          ? yamlPolicies.filter(headlessKeepsYamlPolicy)
           : yamlPolicies),
       );
     }

@@ -1,3 +1,5 @@
+import { BUILT_IN_TOOL_NAMES } from "../tools/builtInToolNames.js";
+
 import { ToolPermissionPolicy } from "./types.js";
 
 /**
@@ -39,6 +41,33 @@ function globMatchesEveryCommand(glob: string): boolean {
     "git log --output=out",
     "npm run build",
   ].every((command) => regex.test(command));
+}
+
+/**
+ * A headless run keeps the safe rules remembered from the terminal. Excludes
+ * always apply. An allow applies when it names arguments (`Bash(ls*)`) or a
+ * built-in headless does not close (`Write`). An ask is dropped, because
+ * nobody can answer it. A whole-tool Bash, Fetch, `*`, or MCP name is
+ * dropped: those reopen the shell, the network, or tools the closed defaults
+ * exclude.
+ */
+export function headlessKeepsYamlPolicy(policy: ToolPermissionPolicy): boolean {
+  if (policy.permission === "exclude") {
+    return true;
+  }
+  if (policy.permission !== "allow") {
+    return false;
+  }
+  const globs = Object.values(policy.argumentMatches ?? {}).filter(
+    (value): value is string => typeof value === "string",
+  );
+  if (globs.length > 0) {
+    return !globs.some((glob) => globMatchesEveryCommand(glob));
+  }
+  if (planModeAllowReopensClosedTools(policy.tool)) {
+    return false;
+  }
+  return (BUILT_IN_TOOL_NAMES as readonly string[]).includes(policy.tool);
 }
 
 /** Same `*` and `?` rules as matchesToolPattern. */

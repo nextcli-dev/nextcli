@@ -77,3 +77,88 @@ describe("permissions.yaml in headless runs", () => {
     expect(checkToolPermission(writeCall, tui).permission).toBe("exclude");
   });
 });
+
+describe("safe remembered rules in a headless run", () => {
+  beforeEach(() => {
+    yamlConfig = {
+      allow: [
+        "Bash(ls*)",
+        "Bash(*)",
+        "Fetch(https://example.com*)",
+        "Fetch(*)",
+        "Write",
+        "github_*",
+        "Bash*",
+      ],
+      ask: ["Edit"],
+      exclude: ["Search"],
+    };
+  });
+
+  it("keeps scoped allows and open built-ins, and drops the rest", () => {
+    const yamlTools = resolve(true)
+      .policies.filter((policy) => !policy.source)
+      .map((policy) => {
+        const args = policy.argumentMatches
+          ? `(${Object.values(policy.argumentMatches).join(",")})`
+          : "";
+        return `${policy.tool}${args}:${policy.permission}`;
+      });
+
+    expect(yamlTools).toEqual([
+      "Search:exclude",
+      "Bash(ls*):allow",
+      "Fetch(https://example.com*):allow",
+      "Write:allow",
+    ]);
+  });
+
+  it("lets a remembered ls run and still asks for other shell commands", () => {
+    const permissions = resolve(true);
+
+    expect(
+      checkToolPermission(
+        { name: "Bash", arguments: { command: "ls -la" } },
+        permissions,
+      ).permission,
+    ).toBe("allow");
+    expect(
+      checkToolPermission(
+        { name: "Bash", arguments: { command: "cp a.txt b.txt" } },
+        permissions,
+      ).permission,
+    ).toBe("ask");
+  });
+
+  it("keeps a remembered Fetch pattern and drops one that matches every url", () => {
+    const permissions = resolve(true);
+
+    expect(
+      checkToolPermission(
+        { name: "Fetch", arguments: { url: "https://example.com/a" } },
+        permissions,
+      ).permission,
+    ).toBe("allow");
+    expect(
+      checkToolPermission(
+        { name: "Fetch", arguments: { url: "https://evil.example" } },
+        permissions,
+      ).permission,
+    ).toBe("exclude");
+  });
+});
+
+describe("a machine-wide exclude in a headless run", () => {
+  beforeEach(() => {
+    yamlConfig = { allow: [], ask: [], exclude: ["Bash"] };
+  });
+
+  it("removes the shell, including commands the evaluator would allow", () => {
+    expect(
+      checkToolPermission(
+        { name: "Bash", arguments: { command: "ls" } },
+        resolve(true),
+      ).permission,
+    ).toBe("exclude");
+  });
+});

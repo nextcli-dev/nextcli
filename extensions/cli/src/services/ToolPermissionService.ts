@@ -130,19 +130,10 @@ export class ToolPermissionService
       // - "built_in" keyword can be used to include all built ins
       // Blank = all built-in tools
 
-      // Handle MCP first
-      // If ANY mcp tools are specifically called out, only allow those ones for that mcp server
-      // Otherwise the blanket allow will cover all MCP tools
-      if (!specificTools.length && isHeadless) {
-        // The tail of an unattended run excludes unknown tools, so a listed
-        // server's tools are allowed by name instead.
-        policies.push(
-          ...server.tools.map((t) => ({
-            tool: t.name,
-            permission: "allow" as const,
-          })),
-        );
-      }
+      // Handle MCP first. A named tool is allowed. A server named without a
+      // tool list means all of its tools in the TUI, which the trailing allow
+      // covers. A headless run does not grant those tools: they stay under
+      // the closed defaults unless the file names them or --allow does.
       if (specificTools.length) {
         const specificSet = new Set(specificTools.map((t) => t.toolName));
         const notMentioned = server.tools.filter(

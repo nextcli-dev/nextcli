@@ -86,7 +86,7 @@ exclude: []
 
 You can edit this file directly, but it's primarily managed by the TUI. Changes take effect on the next session.
 
-In a headless run, only the `exclude` list applies. The `allow` and `ask` lists hold answers you gave in the TUI, and they don't carry over to an unattended run, which may be reviewing untrusted code. Use `--allow` to give a headless run more.
+The file is per machine (`~/.continue/permissions.yaml`), and an `exclude` in it applies to headless runs too, so a personal `exclude: Bash` removes the shell from `cn -p`. A headless run also keeps the safe remembered `allow`s: a pattern such as `Bash(ls*)` or `Fetch(https://example.com*)`, and a whole tool headless does not close, such as `Write` or `Edit`. It drops every `ask`, because nobody can answer it, and it drops `allow: Bash`, `allow: Fetch`, `allow: "*"`, a glob that matches those (`Bash*`, `**`), and an MCP tool name. Those would reopen the shell, the network, or tools the closed defaults exclude. Use `--allow` to opt a headless run in to anything the file does not keep.
 
 ## Precedence
 
@@ -94,7 +94,7 @@ When multiple sources define a permission for the same tool, the highest-priorit
 
 1. **Mode policies** — `--auto` and `--readonly` override everything (see below). `--readonly` still applies your `--allow` and `--exclude` flags, but never allows writes.
 2. **CLI flags** — `--allow`, `--ask`, `--exclude`
-3. **`permissions.yaml`** — persistent personal settings (in headless runs, only its `exclude` list)
+3. **`permissions.yaml`** — persistent personal settings. In headless runs, its excludes and safe remembered allows; see above.
 4. **Defaults** — built-in policies
 
 ## Modes

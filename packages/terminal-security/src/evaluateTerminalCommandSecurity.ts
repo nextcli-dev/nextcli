@@ -31,11 +31,12 @@ type ParsedToken = string | ShellOperator | GlobPattern | CommentToken;
  * defense-in-depth security validation for terminal commands.
  *
  * Critical commands are disabled, and high-risk or destructive commands, and
- * risky forms of commands such as git or find, require permission. Known
- * build, test and file commands (pytest, tsc, dotnet build, cp...) keep the
- * base policy, so a tool set to automatic runs them without asking, unless
- * `options.strict` is set. Commands the evaluator does not recognise require
- * permission.
+ * risky forms of commands such as git or find, require permission. Build,
+ * test and file commands follow the base policy, so a tool set to automatic
+ * runs them without asking. When `options.strict` is set, those commands
+ * require permission instead, and only commands the evaluator approves on
+ * its own (ls, cat, git status) run. Commands the evaluator does not
+ * recognise require permission.
  *
  * @param basePolicy The base policy configured for the tool
  * @param command The command string to evaluate
@@ -1343,7 +1344,7 @@ function isGitInternalPath(path: string): boolean {
 
 const REDIRECT_OPERATORS = [">", ">>", ">&", "<", "<&"];
 
-/** `2>/dev/null` and `2>&1` write no file */
+/** A redirect that writes no file: a `/dev/null` target, or a `>&` descriptor copy such as `2>&1` or `>&-`. */
 function isHarmlessRedirectTarget(op: string, target: string): boolean {
   return (
     target === "/dev/null" ||

@@ -110,6 +110,22 @@ describe("executeStreamedToolCalls", () => {
     expect(executeToolCall).not.toHaveBeenCalled();
   });
 
+  it("tells a terminal user the command was blocked", async () => {
+    vi.mocked(checkToolPermission).mockReturnValue({ permission: "exclude" });
+
+    const { chatHistoryEntries } = await executeStreamedToolCalls(
+      [readCall("call_1")],
+      undefined,
+      false,
+    );
+
+    expect(chatHistoryEntries[0]).toMatchObject({
+      content: "Command blocked by security policy",
+      status: "canceled",
+    });
+    expect(String(chatHistoryEntries[0].content)).not.toContain("--allow");
+  });
+
   it("records tool errors as errored results", async () => {
     vi.mocked(executeToolCall).mockRejectedValue(new Error("Execution failed"));
 

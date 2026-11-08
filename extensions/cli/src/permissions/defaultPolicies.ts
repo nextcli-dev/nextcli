@@ -7,12 +7,12 @@ import { ToolPermissionPolicy } from "./types.js";
 export function getDefaultToolPolicies(
   isHeadless = false,
 ): ToolPermissionPolicy[] {
-  // Bash, MCP and any other tool ask in the TUI. Nobody is there to answer in
-  // a headless run, so MCP and unknown tools are excluded unless the operator
-  // opts in with --allow. Bash stays "allow" here, but as a default it only
-  // runs the commands its evaluator approves without asking (see
-  // checkToolPermission), and anything else is refused. Fetch can send data
-  // to any URL, so unattended runs don't get it.
+  // The TUI asks before Bash, MCP and any other tool, and allows Fetch. A
+  // headless run differs in three ways. Fetch is excluded, because it can
+  // send data to any URL. MCP and unknown tools are excluded, because nobody
+  // can approve them. Bash stays allow, but only for commands the evaluator
+  // approves without asking (see checkToolPermission), and anything else is
+  // refused. --allow opts a headless run back in.
   const source = "default" as const;
   return [
     { tool: "Edit", permission: "ask", source },

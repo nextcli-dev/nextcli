@@ -4,6 +4,7 @@ import { ALL_BUILT_IN_TOOLS } from "src/tools/allBuiltIns.js";
 
 import {
   checkToolPermission,
+  isAllowedForSomeArguments,
   matchesArguments,
   matchesToolPattern,
 } from "./permissionChecker.js";
@@ -684,6 +685,34 @@ describe("Permission Checker", () => {
         );
 
         expect(result.permission).toBe("ask");
+      });
+
+      it("a non-string command does not match a Bash(pattern) allow", () => {
+        const permissions: ToolPermissions = {
+          policies: [
+            { tool: "Bash(git log*)", permission: "allow" },
+            { tool: "Bash", permission: "ask" },
+          ],
+        };
+
+        expect(
+          checkToolPermission(
+            { name: "Bash", arguments: { command: 1 } },
+            permissions,
+          ).permission,
+        ).toBe("ask");
+      });
+
+      it("an empty argument list still offers a Bash(pattern) allow", () => {
+        const permissions: ToolPermissions = {
+          policies: [{ tool: "Bash(git log*)", permission: "allow" }],
+        };
+
+        expect(isAllowedForSomeArguments("Bash", permissions)).toBe(true);
+        expect(
+          checkToolPermission({ name: "Bash", arguments: {} }, permissions)
+            .permission,
+        ).toBe("ask");
       });
 
       it("a chained command still skips a Bash(pattern) allow", () => {

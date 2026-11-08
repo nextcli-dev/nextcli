@@ -145,12 +145,19 @@ function isCommandAllowThatChains(
   policy: ToolPermissionPolicy,
   toolCall: ToolCallRequest,
 ): boolean {
-  return (
-    policy.permission === "allow" &&
-    bashCommandGlob(policy) !== undefined &&
-    typeof toolCall.arguments?.command === "string" &&
-    SHELL_CONTROL.test(toolCall.arguments.command)
-  );
+  if (policy.permission !== "allow" || bashCommandGlob(policy) === undefined) {
+    return false;
+  }
+  const command = toolCall.arguments?.command;
+  // A missing command is the probe that offers the tool. A command that is
+  // present but not a string must not match the pattern allow.
+  if (command === undefined) {
+    return false;
+  }
+  if (typeof command !== "string") {
+    return true;
+  }
+  return SHELL_CONTROL.test(command);
 }
 
 /**

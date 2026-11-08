@@ -746,6 +746,93 @@ describe("ToolPermissionService - Agent File Integration", () => {
       expect(policies).not.toContainEqual({ tool: "*", permission: "allow" });
     });
 
+    it("does not allow every tool of an MCP server named without a tool list", () => {
+      const agentFileState: AgentFileServiceState = {
+        agentFile: { name: "test-agent" } as any,
+        slug: "test-slug",
+        agentFileModel: null,
+        parsedTools: {
+          mcpServers: ["owner/mcp-server"],
+          tools: [{ mcpServer: "owner/mcp-server" }],
+          allBuiltIn: false,
+        },
+        parsedRules: null,
+      };
+      const mcpState: MCPServiceState = {
+        mcpService: null,
+        connections: [
+          {
+            config: { sourceSlug: "owner/mcp-server" } as any,
+            status: "connected",
+            tools: [{ name: "tool1" } as any, { name: "tool2" } as any],
+            prompts: [],
+            warnings: [],
+          },
+        ],
+        tools: [],
+        prompts: [],
+      };
+
+      const policies = service.generateAgentFilePolicies(
+        agentFileState,
+        mcpState,
+        true,
+      );
+
+      expect(policies).not.toContainEqual({
+        tool: "tool1",
+        permission: "allow",
+      });
+      expect(policies).not.toContainEqual({
+        tool: "tool2",
+        permission: "allow",
+      });
+      expect(policies[policies.length - 1]).toMatchObject({
+        tool: "*",
+        permission: "exclude",
+      });
+    });
+
+    it("still allows an MCP tool the agent file names", () => {
+      const agentFileState: AgentFileServiceState = {
+        agentFile: { name: "test-agent" } as any,
+        slug: "test-slug",
+        agentFileModel: null,
+        parsedTools: {
+          mcpServers: ["owner/mcp-server"],
+          tools: [{ mcpServer: "owner/mcp-server", toolName: "tool1" }],
+          allBuiltIn: false,
+        },
+        parsedRules: null,
+      };
+      const mcpState: MCPServiceState = {
+        mcpService: null,
+        connections: [
+          {
+            config: { sourceSlug: "owner/mcp-server" } as any,
+            status: "connected",
+            tools: [{ name: "tool1" } as any, { name: "tool2" } as any],
+            prompts: [],
+            warnings: [],
+          },
+        ],
+        tools: [],
+        prompts: [],
+      };
+
+      const policies = service.generateAgentFilePolicies(
+        agentFileState,
+        mcpState,
+        true,
+      );
+
+      expect(policies).toContainEqual({ tool: "tool1", permission: "allow" });
+      expect(policies).toContainEqual({
+        tool: "tool2",
+        permission: "exclude",
+      });
+    });
+
     it("still allows everything for an agent file in the TUI", () => {
       const policies = service.generateAgentFilePolicies(toolsState());
       expect(policies[policies.length - 1]).toEqual({
