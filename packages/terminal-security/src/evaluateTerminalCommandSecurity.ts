@@ -39,10 +39,11 @@ type ParsedToken = string | ShellOperator | GlobPattern | CommentToken;
  *
  * @param basePolicy The base policy configured for the tool
  * @param command The command string to evaluate
- * @param options.strict When true, those build, test and file commands require
- *   permission instead, so a base "allow" only runs commands the evaluator
- *   approves on its own (ls, cat, git status...). Unattended runs use it so a
- *   default allow doesn't run commands that change files.
+ * @param options Optional strict-mode settings for unattended runs. When
+ *   `strict` is true, those build, test and file commands require permission
+ *   instead, so a base "allow" only runs commands the evaluator approves on
+ *   its own (ls, cat, git status...). Unattended runs use it so a default
+ *   allow doesn't run commands that change files.
  * @returns The security policy to apply: 'disabled', 'allowedWithPermission', or 'allowedWithoutPermission'
  */
 export function evaluateTerminalCommandSecurity(

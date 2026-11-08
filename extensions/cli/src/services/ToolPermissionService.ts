@@ -200,18 +200,31 @@ export class ToolPermissionService
   /**
    * Plan mode (--readonly). Writes are excluded first, so no flag can bring
    * them back. Then the operator's --allow and --exclude, so a read-only run
-   * can still be given a specific tool. Then the plan mode defaults. An --ask
-   * flag is dropped in an unattended run, where it could only deny.
+   * can still be given one scoped tool, such as `Bash(git log*)`. A bare
+   * `Bash`, `Fetch` or `*` allow is dropped: those reopen the shell, the
+   * network or every MCP tool, and Bash can write files. Flag policies have
+   * no source, so they would also skip the strict narrowing that keeps a
+   * default Bash allow read-only. Then the plan mode defaults. An --ask flag
+   * is dropped in an unattended run, where it could only deny.
    */
   private generateReadOnlyPolicies(): ToolPermissionPolicy[] {
     const headless = this.currentState.isHeadless;
     const flags = this.commandLineFlags;
+    // Bash(*) and Fetch(*) match every call, the same as the bare tool name.
+    const allow = (flags?.allow ?? []).filter(
+      (pattern) =>
+        pattern !== "*" &&
+        pattern !== "Bash" &&
+        pattern !== "Fetch" &&
+        pattern !== "Bash(*)" &&
+        pattern !== "Fetch(*)",
+    );
     return [
       ...["Edit", "MultiEdit", "Write"].map(
         (tool): ToolPermissionPolicy => ({ tool, permission: "exclude" }),
       ),
       ...commandLineFlagsToPolicies({
-        allow: flags?.allow,
+        allow,
         exclude: flags?.exclude,
         ask: headless ? undefined : flags?.ask,
       }),

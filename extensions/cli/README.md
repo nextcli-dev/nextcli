@@ -65,7 +65,7 @@ cn -p "Write a README" --silent
 
 These checks read the command text, so they are best-effort: a command can always hide what it deletes. For untrusted prompts or repositories, run `cn -p` in a container or sandbox, and restrict Bash in `~/.continue/permissions.yaml`.
 
-**Read-only headless runs**: `cn -p --readonly` can't write files, run Bash, call MCP tools or use Fetch. It can only read, search and list. Use it to review untrusted code, such as a pull request in CI. `--allow` and `--exclude` still apply, so `cn -p --readonly --allow "Bash(git log*)"` adds that one command. `--allow Write`, `--allow Edit` and `--allow "*"` never turn writing on. `cn review` runs read-only.
+**Read-only headless runs**: `cn -p --readonly` can't write files, run Bash, call MCP tools or use Fetch. It can only read, search and list. Use it to review untrusted code, such as a pull request in CI. `--allow` and `--exclude` still apply, so `cn -p --readonly --allow "Bash(git log*)"` adds that one command, and `--allow "github_*"` adds that server. `--allow Write`, `--allow Edit`, `--allow Bash`, `--allow Fetch` and `--allow "*"` never turn writing, the shell, the network or every MCP tool back on. `cn review` runs read-only.
 
 **Limits**: `--max-turns`, `--max-session-tokens` and `--max-cost` cap one run. When a run is about to reach a limit, the CLI makes one last model call without tools and asks for a final answer from what the model has found so far, so the run still ends with a result.
 

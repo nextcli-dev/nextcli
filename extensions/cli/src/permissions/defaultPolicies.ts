@@ -33,13 +33,18 @@ export function getDefaultToolPolicies(
   // opts in with --allow. Bash stays "allow" here, but as a default it only
   // runs the commands its evaluator approves without asking (see
   // checkToolPermission), and anything else is refused.
-  if (isHeadless) {
-    policies.push(...tagged([{ tool: "Bash", permission: "allow" }]));
-    policies.push(...tagged([{ tool: "*", permission: "exclude" }]));
-  } else {
-    policies.push(...tagged([{ tool: "Bash", permission: "ask" }]));
-    policies.push(...tagged([{ tool: "*", permission: "ask" }]));
-  }
+  policies.push(
+    {
+      tool: "Bash",
+      permission: isHeadless ? "allow" : "ask",
+      source: "default",
+    },
+    {
+      tool: "*",
+      permission: isHeadless ? "exclude" : "ask",
+      source: "default",
+    },
+  );
 
   return policies;
 }

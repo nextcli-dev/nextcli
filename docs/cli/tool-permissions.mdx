@@ -112,6 +112,6 @@ cn --readonly   # Plan mode — read-only tools only, no file writes
 | **plan** (`--readonly`) | Excludes all write tools and allows reads. `Bash` asks in the TUI. In headless mode, `Bash`, `Fetch` and MCP tools are excluded. |
 | **auto** (`--auto`) | Allows everything — `*: allow` |
 
-Plan and auto modes ignore `permissions.yaml`. Auto ignores `--allow` and `--exclude` too. Plan mode applies your `--allow` and `--exclude` flags first, so a read-only run can be given one extra tool, for example `cn -p --readonly --allow "Bash(git log*)"`. It can never be given `Edit`, `MultiEdit` or `Write`: `--allow Write` and `--allow "*"` don't turn writing on. `--ask` is ignored in a headless plan-mode run, where it could only refuse.
+Plan and auto modes ignore `permissions.yaml`. Auto ignores `--allow` and `--exclude` too. Plan mode applies your `--allow` and `--exclude` flags first, so a read-only run can be given one scoped tool, for example `cn -p --readonly --allow "Bash(git log*)"` or `--allow "github_*"`. It can never be given `Edit`, `MultiEdit` or `Write`. `--allow Bash`, `--allow Fetch` and `--allow "*"` don't reopen the shell, the network or every MCP tool either: Bash writes files, and Fetch can send data out. `--ask` is ignored in a headless plan-mode run, where it could only refuse.
 
 `cn review` runs in plan mode.

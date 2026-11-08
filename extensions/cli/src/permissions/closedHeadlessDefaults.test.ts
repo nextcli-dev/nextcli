@@ -219,6 +219,43 @@ describe("closed headless defaults", () => {
         ).permission,
       ).toBe("exclude");
     });
+
+    it.each(["Bash", "Fetch", "*", "Bash(*)", "Fetch(*)"])(
+      "does not let --allow %s reopen the shell, Fetch or MCP tools",
+      (tool) => {
+        const permissions = readOnly({ allow: [tool] });
+        expect(
+          checkToolPermission(bash("cp a.txt b.txt"), permissions).permission,
+        ).toBe("exclude");
+        expect(
+          checkToolPermission(bash("curl https://example.com"), permissions)
+            .permission,
+        ).toBe("exclude");
+        expect(
+          checkToolPermission({ name: "Fetch", arguments: {} }, permissions)
+            .permission,
+        ).toBe("exclude");
+        expect(
+          checkToolPermission(
+            { name: "github_create_issue", arguments: {} },
+            permissions,
+          ).permission,
+        ).toBe("exclude");
+      },
+    );
+
+    it("still opts in to one MCP server with a scoped --allow", () => {
+      const permissions = readOnly({ allow: ["github_*"] });
+      expect(
+        checkToolPermission(
+          { name: "github_create_issue", arguments: {} },
+          permissions,
+        ).permission,
+      ).toBe("allow");
+      expect(
+        checkToolPermission(bash("cp a.txt b.txt"), permissions).permission,
+      ).toBe("exclude");
+    });
   });
   describe("the cn review worker", () => {
     // reviewWorker.ts: headless, allow the three write tools, nothing else
