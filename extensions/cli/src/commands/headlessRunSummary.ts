@@ -6,7 +6,14 @@ import {
   getLimitReached,
   getPriceSource,
 } from "../stream/agentLoopLimits.js";
+import { requireFinalAnswer } from "../stream/turnContinuation.js";
 import { gracefulExit } from "../util/exit.js";
+
+type UsageSnapshot = {
+  promptTokens: number;
+  completionTokens: number;
+  totalCost: number;
+};
 
 /** Headless exit code when a --max-* limit ended the run early */
 export const EXIT_CODE_LIMIT_REACHED = 3;
@@ -22,22 +29,50 @@ export function headlessExitCode(error?: unknown): number {
   return error ? 1 : 0;
 }
 
-/** Writes the usage line and exits 3 when a limit ended the run. */
-export async function exitHeadlessAtLimit(
-  error: unknown,
-  usageAtStart: {
-    promptTokens: number;
-    completionTokens: number;
-    totalCost: number;
-  },
+/**
+ * Starts a headless run: `--format json` must end with an answer. Returns the
+ * usage so far, which the run's own usage is counted from.
+ */
+export function startHeadlessRun(format?: "json"): UsageSnapshot {
+  requireFinalAnswer(format === "json");
+  return { ...getSessionUsage() };
+}
+
+/** Ends a headless run that finished: the usage line, then exit 0 or 3. */
+export async function exitHeadlessDone(
+  usageAtStart: UsageSnapshot,
   format?: "json",
-): Promise<boolean> {
-  if (headlessExitCode(error) !== EXIT_CODE_LIMIT_REACHED) {
-    return false;
-  }
+): Promise<void> {
   writeHeadlessRunSummary(usageAtStart, format);
-  await gracefulExit(EXIT_CODE_LIMIT_REACHED);
-  return true;
+  await gracefulExit(headlessExitCode());
+}
+
+/**
+ * Ends a headless run that threw. A limit writes the usage line and exits 3;
+ * any other error writes an error line with the usage so far and exits 1.
+ */
+export async function exitHeadlessOnError(
+  error: unknown,
+  usageAtStart: UsageSnapshot,
+  format?: "json",
+): Promise<void> {
+  const code = headlessExitCode(error);
+  if (code === EXIT_CODE_LIMIT_REACHED) {
+    writeHeadlessRunSummary(usageAtStart, format);
+  } else {
+    writeHeadlessError(error, usageAtStart);
+  }
+  await gracefulExit(code);
+}
+
+/**
+ * `--format json` promises an answer on stdout, so a run that ends without
+ * one has failed. Plain `-p` may end on tool calls with nothing to say.
+ */
+export function assertHeadlessAnswer(answer: string, format?: "json"): void {
+  if (format === "json" && !answer?.trim()) {
+    throw new Error("The model finished without writing an answer.");
+  }
 }
 
 /**
@@ -46,15 +81,9 @@ export async function exitHeadlessAtLimit(
  * {"status":"done"|"limit","limit":...,"usage":{...}}
  */
 export function writeHeadlessRunSummary(
-  usageAtStart: {
-    promptTokens: number;
-    completionTokens: number;
-    totalCost: number;
-  },
+  usageAtStart: UsageSnapshot,
   format?: "json",
 ): void {
-  const usage = getSessionUsage();
-  const cost = usage.totalCost - usageAtStart.totalCost;
   const limit = getLimitReached() ?? null;
   const priced = getPriceSource() ?? null;
   const maxCost = getAgentLoopLimits().maxCostUsd;
@@ -72,13 +101,36 @@ export function writeHeadlessRunSummary(
     JSON.stringify({
       status: limit ? "limit" : "done",
       limit,
-      usage: {
-        cost: Number(cost.toFixed(6)),
-        priced,
-        promptTokens: usage.promptTokens - usageAtStart.promptTokens,
-        completionTokens:
-          usage.completionTokens - usageAtStart.completionTokens,
-      },
+      usage: runUsage(usageAtStart),
     }) + "\n",
   );
+}
+
+/**
+ * Reports a headless run that failed, on stderr, with what it cost so far:
+ * {"status":"error","message":...,"usage":{...}}
+ */
+export function writeHeadlessError(
+  error: unknown,
+  usageAtStart: UsageSnapshot,
+): void {
+  const message = error instanceof Error ? error.message : String(error);
+  safeStderr(
+    JSON.stringify({
+      status: "error",
+      message,
+      usage: runUsage(usageAtStart),
+    }) + "\n",
+  );
+}
+
+/** What this run has used since `usageAtStart`. */
+function runUsage(usageAtStart: UsageSnapshot) {
+  const usage = getSessionUsage();
+  return {
+    cost: Number((usage.totalCost - usageAtStart.totalCost).toFixed(6)),
+    priced: getPriceSource() ?? null,
+    promptTokens: usage.promptTokens - usageAtStart.promptTokens,
+    completionTokens: usage.completionTokens - usageAtStart.completionTokens,
+  };
 }
