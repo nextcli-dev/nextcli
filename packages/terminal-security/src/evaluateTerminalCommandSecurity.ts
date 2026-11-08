@@ -32,19 +32,12 @@ type ParsedToken = string | ShellOperator | GlobPattern | CommentToken;
  *
  * Critical commands are disabled, and high-risk or destructive commands, and
  * risky forms of commands such as git or find, require permission. Build,
- * test and file commands follow the base policy, so a tool set to automatic
- * runs them without asking. When `options.strict` is set, those commands
- * require permission instead, and only commands the evaluator approves on
- * its own (ls, cat, git status) run. Commands the evaluator does not
- * recognise require permission.
+ * test and file commands follow the base policy. Commands the evaluator
+ * does not recognise require permission. `EvaluateOptions.strict` changes
+ * that for unattended runs.
  *
  * @param basePolicy The base policy configured for the tool
  * @param command The command string to evaluate
- * @param options Optional strict-mode settings for unattended runs. When
- *   `strict` is true, those build, test and file commands require permission
- *   instead, so a base "allow" only runs commands the evaluator approves on
- *   its own (ls, cat, git status...). Unattended runs use it so a default
- *   allow doesn't run commands that change files.
  * @returns The security policy to apply: 'disabled', 'allowedWithPermission', or 'allowedWithoutPermission'
  */
 export interface EvaluateOptions {

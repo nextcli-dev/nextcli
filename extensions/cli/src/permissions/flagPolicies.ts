@@ -14,12 +14,16 @@ export function planModeAllowReopensClosedTools(pattern: string): boolean {
     return globMatchesEveryCommand(scoped[2]);
   }
   return (
-    patternMatchesToolName("Bash", pattern) ||
-    patternMatchesToolName("Fetch", pattern)
+    toolNameMatchesPattern("Bash", pattern) ||
+    toolNameMatchesPattern("Fetch", pattern)
   );
 }
 
-function patternMatchesToolName(toolName: string, pattern: string): boolean {
+/** Tool-name globs (`*`, `?`). `Bash(command)` patterns are not tool names. */
+export function toolNameMatchesPattern(
+  toolName: string,
+  pattern: string,
+): boolean {
   if (pattern === "*" || pattern === toolName) {
     return true;
   }
@@ -70,7 +74,6 @@ export function headlessKeepsYamlPolicy(policy: ToolPermissionPolicy): boolean {
   return (BUILT_IN_TOOL_NAMES as readonly string[]).includes(policy.tool);
 }
 
-/** Same `*` and `?` rules as matchesToolPattern. */
 function globToRegExp(glob: string): RegExp {
   const escaped = glob.replace(/[.+^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`^${escaped.replace(/\*/g, ".*").replace(/\?/g, ".")}$`);

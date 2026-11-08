@@ -87,8 +87,6 @@ export async function executeSubAgent(
       throw new Error("Model or LLM API not available");
     }
 
-    // The child keeps the parent's policies, including headless mode and
-    // --exclude. It cannot start another subagent.
     serviceContainer.set<ToolPermissionServiceState>(
       SERVICE_NAMES.TOOL_PERMISSIONS,
       {

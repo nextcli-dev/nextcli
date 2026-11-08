@@ -2,6 +2,7 @@ import type { ToolPolicy } from "@continuedev/terminal-security";
 
 import { ALL_BUILT_IN_TOOLS } from "src/tools/allBuiltIns.js";
 
+import { toolNameMatchesPattern } from "./flagPolicies.js";
 import {
   PermissionCheckResult,
   PermissionPolicy,
@@ -48,17 +49,7 @@ export function matchesToolPattern(
     return false;
   }
 
-  // Handle regular wildcard patterns like "external_*"
-  if (pattern.includes("*") || pattern.includes("?")) {
-    // Escape all regex metacharacters except * and ?
-    const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-    // Convert * and ? to their regex equivalents
-    const regexPattern = escaped.replace(/\*/g, ".*").replace(/\?/g, ".");
-    const regex = new RegExp(`^${regexPattern}$`);
-    return regex.test(toolName);
-  }
-
-  return false;
+  return toolNameMatchesPattern(toolName, pattern);
 }
 
 /**
@@ -122,7 +113,7 @@ function permissionPolicyToToolPolicy(
   }
 }
 
-/** Shell syntax that runs a second command or writes a file. */
+/** Skip a Bash(pattern) allow when the command chains or redirects. */
 const SHELL_CONTROL = /[&;|`<>\r\n]|\$\(/;
 
 /**
