@@ -62,14 +62,17 @@ describe("closed headless defaults", () => {
   });
 
   describe("Bash under the defaults", () => {
-    it.each(["ls -la", "git status", "git diff HEAD~1", "cat package.json"])(
-      "runs the read-only command %s",
-      (command) => {
-        expect(
-          checkToolPermission(bash(command), headlessPolicies()).permission,
-        ).toBe("allow");
-      },
-    );
+    it.each([
+      "ls -la",
+      "git status",
+      "git diff HEAD~1",
+      "git log --oneline",
+      "cat package.json",
+    ])("runs the read-only command %s", (command) => {
+      expect(
+        checkToolPermission(bash(command), headlessPolicies()).permission,
+      ).toBe("allow");
+    });
 
     it.each([
       "cp a.txt b.txt",
@@ -79,6 +82,14 @@ describe("closed headless defaults", () => {
       "curl https://example.com",
       "npm install left-pad",
       "npm test",
+      "npm run build",
+      "make build",
+      "cargo build",
+      "tar -cf out.tar .",
+      "zip out.zip a.txt",
+      "git branch -D feature",
+      "git remote add origin https://example.com",
+      "git log --output=out.txt",
       "./script.sh",
       "prettier --write .",
       "echo hi > notes.txt",
@@ -220,7 +231,18 @@ describe("closed headless defaults", () => {
       ).toBe("exclude");
     });
 
-    it.each(["Bash", "Fetch", "*", "Bash(*)", "Fetch(*)"])(
+    it.each([
+      "Bash",
+      "Fetch",
+      "*",
+      "Bash(*)",
+      "Fetch(*)",
+      "Bash*",
+      "Fetch*",
+      "Bash(**)",
+      "**",
+      "*sh",
+    ])(
       "does not let --allow %s reopen the shell, Fetch or MCP tools",
       (tool) => {
         const permissions = readOnly({ allow: [tool] });

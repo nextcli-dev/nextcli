@@ -529,13 +529,21 @@ function evaluateSingleCommand(
     return "allowedWithPermission";
   }
 
-  // Check for safe commands
+  // Check for safe commands. In strict mode, commands this list calls safe
+  // but that run repo code or write files (npm run, make, cargo, tar, git
+  // branch, git log --output=) need permission. Read-only ones stay approved.
   if (isSafeCommand(baseCommand, args)) {
+    if (
+      strictPolicyFollowing &&
+      strictSafeCommandNeedsPermission(baseCommand, args)
+    ) {
+      return "allowedWithPermission";
+    }
     return "allowedWithoutPermission";
   }
 
-  // Build, test and file commands users run all the time follow the policy
-  // the user chose for the tool, once the checks above passed (#10512)
+  // Build, test and file commands follow the base policy, except in strict
+  // mode (unattended runs), where they require permission (#10512)
   if (isPolicyFollowingCommand(baseCommand, args)) {
     return strictPolicyFollowing ? "allowedWithPermission" : basePolicy;
   }
@@ -1364,6 +1372,37 @@ function isOutsideWorkspacePath(path: string): boolean {
     /^[a-z]:[\\/]/i.test(path) ||
     path.startsWith("\\\\") ||
     /(^|[\\/])\.\.([\\/]|$)/.test(path)
+  );
+}
+
+/**
+ * `isSafeCommand` approves some commands that run repository code or write
+ * files. Strict mode (unattended runs) asks for those and keeps the read-only
+ * ones, such as ls, cat and git status.
+ */
+function strictSafeCommandNeedsPermission(
+  baseCommand: string,
+  args: string[],
+): boolean {
+  if (baseCommand === "git") {
+    const subcommand = args.find((arg) => !arg.startsWith("-"));
+    if (subcommand === "branch" || subcommand === "remote") {
+      return true;
+    }
+    return args.some(
+      (arg) => arg === "--output" || arg.startsWith("--output="),
+    );
+  }
+  return (
+    baseCommand === "npm" ||
+    baseCommand === "yarn" ||
+    baseCommand === "pnpm" ||
+    baseCommand === "make" ||
+    baseCommand === "gradle" ||
+    baseCommand === "mvn" ||
+    baseCommand === "cargo" ||
+    baseCommand === "tar" ||
+    baseCommand === "zip"
   );
 }
 

@@ -9,14 +9,17 @@ describe("evaluateTerminalCommandSecurity strict mode", () => {
   const allow = "allowedWithoutPermission";
   const ask = "allowedWithPermission";
 
-  it.each(["ls -la", "cat package.json", "git status", "git diff HEAD~1"])(
-    "still allows the read-only command %s",
-    (command) => {
-      expect(
-        evaluateTerminalCommandSecurity(allow, command, { strict: true }),
-      ).toBe(allow);
-    },
-  );
+  it.each([
+    "ls -la",
+    "cat package.json",
+    "git status",
+    "git diff HEAD~1",
+    "git log --oneline",
+  ])("still allows the read-only command %s", (command) => {
+    expect(
+      evaluateTerminalCommandSecurity(allow, command, { strict: true }),
+    ).toBe(allow);
+  });
 
   it.each([
     "cp a.txt b.txt",
@@ -55,6 +58,27 @@ describe("evaluateTerminalCommandSecurity strict mode", () => {
     "cat a.txt >> b.txt",
     "git diff > patch.diff",
   ])("asks for %s, which writes a file", (command) => {
+    expect(evaluateTerminalCommandSecurity(allow, command)).toBe(allow);
+    expect(
+      evaluateTerminalCommandSecurity(allow, command, { strict: true }),
+    ).toBe(ask);
+  });
+
+  it.each([
+    "npm run build",
+    "yarn run build",
+    "pnpm run test",
+    "make build",
+    "cargo build",
+    "gradle test",
+    "mvn test",
+    "tar -cf out.tar .",
+    "zip out.zip a.txt",
+    "git branch -D feature",
+    "git remote add origin https://example.com",
+    "git log --output=out.txt",
+    "git diff --output=patch.diff",
+  ])("asks for %s, which runs code or writes a file", (command) => {
     expect(evaluateTerminalCommandSecurity(allow, command)).toBe(allow);
     expect(
       evaluateTerminalCommandSecurity(allow, command, { strict: true }),

@@ -20,7 +20,7 @@ Read-only tools (`Read`, `List`, `Search`, `Diff`, `AskQuestion`, `Checklist`, `
 |------|------------------|
 | `Read`, `List`, `Search`, `Diff` and the other read-only tools | `allow` |
 | `Edit`, `MultiEdit`, `Write` | `ask`, so refused |
-| `Bash` | Only commands NextCLI can tell are read-only run (`ls`, `cat`, `grep`, `git status`, `git diff`, `git log`…). Everything else, including `cp`, `mv`, `tee`, `curl`, `npm install` and `npm test`, asks, so it is refused. |
+| `Bash` | Only commands NextCLI can tell are read-only run (`ls`, `cat`, `grep`, `git status`, `git diff`, `git log`…). Everything else, including `cp`, `mv`, `tee`, `curl`, `npm install`, `npm test`, `npm run`, `make`, `cargo` and a git command that writes (`git branch -D`, `git log --output=`), asks, so it is refused. |
 | `Fetch` | `exclude` |
 | MCP tools and any other tool | `exclude` |
 
@@ -112,6 +112,6 @@ cn --readonly   # Plan mode — read-only tools only, no file writes
 | **plan** (`--readonly`) | Excludes all write tools and allows reads. `Bash` asks in the TUI. In headless mode, `Bash`, `Fetch` and MCP tools are excluded. |
 | **auto** (`--auto`) | Allows everything — `*: allow` |
 
-Plan and auto modes ignore `permissions.yaml`. Auto ignores `--allow` and `--exclude` too. Plan mode applies your `--allow` and `--exclude` flags first, so a read-only run can be given one scoped tool, for example `cn -p --readonly --allow "Bash(git log*)"` or `--allow "github_*"`. It can never be given `Edit`, `MultiEdit` or `Write`. `--allow Bash`, `--allow Fetch` and `--allow "*"` don't reopen the shell, the network or every MCP tool either: Bash writes files, and Fetch can send data out. `--ask` is ignored in a headless plan-mode run, where it could only refuse.
+Plan and auto modes ignore `permissions.yaml`. Auto ignores `--allow` and `--exclude` too. Plan mode applies your `--allow` and `--exclude` flags first, so a read-only run can be given one scoped tool, for example `cn -p --readonly --allow "Bash(git log*)"` or `--allow "github_*"`. It can never be given `Edit`, `MultiEdit` or `Write`. `--allow Bash`, `--allow Fetch`, `--allow "*"` and a glob that matches those tools (`Bash*`, `**`) don't reopen the shell, the network or every MCP tool either: Bash writes files, and Fetch can send data out. `--ask` is ignored in a headless plan-mode run, where it could only refuse.
 
 `cn review` runs in plan mode.

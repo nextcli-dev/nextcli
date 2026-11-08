@@ -24,7 +24,7 @@ Planning mode that **overrides user permissions** to enforce read-only access. T
 - **Bash, Fetch and MCP tools:**
   - Interactive: Bash and MCP tools ask before every call, because they can change files. Fetch is allowed.
   - Headless (`cn -p --readonly`): Bash, Fetch and MCP tools are excluded. Unattended runs often read untrusted code, such as a pull request, with a provider key in the environment, so they get no shell and no way to send data out.
-- **User flags:** `--allow` and `--exclude` apply after the write exclusions and before the plan defaults, so a read-only run can be given one scoped tool, for example `--allow "Bash(git log*)"` or `--allow "github_*"`. `--allow Write`, `--allow Edit`, `--allow Bash`, `--allow Fetch` and `--allow "*"` don't enable writing, the shell, the network or every MCP tool. `--ask` is ignored in headless mode. `permissions.yaml` is ignored.
+- **User flags:** `--allow` and `--exclude` apply after the write exclusions and before the plan defaults, so a read-only run can be given one scoped tool, for example `--allow "Bash(git log*)"` or `--allow "github_*"`. `--allow Write`, `--allow Edit`, `--allow Bash`, `--allow Fetch`, `--allow "*"` and a glob that matches those tools (`Bash*`, `**`) don't enable writing, the shell, the network or every MCP tool. `--ask` is ignored in headless mode. `permissions.yaml` is ignored.
 - **`cn review`** runs in plan mode.
 
 ### `auto`
