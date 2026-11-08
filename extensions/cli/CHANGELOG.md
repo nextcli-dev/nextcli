@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.2](https://github.com/nextcli-dev/nextcli/compare/cli-v0.8.1...cli-v0.8.2) (2026-11-08)
+
+
+### Bug Fixes
+
+* **cli:** ask once when a JSON headless run ends with no answer, and exit 1 with usage if the reply is still empty ([#97](https://github.com/nextcli-dev/nextcli/issues/97)) ([c3da1d2](https://github.com/nextcli-dev/nextcli/commit/c3da1d2c50f9af6e104b5d3a92559fba832828f6))
+
 ## [0.8.1](https://github.com/nextcli-dev/nextcli/compare/cli-v0.8.0...cli-v0.8.1) (2026-11-08)
 
 
