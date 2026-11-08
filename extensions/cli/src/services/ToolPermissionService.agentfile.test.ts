@@ -705,7 +705,7 @@ describe("ToolPermissionService - Agent File Integration", () => {
     });
   });
   describe("headless runs", () => {
-    const toolsState = (tools: string): AgentFileServiceState => ({
+    const toolsState = (): AgentFileServiceState => ({
       agentFile: { name: "test-agent" } as any,
       slug: "test-slug",
       agentFileModel: null,
@@ -736,7 +736,7 @@ describe("ToolPermissionService - Agent File Integration", () => {
 
     it("excludes what the agent file leaves out instead of allowing it", () => {
       const policies = service.generateAgentFilePolicies(
-        toolsState(""),
+        toolsState(),
         undefined,
         true,
       );
@@ -747,7 +747,7 @@ describe("ToolPermissionService - Agent File Integration", () => {
     });
 
     it("still allows everything for an agent file in the TUI", () => {
-      const policies = service.generateAgentFilePolicies(toolsState(""));
+      const policies = service.generateAgentFilePolicies(toolsState());
       expect(policies[policies.length - 1]).toEqual({
         tool: "*",
         permission: "allow",
@@ -757,7 +757,7 @@ describe("ToolPermissionService - Agent File Integration", () => {
     it("applies --allow and --exclude on top of an agent file", () => {
       service.initializeSync(
         { isHeadless: true, allow: ["Fetch"], exclude: ["Skills"] },
-        toolsState(""),
+        toolsState(),
       );
       const policies = service.getPermissions().policies;
 

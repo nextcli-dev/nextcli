@@ -1,8 +1,5 @@
 import { ToolPermissionPolicy } from "./types.js";
 
-/**
- * Converts command line flags to policies
- */
 export function commandLineFlagsToPolicies(flags: {
   allow?: string[];
   ask?: string[];
@@ -13,22 +10,19 @@ export function commandLineFlagsToPolicies(flags: {
   // Order matters for CLI flags too
   if (flags.exclude) {
     for (const tool of flags.exclude) {
-      const normalizedName = tool;
-      policies.push({ tool: normalizedName, permission: "exclude" });
+      policies.push({ tool, permission: "exclude" });
     }
   }
 
   if (flags.ask) {
     for (const tool of flags.ask) {
-      const normalizedName = tool;
-      policies.push({ tool: normalizedName, permission: "ask" });
+      policies.push({ tool, permission: "ask" });
     }
   }
 
   if (flags.allow) {
     for (const tool of flags.allow) {
-      const normalizedName = tool;
-      policies.push({ tool: normalizedName, permission: "allow" });
+      policies.push({ tool, permission: "allow" });
     }
   }
 

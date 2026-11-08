@@ -88,7 +88,8 @@ export class ToolPermissionService
     mcpServiceState?: MCPServiceState,
     isHeadless = false,
   ): ToolPermissionPolicy[] {
-    // With --agent, all available tools are allowed if not specified
+    // With --agent and no tool list, a TUI run allows every tool and a
+    // headless run gets the closed headless defaults.
     const parsedTools = agentFileServiceState?.parsedTools;
     if (!parsedTools) {
       if (isHeadless) {
@@ -205,13 +206,10 @@ export class ToolPermissionService
   private generateReadOnlyPolicies(): ToolPermissionPolicy[] {
     const headless = this.currentState.isHeadless;
     const flags = this.commandLineFlags;
-    const writeTools: ToolPermissionPolicy[] = [
-      "Edit",
-      "MultiEdit",
-      "Write",
-    ].map((tool) => ({ tool, permission: "exclude" }));
     return [
-      ...writeTools,
+      ...["Edit", "MultiEdit", "Write"].map(
+        (tool): ToolPermissionPolicy => ({ tool, permission: "exclude" }),
+      ),
       ...commandLineFlagsToPolicies({
         allow: flags?.allow,
         exclude: flags?.exclude,
@@ -297,7 +295,8 @@ export class ToolPermissionService
       this.currentState.currentMode === "plan" ||
       this.currentState.currentMode === "auto"
     ) {
-      // For plan and auto modes, use ONLY mode policies (absolute override)
+      // Plan mode uses the read-only policies, which already hold --allow and
+      // --exclude. Auto mode allows everything.
       allPolicies = [...modePolicies];
     } else {
       // Normal mode: combine headless + mode policies with user configuration

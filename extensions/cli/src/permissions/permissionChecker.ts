@@ -132,8 +132,6 @@ const SHELL_CONTROL = /[;&|`<>\r\n]|\$\(/;
 /**
  * An `allow` written as `Bash(pattern)` approves one simple command. A command
  * that chains or redirects doesn't match it, so it falls to the next policy.
- * An `exclude` or `ask` of the same form still matches the whole line, so
- * `--exclude "Bash(npm install*)"` also blocks `ls && npm install`.
  */
 function isCommandAllowThatChains(
   policy: ToolPermissionPolicy,
@@ -144,6 +142,43 @@ function isCommandAllowThatChains(
     /^Bash\(.+\)$/.test(policy.tool) &&
     typeof toolCall.arguments?.command === "string" &&
     SHELL_CONTROL.test(toolCall.arguments.command)
+  );
+}
+
+/**
+ * The parts of a command line that the shell runs as separate commands.
+ * Quoted text that contains shell syntax is split too, which can only make an
+ * `exclude` or `ask` match more often.
+ */
+function commandSegments(command: string): string[] {
+  return command
+    .split(/[;&|`<>\r\n()]|\$\(/)
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0);
+}
+
+/**
+ * An `exclude` or `ask` written as `Bash(pattern)` also matches each command
+ * in a chained line, so `--exclude "Bash(npm install*)"` blocks
+ * `ls && npm install` and `echo $(npm install)`.
+ */
+function matchesChainedCommand(
+  policy: ToolPermissionPolicy,
+  toolCall: ToolCallRequest,
+): boolean {
+  const command = toolCall.arguments?.command;
+  if (
+    policy.permission === "allow" ||
+    !/^Bash\(.+\)$/.test(policy.tool) ||
+    typeof command !== "string"
+  ) {
+    return false;
+  }
+  return commandSegments(command).some((segment) =>
+    matchesToolPattern(toolCall.name, policy.tool, {
+      ...toolCall.arguments,
+      command: segment,
+    }),
   );
 }
 
@@ -204,7 +239,8 @@ export function checkToolPermission(
       continue;
     }
     if (
-      matchesToolPattern(toolCall.name, policy.tool, toolCall.arguments) &&
+      (matchesToolPattern(toolCall.name, policy.tool, toolCall.arguments) ||
+        matchesChainedCommand(policy, toolCall)) &&
       matchesArguments(toolCall.arguments, policy.argumentMatches)
     ) {
       basePermission = policy.permission;

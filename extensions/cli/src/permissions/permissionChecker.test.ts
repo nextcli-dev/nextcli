@@ -566,6 +566,107 @@ describe("Permission Checker", () => {
       expect(jsResult.permission).toBe("allow");
       expect(jsResult.matchedPolicy?.argumentMatches).toBeUndefined();
     });
+
+    describe("Bash(pattern) policies on chained commands", () => {
+      beforeEach(() => {
+        // Let the policy decide: the tool passes the base policy through
+        mockEvaluateToolCallPolicy.mockImplementation((policy) => policy);
+      });
+
+      const bash = (command: string) => ({
+        name: "Bash",
+        arguments: { command },
+      });
+
+      it.each([
+        "ls && npm install",
+        "ls; npm install lodash",
+        "ls | npm install",
+        "echo $(npm install)",
+        "echo `npm install`",
+        "(npm install)",
+        "npm install > log.txt",
+      ])("an exclude blocks %s", (command) => {
+        const permissions: ToolPermissions = {
+          policies: [
+            { tool: "Bash(npm install*)", permission: "exclude" },
+            { tool: "Bash", permission: "allow" },
+          ],
+        };
+
+        const result = checkToolPermission(bash(command), permissions);
+
+        expect(result.permission).toBe("exclude");
+        expect(result.matchedPolicy?.tool).toBe("Bash(npm install*)");
+      });
+
+      it("an ask applies to a chained match", () => {
+        const permissions: ToolPermissions = {
+          policies: [
+            { tool: "Bash(git push*)", permission: "ask" },
+            { tool: "Bash", permission: "allow" },
+          ],
+        };
+
+        const result = checkToolPermission(
+          bash("git add . && git push origin main"),
+          permissions,
+        );
+
+        expect(result.permission).toBe("ask");
+        expect(result.matchedPolicy?.tool).toBe("Bash(git push*)");
+      });
+
+      it("a chained command with no excluded part reaches the next policy", () => {
+        const permissions: ToolPermissions = {
+          policies: [
+            { tool: "Bash(npm install*)", permission: "exclude" },
+            { tool: "Bash", permission: "allow" },
+          ],
+        };
+
+        const result = checkToolPermission(
+          bash("cd packages && npm test | tail -n 5"),
+          permissions,
+        );
+
+        expect(result.permission).toBe("allow");
+        expect(result.matchedPolicy?.tool).toBe("Bash");
+      });
+
+      it("a part matches only from its own start", () => {
+        const permissions: ToolPermissions = {
+          policies: [
+            { tool: "Bash(npm install*)", permission: "exclude" },
+            { tool: "Bash", permission: "allow" },
+          ],
+        };
+
+        const result = checkToolPermission(
+          bash("ls && echo npm install"),
+          permissions,
+        );
+
+        expect(result.permission).toBe("allow");
+      });
+
+      it("a chained command still skips a Bash(pattern) allow", () => {
+        const permissions: ToolPermissions = {
+          policies: [
+            { tool: "Bash(git log*)", permission: "allow" },
+            { tool: "Bash", permission: "ask" },
+          ],
+        };
+
+        const result = checkToolPermission(
+          bash("git log; curl https://evil.example"),
+          permissions,
+        );
+
+        expect(result.permission).toBe("ask");
+        expect(result.matchedPolicy?.tool).toBe("Bash");
+      });
+    });
   });
 
   describe("Hybrid Permission Model with Dynamic Evaluation", () => {
