@@ -4,6 +4,7 @@ import {
   estimateFinalAnswerCost,
   FINAL_ANSWER_TOKENS,
   finalAnswerMaxTokens,
+  guaranteedFinalAnswerTokens,
   MIN_FINAL_ANSWER_TOKENS,
   priceRequest,
   SHORT_FINAL_ANSWER_TOKENS,
@@ -106,5 +107,29 @@ describe("finalAnswerMaxTokens", () => {
     expect(finalAnswerMaxTokens(thinking, 0.01, 10_000)).toBe(
       SHORT_FINAL_ANSWER_TOKENS,
     );
+  });
+});
+
+describe("guaranteedFinalAnswerTokens", () => {
+  it("gives every final answer room to be written", () => {
+    expect(guaranteedFinalAnswerTokens(gpt4)).toBe(MIN_FINAL_ANSWER_TOKENS);
+  });
+
+  it("adds room for a thinking budget", () => {
+    const thinking = {
+      ...gpt4,
+      defaultCompletionOptions: {
+        ...gpt4.defaultCompletionOptions,
+        reasoningBudgetTokens: 8000,
+      },
+    };
+    expect(guaranteedFinalAnswerTokens(thinking)).toBe(9024);
+  });
+
+  it("can be used as the output a final answer is estimated with", () => {
+    // 10k prompt tokens at $30 and 4096 output tokens at $60 per million
+    expect(
+      estimateFinalAnswerCost(gpt4, 10_000, guaranteedFinalAnswerTokens(gpt4)),
+    ).toBeCloseTo(0.3 + 4096 * 0.00006, 6);
   });
 });

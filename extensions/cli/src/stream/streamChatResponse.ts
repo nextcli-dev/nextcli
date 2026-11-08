@@ -41,7 +41,7 @@ import {
 } from "./streamChatResponse.compactionHelpers.js";
 import {
   addUserMessage,
-  estimateFinalAnswerCost,
+  estimateFinalCallCost,
   finalAnswerMaxTokens,
   recordStreamTelemetry,
   trackFirstTokenTime,
@@ -421,12 +421,9 @@ export async function streamChatResponse(
   let finalResponse = "";
   let compactionOccurredThisTurn = false; // Track if compaction happened during this conversation turn
 
-  // The final answer must still fit under --max-cost
+  // The final answer must still fit under --max-cost, with room to be written
   const budget = new AgentLoopBudget(() =>
-    estimateFinalAnswerCost(
-      model,
-      countTotalInputTokens({ chatHistory, model }),
-    ),
+    estimateFinalCallCost(model, countTotalInputTokens({ chatHistory, model })),
   );
 
   // Aborted on exit, so an interrupted turn never starts another tool (#12701)
