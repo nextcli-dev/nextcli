@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.1](https://github.com/nextcli-dev/nextcli/compare/cli-v0.8.0...cli-v0.8.1) (2026-11-08)
+
+
+### Bug Fixes
+
+* **cli:** make the final answer at --max-cost reliable ([#92](https://github.com/nextcli-dev/nextcli/issues/92)) ([ab7300a](https://github.com/nextcli-dev/nextcli/commit/ab7300aa0db2093060d2770c1a88c37e8b0c5490))
+* **vscode:** load the README images from raw.githubusercontent.com ([#89](https://github.com/nextcli-dev/nextcli/issues/89)) ([53b8cc7](https://github.com/nextcli-dev/nextcli/commit/53b8cc78515960cb19d8a579e6681ff15b62661e))
+
 ## [0.8.0](https://github.com/nextcli-dev/nextcli/compare/cli-v0.7.0...cli-v0.8.0) (2026-11-07)
 
 
