@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.10](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.9...vscode-v1.6.10) (2026-11-08)
+
+
+### Bug Fixes
+
+* **vscode:** load the README images from raw.githubusercontent.com ([#89](https://github.com/nextcli-dev/nextcli/issues/89)) ([53b8cc7](https://github.com/nextcli-dev/nextcli/commit/53b8cc78515960cb19d8a579e6681ff15b62661e))
+
 ## [1.6.9](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.8...vscode-v1.6.9) (2026-11-07)
 
 
