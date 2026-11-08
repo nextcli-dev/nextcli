@@ -16,6 +16,13 @@ name: Publish VS Code Extension
 #   1.5.x) is set with a `Release-As:` footer on a commit to main.
 #   Dry run      Run this workflow with channel `dry-run` to build all targets
 #                for any ref. Nothing is published.
+#   Republish    Run this workflow from main with channel `republish` and the
+#                `tag` of a stable release (vscode-vX.Y.Z) that was created but
+#                not published, because its publish job failed. It publishes
+#                the .vsix files attached to that release, in env `production`.
+#                Re-running the failed job uses the workflow from the tagged
+#                commit, so a bug in it can't be fixed that way. Versions that
+#                are already published are skipped.
 #
 # Trusted publishing binds to this file name, so keep it:
 #   - Open VSX: one trusted publisher for this file, environment left blank.
@@ -28,17 +35,21 @@ on:
   workflow_dispatch:
     inputs:
       channel:
-        description: "pre-release publishes from main; dry-run only builds"
+        description: "pre-release publishes from main; dry-run only builds; republish publishes an existing release"
         type: choice
-        options: [dry-run, pre-release]
+        options: [dry-run, pre-release, republish]
         default: dry-run
       ref:
         description: "Ref to build for a dry run (ignored for pre-release, which uses main)"
         type: string
         default: main
+      tag:
+        description: "republish only: the stable release tag to publish, for example vscode-v1.6.10"
+        type: string
+        default: ""
 
 concurrency:
-  group: publish-vscode-${{ github.event.release.tag_name || inputs.channel }}
+  group: publish-vscode-${{ github.event.release.tag_name || (inputs.channel == 'republish' && inputs.tag) || inputs.channel }}
   cancel-in-progress: false
 
 permissions:
@@ -65,6 +76,8 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           CHANNEL_INPUT: ${{ inputs.channel }}
+          TAG_INPUT: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name }}
           IS_PRERELEASE: ${{ github.event.release.prerelease }}
         run: |
@@ -84,6 +97,17 @@ jobs:
             [ "${TAG#vscode-v}" = "$version" ] || { echo "::error::Tag $TAG does not match extensions/vscode/package.json version $version"; exit 1; }
             (( minor % 2 == 0 )) || { echo "::error::$version has an odd minor version. Stable releases use even minors; odd minors are for pre-releases."; exit 1; }
             out channel stable; out version "$version"; out tag "$TAG"; out ref "$sha"
+          elif [ "$CHANNEL_INPUT" = "republish" ]; then
+            [ "$GITHUB_REF" = "refs/heads/main" ] || { echo "::error::Republishing runs from main (got $GITHUB_REF)."; exit 1; }
+            [[ "$TAG_INPUT" == vscode-v* ]] || { echo "::error::tag must be a VS Code release tag such as vscode-v1.6.10 (got '$TAG_INPUT')."; exit 1; }
+            rver="${TAG_INPUT#vscode-v}"
+            rminor=$((10#$(echo "$rver" | cut -d. -f2)))
+            (( rminor % 2 == 0 )) || { echo "::error::$rver has an odd minor version. Only stable releases are republished."; exit 1; }
+            release=$(gh release view "$TAG_INPUT" --repo "$GITHUB_REPOSITORY" --json isPrerelease,isDraft,assets) || { echo "::error::There is no release $TAG_INPUT."; exit 1; }
+            [ "$(echo "$release" | jq -r '.isPrerelease or .isDraft')" = "false" ] || { echo "::error::$TAG_INPUT is a draft or a pre-release."; exit 1; }
+            [ "$(echo "$release" | jq '[.assets[] | select(.name | endswith(".vsix"))] | length')" -gt 0 ] || { echo "::error::$TAG_INPUT has no .vsix assets."; exit 1; }
+            out channel republish; out version "$rver"; out tag "$TAG_INPUT"; out ref "$sha"
+            echo "Republishing $TAG_INPUT from its release assets."
           elif [ "$CHANNEL_INPUT" = "pre-release" ]; then
             [ "$GITHUB_REF" = "refs/heads/main" ] || { echo "::error::Pre-releases are published from main (got $GITHUB_REF)."; exit 1; }
             (( minor % 2 == 0 )) || { echo "::error::package.json version $version should be a stable (even-minor) version."; exit 1; }
@@ -101,7 +125,7 @@ jobs:
 
   build:
     needs: resolve
-    if: needs.resolve.outputs.should_run == 'true'
+    if: needs.resolve.outputs.should_run == 'true' && needs.resolve.outputs.channel != 'republish'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     strategy:
@@ -256,6 +280,66 @@ jobs:
         run: |
           {
             echo "## Published nextcli.nextcli $VERSION ($CHANNEL)"
+            echo "- https://open-vsx.org/extension/nextcli/nextcli"
+            echo "- https://marketplace.visualstudio.com/items?itemName=nextcli.nextcli"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  republish:
+    # Publishes the .vsix files of a stable release that exists on GitHub but
+    # was never published. See the header. The package is not rebuilt.
+    needs: resolve
+    if: needs.resolve.outputs.channel == 'republish'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The Marketplace trusted publisher is bound to this file with env `production`
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TAG: ${{ needs.resolve.outputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      # Checkout first: it cleans untracked files, which would delete the
+      # package downloaded below. Only the checker script is needed.
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts/ci
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Download the .vsix files of the release
+        run: gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern '*.vsix' --dir vsix-artifacts
+
+      # The Marketplace and Open VSX load the README images from the URLs in the
+      # README inside the package, and the page can't be fixed without another
+      # release. Check that every image loads before publishing.
+      - name: Check the README images in the package
+        run: |
+          vsix="$(ls vsix-artifacts/*.vsix | head -n 1)"
+          readme="$(unzip -Z1 "$vsix" | grep -i -m1 '^extension/readme\.md$' || true)"
+          if [ -z "$readme" ]; then
+            echo "No README in $vsix" >&2
+            exit 1
+          fi
+          unzip -p "$vsix" "$readme" > "$RUNNER_TEMP/vsix-readme.md"
+          node scripts/ci/check-readme-images.mjs --live --no-local "$RUNNER_TEMP/vsix-readme.md"
+
+      # Both publish steps skip versions that already exist, so this can be
+      # run again after a partial failure.
+      - name: Publish to Open VSX
+        run: npx --yes ovsx@1.3.0 publish --trusted-publishing --skip-duplicate --packagePath vsix-artifacts/*.vsix
+
+      - name: Publish to the Visual Studio Marketplace
+        run: npx --yes @vscode/vsce@4.1.0 publish --oidc --skip-duplicate --packagePath vsix-artifacts/*.vsix
+
+      - name: Summary
+        run: |
+          {
+            echo "## Republished nextcli.nextcli ${TAG#vscode-v}"
             echo "- https://open-vsx.org/extension/nextcli/nextcli"
             echo "- https://marketplace.visualstudio.com/items?itemName=nextcli.nextcli"
           } >> "$GITHUB_STEP_SUMMARY"
