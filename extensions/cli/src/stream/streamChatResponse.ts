@@ -161,6 +161,8 @@ interface ProcessStreamingResponseOptions {
   systemMessage: string;
   /** Overrides the model's max_tokens for this call */
   maxTokens?: number;
+  /** Turns thinking off for this call, for a model that can */
+  thinkingOff?: boolean;
 }
 
 // Process a single streaming response and return whether we need to continue
@@ -243,7 +245,7 @@ export async function processStreamingResponse(
         stream: true,
         // OpenAI rejects an empty tools array, so send none at all
         tools: tools?.length ? tools : undefined,
-        ...getCompletionOptions(model),
+        ...getCompletionOptions(model, { thinkingOff: options.thinkingOff }),
         ...(options.maxTokens !== undefined && {
           max_tokens: options.maxTokens,
         }),
@@ -491,6 +493,8 @@ export async function streamChatResponse(
                   countTotalInputTokens({ chatHistory, systemMessage, model }),
                 )
               : undefined,
+            // The last call writes the answer: no tokens spent on thinking
+            thinkingOff: !!wrapUp,
           }),
         );
 

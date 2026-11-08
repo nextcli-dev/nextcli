@@ -21,11 +21,35 @@ describe("getControlsFormat", () => {
     expect(getControlsFormat({ provider: "openai", model: "gpt-5.5" })).toBe(
       "openai",
     );
+    // OpenAI-compatible config pointed at OneProvider: the same endpoint as
+    // provider "oneprovider", so DeepSeek keeps its own thinking switch
     expect(
       getControlsFormat({
         provider: "openai",
         model: "deepseek-v4-pro",
         apiBase: "https://api.oneprovider.dev/v1",
+      }),
+    ).toBe("deepseek");
+    // Other models and other hosts stay generic
+    expect(
+      getControlsFormat({
+        provider: "openai",
+        model: "gpt-6.1-sol",
+        apiBase: "https://api.oneprovider.dev/v1",
+      }),
+    ).toBe("generic");
+    expect(
+      getControlsFormat({
+        provider: "openai",
+        model: "deepseek-v4-pro",
+        apiBase: "https://llm.example.com/v1",
+      }),
+    ).toBe("generic");
+    expect(
+      getControlsFormat({
+        provider: "openai",
+        model: "deepseek-v4-pro",
+        apiBase: "https://oneprovider.dev.evil.example/v1",
       }),
     ).toBe("generic");
     expect(
@@ -43,6 +67,25 @@ describe("getControlsFormat", () => {
         model: "anthropic/claude-sonnet-5-5",
       }),
     ).toBe("openrouter");
+  });
+});
+
+describe("DeepSeek on OneProvider through an OpenAI-compatible config", () => {
+  const identity = {
+    provider: "openai",
+    model: "deepseek-v4-pro",
+    apiBase: "https://api.oneprovider.dev/v1",
+  };
+
+  it("can turn thinking off", () => {
+    expect(getModelControls(identity).thinkingModes).toContain("off");
+  });
+
+  it("asks the provider to stop thinking when Off is chosen", () => {
+    expect(buildModelControlFields(identity, { thinking: "off" })).toEqual({
+      thinking: { type: "disabled" },
+    });
+    expect(buildModelControlFields(identity, {})).toEqual({});
   });
 });
 
