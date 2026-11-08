@@ -253,6 +253,31 @@ describe("streamChatResponse - agent loop limits", () => {
     expect(calls[0][0]).toMatchObject({ max_tokens: 7833 });
   });
 
+  it("turns thinking off for the final call only, on a model that can", async () => {
+    // What nextcli-checks configures: OpenAI-compatible, pointed at OneProvider
+    const deepseek = {
+      provider: "openai",
+      name: "checks",
+      model: "deepseek-v4-pro",
+      apiBase: "https://api.oneprovider.dev/v1",
+      defaultCompletionOptions: { contextLength: 100_000, maxTokens: 2048 },
+    } as unknown as ModelConfig;
+    configureAgentLoopLimits({ maxTurns: "3" });
+
+    await expect(run(deepseek)).resolves.toBe("Final answer");
+
+    const calls = vi.mocked(llmApi.chatCompletionStream).mock.calls;
+    expect(calls).toHaveLength(3);
+    expect(calls[0][0]).not.toHaveProperty("thinking");
+    expect(calls[1][0]).not.toHaveProperty("thinking");
+    expect(calls[2][0]).toMatchObject({
+      thinking: { type: "disabled" },
+      reasoning_effort: "none",
+    });
+    expect(calls[1][0]).not.toHaveProperty("reasoning_effort");
+    expect(calls[2][0].tools).toBeUndefined();
+  });
+
   it("drops tool calls in the final answer", async () => {
     configureAgentLoopLimits({ maxTurns: "1" });
     vi.mocked(llmApi.chatCompletionStream).mockImplementation(

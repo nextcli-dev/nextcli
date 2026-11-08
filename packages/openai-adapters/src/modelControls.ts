@@ -765,7 +765,19 @@ export function buildModelControlFields(
       }
       break;
     case "deepseek":
-      if (thinking === "off") fields.thinking = { type: "disabled" };
+      if (thinking === "off") {
+        fields.thinking = { type: "disabled" };
+        // OneProvider doesn't always honor `thinking` alone: a request with
+        // tool calls in its history still streamed reasoning. It does honor
+        // `reasoning_effort: "none"`, so Off sends both there. DeepSeek's own
+        // API is left with its documented switch.
+        if (
+          identity.provider === ONEPROVIDER_PROVIDER ||
+          isOneProviderBase(identity.apiBase)
+        ) {
+          fields.reasoning_effort = "none";
+        }
+      }
       break;
     case "gemini":
       if (effort) fields.reasoning_effort = effort;

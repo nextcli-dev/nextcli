@@ -82,9 +82,25 @@ describe("DeepSeek on OneProvider through an OpenAI-compatible config", () => {
   });
 
   it("asks the provider to stop thinking when Off is chosen", () => {
+    // OneProvider also needs reasoning_effort "none": `thinking` alone still
+    // returned reasoning for a request with tool calls in its history
     expect(buildModelControlFields(identity, { thinking: "off" })).toEqual({
       thinking: { type: "disabled" },
+      reasoning_effort: "none",
     });
+    expect(
+      buildModelControlFields(
+        { provider: "oneprovider", model: "deepseek-v4-pro" },
+        { thinking: "off" },
+      ),
+    ).toEqual({ thinking: { type: "disabled" }, reasoning_effort: "none" });
+    // DeepSeek's own API keeps its documented switch only
+    expect(
+      buildModelControlFields(
+        { provider: "deepseek", model: "deepseek-v4-pro" },
+        { thinking: "off" },
+      ),
+    ).toEqual({ thinking: { type: "disabled" } });
     expect(buildModelControlFields(identity, {})).toEqual({});
   });
 });
