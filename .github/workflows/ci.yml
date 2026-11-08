@@ -519,7 +519,11 @@ jobs:
         with:
           node-version-file: ".nvmrc"
       - name: Test scripts/ci
-        run: node --test scripts/ci/affected.test.mjs scripts/ci/check-deprecations.test.mjs
+        run: node --test scripts/ci/affected.test.mjs scripts/ci/check-deprecations.test.mjs scripts/ci/check-readme-images.test.mjs
+      - name: Check README images
+        # The extension and CLI pages load these from the URLs in the README, so
+        # a bad URL ships as a broken-image icon. Static: no network.
+        run: node scripts/ci/check-readme-images.mjs
       - name: Check for deprecated npm packages
         # Strict on every run: no lockfile may gain a deprecated package, and
         # the allowlist may not keep entries that match nothing. A package
