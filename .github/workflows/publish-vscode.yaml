@@ -149,6 +149,24 @@ jobs:
           version: ${{ needs.resolve.outputs.version }}
           github-token: ${{ steps.app-token.outputs.token }}
 
+      # The Marketplace and Open VSX load the README images from the URLs in the
+      # README inside the package, and the page can't be fixed without another
+      # release. Check that every image loads before anything is published. The
+      # README is the same in every target, so one is enough. It runs here, not
+      # in the publish job, so a dry run exercises it too.
+      - name: Check the README images in the package
+        if: matrix.platform == 'linux' && matrix.arch == 'x64'
+        shell: bash
+        run: |
+          vsix="$(ls extensions/vscode/*.vsix | head -n 1)"
+          readme="$(unzip -Z1 "$vsix" | grep -i -m1 '^extension/readme\.md$' || true)"
+          if [ -z "$readme" ]; then
+            echo "No README in $vsix" >&2
+            exit 1
+          fi
+          unzip -p "$vsix" "$readme" > "$RUNNER_TEMP/vsix-readme.md"
+          node scripts/ci/check-readme-images.mjs --live --no-local "$RUNNER_TEMP/vsix-readme.md"
+
       - name: Upload .vsix artifact
         uses: actions/upload-artifact@v7
         with:
@@ -215,29 +233,9 @@ jobs:
           path: vsix-artifacts
           merge-multiple: true
 
-      # Only the checker script, to read the README that is about to be published
-      - uses: actions/checkout@v7
-        with:
-          sparse-checkout: scripts/ci
-          persist-credentials: false
-
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-
-      # The Marketplace and Open VSX load the README images from the URLs in the
-      # README inside the package, and the page can't be fixed without another
-      # release. Check that every image loads before publishing.
-      - name: Check the README images in the package
-        run: |
-          vsix="$(ls vsix-artifacts/*.vsix | head -n 1)"
-          readme="$(unzip -Z1 "$vsix" | grep -i -m1 '^extension/readme\.md$' || true)"
-          if [ -z "$readme" ]; then
-            echo "No README in $vsix" >&2
-            exit 1
-          fi
-          unzip -p "$vsix" "$readme" > /tmp/vsix-readme.md
-          node scripts/ci/check-readme-images.mjs --live --no-local /tmp/vsix-readme.md
 
       # Both publish steps skip versions that already exist, so the job can be
       # re-run after a partial failure.
