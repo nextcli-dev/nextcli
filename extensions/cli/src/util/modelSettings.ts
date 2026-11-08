@@ -138,8 +138,19 @@ export function effectiveThinking(
  * Settings for buildModelControlFields: the thinking mode only when one was
  * chosen, so requests for untouched models keep the provider's default
  */
-export function requestControlSettings(model: ModelConfig): CliModelSettings {
+export function requestControlSettings(
+  model: ModelConfig,
+  options?: { thinkingOff?: boolean },
+): CliModelSettings {
   const settings = getModelSettings(model);
+  // The last call of a run writes the answer, so a model that can think
+  // less is asked to stop: thinking would use the tokens the answer needs
+  if (
+    options?.thinkingOff &&
+    getModelControlsFor(model).thinkingModes.includes("off")
+  ) {
+    return { effort: settings.effort, fast: settings.fast, thinking: "off" };
+  }
   const chosen = readStoredSettings(model).thinking;
   return {
     effort: settings.effort,

@@ -150,14 +150,21 @@ export { AgentLoopLimitError } from "./agentLoopLimitError.js";
 
 /**
  * Budget kept for the final answer: at least 10% of the limit, twice the last
- * call, and what the final call itself is expected to use
+ * call, and one more call like the last one followed by the final call itself.
+ * The last term matters when a call is expensive: the call after this one
+ * grows the prompt, and the final call has to be paid for out of what is left
+ * after it, or the final answer gets no room to be written.
  */
 function reserveFor(
   limit: number,
   lastCallUsage: number,
   finalCallUsage = 0,
 ): number {
-  return Math.max(limit * 0.1, lastCallUsage * 2, finalCallUsage);
+  return Math.max(
+    limit * 0.1,
+    lastCallUsage * 2,
+    lastCallUsage + finalCallUsage,
+  );
 }
 
 /**

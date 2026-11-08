@@ -510,6 +510,16 @@ function isOfficialOpenAI(apiBase: string | undefined): boolean {
   return !apiBase || apiBase.replace(/\/?$/, "/") === OPENAI_API_BASE;
 }
 
+/** Whether an API base is OneProvider's, whichever provider id the config uses */
+function isOneProviderBase(apiBase: string | undefined): boolean {
+  try {
+    const host = new URL(apiBase ?? "").hostname;
+    return host === "oneprovider.dev" || host.endsWith(".oneprovider.dev");
+  } catch {
+    return false;
+  }
+}
+
 /** The request format for a model, following the adapter it goes through */
 export function getControlsFormat({
   provider,
@@ -526,7 +536,13 @@ export function getControlsFormat({
       if (isClaude(model)) return "anthropic";
       return isDeepSeek(model) ? "deepseek" : "generic";
     case "openai":
-      return isOfficialOpenAI(apiBase) ? "openai" : "generic";
+      if (isOfficialOpenAI(apiBase)) return "openai";
+      // An OpenAI-compatible config pointed at OneProvider (what nextcli-checks
+      // writes) is the same endpoint as provider "oneprovider", which takes
+      // DeepSeek's own thinking switch (`thinking: { type: "disabled" }`)
+      return isOneProviderBase(apiBase) && isDeepSeek(model)
+        ? "deepseek"
+        : "generic";
     case "openrouter":
       return "openrouter";
     case "deepseek":
@@ -749,7 +765,19 @@ export function buildModelControlFields(
       }
       break;
     case "deepseek":
-      if (thinking === "off") fields.thinking = { type: "disabled" };
+      if (thinking === "off") {
+        fields.thinking = { type: "disabled" };
+        // OneProvider doesn't always honor `thinking` alone: a request with
+        // tool calls in its history still streamed reasoning. It does honor
+        // `reasoning_effort: "none"`, so Off sends both there. DeepSeek's own
+        // API is left with its documented switch.
+        if (
+          identity.provider === ONEPROVIDER_PROVIDER ||
+          isOneProviderBase(identity.apiBase)
+        ) {
+          fields.reasoning_effort = "none";
+        }
+      }
       break;
     case "gemini":
       if (effort) fields.reasoning_effort = effort;

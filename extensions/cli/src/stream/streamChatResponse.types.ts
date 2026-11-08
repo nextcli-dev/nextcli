@@ -32,6 +32,7 @@ export interface StreamCallbacks {
  */
 export function getCompletionOptions(
   model: ModelConfig,
+  options?: { thinkingOff?: boolean },
 ): Partial<ChatCompletionCreateParamsStreaming> {
   const opts = model.defaultCompletionOptions;
   const isAnthropic = getModelControlsFor(model).format === "anthropic";
@@ -51,7 +52,7 @@ export function getCompletionOptions(
       }),
     ...buildModelControlFields(
       modelIdentity(model),
-      requestControlSettings(model),
+      requestControlSettings(model, options),
     ),
   } as Partial<ChatCompletionCreateParamsStreaming>;
 }

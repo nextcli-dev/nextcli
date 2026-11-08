@@ -386,14 +386,53 @@ export const MIN_FINAL_ANSWER_TOKENS = 4096;
 /** The shortest final answer, so a nearly exhausted budget can still reply */
 export const SHORT_FINAL_ANSWER_TOKENS = 256;
 
-/** What a final answer to this prompt would cost, for the --max-cost reserve */
+/**
+ * The output a final answer is always given under --max-cost: room to think
+ * (a model with a thinking budget spends tokens on that first) and to write
+ */
+export function guaranteedFinalAnswerTokens(model: any): number {
+  const thinkingBudget = model.defaultCompletionOptions?.reasoningBudgetTokens;
+  return Math.max(
+    MIN_FINAL_ANSWER_TOKENS,
+    typeof thinkingBudget === "number" ? thinkingBudget + 1024 : 0,
+  );
+}
+
+/**
+ * How much bigger the prompt of the final call may be than the history now.
+ * The call before it adds its tool results, which can be several files.
+ */
+export const FINAL_PROMPT_GROWTH = 1.25;
+
+/**
+ * What the final call of a run would cost if it were made after one more
+ * model call: a bigger prompt, and the most output a final answer can use.
+ * This is what --max-cost keeps in reserve. A reasoning model thinks before it
+ * writes, and a final answer that runs out of tokens while thinking is empty,
+ * so the reserve is for a full-size answer, not the smallest one.
+ */
+export function estimateFinalCallCost(
+  model: any,
+  historyTokens: number,
+): number {
+  return estimateFinalAnswerCost(
+    model,
+    Math.ceil(historyTokens * FINAL_PROMPT_GROWTH),
+  );
+}
+
+/**
+ * What a final answer to this prompt would cost.
+ * By default it counts the most output a final answer can use.
+ */
 export function estimateFinalAnswerCost(
   model: any,
   promptTokens: number,
+  outputTokens = FINAL_ANSWER_TOKENS,
 ): number {
   return priceRequest(model, {
     promptTokens,
-    completionTokens: Math.min(FINAL_ANSWER_TOKENS, getModelMaxTokens(model)),
+    completionTokens: Math.min(outputTokens, getModelMaxTokens(model)),
   }).cost;
 }
 
@@ -422,11 +461,7 @@ export function finalAnswerMaxTokens(
     outputCostPerToken > 0
       ? Math.floor(Math.max(0, costLeft - promptCost) / outputCostPerToken)
       : Infinity;
-  const thinkingBudget = model.defaultCompletionOptions?.reasoningBudgetTokens;
-  const roomyFloor = Math.max(
-    MIN_FINAL_ANSWER_TOKENS,
-    typeof thinkingBudget === "number" ? thinkingBudget + 1024 : 0,
-  );
+  const roomyFloor = guaranteedFinalAnswerTokens(model);
   const floor =
     affordable >= roomyFloor ? roomyFloor : SHORT_FINAL_ANSWER_TOKENS;
   return Math.min(

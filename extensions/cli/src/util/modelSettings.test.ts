@@ -207,3 +207,41 @@ describe("thinking mode", () => {
     expect(modelStatusLabel(opus)).toContain("No thinking");
   });
 });
+
+describe("the last call of a run", () => {
+  // What nextcli-checks configures: OpenAI-compatible, pointed at OneProvider
+  const deepseek = model({
+    provider: "openai",
+    model: "deepseek-v4-pro",
+    apiBase: "https://api.oneprovider.dev/v1",
+  });
+
+  beforeEach(() => {
+    resetModelSettingsCache();
+  });
+
+  it("turns thinking off on a model that can, so the answer gets the tokens", () => {
+    expect(getCompletionOptions(deepseek)).not.toHaveProperty("thinking");
+    expect(getCompletionOptions(deepseek, { thinkingOff: true })).toMatchObject(
+      { thinking: { type: "disabled" } },
+    );
+  });
+
+  it("only changes that one call", () => {
+    getCompletionOptions(deepseek, { thinkingOff: true });
+    expect(getCompletionOptions(deepseek)).not.toHaveProperty("thinking");
+  });
+
+  it("leaves a model that always thinks alone", () => {
+    // Opus 5.5 rejects `thinking: disabled`
+    expect(getCompletionOptions(opus, { thinkingOff: true })).toEqual(
+      getCompletionOptions(opus),
+    );
+  });
+
+  it("asks an OpenAI reasoning model for no reasoning effort", () => {
+    expect(getCompletionOptions(gpt, { thinkingOff: true })).toMatchObject({
+      reasoning_effort: "none",
+    });
+  });
+});
