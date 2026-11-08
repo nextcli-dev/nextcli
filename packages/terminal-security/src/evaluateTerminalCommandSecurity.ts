@@ -33,11 +33,16 @@ type ParsedToken = string | ShellOperator | GlobPattern | CommentToken;
  * Critical commands are disabled, and high-risk or destructive commands, and
  * risky forms of commands such as git or find, require permission. Known
  * build, test and file commands (pytest, tsc, dotnet build, cp...) keep the
- * base policy, so a tool set to automatic runs them without asking. Commands
- * the evaluator does not recognise require permission.
+ * base policy, so a tool set to automatic runs them without asking, unless
+ * `options.strict` is set. Commands the evaluator does not recognise require
+ * permission.
  *
  * @param basePolicy The base policy configured for the tool
  * @param command The command string to evaluate
+ * @param options.strict When true, those build, test and file commands require
+ *   permission instead, so a base "allow" only runs commands the evaluator
+ *   approves on its own (ls, cat, git status...). Unattended runs use it so a
+ *   default allow doesn't run commands that change files.
  * @returns The security policy to apply: 'disabled', 'allowedWithPermission', or 'allowedWithoutPermission'
  */
 export function evaluateTerminalCommandSecurity(

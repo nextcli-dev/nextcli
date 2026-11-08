@@ -30,6 +30,11 @@ export interface PermissionSources {
  * 4. Default policies (lowest)
  *
  * Earlier sources completely override later ones on a per-tool basis.
+ *
+ * In a headless run, only the `exclude` rules of permissions.yaml apply. Its
+ * allows and asks are answers given in the terminal UI ("don't ask again"),
+ * and they don't carry over to an unattended run, which may be reviewing
+ * untrusted input. Use --allow to opt a headless run in to a tool.
  */
 export function resolvePermissionPrecedence(
   sources: PermissionSources,
@@ -47,7 +52,11 @@ export function resolvePermissionPrecedence(
     const yamlConfig = loadPermissionsYaml();
     if (yamlConfig) {
       const yamlPolicies = yamlConfigToPolicies(yamlConfig);
-      policies.push(...yamlPolicies);
+      policies.push(
+        ...(sources.isHeadless
+          ? yamlPolicies.filter((policy) => policy.permission === "exclude")
+          : yamlPolicies),
+      );
     }
   }
 

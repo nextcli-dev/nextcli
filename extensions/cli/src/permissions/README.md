@@ -20,7 +20,7 @@ The system comes with sensible default policies:
 | `Fetch`                | **allow** | **exclude**                                                                                                                       |
 | MCP and any other tool | **ask**   | **exclude**                                                                                                                       |
 
-Any `ask` in a headless run is refused, because nobody can answer it. Policies carry a `source`: the defaults are tagged `"default"`, and a default `allow` for a tool that judges its own calls (Bash) is narrowed with the tool's strict evaluation (`checkToolPermission`). A policy without a source is the operator's (`--allow`, `permissions.yaml`) and is taken as given. Opt in to more with `--allow`.
+Any `ask` in a headless run is refused, because nobody can answer it. Policies carry a `source`: the defaults are tagged `"default"`, and a default `allow` for a tool that judges its own calls (Bash) is narrowed with the tool's strict evaluation (`checkToolPermission`). A policy without a source is the operator's (`--allow`, `permissions.yaml`) and is taken as given. In a headless run, `permissions.yaml` contributes only its `exclude` rules (`resolvePermissionPrecedence`): its allows and asks are TUI answers and don't carry over to unattended runs. Opt in to more with `--allow`.
 
 ## How It Works
 
