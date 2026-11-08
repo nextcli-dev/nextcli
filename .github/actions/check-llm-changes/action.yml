@@ -24,13 +24,21 @@ runs:
       id: check-changes
       shell: bash
       run: |
+        BASE_REF="${{ github.event.pull_request.base.ref }}"
         if [ "${{ github.event_name }}" = "push" ]; then
           # For push events, compare against the previous commit
           CHANGED_FILES=$(git diff --name-only HEAD~1...HEAD)
-        else
+        elif [ -n "$BASE_REF" ]; then
           # For PR events, compare against the base branch
-          git fetch origin ${{ github.event.pull_request.base.ref }}
-          CHANGED_FILES=$(git diff --name-only origin/${{ github.event.pull_request.base.ref }}...HEAD)
+          git fetch origin "$BASE_REF"
+          CHANGED_FILES=$(git diff --name-only "origin/$BASE_REF...HEAD")
+        else
+          # Manual (workflow_dispatch) and scheduled runs have no pull request,
+          # so there is no base branch: compare against main. Without this the
+          # branch name was empty and `git fetch origin` / `git diff origin/...`
+          # failed every job that uses this action.
+          git fetch origin main
+          CHANGED_FILES=$(git diff --name-only origin/main...HEAD)
         fi
 
         echo "Changed files:"
