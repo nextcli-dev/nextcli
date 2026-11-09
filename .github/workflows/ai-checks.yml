@@ -7,9 +7,10 @@ name: AI Checks
 # CHECKS_ENABLED, a comma-separated list of file names in .checks/ without .md
 # (default: anti-slop,review,security-review,setup-scripts,stale-comments).
 # Each check stops at CHECKS_MAX_COST dollars (default 2) and posts what it
-# found so far, so a run costs at most that times the number of enabled checks. A check whose `paths` match no changed file passes
-# without calling the model. Each check gets 25 minutes; the reusable job allows 30. The checks
-# are advisory: `ci` is the only required check.
+# found so far, so a run costs at most that times the number of enabled
+# checks. A check whose `paths` match no changed file passes without calling the
+# model. Each check gets 25 minutes; the reusable job allows 30. The checks are
+# advisory: `ci` is the only required check.
 #
 #   - Add the `ai-review` label to a pull request. The label is removed when
 #     the run finishes, so add it again to re-run.
