@@ -72,8 +72,57 @@ jobs:
     secrets:
       api-key: ${{ secrets.PROVIDER_API_KEY }}
 
-  remove-label:
+  # Safety net. The comment is posted by a job inside the reusable workflow. If
+  # that job never starts (run 42669709525 lost it and still spent the money),
+  # post the combined comment from the uploaded check results here. Does nothing
+  # when the comment for this commit is already there.
+  report:
     needs: ai-checks
+    if: always() && needs.ai-checks.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR: ${{ github.event.pull_request.number || inputs.pr }}
+    steps:
+      - name: Look for the comment of this commit
+        id: existing
+        run: |
+          sha="$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json headRefOid -q .headRefOid)"
+          found="$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" \
+            --jq '.[] | select(.user.login == "github-actions[bot]") | .body' \
+            | grep -cF "Commit \`${sha:0:7}\`" || true)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          if [ "${found:-0}" -gt 0 ]; then
+            echo "A comment for ${sha:0:7} exists."
+            echo "missing=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::No AI review comment for ${sha:0:7}; posting it from the check results."
+            echo "missing=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download check results
+        if: steps.existing.outputs.missing == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: check-results*
+          path: ${{ runner.temp }}/check-results
+          merge-multiple: true
+
+      - name: Post the combined comment
+        if: steps.existing.outputs.missing == 'true'
+        uses: nextcli-dev/nextcli-checks@v3
+        with:
+          mode: comment
+          pr-number: ${{ env.PR }}
+          results-dir: ${{ runner.temp }}/check-results
+          max-cost: ${{ vars.CHECKS_MAX_COST || '2' }}
+
+  remove-label:
+    needs: [ai-checks, report]
     # Pull requests from forks get a read-only token, which can't edit labels.
     if: >-
       always() && github.event_name == 'pull_request' && github.event.label.name == 'ai-review' &&
