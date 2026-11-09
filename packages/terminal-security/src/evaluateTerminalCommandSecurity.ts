@@ -49,6 +49,8 @@ export interface EvaluateOptions {
  *
  * @param basePolicy The base policy configured for the tool
  * @param command The command string to evaluate
+ * @param options Optional evaluation options. `strict` makes build, test and
+ *   file commands require permission, for unattended runs.
  * @returns The security policy to apply: 'disabled', 'allowedWithPermission', or 'allowedWithoutPermission'
  */
 export function evaluateTerminalCommandSecurity(

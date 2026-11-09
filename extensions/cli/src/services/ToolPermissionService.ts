@@ -268,8 +268,8 @@ export class ToolPermissionService
       this.currentState.isHeadless &&
       this.currentState.currentMode === "plan"
     ) {
-      // Unattended --readonly stays read-only even when an agent file is loaded.
-      // An agent file ends in allow-all, which would put Bash and MCP back.
+      // Unattended --readonly stays read-only even when an agent file is loaded:
+      // the file can explicitly allow write, Bash or MCP tools.
       allPolicies = [...modePolicies];
     } else if (agentFileServiceState?.agentFile) {
       // Agent file policies take full precedence on init. An unattended run

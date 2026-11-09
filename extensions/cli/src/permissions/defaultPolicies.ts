@@ -42,12 +42,16 @@ export function getDefaultToolPolicies(
 }
 
 /**
- * Plan mode (--readonly): a complete override that excludes all writes.
+ * Plan mode (--readonly) defaults: all writes are excluded.
  *
  * Bash can change files (cp, mv, tee, build scripts) and MCP tools can do
- * anything, so a person approves each call in the TUI. Unattended (headless)
- * runs often review untrusted code with a provider key in the environment, so
- * they get no shell, no MCP tools and no Fetch, which could send data out.
+ * anything, so by default a person approves each call in the TUI. Unattended
+ * (headless) runs often review untrusted code with a provider key in the
+ * environment, so by default they get no shell, no MCP tools and no Fetch,
+ * which could send data out. The operator's --allow and --exclude come first
+ * (`generateReadOnlyPolicies`): a scoped allow such as `Bash(git log*)` or
+ * `github_*` opens one command or server; a whole-tool Bash or Fetch allow is
+ * dropped, and writes are never allowed.
  */
 export function getPlanModePolicies(
   isHeadless = false,

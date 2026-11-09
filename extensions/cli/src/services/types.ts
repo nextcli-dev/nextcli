@@ -172,6 +172,12 @@ export interface ServiceInitOptions {
   options?: BaseCommandOptions; // Command-line options
   headless?: boolean;
   skipOnboarding?: boolean; // Skip onboarding check even in TUI mode
+  /**
+   * A headless run whose client can still answer a tool approval, such as
+   * `cn serve` with its /permission endpoint. Tool permissions then use the
+   * interactive defaults instead of the closed headless ones.
+   */
+  approvalsAvailable?: boolean;
   toolPermissionOverrides?: {
     allow?: string[];
     ask?: string[];

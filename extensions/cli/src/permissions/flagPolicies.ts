@@ -1,5 +1,6 @@
 import { BUILT_IN_TOOL_NAMES } from "../tools/builtInToolNames.js";
 
+import { getDefaultToolPolicies } from "./defaultPolicies.js";
 import { ToolPermissionPolicy } from "./types.js";
 
 /**
@@ -47,13 +48,24 @@ function globMatchesEveryCommand(glob: string): boolean {
   ].every((command) => regex.test(command));
 }
 
+/** Built-in tools the headless defaults exclude (Fetch, UploadArtifact). */
+const HEADLESS_CLOSED_BUILT_INS = new Set(
+  getDefaultToolPolicies(true)
+    .filter(
+      (policy) =>
+        policy.permission === "exclude" &&
+        (BUILT_IN_TOOL_NAMES as readonly string[]).includes(policy.tool),
+    )
+    .map((policy) => policy.tool),
+);
+
 /**
  * A headless run keeps the safe rules remembered from the terminal. Excludes
  * always apply. An allow applies when it names arguments (`Bash(ls*)`) or a
- * built-in headless does not close (`Write`). An ask is dropped, because
- * nobody can answer it. A whole-tool Bash, Fetch, `*`, or MCP name is
- * dropped: those reopen the shell, the network, or tools the closed defaults
- * exclude.
+ * built-in the headless defaults don't exclude (`Write`). An ask is dropped,
+ * because nobody can answer it. A whole-tool Bash, `*`, an MCP name, or a
+ * built-in the headless defaults exclude (Fetch, UploadArtifact) is dropped:
+ * those reopen the shell, the network, or tools the closed defaults exclude.
  */
 export function headlessKeepsYamlPolicy(policy: ToolPermissionPolicy): boolean {
   if (policy.permission === "exclude") {
@@ -71,7 +83,10 @@ export function headlessKeepsYamlPolicy(policy: ToolPermissionPolicy): boolean {
   if (planModeAllowReopensClosedTools(policy.tool)) {
     return false;
   }
-  return (BUILT_IN_TOOL_NAMES as readonly string[]).includes(policy.tool);
+  return (
+    (BUILT_IN_TOOL_NAMES as readonly string[]).includes(policy.tool) &&
+    !HEADLESS_CLOSED_BUILT_INS.has(policy.tool)
+  );
 }
 
 function globToRegExp(glob: string): RegExp {

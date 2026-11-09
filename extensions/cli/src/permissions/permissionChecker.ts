@@ -221,20 +221,9 @@ export function isAllowedForSomeArguments(
 ): boolean {
   for (const policy of permissions.policies) {
     const scoped = policy.tool.match(/^(.+?)\((.+)\)$/);
-    if (scoped) {
-      if (
-        policy.permission === "allow" &&
-        matchesToolPattern(toolName, scoped[1])
-      ) {
-        return true;
-      }
-      continue;
-    }
-    if (policy.argumentMatches) {
-      if (
-        policy.permission === "allow" &&
-        matchesToolPattern(toolName, policy.tool)
-      ) {
+    if (scoped || policy.argumentMatches) {
+      const tool = scoped?.[1] ?? policy.tool;
+      if (policy.permission === "allow" && matchesToolPattern(toolName, tool)) {
         return true;
       }
       continue;

@@ -162,3 +162,47 @@ describe("a machine-wide exclude in a headless run", () => {
     ).toBe("exclude");
   });
 });
+
+describe("a remembered allow with a scoped exclude in the terminal UI", () => {
+  beforeEach(() => {
+    yamlConfig = { allow: ["Bash"], ask: [], exclude: ["Bash(rm *)"] };
+  });
+
+  it("applies the exclude and keeps the allow for other commands", () => {
+    const tui = resolve(false);
+
+    expect(
+      checkToolPermission(
+        { name: "Bash", arguments: { command: "rm file.txt" } },
+        tui,
+      ).permission,
+    ).toBe("exclude");
+    expect(
+      checkToolPermission(
+        { name: "Bash", arguments: { command: "npm test" } },
+        tui,
+      ).permission,
+    ).toBe("allow");
+  });
+});
+
+describe("a remembered allow for a built-in the headless defaults exclude", () => {
+  beforeEach(() => {
+    yamlConfig = { allow: ["UploadArtifact", "Write"], ask: [], exclude: [] };
+  });
+
+  it("drops UploadArtifact and keeps Write", () => {
+    const permissions = resolve(true);
+    const kept = permissions.policies
+      .filter((policy) => !policy.source)
+      .map((policy) => `${policy.tool}:${policy.permission}`);
+
+    expect(kept).toEqual(["Write:allow"]);
+    expect(
+      checkToolPermission(
+        { name: "UploadArtifact", arguments: { filepath: "secret.txt" } },
+        permissions,
+      ).permission,
+    ).toBe("exclude");
+  });
+});
