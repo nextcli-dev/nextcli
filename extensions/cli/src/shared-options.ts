@@ -1,4 +1,6 @@
-import { Command, InvalidArgumentError } from "commander";
+import { Command, InvalidArgumentError, Option } from "commander";
+
+import { LOG_LEVELS } from "./util/logger.js";
 
 /** Every effort level any model accepts; each model supports a subset */
 export const EFFORT_LEVELS = [
@@ -35,7 +37,13 @@ export function addCommonOptions(command: Command): Command {
     )
     .option("--readonly", "Start in plan mode (read-only tools)")
     .option("--auto", "Start in auto mode (all tools allowed)")
-    .option("--verbose", "Enable verbose logging")
+    .option("--verbose", "Same as --log-level debug")
+    .addOption(
+      new Option(
+        "--log-level <level>",
+        "How much to write to ~/.continue/logs/cn.log (default: info, or NEXTCLI_LOG_LEVEL)",
+      ).choices(LOG_LEVELS),
+    )
     .option("--beta-status-tool", "Enable beta status tool")
     .option(
       "--rule <rule>",

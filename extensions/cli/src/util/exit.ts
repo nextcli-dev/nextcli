@@ -142,8 +142,7 @@ export async function updateAgentMetadata(
  * Display session usage breakdown in verbose mode
  */
 function displaySessionUsage(): void {
-  const isVerbose = process.argv.includes("--verbose");
-  if (!isVerbose) {
+  if (!logger.isLevelEnabled("debug")) {
     return;
   }
 

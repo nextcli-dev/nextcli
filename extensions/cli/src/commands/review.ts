@@ -29,7 +29,7 @@ export interface ReviewOptions extends ExtendedCommandOptions {
 /**
  * Run a single review in a forked worker process.
  */
-async function runReviewInWorker(
+export async function runReviewInWorker(
   agentSource: string,
   worktreePath: string,
   diffContext: DiffContext,
@@ -44,6 +44,9 @@ async function runReviewInWorker(
         ...process.env,
         // Ensure the worker can find its config
         NODE_OPTIONS: process.env.NODE_OPTIONS || "",
+        // The worker never parses flags, so --log-level and --verbose reach
+        // it only this way
+        NEXTCLI_LOG_LEVEL: logger.getLevel(),
       },
     });
 
@@ -76,7 +79,6 @@ async function runReviewInWorker(
             config: options.config,
             org: options.org,
             rule: options.rule,
-            verbose: options.verbose,
           },
         };
         child.send({ type: "run-review", config });
@@ -260,10 +262,6 @@ function outputResultsAndExit(
  */
 export async function review(options: ReviewOptions = {}): Promise<void> {
   configureConsoleForHeadless(false);
-
-  if (options.verbose) {
-    logger.setLevel("debug");
-  }
 
   // Mount the live UI immediately with a loading state
   const uiProps: LiveUIProps = {

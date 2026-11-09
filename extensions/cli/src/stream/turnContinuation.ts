@@ -16,7 +16,7 @@ export function requireFinalAnswer(required: boolean): void {
   answerRequired = required;
 }
 
-interface CallEnd {
+export interface CallEnd {
   finishReason?: string;
   outputTokens?: number;
 }
@@ -29,27 +29,27 @@ interface CallEnd {
 let lastCallEnd: CallEnd = {};
 let previousCallEnd: CallEnd = {};
 
-/** Notes the finish reason and output tokens a stream chunk reports. */
-export function recordCallEnd(chunk: {
-  choices?: { finish_reason?: string | null }[];
-  usage?: { completion_tokens?: number } | null;
-}): void {
-  const finishReason = chunk.choices?.[0]?.finish_reason;
-  if (finishReason) {
-    lastCallEnd = { ...lastCallEnd, finishReason };
-  }
-  if (chunk.usage?.completion_tokens !== undefined) {
-    lastCallEnd = {
-      ...lastCallEnd,
-      outputTokens: chunk.usage.completion_tokens,
-    };
-  }
+/** Adds the finish reason and output tokens a stream chunk reports. */
+export function readCallEnd(
+  callEnd: CallEnd,
+  chunk: {
+    choices?: { finish_reason?: string | null }[];
+    usage?: { completion_tokens?: number } | null;
+  },
+): CallEnd {
+  return {
+    finishReason: chunk.choices?.[0]?.finish_reason || callEnd.finishReason,
+    outputTokens: chunk.usage?.completion_tokens ?? callEnd.outputTokens,
+  };
 }
 
-/** Starts a new model call; the one before it is kept. */
-export function resetCallEnd(): void {
+/**
+ * Notes how a finished model call ended; the one before it is kept. Set once
+ * per call, after its stream, so parallel subagent streams don't mix chunks.
+ */
+export function endCall(callEnd: CallEnd): void {
   previousCallEnd = lastCallEnd;
-  lastCallEnd = {};
+  lastCallEnd = callEnd;
 }
 
 /** Forgets both calls, at the start of a run. */

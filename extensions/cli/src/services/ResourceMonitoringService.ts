@@ -51,7 +51,7 @@ class ResourceMonitoringService {
 
   async initialize(): Promise<void> {
     // Start monitoring if verbose mode is enabled
-    if (process.argv.includes("--verbose")) {
+    if (logger.isLevelEnabled("debug")) {
       this.startMonitoring();
     }
 

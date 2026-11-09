@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { trackStreamAttempts } from "./streamAttempts.js";
 import { recordStreamTelemetry } from "./streamChatResponse.helpers.js";
 
-vi.mock("./streamChatResponse.helpers.js", () => ({
+vi.mock("./streamChatResponse.helpers.js", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   recordStreamTelemetry: vi.fn(() => 0),
 }));
 
@@ -14,6 +15,7 @@ function tracker() {
   return trackStreamAttempts({
     requestStartTime: 1000,
     model: { model: "deepseek-v4.1-flash" },
+    abortSignal: new AbortController().signal,
     estimateInputTokens: () => 12_000,
   });
 }
@@ -42,15 +44,19 @@ describe("trackStreamAttempts", () => {
     const attempts = tracker();
     attempts.onChunk!(contentChunk("partial"));
 
+    const error = Object.assign(new Error("provider stream failed\nbody"), {
+      status: 502,
+    });
     attempts.onDiscardedAttempt!(
       [
         contentChunk("partial"),
+        { choices: [{ index: 0, delta: {}, finish_reason: "length" }] },
         {
           choices: [],
           usage: { prompt_tokens: 30_000, completion_tokens: 900 },
         },
       ] as any,
-      new Error("provider stream failed"),
+      error,
     );
 
     expect(recordStreamTelemetry).toHaveBeenCalledWith(
@@ -58,8 +64,20 @@ describe("trackStreamAttempts", () => {
         inputTokens: 30_000,
         outputTokens: 900,
         fullUsage: { prompt_tokens: 30_000, completion_tokens: 900 },
+        call: expect.objectContaining({
+          discarded: true,
+          finishReason: "length",
+          contentChars: "partial".length,
+          reasoningChars: 0,
+          toolCalls: [],
+          // First line only: providers can echo the request below it
+          error: "provider stream failed",
+          status: 502,
+        }),
       }),
     );
+    expect(attempts.recorded(error)).toBe(true);
+    expect(attempts.recorded(new Error("other"))).toBe(false);
     // The next attempt measures its own first token
     expect(attempts.firstTokenAt()).toBeUndefined();
   });

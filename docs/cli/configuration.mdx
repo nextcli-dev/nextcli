@@ -111,3 +111,31 @@ ${{ secrets.MY_API_KEY }}
 For a remote MCP server that requires OAuth, `cn` opens your browser to sign in the first time it connects. It saves the tokens in `~/.continue/mcp-oauth.json`. Headless runs (`cn -p`) reuse those tokens but never open a browser, so sign in interactively first or configure an `apiKey`. The browser redirects to port 33418; set `NEXTCLI_MCP_OAUTH_PORT` if that port is taken.
 
 `cn` no longer starts `npx mcp-remote` for these servers. If you used a server through `mcp-remote` before, sign in to it once in an interactive session. See [OAuth-protected MCP servers](/customize/deep-dives/mcp#how-to-connect-to-oauth-protected-mcp-servers).
+
+## Logs and traces
+
+`cn` writes its log to `~/.continue/logs/cn.log`. The level sets how much goes there:
+
+| Level | What it adds |
+|-------|--------------|
+| `error`, `warn` | Only problems |
+| `info` | The default |
+| `verbose` | One line per model call: tokens, cost, duration, finish reason, tool names |
+| `debug` | Internals of the agent loop (same as `--verbose`) |
+| `trace` | Every stream chunk. This is a lot of output |
+
+Set it with `--log-level <level>`, or with `NEXTCLI_LOG_LEVEL` for every run. `--log-level` wins over `--verbose`, which wins over the environment variable. `cn review` passes the level on to its review workers.
+
+For a machine-readable record of each model call, set `NEXTCLI_TRACE=basic`. Both variables are read when `cn` starts, and an unknown value prints a warning. `cn` then writes one JSON line per call to `~/.continue/traces/<sessionId>-<runId>.jsonl`, or to the folder in `NEXTCLI_TRACE_DIR`:
+
+```json
+{"ts":1762685578123,"dur":41000,"name":"llm.request","attrs":{"model":"deepseek-v4.1-flash","usage":{"prompt_tokens":25000,"completion_tokens":32000},"costUsd":0.046,"priced":"exact","finishReason":"length","ttftMs":900,"contentChars":0,"reasoningChars":90000,"toolCalls":[]}}
+```
+
+The first line is a header with the `cn` version, Node version, platform and ids. Each attempt sent to the provider is one line:
+
+- `ttftMs` is the time to the first generated token, reasoning included.
+- An attempt that streamed and then failed is written once, with `"discarded": true`, its `"error"` and what it produced up to then. A call that failed before streaming has `"error"` only.
+- `"error"` is the provider's error message: its first line, at most 200 characters, with the HTTP `"status"` when there is one.
+
+Apart from that error text, the trace holds token counts, timings and tool names, not prompt or file text. Tracing is off unless the variable is set.

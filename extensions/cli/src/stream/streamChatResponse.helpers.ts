@@ -26,6 +26,7 @@ import {
 } from "../tools/index.js";
 import { ToolInterruptedError } from "../tools/toolInterruptedError.js";
 import { PreprocessedToolCall, ToolCall } from "../tools/types.js";
+import { traceEvent } from "../trace/trace.js";
 import { logger } from "../util/logger.js";
 import { getModelMaxTokens } from "../util/tokenizer.js";
 import {
@@ -144,6 +145,32 @@ export async function checkToolPermissionApproval(
   return { approved: false, denialReason: "policy" };
 }
 
+/** A chunk with anything the model generated: answer, tool call or reasoning */
+export function hasGeneratedToken(chunk: any): boolean {
+  const delta = chunk.choices?.[0]?.delta;
+  return !!(
+    delta &&
+    (delta.content ||
+      delta.tool_calls ||
+      (typeof delta.reasoning_content === "string" &&
+        delta.reasoning_content) ||
+      (typeof delta.reasoning === "string" && delta.reasoning) ||
+      delta.reasoning_details?.length)
+  );
+}
+
+/**
+ * The provider's error for a trace or log line: its first line, at most 200
+ * characters, since some providers echo the request in the message.
+ */
+export function describeError(error: any): { error: string; status?: number } {
+  const message = String(error?.message || error).split("\n")[0];
+  return {
+    error: message.slice(0, 200),
+    ...(typeof error?.status === "number" && { status: error.status }),
+  };
+}
+
 // Helper function to track first token time
 export function trackFirstTokenTime(
   firstTokenTime: number | null,
@@ -156,11 +183,7 @@ export function trackFirstTokenTime(
   model: any,
   tools?: any[],
 ): number | null {
-  if (
-    firstTokenTime === null &&
-    chunk.choices?.[0]?.delta &&
-    (chunk.choices[0].delta.content || chunk.choices[0].delta.tool_calls)
-  ) {
+  if (firstTokenTime === null && hasGeneratedToken(chunk)) {
     const tokenTime = timing.arrivedAt ?? Date.now();
     telemetryService.recordResponseTime(
       tokenTime - timing.requestStartTime,
@@ -484,6 +507,21 @@ export function recordStreamTelemetry(options: {
   model: any;
   tools?: any[];
   fullUsage?: any;
+  /** What only the caller knows, for the "Model call" log line and trace */
+  call: {
+    finishReason?: string;
+    ttftMs?: number;
+    contentChars?: number;
+    reasoningChars?: number;
+    toolCalls?: string[];
+    /** An attempt that failed partway and was not used */
+    discarded?: boolean;
+    /** The user stopped the call */
+    aborted?: boolean;
+    /** Why the attempt failed, from describeError */
+    error?: string;
+    status?: number;
+  };
 }): number {
   const {
     requestStartTime,
@@ -498,6 +536,7 @@ export function recordStreamTelemetry(options: {
 
   // Calculate cost using comprehensive pricing that includes caching
   let cost: number;
+  let priced: PriceSource;
   let usage: Usage;
 
   if (fullUsage) {
@@ -514,9 +553,7 @@ export function recordStreamTelemetry(options: {
         : undefined,
     };
 
-    const price = priceRequest(model, usage);
-    cost = price.cost;
-    recordPriceSource(price.priced);
+    ({ cost, priced } = priceRequest(model, usage));
   } else {
     // Fallback when fullUsage not available
     usage = {
@@ -524,8 +561,9 @@ export function recordStreamTelemetry(options: {
       completionTokens: outputTokens,
     };
     cost = calculateFallbackCost(inputTokens, outputTokens);
-    recordPriceSource("fallback");
+    priced = "fallback";
   }
+  recordPriceSource(priced);
 
   // Use tokens from fullUsage if available, otherwise use the passed params
   const actualInputTokens = fullUsage?.prompt_tokens ?? inputTokens;
@@ -563,13 +601,65 @@ export function recordStreamTelemetry(options: {
   telemetryService.logApiRequest({
     model: model.model,
     durationMs: totalDuration,
-    success: true,
+    success: !options.call.error,
     inputTokens: actualInputTokens,
     outputTokens: actualOutputTokens,
     costUsd: cost,
   });
 
+  const attrs = {
+    model: model.model,
+    // As the provider sent it, so its cache fields show as they are
+    usage: fullUsage ?? {
+      prompt_tokens: inputTokens,
+      completion_tokens: outputTokens,
+      estimated: true,
+    },
+    costUsd: cost,
+    priced,
+    ...options.call,
+  };
+  writeCallRecord(attrs, { ts: requestStartTime, dur: totalDuration });
+
   return cost;
+}
+
+/** One record per model call attempt: a cn.log line at verbose, and the trace */
+function writeCallRecord(
+  attrs: Record<string, unknown>,
+  timing: { ts: number; dur: number },
+): void {
+  // The log line would print an unset field as "[undefined]"
+  const set = Object.fromEntries(
+    Object.entries(attrs).filter(([, value]) => value !== undefined),
+  );
+  logger.verbose("Model call", { ...set, durationMs: timing.dur });
+  traceEvent("llm.request", set, timing);
+}
+
+/**
+ * Records a model call that threw before any chunk: the provider failed, or
+ * the user aborted. An attempt that had chunks is recorded as discarded.
+ */
+export function recordFailedCall(options: {
+  model: any;
+  requestStartTime: number;
+  error: any;
+  aborted: boolean;
+}): void {
+  const { model, requestStartTime, aborted } = options;
+  const durationMs = Date.now() - requestStartTime;
+  const failure = describeError(options.error);
+  telemetryService.logApiRequest({
+    model: model.model,
+    durationMs,
+    success: false,
+    error: failure.error,
+  });
+  writeCallRecord(
+    { model: model.model, ...failure, aborted },
+    { ts: requestStartTime, dur: durationMs },
+  );
 }
 
 /**

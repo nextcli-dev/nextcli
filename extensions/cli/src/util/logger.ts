@@ -9,8 +9,33 @@ import { env } from "../env.js";
 
 const { combine, timestamp, printf, errors } = winston.format;
 
-// Generate a unique session ID for this process
-const SESSION_ID = crypto.randomBytes(4).toString("hex");
+// One id per process, on every cn.log line and in the trace file name
+const RUN_ID = crypto.randomBytes(4).toString("hex");
+
+/** Log levels, most severe first. --verbose is debug. */
+export const LOG_LEVELS = [
+  "error",
+  "warn",
+  "info",
+  "verbose",
+  "debug",
+  "trace",
+] as const;
+export type LogLevel = (typeof LOG_LEVELS)[number];
+
+function parseLogLevel(value: string | undefined): LogLevel | undefined {
+  const level = value?.trim().toLowerCase();
+  return LOG_LEVELS.find((known) => known === level);
+}
+
+/**
+ * Warns about a bad environment variable on stderr as well as in cn.log, so a
+ * low log level can't hide it.
+ */
+export function warnBadEnv(message: string): void {
+  process.stderr.write(`Warning: ${message}\n`);
+  winstonLogger.warn(message);
+}
 
 // Get log directory
 function getLogDir(): string {
@@ -73,7 +98,7 @@ function createReplacer() {
 // Custom format for log output
 const logFormat = printf(
   ({ level, message, timestamp, stack, ...metadata }) => {
-    let msg = `${timestamp} [${SESSION_ID}] [${level}]: ${message}`;
+    let msg = `${timestamp} [${RUN_ID}] [${level}]: ${message}`;
 
     // Add metadata if present
     if (Object.keys(metadata).length > 0) {
@@ -98,9 +123,11 @@ const logFormat = printf(
 let isHeadlessMode = false;
 let isTTYlessEnvironment = false;
 
-// Create the winstonLogger instance
+const envLevel = process.env.NEXTCLI_LOG_LEVEL;
+
 const winstonLogger = winston.createLogger({
-  level: "info", // Default level
+  levels: Object.fromEntries(LOG_LEVELS.map((level, index) => [level, index])),
+  level: parseLogLevel(envLevel) ?? "info",
   format: combine(
     errors({ stack: true }),
     timestamp({ format: "YYYY-MM-DD HH:mm:ss.SSS" }),
@@ -116,9 +143,24 @@ const winstonLogger = winston.createLogger({
   ],
 });
 
-// Function to set log level
-export function setLogLevel(level: string) {
+if (envLevel && !parseLogLevel(envLevel)) {
+  warnBadEnv(
+    `Unknown NEXTCLI_LOG_LEVEL "${envLevel}", using info. Use one of: ${LOG_LEVELS.join(", ")}.`,
+  );
+}
+
+export function setLogLevel(level: LogLevel) {
   winstonLogger.level = level;
+}
+
+// Winston formats a line before its transport drops it by level, so check the
+// level first: a disabled level then costs one comparison.
+function logAt(level: LogLevel) {
+  return (message: string, meta?: any) => {
+    if (winstonLogger.isLevelEnabled(level)) {
+      winstonLogger.log(level, message, meta);
+    }
+  };
 }
 
 // Function to configure headless mode
@@ -145,11 +187,11 @@ export function configureHeadlessMode(headless: boolean) {
 
 // Export winstonLogger methods
 export const logger = {
-  debug: (message: string, meta?: any) => winstonLogger.debug(message, meta),
-  info: (message: string, meta?: any) => winstonLogger.info(message, meta),
-  warn: (message: string, meta?: any) => {
-    winstonLogger.warn(message, meta);
-  },
+  trace: logAt("trace"),
+  debug: logAt("debug"),
+  verbose: logAt("verbose"),
+  info: logAt("info"),
+  warn: logAt("warn"),
   error: (message: string, error?: Error | any, meta?: any) => {
     if (error instanceof Error) {
       winstonLogger.error(message, {
@@ -175,7 +217,9 @@ export const logger = {
     }
   },
   setLevel: setLogLevel,
+  isLevelEnabled: (level: LogLevel) => winstonLogger.isLevelEnabled(level),
+  getLevel: () => winstonLogger.level as LogLevel,
   configureHeadlessMode,
   getLogPath: getLogFilePath,
-  getSessionId: () => SESSION_ID,
+  getRunId: () => RUN_ID,
 };

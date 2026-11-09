@@ -26,6 +26,8 @@ vi.mock("../services/index.js", () => ({
 // Mock logger
 vi.mock("../util/logger.js", () => ({
   logger: {
+    trace: vi.fn(),
+    verbose: vi.fn(),
     debug: vi.fn(),
     info: vi.fn(),
     warn: vi.fn(),
