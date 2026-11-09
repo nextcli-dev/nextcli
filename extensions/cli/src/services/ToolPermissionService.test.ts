@@ -235,23 +235,6 @@ describe("ToolPermissionService", () => {
     });
   });
 
-  describe("updatePermissions()", () => {
-    test("should replace all policies", () => {
-      service.initializeSync();
-
-      const newPolicies: ToolPermissionPolicy[] = [
-        { tool: "NewTool1", permission: "allow" },
-        { tool: "NewTool2", permission: "ask" },
-      ];
-
-      service.updatePermissions(newPolicies);
-      const state = service.getState();
-
-      expect(state.permissions.policies).toEqual(newPolicies);
-      expect(state.modePolicyCount).toBe(0);
-    });
-  });
-
   describe("getPermissions()", () => {
     test("should return current permissions", () => {
       service.initializeSync({ allow: ["TestTool"] });
@@ -299,25 +282,6 @@ describe("ToolPermissionService", () => {
       expect(listener).toHaveBeenCalledWith(
         expect.objectContaining({ currentMode: "plan" }),
         expect.objectContaining({ currentMode: "normal" }),
-      );
-    });
-
-    test("should emit stateChanged when updating permissions", () => {
-      service.initializeSync();
-
-      const listener = vi.fn();
-      service.on("stateChanged", listener);
-
-      const newPolicies: ToolPermissionPolicy[] = [
-        { tool: "NewTool", permission: "allow" },
-      ];
-      service.updatePermissions(newPolicies);
-
-      expect(listener).toHaveBeenCalledWith(
-        expect.objectContaining({
-          permissions: { policies: newPolicies },
-        }),
-        expect.any(Object),
       );
     });
   });

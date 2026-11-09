@@ -10,7 +10,11 @@ import { ToolPermissionServiceState } from "src/services/ToolPermissionService.j
 
 import { checkToolPermission } from "../permissions/permissionChecker.js";
 import { toolPermissionManager } from "../permissions/permissionManager.js";
-import { ToolCallRequest, ToolPermissions } from "../permissions/types.js";
+import {
+  ToolCallRequest,
+  ToolPermissions,
+  ToolPermissionsSource,
+} from "../permissions/types.js";
 import {
   SERVICE_NAMES,
   serviceContainer,
@@ -116,6 +120,14 @@ export async function requestUserPermission(
 
   return permissionResult.approved;
 }
+
+/** The main session's tool permissions */
+export const readSessionPermissions: ToolPermissionsSource = async () => {
+  const state = await serviceContainer.get<ToolPermissionServiceState>(
+    SERVICE_NAMES.TOOL_PERMISSIONS,
+  );
+  return state.permissions;
+};
 
 // Helper function to check if tool permission is needed
 export async function checkToolPermissionApproval(
@@ -756,6 +768,7 @@ const INTERRUPTED_MESSAGE =
  * Executes preprocessed tool calls, handling permissions and results
  * @param preprocessedCalls - The preprocessed tool calls ready for execution
  * @param callbacks - Optional callbacks for notifying of events
+ * @param getPermissions - The permissions the calls are checked against
  * @returns - Chat history entries with tool results and status information
  */
 export async function executeStreamedToolCalls(
@@ -763,6 +776,7 @@ export async function executeStreamedToolCalls(
   callbacks?: StreamCallbacks,
   isHeadless?: boolean,
   signal?: AbortSignal,
+  getPermissions: ToolPermissionsSource = readSessionPermissions,
 ): Promise<{
   hasRejection: boolean;
   chatHistoryEntries: ToolResultWithStatus[];
@@ -825,12 +839,8 @@ export async function executeStreamedToolCalls(
       callbacks?.onToolStart?.(call.name, call.arguments);
 
       // Check tool permissions using helper
-      const permissionState =
-        await serviceContainer.get<ToolPermissionServiceState>(
-          SERVICE_NAMES.TOOL_PERMISSIONS,
-        );
       const permissionResult = await checkToolPermissionApproval(
-        permissionState.permissions,
+        await getPermissions(),
         call,
         callbacks,
         isHeadless,

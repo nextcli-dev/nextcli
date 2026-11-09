@@ -9,6 +9,7 @@ import type {
 } from "openai/resources.mjs";
 
 import { pruneLastMessage } from "../compaction.js";
+import type { ToolPermissionsSource } from "../permissions/types.js";
 import { services } from "../services/index.js";
 import { applyChatCompletionToolOverrides } from "../tools/applyToolOverrides.js";
 import { ToolCall } from "../tools/index.js";
@@ -402,6 +403,8 @@ export async function streamChatResponse(
   abortController: AbortController,
   callbacks?: StreamCallbacks,
   isCompacting = false,
+  /** The permissions this session's tools run with; the main session's by default */
+  getPermissions?: ToolPermissionsSource,
 ) {
   logger.debug("streamChatResponse called", {
     model: model.model,
@@ -441,7 +444,7 @@ export async function streamChatResponse(
       // Recompute tools on each iteration to handle mode changes during
       // streaming. A run's last call gets none.
       const tools = applyChatCompletionToolOverrides(
-        wrapUp ? [] : await getRequestTools(isHeadless),
+        wrapUp ? [] : await getRequestTools(isHeadless, getPermissions),
         model.chatOptions?.toolOverrides,
       );
 
@@ -530,6 +533,7 @@ export async function streamChatResponse(
         usage,
         reasoning,
         signal: abortController.signal,
+        getPermissions,
       });
 
       if (shouldReturn || abortController.signal.aborted) {

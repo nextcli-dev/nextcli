@@ -64,22 +64,5 @@ describe("ToolPermissionService unit tests", () => {
     });
   });
 
-  describe("updatePermissions", () => {
-    it("should replace all policies", () => {
-      service.initializeSync();
-
-      const newPolicies = [
-        { tool: "NewTool1", permission: "allow" as const },
-        { tool: "NewTool2", permission: "ask" as const },
-      ];
-
-      service.updatePermissions(newPolicies);
-      const state = service.getState();
-
-      expect(state.permissions.policies).toEqual(newPolicies);
-      expect(state.permissions.policies.length).toBe(2);
-    });
-  });
-
   // Headless mode functionality is tested in precedenceResolver.test.ts and integration tests
 });

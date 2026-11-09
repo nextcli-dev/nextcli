@@ -274,19 +274,6 @@ export class ToolPermissionService
   }
 
   /**
-   * Update permissions (e.g., when config changes)
-   */
-  updatePermissions(newPolicies: ToolPermissionPolicy[]) {
-    this.setState({
-      permissions: { policies: newPolicies },
-      modePolicyCount: 0, // Reset since we're replacing all policies
-    });
-    logger.debug(
-      `Updated tool permissions with ${newPolicies.length} policies`,
-    );
-  }
-
-  /**
    * Switch to a different permission mode
    */
   switchMode(newMode: PermissionMode): ToolPermissionServiceState {

@@ -3,18 +3,13 @@ import { generateOpenAIToolCallId } from "core/tools/systemMessageTools/systemTo
 import { stripImages } from "core/util/messageContent.js";
 import { createHistoryItem } from "core/util/messageConversion.js";
 
-import { checkToolPermission } from "src/permissions/permissionChecker.js";
+import { isToolOffered } from "src/permissions/permissionChecker.js";
 
-import {
-  SERVICE_NAMES,
-  serviceContainer,
-  services,
-} from "../services/index.js";
-import type { ToolPermissionServiceState } from "../services/ToolPermissionService.js";
+import type { ToolPermissionsSource } from "../permissions/types.js";
+import { services } from "../services/index.js";
 import {
   convertToolToChatCompletionTool,
   getAllAvailableTools,
-  Tool,
   ToolCall,
 } from "../tools/index.js";
 import { logger } from "../util/logger.js";
@@ -24,6 +19,7 @@ import {
   capToolResult,
   executeStreamedToolCalls,
   preprocessStreamedToolCalls,
+  readSessionPermissions,
 } from "./streamChatResponse.helpers.js";
 import { StreamCallbacks } from "./streamChatResponse.types.js";
 
@@ -38,6 +34,8 @@ interface HandleToolCallsOptions {
   reasoning?: Reasoning;
   /** Aborted when the turn is interrupted; remaining tools are not run */
   signal?: AbortSignal;
+  /** The permissions tool calls are checked against; the session's by default */
+  getPermissions?: ToolPermissionsSource;
 }
 
 function hasReasoning(reasoning: Reasoning | undefined): boolean {
@@ -134,6 +132,7 @@ export async function handleToolCalls(
     usage,
     reasoning,
     signal,
+    getPermissions,
   } = options;
   const chatHistorySvc = services.chatHistory;
   const useService =
@@ -305,6 +304,7 @@ export async function handleToolCalls(
     callbacks,
     isHeadless,
     signal,
+    getPermissions,
   );
 
   if (isHeadless && hasRejection) {
@@ -321,28 +321,14 @@ export async function handleToolCalls(
   return false;
 }
 
-export async function getRequestTools(isHeadless: boolean) {
+export async function getRequestTools(
+  isHeadless: boolean,
+  getPermissions: ToolPermissionsSource = readSessionPermissions,
+) {
   const availableTools = await getAllAvailableTools(isHeadless);
+  const permissions = await getPermissions();
 
-  const permissionsState =
-    await serviceContainer.get<ToolPermissionServiceState>(
-      SERVICE_NAMES.TOOL_PERMISSIONS,
-    );
-
-  const allowedTools: Tool[] = [];
-  for (const tool of availableTools) {
-    const result = checkToolPermission(
-      { name: tool.name, arguments: {} },
-      permissionsState.permissions,
-    );
-
-    if (
-      result.permission === "allow" ||
-      (result.permission === "ask" && !isHeadless)
-    ) {
-      allowedTools.push(tool);
-    }
-  }
-
-  return allowedTools.map(convertToolToChatCompletionTool);
+  return availableTools
+    .filter((tool) => isToolOffered(tool.name, permissions, isHeadless))
+    .map(convertToolToChatCompletionTool);
 }

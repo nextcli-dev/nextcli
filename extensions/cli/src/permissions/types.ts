@@ -18,6 +18,12 @@ export interface ToolPermissions {
   policies: ToolPermissionPolicy[];
 }
 
+/**
+ * Reads the tool permissions a session runs with. It is read again for each
+ * request and tool call, so a mode switch applies right away.
+ */
+export type ToolPermissionsSource = () => Promise<ToolPermissions>;
+
 export interface ToolCallRequest {
   name: string;
   arguments: Record<string, any>;

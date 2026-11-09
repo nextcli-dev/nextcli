@@ -110,6 +110,54 @@ describe("executeStreamedToolCalls", () => {
     expect(executeToolCall).not.toHaveBeenCalled();
   });
 
+  it("checks tool calls against the injected permissions source", async () => {
+    const custom = { policies: [{ tool: "Read", permission: "exclude" }] };
+    const getPermissions = vi.fn(async () => custom as any);
+    // Excludes only when handed the injected permissions, not the session's
+    vi.mocked(checkToolPermission).mockImplementation((_call, permissions) =>
+      permissions === (custom as any)
+        ? { permission: "exclude" }
+        : { permission: "allow" },
+    );
+
+    const { chatHistoryEntries, hasRejection } = await executeStreamedToolCalls(
+      [readCall("call_1")],
+      undefined,
+      true,
+      undefined,
+      getPermissions,
+    );
+
+    expect(getPermissions).toHaveBeenCalled();
+    expect(hasRejection).toBe(true);
+    expect(chatHistoryEntries[0]).toMatchObject({
+      content: "Command blocked by security policy",
+      status: "canceled",
+    });
+    expect(executeToolCall).not.toHaveBeenCalled();
+  });
+
+  it("runs an allowed call under the injected permissions source", async () => {
+    vi.mocked(executeToolCall).mockResolvedValue("file contents");
+    const custom = { policies: [{ tool: "Read", permission: "allow" }] };
+    vi.mocked(checkToolPermission).mockImplementation((_call, permissions) =>
+      permissions === (custom as any)
+        ? { permission: "allow" }
+        : { permission: "exclude" },
+    );
+
+    const { hasRejection } = await executeStreamedToolCalls(
+      [readCall("call_1")],
+      undefined,
+      true,
+      undefined,
+      async () => custom as any,
+    );
+
+    expect(hasRejection).toBe(false);
+    expect(executeToolCall).toHaveBeenCalled();
+  });
+
   it("records tool errors as errored results", async () => {
     vi.mocked(executeToolCall).mockRejectedValue(new Error("Execution failed"));
 
