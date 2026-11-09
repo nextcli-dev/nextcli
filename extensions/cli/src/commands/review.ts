@@ -1,8 +1,11 @@
 import { execSync, fork } from "child_process";
+import path from "path";
 
 import chalk from "chalk";
 import React from "react";
 
+import { isFilePath } from "../configLoader.js";
+import { isRulePath } from "../hubLoader.js";
 import { configureConsoleForHeadless } from "../init.js";
 import { logger } from "../util/logger.js";
 
@@ -24,6 +27,33 @@ export interface ReviewOptions extends ExtendedCommandOptions {
   patch?: boolean;
   failFast?: boolean;
   reviewAgents?: string[];
+}
+
+/**
+ * The worker chdirs into the review worktree (in the temp dir) before it loads
+ * --config and --rule, so relative file paths must be made absolute against the
+ * user's working directory first. Slugs, inline rule content and `~` paths pass
+ * through unchanged.
+ */
+export function resolveCliPathOptions(
+  options: Pick<ReviewOptions, "config" | "rule">,
+  cwd: string = process.cwd(),
+): { config?: string; rule?: string[] } {
+  const toAbsolute = (p: string) =>
+    path.isAbsolute(p) ? p : path.resolve(cwd, p);
+
+  const config =
+    options.config &&
+    isFilePath(options.config) &&
+    !options.config.startsWith("~")
+      ? toAbsolute(options.config)
+      : options.config;
+
+  const rule = options.rule?.map((r) =>
+    isRulePath(r) ? toAbsolute(r.trim()) : r,
+  );
+
+  return { config, rule };
 }
 
 /**
@@ -76,9 +106,8 @@ export async function runReviewInWorker(
           worktreePath,
           diffContext,
           options: {
-            config: options.config,
+            ...resolveCliPathOptions(options),
             org: options.org,
-            rule: options.rule,
           },
         };
         child.send({ type: "run-review", config });

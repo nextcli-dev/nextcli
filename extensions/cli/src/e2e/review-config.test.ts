@@ -66,4 +66,33 @@ describe("E2E: cn review --config", () => {
     expect(result.stdout + result.stderr).not.toContain("no hosted API");
     expect(mockServer.requests.length).toBeGreaterThan(0);
   }, 70000);
+
+  it("resolves a relative --config path against the user's directory, not the worktree", async () => {
+    // Gitignored files are not copied into the review worktree, so the worker
+    // can only find this config if the path was resolved before it chdirs.
+    const repo = context.testDir;
+    await fs.writeFile(path.join(repo, ".gitignore"), "ignored-config.yaml\n");
+    await fs.copyFile(
+      context.configPath,
+      path.join(repo, "ignored-config.yaml"),
+    );
+
+    const result = await runCLI(context, {
+      args: [
+        "review",
+        "--config",
+        "./ignored-config.yaml",
+        "--base",
+        "main",
+        "--format",
+        "json",
+      ],
+      env: { FORCE_NO_TTY: "true" },
+      timeout: 60000,
+      expectError: true,
+    });
+
+    expect(result.stdout + result.stderr).not.toContain("no hosted API");
+    expect(mockServer.requests.length).toBeGreaterThan(0);
+  }, 70000);
 });

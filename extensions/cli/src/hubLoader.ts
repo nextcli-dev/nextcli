@@ -69,22 +69,28 @@ export const loadModelFromHub = (_slug: string): Promise<ModelConfig> =>
   Promise.reject(new Error("Hub package loading has been removed."));
 
 /**
+ * Whether a rule specification is a file path (single line with typical path
+ * indicators) rather than direct rule content.
+ */
+export function isRulePath(ruleSpec: string): boolean {
+  const trimmed = ruleSpec.trim();
+  return (
+    !/[\r\n]/.test(ruleSpec) &&
+    (trimmed.startsWith(".") ||
+      trimmed.startsWith("/") ||
+      trimmed.includes("\\") ||
+      /\.[a-zA-Z]+$/.test(trimmed))
+  );
+}
+
+/**
  * Process a rule specification - supports file paths or direct content.
  * Hub slug resolution has been removed.
  */
 export async function processRule(ruleSpec: string): Promise<string> {
   const trimmedRuleSpec = ruleSpec.trim();
-  const hasNewline = /[\r\n]/.test(ruleSpec);
 
-  // If it looks like a file path (single line, typical path indicators)
-  const looksLikePath =
-    !hasNewline &&
-    (trimmedRuleSpec.startsWith(".") ||
-      trimmedRuleSpec.startsWith("/") ||
-      trimmedRuleSpec.includes("\\") ||
-      /\.[a-zA-Z]+$/.test(trimmedRuleSpec));
-
-  if (looksLikePath) {
+  if (isRulePath(ruleSpec)) {
     const fs = await import("fs");
     const path = await import("path");
 
