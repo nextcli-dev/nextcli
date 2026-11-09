@@ -32,26 +32,30 @@ export interface ReviewOptions extends ExtendedCommandOptions {
 /**
  * The worker chdirs into the review worktree (in the temp dir) before it loads
  * --config and --rule, so relative file paths must be made absolute against the
- * user's working directory first. Slugs, inline rule content and `~` paths pass
- * through unchanged.
+ * user's working directory first. Slugs, inline rule content, absolute paths,
+ * `~` paths and `file://` URLs pass through unchanged; downstream loaders
+ * expand `~` and read `file://` themselves.
  */
 export function resolveCliPathOptions(
   options: Pick<ReviewOptions, "config" | "rule">,
   cwd: string = process.cwd(),
 ): { config?: string; rule?: string[] } {
-  const toAbsolute = (p: string) =>
-    path.isAbsolute(p) ? p : path.resolve(cwd, p);
+  const isRelativePath = (p: string) =>
+    !path.isAbsolute(p) && !p.startsWith("~") && !p.startsWith("file://");
 
   const config =
     options.config &&
     isFilePath(options.config) &&
-    !options.config.startsWith("~")
-      ? toAbsolute(options.config)
+    isRelativePath(options.config)
+      ? path.resolve(cwd, options.config)
       : options.config;
 
-  const rule = options.rule?.map((r) =>
-    isRulePath(r) ? toAbsolute(r.trim()) : r,
-  );
+  const rule = options.rule?.map((r) => {
+    const trimmed = r.trim();
+    return isRulePath(r) && isRelativePath(trimmed)
+      ? path.resolve(cwd, trimmed)
+      : r;
+  });
 
   return { config, rule };
 }

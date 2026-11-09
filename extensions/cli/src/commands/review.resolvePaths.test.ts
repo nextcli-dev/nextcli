@@ -38,6 +38,17 @@ describe("resolveCliPathOptions", () => {
     ]);
   });
 
+  it("leaves ~ and file:// rule paths for downstream decoding", () => {
+    const rules = ["~/rules/style.md", "file:///tmp/style.md"];
+    expect(resolveCliPathOptions({ rule: rules }, cwd).rule).toEqual(rules);
+  });
+
+  it("leaves file:// config URLs unchanged", () => {
+    expect(
+      resolveCliPathOptions({ config: "file:///abs/config.yaml" }, cwd).config,
+    ).toBe("file:///abs/config.yaml");
+  });
+
   it("handles undefined values", () => {
     expect(resolveCliPathOptions({}, cwd)).toEqual({
       config: undefined,
