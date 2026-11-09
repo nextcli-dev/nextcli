@@ -16,6 +16,67 @@ export function requireFinalAnswer(required: boolean): void {
   answerRequired = required;
 }
 
+interface CallEnd {
+  finishReason?: string;
+  outputTokens?: number;
+}
+
+/**
+ * How the last two model calls ended, from their stream chunks. Two, because
+ * an empty answer is followed by one more call that asks for it, and that
+ * call can stop normally after the first one was cut off.
+ */
+let lastCallEnd: CallEnd = {};
+let previousCallEnd: CallEnd = {};
+
+/** Notes the finish reason and output tokens a stream chunk reports. */
+export function recordCallEnd(chunk: {
+  choices?: { finish_reason?: string | null }[];
+  usage?: { completion_tokens?: number } | null;
+}): void {
+  const finishReason = chunk.choices?.[0]?.finish_reason;
+  if (finishReason) {
+    lastCallEnd = { ...lastCallEnd, finishReason };
+  }
+  if (chunk.usage?.completion_tokens !== undefined) {
+    lastCallEnd = {
+      ...lastCallEnd,
+      outputTokens: chunk.usage.completion_tokens,
+    };
+  }
+}
+
+/** Starts a new model call; the one before it is kept. */
+export function resetCallEnd(): void {
+  previousCallEnd = lastCallEnd;
+  lastCallEnd = {};
+}
+
+/** Forgets both calls, at the start of a run. */
+export function forgetCallEnds(): void {
+  lastCallEnd = {};
+  previousCallEnd = {};
+}
+
+/**
+ * Why a run gave no answer, when the empty call or the one before the
+ * follow-up ran out of output tokens: the provider's cap can be spent on
+ * thinking before any text is written.
+ */
+export function outputCapMessage(): string | undefined {
+  const cutOff = [lastCallEnd, previousCallEnd].find(
+    (call) => call.finishReason === "length",
+  );
+  if (!cutOff) {
+    return undefined;
+  }
+  const tokens =
+    cutOff.outputTokens === undefined
+      ? "all its output tokens"
+      : `all its output tokens (${cutOff.outputTokens})`;
+  return `The model used ${tokens} before writing an answer. Raise the output limit (maxTokens) for this model.`;
+}
+
 /** What one turn of the agent loop carries into the next. */
 export interface TurnState {
   /** Compaction ran during this turn */

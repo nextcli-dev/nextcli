@@ -6,7 +6,11 @@ import {
   getLimitReached,
   getPriceSource,
 } from "../stream/agentLoopLimits.js";
-import { requireFinalAnswer } from "../stream/turnContinuation.js";
+import {
+  forgetCallEnds,
+  outputCapMessage,
+  requireFinalAnswer,
+} from "../stream/turnContinuation.js";
 import { gracefulExit } from "../util/exit.js";
 
 type UsageSnapshot = {
@@ -35,6 +39,7 @@ export function headlessExitCode(error?: unknown): number {
  */
 export function startHeadlessRun(format?: "json"): UsageSnapshot {
   requireFinalAnswer(format === "json");
+  forgetCallEnds();
   return { ...getSessionUsage() };
 }
 
@@ -71,7 +76,9 @@ export async function exitHeadlessOnError(
  */
 export function assertHeadlessAnswer(answer: string, format?: "json"): void {
   if (format === "json" && !answer?.trim()) {
-    throw new Error("The model finished without writing an answer.");
+    throw new Error(
+      outputCapMessage() ?? "The model finished without writing an answer.",
+    );
   }
 }
 

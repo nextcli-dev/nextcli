@@ -27,7 +27,9 @@ export const listFilesTool: Tool = {
     const dirPath = path.resolve(process.cwd(), normalizedPath);
 
     if (!fs.existsSync(dirPath)) {
-      throw new Error(`Directory does not exist: ${dirPath}`);
+      throw new Error(
+        `Directory does not exist: ${dirPath}. This path is missing. Other files can still be read.`,
+      );
     }
 
     if (!fs.statSync(dirPath).isDirectory()) {

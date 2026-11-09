@@ -148,7 +148,11 @@ export async function checkToolPermissionApproval(
 export function trackFirstTokenTime(
   firstTokenTime: number | null,
   chunk: any,
-  requestStartTime: number,
+  timing: {
+    requestStartTime: number;
+    /** When the token arrived, if it was held before being yielded */
+    arrivedAt?: number;
+  },
   model: any,
   tools?: any[],
 ): number | null {
@@ -157,9 +161,9 @@ export function trackFirstTokenTime(
     chunk.choices?.[0]?.delta &&
     (chunk.choices[0].delta.content || chunk.choices[0].delta.tool_calls)
   ) {
-    const tokenTime = Date.now();
+    const tokenTime = timing.arrivedAt ?? Date.now();
     telemetryService.recordResponseTime(
-      tokenTime - requestStartTime,
+      tokenTime - timing.requestStartTime,
       model.model,
       "time_to_first_token",
       (tools?.length || 0) > 0,

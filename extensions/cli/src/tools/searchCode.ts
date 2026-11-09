@@ -148,7 +148,7 @@ export const searchCodeTool: Tool = {
     if (!fs.existsSync(searchPath)) {
       throw new ContinueError(
         ContinueErrorReason.Unspecified,
-        `Path does not exist: ${searchPath}`,
+        `Path does not exist: ${searchPath}. This path is missing. Other files can still be read.`,
       );
     }
 

@@ -7,6 +7,11 @@ import {
   recordPriceSource,
   resetAgentLoopLimits,
 } from "../stream/agentLoopLimits.js";
+import {
+  forgetCallEnds,
+  recordCallEnd,
+  resetCallEnd,
+} from "../stream/turnContinuation.js";
 
 import {
   assertHeadlessAnswer,
@@ -247,6 +252,43 @@ describe("exitHeadlessDone", () => {
 });
 
 describe("assertHeadlessAnswer", () => {
+  afterEach(() => {
+    forgetCallEnds();
+  });
+
+  it("names the output cap when the follow-up call stopped normally", () => {
+    // The cut-off call, then the "write your final answer" call
+    recordCallEnd({
+      choices: [{ finish_reason: "length" }],
+      usage: { completion_tokens: 4096 },
+    });
+    resetCallEnd();
+    recordCallEnd({ choices: [{ finish_reason: "stop" }] });
+
+    expect(() => assertHeadlessAnswer("", "json")).toThrow(
+      "The model used all its output tokens (4096) before writing an answer.",
+    );
+  });
+
+  it("names the output cap when the last call ran out of tokens", () => {
+    recordCallEnd({
+      choices: [{ finish_reason: "length" }],
+      usage: { completion_tokens: 4096 },
+    });
+
+    expect(() => assertHeadlessAnswer("", "json")).toThrow(
+      "The model used all its output tokens (4096) before writing an answer.",
+    );
+  });
+
+  it("keeps the plain message when the last call stopped normally", () => {
+    recordCallEnd({ choices: [{ finish_reason: "stop" }] });
+
+    expect(() => assertHeadlessAnswer("", "json")).toThrow(
+      "The model finished without writing an answer.",
+    );
+  });
+
   it("fails an empty answer under --format json", () => {
     expect(() => assertHeadlessAnswer("", "json")).toThrow(
       "The model finished without writing an answer.",
