@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { checkToolPermission } from "../permissions/permissionChecker.js";
+
 import { serviceContainer } from "./ServiceContainer.js";
 import type { ToolPermissionServiceState } from "./ToolPermissionService.js";
 
@@ -38,6 +40,35 @@ describe("Service Initialization", () => {
     expect(afterInit.value).toBeDefined();
     expect(afterInit.value?.currentMode).toBe("normal");
     expect(afterInit.value?.isHeadless).toBe(true);
+  });
+
+  it("keeps approvable defaults for a headless server whose client can approve calls", async () => {
+    // cn serve: no terminal, but POST /permission answers each ask
+    await initializeServices({ headless: true, approvalsAvailable: true });
+
+    const state = getServiceSync<ToolPermissionServiceState>(
+      SERVICE_NAMES.TOOL_PERMISSIONS,
+    ).value!;
+    expect(state.isHeadless).toBe(false);
+    const write = checkToolPermission(
+      { name: "Write", arguments: { filepath: "a.txt", content: "x" } },
+      state.permissions,
+    );
+    expect(write.permission).toBe("ask");
+  });
+
+  it("closes the defaults for an unattended headless run", async () => {
+    await initializeServices({ headless: true });
+
+    const state = getServiceSync<ToolPermissionServiceState>(
+      SERVICE_NAMES.TOOL_PERMISSIONS,
+    ).value!;
+    expect(state.isHeadless).toBe(true);
+    const fetchCall = checkToolPermission(
+      { name: "Fetch", arguments: { url: "https://example.com" } },
+      state.permissions,
+    );
+    expect(fetchCall.permission).toBe("exclude");
   });
 
   it("should have TOOL_PERMISSIONS service ready immediately when accessed early", async () => {

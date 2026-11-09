@@ -258,6 +258,9 @@ function permissionPolicyToToolPolicy(
   }
 }
 
+/** The tools --readonly never allows, whatever the policies say */
+const WRITE_TOOLS = new Set(["Edit", "MultiEdit", "Write"]);
+
 /**
  * True when the model is offered this tool: a call can run without asking,
  * or someone is present to approve it. A tool allowed only for some
@@ -269,6 +272,9 @@ export function isToolOffered(
   permissions: ToolPermissions,
   isHeadless: boolean,
 ): boolean {
+  if (permissions.readonly && WRITE_TOOLS.has(toolName)) {
+    return false;
+  }
   for (const policy of permissions.policies) {
     if (!matchesToolPattern(toolName, policy.tool)) {
       continue;
@@ -295,7 +301,14 @@ export function isToolOffered(
 
 /**
  * Evaluates a tool call request against a set of permission policies.
- * Returns the permission for the first matching policy.
+ * Returns the permission for the first matching policy, within the run's
+ * limits:
+ *
+ * - --readonly excludes Edit, MultiEdit and Write whatever the policies say.
+ * - A tool that judges its own calls (Bash) is evaluated strictly under
+ *   --readonly, and in a headless run for any allow that isn't an operator's
+ *   flag: only calls it approves on its own run, and the rest ask, which a
+ *   headless run refuses.
  */
 export function checkToolPermission(
   toolCall: ToolCallRequest,
@@ -305,7 +318,7 @@ export function checkToolPermission(
 
   // First, get the base permission from static policies
   let basePermission: PermissionPolicy = "ask";
-  let matchedPolicy = undefined;
+  let matchedPolicy: ToolPermissionPolicy | undefined = undefined;
 
   for (const policy of policies) {
     if (policyMatches(policy, toolCall)) {
@@ -315,16 +328,25 @@ export function checkToolPermission(
     }
   }
 
+  if (permissions.readonly && WRITE_TOOLS.has(toolCall.name)) {
+    return { permission: "exclude", matchedPolicy };
+  }
+
   // Check if tool has dynamic policy evaluation
   const tool = ALL_BUILT_IN_TOOLS.find((t) => t.name === toolCall.name);
   if (tool?.evaluateToolCallPolicy) {
     // Convert CLI permission to core policy
     const basePolicy = permissionPolicyToToolPolicy(basePermission);
 
+    const strict =
+      permissions.readonly === true ||
+      (permissions.unattended === true && matchedPolicy?.origin !== "flag");
+
     // Evaluate the dynamic policy
     const evaluatedPolicy = tool.evaluateToolCallPolicy(
       basePolicy,
       toolCall.arguments,
+      { strict },
     );
 
     // If dynamic evaluation says disabled, that ALWAYS takes precedence
@@ -333,6 +355,15 @@ export function checkToolPermission(
         permission: "exclude",
         matchedPolicy,
       };
+    }
+
+    // Strict: an allow only covers calls the tool approves on its own
+    if (
+      strict &&
+      basePermission === "allow" &&
+      evaluatedPolicy === "allowedWithPermission"
+    ) {
+      return { permission: "ask", matchedPolicy };
     }
 
     // An allow policy can't approve a call that needs a person: ask instead.

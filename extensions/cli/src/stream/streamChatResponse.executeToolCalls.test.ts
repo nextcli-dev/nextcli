@@ -104,10 +104,27 @@ describe("executeStreamedToolCalls", () => {
 
     expect(hasRejection).toBe(true);
     expect(chatHistoryEntries[0]).toMatchObject({
-      content: "Command blocked by security policy",
+      // The model is told an unattended run can't use it, and to try another way
+      content: expect.stringContaining(
+        "isn't allowed in an unattended run. Use a different approach.",
+      ),
       status: "canceled",
     });
     expect(executeToolCall).not.toHaveBeenCalled();
+  });
+
+  it("keeps the short denial message when someone is present", async () => {
+    vi.mocked(checkToolPermission).mockReturnValue({ permission: "exclude" });
+
+    const { chatHistoryEntries } = await executeStreamedToolCalls(
+      [readCall("call_1")],
+      undefined,
+      false,
+    );
+
+    expect(chatHistoryEntries[0]).toMatchObject({
+      content: "Command blocked by security policy",
+    });
   });
 
   it("checks tool calls against the injected permissions source", async () => {
@@ -131,7 +148,9 @@ describe("executeStreamedToolCalls", () => {
     expect(getPermissions).toHaveBeenCalled();
     expect(hasRejection).toBe(true);
     expect(chatHistoryEntries[0]).toMatchObject({
-      content: "Command blocked by security policy",
+      content: expect.stringContaining(
+        "isn't allowed in an unattended run. Use a different approach.",
+      ),
       status: "canceled",
     });
     expect(executeToolCall).not.toHaveBeenCalled();

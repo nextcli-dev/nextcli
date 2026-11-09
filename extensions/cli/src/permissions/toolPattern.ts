@@ -56,15 +56,29 @@ export function parseToolPattern(
   return { tool, permission, argumentMatches: { [argument]: glob } };
 }
 
-/** Rules from --exclude, --ask and --allow, in that order */
-export function commandLineFlagsToPolicies(flags: {
+interface PatternLists {
   allow?: string[];
   ask?: string[];
   exclude?: string[];
-}): ToolPermissionPolicy[] {
+}
+
+/** Rules from exclude, ask and allow lists, in that order */
+export function patternListsToPolicies(
+  lists: PatternLists,
+): ToolPermissionPolicy[] {
   return [
-    ...(flags.exclude ?? []).map((p) => parseToolPattern(p, "exclude")),
-    ...(flags.ask ?? []).map((p) => parseToolPattern(p, "ask")),
-    ...(flags.allow ?? []).map((p) => parseToolPattern(p, "allow")),
+    ...(lists.exclude ?? []).map((p) => parseToolPattern(p, "exclude")),
+    ...(lists.ask ?? []).map((p) => parseToolPattern(p, "ask")),
+    ...(lists.allow ?? []).map((p) => parseToolPattern(p, "allow")),
   ];
+}
+
+/** Rules from --exclude, --ask and --allow, in that order */
+export function commandLineFlagsToPolicies(
+  flags: PatternLists,
+): ToolPermissionPolicy[] {
+  return patternListsToPolicies(flags).map((policy) => ({
+    ...policy,
+    origin: "flag",
+  }));
 }

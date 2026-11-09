@@ -10,11 +10,28 @@ The tool permissions system allows you to control which tools the AI can use and
 
 The system comes with sensible default policies:
 
-- Read-only tools (`readFile`, `listFiles`, `searchCode`, `fetch`) are **allowed** by default
-- Write operations (`writeFile`) require **confirmation** (ask)
-- Terminal commands (`runTerminalCommand`) require **confirmation** (ask)
-- MCP tools and Bash require **confirmation** (ask) in TUI mode, but are **allowed** automatically in headless mode
-- Any unmatched tools default to **ask**
+Defaults are one table in `defaultPolicies.ts`, with a column for each kind of run (TUI, headless, `--readonly` in the TUI, `--readonly` headless). A new built-in tool needs a row.
+
+- Read-only tools (`Read`, `List`, `Search`, `Diff`, ...) are **allowed**
+- Write operations (`Edit`, `MultiEdit`, `Write`) **ask**
+- `Bash`, `Fetch`, `UploadArtifact`, `Subagent` and MCP tools differ between the TUI and headless mode:
+
+| Tool                      | TUI       | Headless (nobody to approve)                                                                                                      |
+| ------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `Bash`                    | **ask**   | **allow** only for commands the evaluator approves on its own (`ls`, `cat`, `git status`...), otherwise **ask**, which is refused |
+| `Fetch`, `UploadArtifact` | **allow** | **exclude**                                                                                                                       |
+| `Subagent`, MCP, others   | **ask**   | **exclude**                                                                                                                       |
+
+Any `ask` in a headless run is refused, because nobody can answer it.
+
+Two things are decided per call in `checkToolPermission`, not by policy order, so no rule can undo them:
+
+- `ToolPermissions.readonly` (`--readonly`): `Edit`, `MultiEdit` and `Write` are excluded, and `Bash` is evaluated strictly.
+- `ToolPermissions.unattended` (headless): an allow that isn't an operator's flag (`origin: "flag"`), such as the default Bash allow or an agent file's, is evaluated strictly.
+
+Strict means the tool's own evaluator must approve the call by itself (`evaluateTerminalCommandSecurity(..., { strict: true })`); anything else asks. A headless run takes only the excludes from `permissions.yaml`.
+
+`Bash(glob)` rules are matched per command with terminal-security's `splitCommand`: an allow covers only a line that is one simple command, and an exclude or ask covers a line where any command matches, or whose commands can't be read.
 
 ## How It Works
 

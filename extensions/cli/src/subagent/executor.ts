@@ -3,6 +3,7 @@ import type { ChatHistoryItem } from "core";
 import type { ToolPermissions } from "../permissions/types.js";
 import { services } from "../services/index.js";
 import { ModelServiceState } from "../services/types.js";
+import { readSessionPermissions } from "../stream/streamChatResponse.helpers.js";
 import { streamChatResponse } from "../stream/streamChatResponse.js";
 import { escapeEvents } from "../util/cli.js";
 import { logger } from "../util/logger.js";
@@ -68,10 +69,18 @@ export async function executeSubAgent(
       throw new Error("Model or LLM API not available");
     }
 
-    // The child session's permissions, passed down its stream rather than
-    // written over the main session's. It allows all tools for now.
-    const childPermissions: ToolPermissions = {
-      policies: [{ tool: "*", permission: "allow" }],
+    // The child runs under the main session's permissions, read for each
+    // request so a mode switch applies, and cannot start another subagent.
+    // They are passed down its stream, not written over the main session's.
+    const childPermissions = async (): Promise<ToolPermissions> => {
+      const parent = await readSessionPermissions();
+      return {
+        ...parent,
+        policies: [
+          { tool: "Subagent", permission: "exclude" },
+          ...parent.policies,
+        ],
+      };
     };
 
     // Build agent system message
@@ -145,7 +154,7 @@ export async function executeSubAgent(
           },
         },
         false, // Not compacting
-        async () => childPermissions,
+        childPermissions,
       );
 
       // The last message (mostly) contains the important output to be submitted back to the main agent

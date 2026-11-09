@@ -26,7 +26,7 @@ describe("ToolPermissionService", () => {
       const state = await service.initialize();
 
       expect(state).toEqual({
-        permissions: { policies: [] },
+        permissions: { policies: [], readonly: false, unattended: false },
         currentMode: "normal",
         isHeadless: false,
       });
