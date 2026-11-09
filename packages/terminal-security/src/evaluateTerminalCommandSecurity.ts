@@ -24,6 +24,17 @@ interface CommentToken {
 
 type ParsedToken = string | ShellOperator | GlobPattern | CommentToken;
 
+export interface EvaluateOptions {
+  /**
+   * Build, test and file commands (cp, mv, tee, pytest, prettier...) normally
+   * follow the base policy. In strict mode they need permission, so a base
+   * "allow" only lets through commands the evaluator approves on its own
+   * (ls, cat, git status...). Unattended runs use this so a default allow
+   * doesn't run commands that change files.
+   */
+  strict?: boolean;
+}
+
 /**
  * Evaluates the security policy for a terminal command.
  *
@@ -31,19 +42,23 @@ type ParsedToken = string | ShellOperator | GlobPattern | CommentToken;
  * defense-in-depth security validation for terminal commands.
  *
  * Critical commands are disabled, and high-risk or destructive commands, and
- * risky forms of commands such as git or find, require permission. Known
- * build, test and file commands (pytest, tsc, dotnet build, cp...) keep the
- * base policy, so a tool set to automatic runs them without asking. Commands
- * the evaluator does not recognise require permission.
+ * risky forms of commands such as git or find, require permission. Build,
+ * test and file commands follow the base policy. Commands the evaluator
+ * does not recognise require permission. `EvaluateOptions.strict` changes
+ * that for unattended runs.
  *
  * @param basePolicy The base policy configured for the tool
  * @param command The command string to evaluate
+ * @param options Optional evaluation options. `strict` makes build, test and
+ *   file commands require permission, for unattended runs.
  * @returns The security policy to apply: 'disabled', 'allowedWithPermission', or 'allowedWithoutPermission'
  */
 export function evaluateTerminalCommandSecurity(
   basePolicy: ToolPolicy,
   command: string | null | undefined,
+  options?: EvaluateOptions,
 ): ToolPolicy {
+  const strict = options?.strict === true;
   // If tool is already disabled, keep it disabled
   if (basePolicy === "disabled") {
     return "disabled";
@@ -68,7 +83,7 @@ export function evaluateTerminalCommandSecurity(
   if (destructiveRisk === "catastrophic") {
     return "disabled";
   }
-  const policy = evaluateCommandPolicy(basePolicy, normalizedCommand);
+  const policy = evaluateCommandPolicy(basePolicy, normalizedCommand, strict);
   return destructiveRisk
     ? getMostRestrictive(policy, "allowedWithPermission")
     : policy;
@@ -77,6 +92,7 @@ export function evaluateTerminalCommandSecurity(
 function evaluateCommandPolicy(
   basePolicy: ToolPolicy,
   normalizedCommand: string,
+  strict: boolean,
 ): ToolPolicy {
   try {
     // Split on line breaks to handle multi-line commands
@@ -101,6 +117,7 @@ function evaluateCommandPolicy(
           tokens,
           basePolicy,
           trimmedLine,
+          strict,
         );
 
         // Track the most restrictive policy
@@ -122,7 +139,12 @@ function evaluateCommandPolicy(
     const tokens = parse(normalizedCommand);
 
     // Evaluate security of the parsed tokens
-    return evaluateTokensSecurity(tokens, basePolicy, normalizedCommand);
+    return evaluateTokensSecurity(
+      tokens,
+      basePolicy,
+      normalizedCommand,
+      strict,
+    );
   } catch (error) {
     // If parsing fails, be conservative and require permission
     console.error("Failed to parse command:", error);
@@ -158,6 +180,7 @@ function evaluateTokensSecurity(
   tokens: ParsedToken[],
   basePolicy: ToolPolicy,
   originalCommand: string,
+  strict: boolean,
 ): ToolPolicy {
   // Check for empty strings that might indicate variable expansion
   const hasEmptyStrings = tokens.some((t) => typeof t === "string" && t === "");
@@ -177,13 +200,19 @@ function evaluateTokensSecurity(
         tokens,
         basePolicy,
         originalCommand,
+        strict,
       );
 
       // 2. Evaluate without empty strings
       const tokensWithoutEmpty = tokens.filter((t) => t !== "");
       const policyWithoutEmpty =
         tokensWithoutEmpty.length > 0
-          ? evaluateTokens(tokensWithoutEmpty, basePolicy, originalCommand)
+          ? evaluateTokens(
+              tokensWithoutEmpty,
+              basePolicy,
+              originalCommand,
+              strict,
+            )
           : basePolicy;
 
       // Variable expansion always requires at least permission
@@ -196,7 +225,7 @@ function evaluateTokensSecurity(
   }
 
   // Normal evaluation for commands without variable expansion
-  return evaluateTokens(tokens, basePolicy, originalCommand);
+  return evaluateTokens(tokens, basePolicy, originalCommand, strict);
 }
 
 /**
@@ -206,6 +235,7 @@ function evaluateTokens(
   tokens: ParsedToken[],
   basePolicy: ToolPolicy,
   originalCommand: string,
+  strict: boolean,
 ): ToolPolicy {
   let mostRestrictivePolicy = basePolicy;
   let currentCommand: string[] = [];
@@ -226,6 +256,7 @@ function evaluateTokens(
           currentCommand,
           originalCommand,
           basePolicy,
+          strict,
         );
         mostRestrictivePolicy = getMostRestrictive(
           mostRestrictivePolicy,
@@ -252,6 +283,19 @@ function evaluateTokens(
           targetIndex++;
         }
         const target = tokens[targetIndex];
+        // Strict mode: a redirect that writes a file (echo x > notes.txt) is a
+        // file change like cp or tee, even inside the workspace
+        if (
+          strict &&
+          op !== "<" &&
+          op !== "<&" &&
+          !(typeof target === "string" && isHarmlessRedirectTarget(op, target))
+        ) {
+          mostRestrictivePolicy = getMostRestrictive(
+            mostRestrictivePolicy,
+            "allowedWithPermission",
+          );
+        }
         if (typeof target === "string") {
           if (
             op !== "<" &&
@@ -293,6 +337,7 @@ function evaluateTokens(
       currentCommand,
       originalCommand,
       basePolicy,
+      strict,
     );
     mostRestrictivePolicy = getMostRestrictive(
       mostRestrictivePolicy,
@@ -305,7 +350,11 @@ function evaluateTokens(
   if (hasCommandSubstitution(originalCommand)) {
     const substitutedCommands = extractSubstitutedCommands(originalCommand);
     for (const subCmd of substitutedCommands) {
-      const nestedPolicy = evaluateTerminalCommandSecurity(basePolicy, subCmd);
+      const nestedPolicy = evaluateTerminalCommandSecurity(
+        basePolicy,
+        subCmd,
+        strict ? { strict: true } : undefined,
+      );
       mostRestrictivePolicy = getMostRestrictive(
         mostRestrictivePolicy,
         nestedPolicy,
@@ -421,6 +470,7 @@ function evaluateSingleCommand(
   commandTokens: string[],
   originalCommand: string,
   basePolicy: ToolPolicy,
+  strict: boolean,
 ): ToolPolicy {
   if (commandTokens.length === 0) {
     return "allowedWithoutPermission";
@@ -479,15 +529,20 @@ function evaluateSingleCommand(
     return "allowedWithPermission";
   }
 
-  // Check for safe commands
+  // Check for safe commands. In strict mode, commands this list calls safe
+  // but that run repo code or write files (npm run, make, cargo, tar, git
+  // branch, git log --output=) need permission. Read-only ones stay approved.
   if (isSafeCommand(baseCommand, args)) {
+    if (strict && strictSafeCommandNeedsPermission(baseCommand, args)) {
+      return "allowedWithPermission";
+    }
     return "allowedWithoutPermission";
   }
 
-  // Build, test and file commands users run all the time follow the policy
-  // the user chose for the tool, once the checks above passed (#10512)
+  // Build, test and file commands follow the base policy, except in strict
+  // mode (unattended runs), where they require permission (#10512)
   if (isPolicyFollowingCommand(baseCommand, args)) {
-    return basePolicy;
+    return strict ? "allowedWithPermission" : basePolicy;
   }
 
   // Anything else (argument-checked commands in a risky form such as git push
@@ -1284,6 +1339,14 @@ function isGitInternalPath(path: string): boolean {
 
 const REDIRECT_OPERATORS = [">", ">>", ">&", "<", "<&"];
 
+/** A redirect that writes no file: a `/dev/null` target, or a `>&` descriptor copy such as `2>&1` or `>&-`. */
+function isHarmlessRedirectTarget(op: string, target: string): boolean {
+  return (
+    target === "/dev/null" ||
+    (op === ">&" && (/^\d+$/.test(target) || target === "-"))
+  );
+}
+
 const HARMLESS_WRITE_TARGETS = ["/dev/null", "/dev/stdout", "/dev/stderr"];
 
 /**
@@ -1306,6 +1369,71 @@ function isOutsideWorkspacePath(path: string): boolean {
     /^[a-z]:[\\/]/i.test(path) ||
     path.startsWith("\\\\") ||
     /(^|[\\/])\.\.([\\/]|$)/.test(path)
+  );
+}
+
+/** Commands whose arguments are files they print. */
+const FILE_READ_COMMANDS = new Set([
+  "cat",
+  "dir",
+  "file",
+  "find",
+  "grep",
+  "head",
+  "less",
+  "ls",
+  "more",
+  "nl",
+  "od",
+  "stat",
+  "strings",
+  "tail",
+  "wc",
+]);
+
+function argumentPointsOutsideWorkspace(arg: string): boolean {
+  if (arg.startsWith("-")) {
+    const eq = arg.indexOf("=");
+    return eq !== -1 && isOutsideWorkspacePath(arg.slice(eq + 1));
+  }
+  return isOutsideWorkspacePath(arg);
+}
+
+/**
+ * `isSafeCommand` approves some commands that run repository code, write
+ * files, or print a file outside the workspace. Strict mode (unattended
+ * runs) asks for those. A workspace read such as `ls` or `cat package.json`
+ * stays approved.
+ */
+function strictSafeCommandNeedsPermission(
+  baseCommand: string,
+  args: string[],
+): boolean {
+  if (
+    FILE_READ_COMMANDS.has(baseCommand) &&
+    args.some(argumentPointsOutsideWorkspace)
+  ) {
+    return true;
+  }
+  if (baseCommand === "git") {
+    const subcommand = args.find((arg) => !arg.startsWith("-"));
+    if (subcommand === "branch" || subcommand === "remote") {
+      return true;
+    }
+    return args.some(
+      (arg) => arg === "--output" || arg.startsWith("--output="),
+    );
+  }
+  return (
+    baseCommand === "npm" ||
+    baseCommand === "yarn" ||
+    baseCommand === "pnpm" ||
+    baseCommand === "make" ||
+    baseCommand === "gradle" ||
+    baseCommand === "mvn" ||
+    baseCommand === "cargo" ||
+    baseCommand === "tar" ||
+    baseCommand === "zip"
   );
 }
 
@@ -1455,7 +1583,7 @@ function hasCommandSubstitution(command: string): boolean {
 /**
  * Extracts commands from substitution patterns
  */
-function extractSubstitutedCommands(command: string): string[] {
+export function extractSubstitutedCommands(command: string): string[] {
   const commands: string[] = [];
 
   // Extract from backticks
