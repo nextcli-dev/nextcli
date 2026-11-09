@@ -3,7 +3,7 @@ name: AI Checks
 # Runs the `review` check from .checks/ on a pull request, on demand, with
 # NextCLI. It reports as check run `check/review` and posts one pull request
 # comment, edited in place on each run. A review stops at CHECKS_MAX_COST
-# dollars (default 1) and posts what it found so far. The other checks in
+# dollars (default 2) and posts what it found so far. The other checks in
 # .checks/ are not run for now. They are advisory: `ci` is the only required
 # check.
 #
@@ -58,7 +58,7 @@ jobs:
       agent: nextcli
       agent-version: ${{ vars.CHECKS_NEXTCLI_VERSION }}
       check: review
-      max-cost: ${{ vars.CHECKS_MAX_COST || '1' }}
+      max-cost: ${{ vars.CHECKS_MAX_COST || '2' }}
       max-output-tokens: ${{ vars.CHECKS_MAX_OUTPUT_TOKENS || '32000' }}
       provider: ${{ vars.CHECKS_PROVIDER }}
       model: ${{ vars.CHECKS_MODEL }}
