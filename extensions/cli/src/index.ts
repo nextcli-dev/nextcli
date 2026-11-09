@@ -384,7 +384,8 @@ program
   .option("--review-agents <agents...>", "Specific review agents to run")
   .option("--verbose", "Enable verbose logging")
   .action(async (options) => {
-    await review(options);
+    // --config, --org and --rule belong to the root command
+    await review(mergeParentOptions(program, options));
   });
 
 // Handle unknown commands
