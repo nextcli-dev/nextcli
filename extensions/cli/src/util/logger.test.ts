@@ -29,11 +29,19 @@ describe("logger levels", () => {
     expect(logger.isLevelEnabled("debug")).toBe(false);
   });
 
-  it("uses info for an unknown NEXTCLI_LOG_LEVEL", async () => {
+  it("uses info for an unknown NEXTCLI_LOG_LEVEL and says so on stderr", async () => {
+    const stderr = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+
     const logger = await loadLogger("loud");
 
     expect(logger.isLevelEnabled("info")).toBe(true);
     expect(logger.isLevelEnabled("verbose")).toBe(false);
+    expect(String(stderr.mock.calls[0][0])).toContain(
+      'Unknown NEXTCLI_LOG_LEVEL "loud"',
+    );
+    stderr.mockRestore();
   });
 
   it("puts verbose between info and debug, and trace last", async () => {

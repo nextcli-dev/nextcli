@@ -255,10 +255,12 @@ export async function processStreamingResponse(
     requestStartTime,
     model,
     tools,
+    abortSignal: abortController.signal,
     estimateInputTokens: () =>
       countTotalInputTokens({ chatHistory, systemMessage, tools, model }),
   });
 
+  let callEnd: CallEnd = {};
   try {
     const streamWithBackoff = withExponentialBackoff(
       streamFactory,
@@ -268,7 +270,6 @@ export async function processStreamingResponse(
     );
 
     let chunkCount = 0;
-    let callEnd: CallEnd = {};
     for await (const chunk of streamWithBackoff) {
       chunkCount++;
       callEnd = readCallEnd(callEnd, chunk);
@@ -310,7 +311,6 @@ export async function processStreamingResponse(
       if (!result.shouldContinue) break;
     }
 
-    endCall(callEnd);
     const cost = recordStreamTelemetry({
       requestStartTime,
       responseEndTime: Date.now(),
@@ -323,8 +323,9 @@ export async function processStreamingResponse(
         finishReason: callEnd.finishReason,
         ttftMs: firstTokenTime ? firstTokenTime - requestStartTime : undefined,
         contentChars: aiResponse.length,
-        reasoningChars: reasoning.result()?.text.length ?? 0,
+        reasoningChars: reasoning.chars(),
         toolCalls: [...toolCallsMap.values()].map((call) => call.name),
+        aborted: abortController.signal.aborted || undefined,
       },
     });
 
@@ -336,7 +337,9 @@ export async function processStreamingResponse(
   } catch (error: any) {
     const aborted =
       error.name === "AbortError" || abortController?.signal.aborted;
-    recordFailedCall({ model, requestStartTime, error, aborted });
+    if (!attempts.recorded(error)) {
+      recordFailedCall({ model, requestStartTime, error, aborted });
+    }
 
     if (aborted) {
       logger.debug("Stream aborted by user");
@@ -357,6 +360,8 @@ export async function processStreamingResponse(
     }
 
     throw error;
+  } finally {
+    endCall(callEnd);
   }
 
   const toolCalls = Array.from(toolCallsMap.values());

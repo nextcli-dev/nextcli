@@ -32,7 +32,6 @@ export interface WorkerConfig {
     config?: string;
     org?: string;
     rule?: string[];
-    verbose?: boolean;
   };
 }
 

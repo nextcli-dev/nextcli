@@ -124,12 +124,18 @@ For a remote MCP server that requires OAuth, `cn` opens your browser to sign in 
 | `debug` | Internals of the agent loop (same as `--verbose`) |
 | `trace` | Every stream chunk. This is a lot of output |
 
-Set it with `--log-level <level>`, or with `NEXTCLI_LOG_LEVEL` for every run. `--log-level` wins over `--verbose`, which wins over the environment variable.
+Set it with `--log-level <level>`, or with `NEXTCLI_LOG_LEVEL` for every run. `--log-level` wins over `--verbose`, which wins over the environment variable. `cn review` passes the level on to its review workers.
 
-For a machine-readable record of each model call, set `NEXTCLI_TRACE=basic`. `cn` then writes one JSON line per call to `~/.continue/traces/<sessionId>-<runId>.jsonl`, or to the folder in `NEXTCLI_TRACE_DIR`:
+For a machine-readable record of each model call, set `NEXTCLI_TRACE=basic`. Both variables are read when `cn` starts, and an unknown value prints a warning. `cn` then writes one JSON line per call to `~/.continue/traces/<sessionId>-<runId>.jsonl`, or to the folder in `NEXTCLI_TRACE_DIR`:
 
 ```json
 {"ts":1762685578123,"dur":41000,"name":"llm.request","attrs":{"model":"deepseek-v4.1-flash","usage":{"prompt_tokens":25000,"completion_tokens":32000},"costUsd":0.046,"priced":"exact","finishReason":"length","ttftMs":900,"contentChars":0,"reasoningChars":90000,"toolCalls":[]}}
 ```
 
-The first line is a header with the `cn` version, Node version, platform and ids. A stream attempt that failed and was retried is written with `"discarded": true`, and a call that failed with `"error"`. The trace holds token counts, timings and tool names, never prompt or file text. Tracing is off unless the variable is set.
+The first line is a header with the `cn` version, Node version, platform and ids. Each attempt sent to the provider is one line:
+
+- `ttftMs` is the time to the first generated token, reasoning included.
+- An attempt that streamed and then failed is written once, with `"discarded": true`, its `"error"` and what it produced up to then. A call that failed before streaming has `"error"` only.
+- `"error"` is the provider's error message: its first line, at most 200 characters, with the HTTP `"status"` when there is one.
+
+Apart from that error text, the trace holds token counts, timings and tool names, not prompt or file text. Tracing is off unless the variable is set.

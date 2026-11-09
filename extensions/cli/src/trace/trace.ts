@@ -3,14 +3,15 @@ import path from "path";
 
 import { env } from "../env.js";
 import { getCurrentSession } from "../session.js";
-import { logger } from "../util/logger.js";
+import { logger, warnBadEnv } from "../util/logger.js";
 import { getVersion } from "../version.js";
 
 // NEXTCLI_TRACE=basic writes one JSON line per model call: timings, token
-// counts and tool names, never prompt text.
-const level = process.env.NEXTCLI_TRACE;
+// counts and tool names. Read once, when cn starts.
+const rawLevel = process.env.NEXTCLI_TRACE;
+const level = rawLevel?.trim().toLowerCase();
 if (level && level !== "basic") {
-  logger.warn(`Unknown NEXTCLI_TRACE "${level}", tracing is off. Use basic.`);
+  warnBadEnv(`Unknown NEXTCLI_TRACE "${rawLevel}", tracing is off. Use basic.`);
 }
 
 // undefined until the first event opens the file; null when tracing is off

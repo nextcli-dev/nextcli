@@ -534,6 +534,106 @@ describe("processStreamingResponse - content preservation", () => {
     );
   });
 
+  it.each([
+    ["reasoning_content", { reasoning_content: "thinking it over" }],
+    [
+      "reasoning_details",
+      {
+        reasoning_details: [
+          { type: "reasoning.text", text: "thinking it over", index: 0 },
+        ],
+      },
+    ],
+  ])(
+    "traces a call cut off while thinking (%s)",
+    async (_field, delta: any) => {
+      chunks = [
+        { ...contentChunk(""), choices: [{ index: 0, delta } as any] },
+        {
+          ...contentChunk(""),
+          choices: [{ index: 0, delta: {}, finish_reason: "length" }],
+        },
+      ];
+
+      await processStreamingResponse({
+        chatHistory,
+        model: mockModel,
+        llmApi: mockLlmApi,
+        abortController: mockAbortController,
+        systemMessage: "You are a helpful assistant.",
+      });
+
+      expect(traceEvent).toHaveBeenLastCalledWith(
+        "llm.request",
+        expect.objectContaining({
+          finishReason: "length",
+          contentChars: 0,
+          reasoningChars: "thinking it over".length,
+          ttftMs: expect.any(Number),
+        }),
+        expect.anything(),
+      );
+    },
+  );
+
+  it("traces a call that dies after its first chunk once, as discarded", async () => {
+    vi.mocked(traceEvent).mockClear();
+    mockLlmApi.chatCompletionStream = vi.fn(async function* () {
+      yield {
+        ...contentChunk(""),
+        choices: [{ index: 0, delta: {}, finish_reason: "length" }],
+        usage: { prompt_tokens: 10, completion_tokens: 50, total_tokens: 60 },
+      };
+      throw Object.assign(new Error("Bad request"), { status: 400 });
+    }) as any;
+
+    await expect(
+      processStreamingResponse({
+        chatHistory,
+        model: mockModel,
+        llmApi: mockLlmApi,
+        abortController: mockAbortController,
+        systemMessage: "You are a helpful assistant.",
+      }),
+    ).rejects.toThrow("Bad request");
+
+    expect(traceEvent).toHaveBeenCalledTimes(1);
+    expect(traceEvent).toHaveBeenCalledWith(
+      "llm.request",
+      expect.objectContaining({
+        discarded: true,
+        error: "Bad request",
+        finishReason: "length",
+        usage: expect.objectContaining({ completion_tokens: 50 }),
+      }),
+      expect.anything(),
+    );
+  });
+
+  it("marks a call the user stopped mid-stream as aborted", async () => {
+    chunks = [contentChunk("Hel"), contentChunk("lo")];
+    const signal = mockAbortController.signal as { aborted: boolean };
+
+    await processStreamingResponse({
+      chatHistory,
+      model: mockModel,
+      llmApi: mockLlmApi,
+      abortController: mockAbortController,
+      systemMessage: "You are a helpful assistant.",
+      callbacks: {
+        onContent: () => {
+          signal.aborted = true;
+        },
+      },
+    });
+
+    expect(traceEvent).toHaveBeenLastCalledWith(
+      "llm.request",
+      expect.objectContaining({ aborted: true, contentChars: 3 }),
+      expect.anything(),
+    );
+  });
+
   it("traces a call that fails before its first chunk", async () => {
     mockLlmApi.chatCompletionStream = vi.fn(async function* () {
       throw Object.assign(new Error("Bad request"), { status: 400 });
@@ -551,7 +651,12 @@ describe("processStreamingResponse - content preservation", () => {
 
     expect(traceEvent).toHaveBeenCalledWith(
       "llm.request",
-      { model: "test-model", error: "Bad request", aborted: false },
+      {
+        model: "test-model",
+        error: "Bad request",
+        status: 400,
+        aborted: false,
+      },
       { ts: expect.any(Number), dur: expect.any(Number) },
     );
   });

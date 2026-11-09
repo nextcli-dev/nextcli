@@ -90,6 +90,15 @@ export class ReasoningAccumulator {
     };
   }
 
+  /** Reasoning length: the streamed text, or else the detail texts */
+  chars(): number {
+    if (this.text) return this.text.length;
+    return (this.details ?? []).reduce(
+      (sum, detail) => sum + (detail.text ?? detail.summary ?? "").length,
+      0,
+    );
+  }
+
   private appendText(text: string, field: NonNullable<Reasoning["textField"]>) {
     this.startAt ??= Date.now();
     this.textField ??= field;

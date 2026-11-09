@@ -9,8 +9,11 @@ const warn = vi.hoisted(() => vi.fn());
 vi.mock("../session.js", () => ({
   getCurrentSession: () => ({ sessionId: "s1" }),
 }));
+const warnBadEnv = vi.hoisted(() => vi.fn());
+
 vi.mock("../util/logger.js", () => ({
   logger: { warn, getRunId: () => "r1" },
+  warnBadEnv,
 }));
 
 describe("traceEvent", () => {
@@ -40,6 +43,7 @@ describe("traceEvent", () => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), "cn-trace-"));
     dir = path.join(root, "traces");
     warn.mockClear();
+    warnBadEnv.mockClear();
   });
 
   afterEach(() => {
@@ -77,13 +81,21 @@ describe("traceEvent", () => {
     ]);
   });
 
+  it("accepts the value in any case and with spaces", async () => {
+    const traceEvent = await loadTrace(" Basic ");
+
+    traceEvent("llm.request", { model: "m" }, { ts: 1000 });
+
+    expect(readLines()).toHaveLength(2);
+  });
+
   it("warns once and stays off for an unknown NEXTCLI_TRACE", async () => {
     const traceEvent = await loadTrace("full");
 
     traceEvent("llm.request", { model: "m" }, { ts: 1000 });
 
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn.mock.calls[0][0]).toContain('NEXTCLI_TRACE "full"');
+    expect(warnBadEnv).toHaveBeenCalledTimes(1);
+    expect(warnBadEnv.mock.calls[0][0]).toContain('NEXTCLI_TRACE "full"');
     expect(fs.existsSync(dir)).toBe(false);
   });
 

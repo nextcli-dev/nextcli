@@ -28,6 +28,15 @@ function parseLogLevel(value: string | undefined): LogLevel | undefined {
   return LOG_LEVELS.find((known) => known === level);
 }
 
+/**
+ * Warns about a bad environment variable on stderr as well as in cn.log, so a
+ * low log level can't hide it.
+ */
+export function warnBadEnv(message: string): void {
+  process.stderr.write(`Warning: ${message}\n`);
+  winstonLogger.warn(message);
+}
+
 // Get log directory
 function getLogDir(): string {
   const logDir = path.join(env.continueHome, "logs");
@@ -135,7 +144,7 @@ const winstonLogger = winston.createLogger({
 });
 
 if (envLevel && !parseLogLevel(envLevel)) {
-  winstonLogger.warn(
+  warnBadEnv(
     `Unknown NEXTCLI_LOG_LEVEL "${envLevel}", using info. Use one of: ${LOG_LEVELS.join(", ")}.`,
   );
 }
@@ -209,6 +218,7 @@ export const logger = {
   },
   setLevel: setLogLevel,
   isLevelEnabled: (level: LogLevel) => winstonLogger.isLevelEnabled(level),
+  getLevel: () => winstonLogger.level as LogLevel,
   configureHeadlessMode,
   getLogPath: getLogFilePath,
   getRunId: () => RUN_ID,

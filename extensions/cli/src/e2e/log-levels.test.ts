@@ -59,6 +59,14 @@ describe("E2E: log levels", () => {
     expect(log).toContain("Received chunk");
   }, 20000);
 
+  it("accepts --log-level after a subcommand", async () => {
+    const result = await runCLI(context, {
+      args: ["review", "--log-level", "verbose", "--help"],
+    });
+
+    expect(result.exitCode).toBe(0);
+  });
+
   it("--log-level wins over NEXTCLI_LOG_LEVEL", async () => {
     const log = await runAndReadLog(["--log-level", "info"], {
       NEXTCLI_LOG_LEVEL: "trace",

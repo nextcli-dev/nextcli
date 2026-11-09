@@ -145,6 +145,32 @@ export async function checkToolPermissionApproval(
   return { approved: false, denialReason: "policy" };
 }
 
+/** A chunk with anything the model generated: answer, tool call or reasoning */
+export function hasGeneratedToken(chunk: any): boolean {
+  const delta = chunk.choices?.[0]?.delta;
+  return !!(
+    delta &&
+    (delta.content ||
+      delta.tool_calls ||
+      (typeof delta.reasoning_content === "string" &&
+        delta.reasoning_content) ||
+      (typeof delta.reasoning === "string" && delta.reasoning) ||
+      delta.reasoning_details?.length)
+  );
+}
+
+/**
+ * The provider's error for a trace or log line: its first line, at most 200
+ * characters, since some providers echo the request in the message.
+ */
+export function describeError(error: any): { error: string; status?: number } {
+  const message = String(error?.message || error).split("\n")[0];
+  return {
+    error: message.slice(0, 200),
+    ...(typeof error?.status === "number" && { status: error.status }),
+  };
+}
+
 // Helper function to track first token time
 export function trackFirstTokenTime(
   firstTokenTime: number | null,
@@ -157,11 +183,7 @@ export function trackFirstTokenTime(
   model: any,
   tools?: any[],
 ): number | null {
-  if (
-    firstTokenTime === null &&
-    chunk.choices?.[0]?.delta &&
-    (chunk.choices[0].delta.content || chunk.choices[0].delta.tool_calls)
-  ) {
+  if (firstTokenTime === null && hasGeneratedToken(chunk)) {
     const tokenTime = timing.arrivedAt ?? Date.now();
     telemetryService.recordResponseTime(
       tokenTime - timing.requestStartTime,
@@ -494,6 +516,11 @@ export function recordStreamTelemetry(options: {
     toolCalls?: string[];
     /** An attempt that failed partway and was not used */
     discarded?: boolean;
+    /** The user stopped the call */
+    aborted?: boolean;
+    /** Why the attempt failed, from describeError */
+    error?: string;
+    status?: number;
   };
 }): number {
   const {
@@ -574,7 +601,7 @@ export function recordStreamTelemetry(options: {
   telemetryService.logApiRequest({
     model: model.model,
     durationMs: totalDuration,
-    success: true,
+    success: !options.call.error,
     inputTokens: actualInputTokens,
     outputTokens: actualOutputTokens,
     costUsd: cost,
@@ -592,16 +619,24 @@ export function recordStreamTelemetry(options: {
     priced,
     ...options.call,
   };
-  logger.verbose("Model call", { ...attrs, durationMs: totalDuration });
-  traceEvent("llm.request", attrs, {
-    ts: requestStartTime,
-    dur: totalDuration,
-  });
+  writeCallRecord(attrs, { ts: requestStartTime, dur: totalDuration });
 
   return cost;
 }
 
-/** Records a model call that threw: the provider failed, or the user aborted */
+/** One record per model call attempt: a cn.log line at verbose, and the trace */
+function writeCallRecord(
+  attrs: Record<string, unknown>,
+  timing: { ts: number; dur: number },
+): void {
+  logger.verbose("Model call", { ...attrs, durationMs: timing.dur });
+  traceEvent("llm.request", attrs, timing);
+}
+
+/**
+ * Records a model call that threw before any chunk: the provider failed, or
+ * the user aborted. An attempt that had chunks is recorded as discarded.
+ */
 export function recordFailedCall(options: {
   model: any;
   requestStartTime: number;
@@ -610,16 +645,15 @@ export function recordFailedCall(options: {
 }): void {
   const { model, requestStartTime, aborted } = options;
   const durationMs = Date.now() - requestStartTime;
-  const error = options.error.message || String(options.error);
+  const failure = describeError(options.error);
   telemetryService.logApiRequest({
     model: model.model,
     durationMs,
     success: false,
-    error,
+    error: failure.error,
   });
-  traceEvent(
-    "llm.request",
-    { model: model.model, error, aborted },
+  writeCallRecord(
+    { model: model.model, ...failure, aborted },
     { ts: requestStartTime, dur: durationMs },
   );
 }
