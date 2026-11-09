@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.3](https://github.com/nextcli-dev/nextcli/compare/cli-v0.8.2...cli-v0.8.3) (2026-11-09)
+
+
+### Bug Fixes
+
+* **cli:** retry a provider stream that dies mid-response ([#100](https://github.com/nextcli-dev/nextcli/issues/100)) ([5a99d6b](https://github.com/nextcli-dev/nextcli/commit/5a99d6b402d6f13c7a425481f6d69c8fada4eb7a))
+
 ## [0.8.2](https://github.com/nextcli-dev/nextcli/compare/cli-v0.8.1...cli-v0.8.2) (2026-11-08)
 
 
