@@ -1,4 +1,5 @@
 import { execSync, fork } from "child_process";
+import fs from "fs";
 import path from "path";
 
 import chalk from "chalk";
@@ -34,7 +35,9 @@ export interface ReviewOptions extends ExtendedCommandOptions {
  * --config and --rule, so relative file paths must be made absolute against the
  * user's working directory first. Slugs, inline rule content, absolute paths,
  * `~` paths and `file://` URLs pass through unchanged; downstream loaders
- * expand `~` and read `file://` themselves.
+ * expand `~` and read `file://` themselves. `isRulePath` is only a heuristic
+ * (inline text like "Avoid default exports in index.js" matches it), so a
+ * --rule value is rewritten only when it names an existing file under cwd.
  */
 export function resolveCliPathOptions(
   options: Pick<ReviewOptions, "config" | "rule">,
@@ -52,9 +55,9 @@ export function resolveCliPathOptions(
 
   const rule = options.rule?.map((r) => {
     const trimmed = r.trim();
-    return isRulePath(r) && isRelativePath(trimmed)
-      ? path.resolve(cwd, trimmed)
-      : r;
+    if (!isRulePath(r) || !isRelativePath(trimmed)) return r;
+    const resolved = path.resolve(cwd, trimmed);
+    return fs.existsSync(resolved) ? resolved : r;
   });
 
   return { config, rule };

@@ -1,3 +1,5 @@
+import fs from "fs";
+import os from "os";
 import path from "path";
 
 import { resolveCliPathOptions } from "./review.js";
@@ -25,17 +27,34 @@ describe("resolveCliPathOptions", () => {
     );
   });
 
-  it("resolves relative rule paths but not inline content", () => {
-    const inline = "Always write tests\nfor new code";
-    const result = resolveCliPathOptions(
-      { rule: ["./rules/style.md", inline, "Be concise"] },
-      cwd,
-    );
-    expect(result.rule).toEqual([
-      path.resolve(cwd, "rules/style.md"),
-      inline,
-      "Be concise",
-    ]);
+  it("resolves relative rule paths that exist but not inline content", () => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), "cn-review-rules-"));
+    try {
+      fs.mkdirSync(path.join(repo, "rules"));
+      fs.writeFileSync(path.join(repo, "rules", "style.md"), "Be terse");
+      const inline = "Always write tests\nfor new code";
+      const result = resolveCliPathOptions(
+        { rule: ["./rules/style.md", "rules/style.md", inline, "Be concise"] },
+        repo,
+      );
+      expect(result.rule).toEqual([
+        path.join(repo, "rules", "style.md"),
+        path.join(repo, "rules", "style.md"),
+        inline,
+        "Be concise",
+      ]);
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("leaves inline rule content that looks like a path unchanged", () => {
+    const rules = [
+      "Avoid default exports in index.js",
+      "Node.js",
+      "./missing-rule.md",
+    ];
+    expect(resolveCliPathOptions({ rule: rules }, cwd).rule).toEqual(rules);
   });
 
   it("leaves ~ and file:// rule paths for downstream decoding", () => {
