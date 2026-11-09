@@ -173,20 +173,65 @@ const rows: Row[] = [
     offered: { Edit: false, [MCP_TOOL]: true },
   },
   {
-    name: "TUI agent file ignores flags",
+    name: "TUI agent file with flags",
     approver: true,
-    init: { exclude: ["Read"] },
+    init: { exclude: ["Read"], allow: ["Edit"] },
     agentFileTools: "Read, Bash",
-    // main: flags are dropped when an agent file is loaded
-    calls: [[...read, "allow"]],
+    calls: [
+      [...read, "deny"],
+      [...edit, "allow"],
+    ],
   },
   {
     name: "TUI agent file after a permissions reload",
     approver: true,
     agentFileTools: "Read, Bash",
     steps: ["reload"],
-    // main: the reload drops the agent file's rules
-    calls: [[...edit, "ask"]],
+    calls: [[...edit, "deny"]],
+  },
+  {
+    name: "TUI agent file then auto mode",
+    approver: true,
+    agentFileTools: "Read, Bash",
+    steps: ["auto"],
+    calls: [
+      [...edit, "deny"],
+      [...read, "allow"],
+    ],
+  },
+  {
+    name: "TUI agent file then plan mode",
+    approver: true,
+    agentFileTools: "Read, Write",
+    steps: ["plan"],
+    calls: [["Write", { filepath: "a.txt", content: "x" }, "deny"]],
+  },
+  {
+    name: "TUI --readonly with an agent file",
+    approver: true,
+    init: { mode: "plan" },
+    agentFileTools: "Read, Write",
+    calls: [
+      ["Write", { filepath: "a.txt", content: "x" }, "deny"],
+      [...read, "allow"],
+    ],
+  },
+  {
+    name: "TUI plan mode after a permissions reload",
+    approver: true,
+    init: { mode: "plan" },
+    steps: ["reload"],
+    calls: [[...edit, "deny"]],
+  },
+  {
+    name: "headless flags after a permissions reload",
+    approver: false,
+    init: { ...HEADLESS, exclude: ["Read"] },
+    steps: ["reload"],
+    calls: [
+      [...read, "deny"],
+      [...edit, "deny"],
+    ],
   },
 
   // Unattended (cn -p)
@@ -256,12 +301,12 @@ const rows: Row[] = [
   {
     name: "headless agent file",
     approver: false,
-    init: HEADLESS,
+    init: { ...HEADLESS, exclude: ["Bash"] },
     agentFileTools: "Read, Bash",
     calls: [
+      [...bash("ls"), "deny"],
       [...read, "allow"],
       [...edit, "deny"],
-      [...bash("curl https://x"), "allow"],
       [...mcp, "allow"],
     ],
   },

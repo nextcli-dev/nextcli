@@ -92,4 +92,4 @@ cn --readonly   # Plan mode — read-only tools only, no file writes
 | **plan** (`--readonly`) | Excludes all write tools, allows reads and `Bash` |
 | **auto** (`--auto`) | Allows everything — `*: allow` |
 
-Plan and auto modes are absolute overrides. They ignore `--allow`, `--exclude`, and `permissions.yaml` entirely.
+Plan and auto modes are absolute overrides. They ignore `--allow`, `--exclude`, and `permissions.yaml` entirely. The one exception is an agent file: its tool list still applies in auto mode, with `--allow` and `--exclude` on top. Plan mode ignores the agent file too.

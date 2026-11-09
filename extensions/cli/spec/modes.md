@@ -73,6 +73,13 @@ Modes are implemented through the permission system:
 
 1. **Mode policies** (absolute override - ignores everything else)
 
+**With an agent file (normal and auto modes):**
+
+1. Command-line overrides (`--allow`, `--ask`, `--exclude`)
+2. The agent file's tool list
+
+Initialization, a mode switch and a permissions reload all build the policies the same way.
+
 **Normal mode only:**
 
 1. Command-line overrides (`--allow`, `--ask`, `--exclude`)

@@ -5,6 +5,7 @@ import {
 
 import { ensurePermissionsYamlExists } from "../permissions/permissionsYamlLoader.js";
 import { resolvePermissionPrecedence } from "../permissions/precedenceResolver.js";
+import { commandLineFlagsToPolicies } from "../permissions/toolPattern.js";
 import {
   PermissionMode,
   ToolPermissionPolicy,
@@ -33,8 +34,13 @@ export interface ToolPermissionServiceState {
   permissions: ToolPermissions;
   currentMode: PermissionMode;
   isHeadless: boolean;
-  modePolicyCount?: number; // Track how many policies are from mode vs other sources
-  originalPolicies?: ToolPermissions; // Store original policies when switching modes
+}
+
+/** What the policies are built from, kept for mode switches and reloads */
+interface PermissionSources {
+  flags: { allow?: string[]; ask?: string[]; exclude?: string[] };
+  agentFile?: AgentFileServiceState;
+  mcp?: MCPServiceState;
 }
 
 /**
@@ -44,12 +50,13 @@ export class ToolPermissionService
   extends BaseService<ToolPermissionServiceState>
   implements ServiceWithDependencies
 {
+  private sources: PermissionSources = { flags: {} };
+
   constructor() {
     super("ToolPermissionService", {
       permissions: { policies: [] },
       currentMode: "normal",
       isHeadless: false,
-      modePolicyCount: 0,
     });
   }
 
@@ -167,19 +174,35 @@ export class ToolPermissionService
   }
 
   /**
-   * Generate mode-specific policies based on the current mode
+   * The policies for the current mode, built from the stored sources. Used on
+   * init, on a mode switch and on a reload, so all three agree.
+   *
+   * - Plan mode (--readonly) uses only the plan-mode policies.
+   * - An agent file's policies apply in normal and auto mode, after the flags.
+   * - Auto mode without an agent file allows every tool.
+   * - Normal mode layers flags, permissions.yaml and the defaults.
    */
-  private generateModePolicies(): ToolPermissionPolicy[] {
-    switch (this.currentState.currentMode) {
-      case "plan":
-        return getPlanModePolicies(this.currentState.isHeadless);
-      case "auto":
-        return [...AUTO_MODE_POLICIES];
-      case "normal":
-      default:
-        // Normal mode uses the more nuanced policy loading
-        return [];
+  private buildPolicies(): ToolPermissionPolicy[] {
+    const { currentMode, isHeadless } = this.currentState;
+    const { flags, agentFile, mcp } = this.sources;
+    if (currentMode === "plan") {
+      return getPlanModePolicies(isHeadless);
     }
+    if (agentFile?.agentFile) {
+      return [
+        ...commandLineFlagsToPolicies(flags),
+        ...this.generateAgentFilePolicies(agentFile, mcp),
+      ];
+    }
+    if (currentMode === "auto") {
+      return [...AUTO_MODE_POLICIES];
+    }
+    return resolvePermissionPrecedence({
+      commandLineFlags: flags,
+      personalSettings: true,
+      useDefaults: true,
+      isHeadless,
+    });
   }
 
   /**
@@ -193,55 +216,20 @@ export class ToolPermissionService
   ): ToolPermissionServiceState {
     logger.debug("Synchronously initializing ToolPermissionService");
 
-    // Set mode from overrides or default
-    if (runtimeOverrides?.mode) {
-      this.setState({ currentMode: runtimeOverrides.mode });
-    }
-
-    // Set headless flag from overrides
-    if (runtimeOverrides?.isHeadless !== undefined) {
-      this.setState({ isHeadless: runtimeOverrides.isHeadless });
-    }
-
-    const modePolicies = this.generateModePolicies();
-
-    let allPolicies: ToolPermissionPolicy[];
-    if (
-      this.currentState.isHeadless &&
-      this.currentState.currentMode === "plan"
-    ) {
-      // Unattended --readonly stays read-only even when an agent file is loaded.
-      // An agent file ends in allow-all, which would put Bash and MCP back.
-      allPolicies = [...modePolicies];
-    } else if (agentFileServiceState?.agentFile) {
-      // Agent file policies take full precedence on init
-      allPolicies = this.generateAgentFilePolicies(
-        agentFileServiceState,
-        mcpServiceState,
-      );
-    } else if (
-      this.currentState.currentMode === "plan" ||
-      this.currentState.currentMode === "auto"
-    ) {
-      // For plan and auto modes, use ONLY mode policies (absolute override)
-      allPolicies = [...modePolicies];
-    } else {
-      // Normal mode: combine headless + mode policies with user configuration
-      const compiledPolicies = resolvePermissionPrecedence({
-        commandLineFlags: runtimeOverrides,
-        personalSettings: true, // Enable loading from ~/.continue/permissions.yaml
-        useDefaults: true,
-        isHeadless: this.currentState.isHeadless,
-      });
-      allPolicies = [...compiledPolicies];
-    }
-
+    this.sources = {
+      flags: {
+        allow: runtimeOverrides?.allow,
+        ask: runtimeOverrides?.ask,
+        exclude: runtimeOverrides?.exclude,
+      },
+      agentFile: agentFileServiceState,
+      mcp: mcpServiceState,
+    };
     this.setState({
-      permissions: { policies: allPolicies },
-      currentMode: this.currentState.currentMode,
-      isHeadless: this.currentState.isHeadless,
-      modePolicyCount: modePolicies.length,
+      currentMode: runtimeOverrides?.mode ?? this.currentState.currentMode,
+      isHeadless: runtimeOverrides?.isHeadless ?? this.currentState.isHeadless,
     });
+    this.setState({ permissions: { policies: this.buildPolicies() } });
 
     (this as any).isInitialized = true;
 
@@ -280,72 +268,10 @@ export class ToolPermissionService
     const currentMode = this.currentState.currentMode;
     logger.debug(`Switching from mode '${currentMode}' to '${newMode}'`);
 
-    // Store original policies when leaving normal mode for the first time
-    if (
-      currentMode === "normal" &&
-      newMode !== "normal" &&
-      !this.currentState.originalPolicies
-    ) {
-      // Deep copy the policies array to preserve the original state
-      this.setState({
-        originalPolicies: {
-          policies: [...this.currentState.permissions.policies],
-        },
-      });
-      logger.debug(
-        `Stored ${this.currentState.permissions.policies.length} original policies`,
-      );
-    }
-
-    this.setState({
-      currentMode: newMode,
-    });
+    this.setState({ currentMode: newMode });
     this.emit("modeChanged", newMode, currentMode);
+    this.setState({ permissions: { policies: this.buildPolicies() } });
 
-    const modePolicies = this.generateModePolicies();
-
-    // For plan and auto modes, use ONLY mode policies (absolute override)
-    // For normal mode, restore original policies if available
-    let allPolicies: ToolPermissionPolicy[];
-    if (newMode === "plan" || newMode === "auto") {
-      // Absolute override: ignore all user configuration
-      allPolicies = [...modePolicies];
-    } else {
-      // Normal mode: restore original policies if we have them
-      if (this.currentState.originalPolicies) {
-        // Restore the original user policies
-        // When original policies were stored in normal mode, they had 0 mode policies
-        // So we need to slice from the number of mode policies that were active when stored
-        const originalModePolicyCount = 0; // Normal mode has no mode policies
-        const originalNonModePolicies =
-          this.currentState.originalPolicies.policies.slice(
-            originalModePolicyCount,
-          );
-        allPolicies = [...originalNonModePolicies];
-        logger.debug(
-          `Restored ${originalNonModePolicies.length} original user policies`,
-        );
-      } else {
-        // Fallback to existing behavior if no original policies stored
-        const existingPolicies = this.currentState.permissions.policies;
-        const previousModePolicyCount = this.currentState.modePolicyCount || 0;
-        const nonModePolicies =
-          existingPolicies.length > previousModePolicyCount
-            ? existingPolicies.slice(previousModePolicyCount)
-            : [];
-        allPolicies = [...nonModePolicies];
-      }
-    }
-
-    this.setState({
-      permissions: { policies: allPolicies },
-      currentMode: newMode,
-      modePolicyCount: modePolicies.length,
-    });
-
-    logger.debug(
-      `Mode switched to '${newMode}' with ${allPolicies.length} total policies`,
-    );
     return this.getState();
   }
 
@@ -368,29 +294,8 @@ export class ToolPermissionService
    * Useful after policy changes to update the in-memory permissions
    */
   async reloadPermissions(): Promise<void> {
-    // Only reload if we're in normal mode - other modes have absolute overrides
-    if (this.currentState.currentMode !== "normal") {
-      logger.debug("Skipping permission reload in non-normal mode");
-      return;
-    }
-
     logger.debug("Reloading permissions from configuration files");
-
-    // Reload permissions from files
-    const freshPolicies = resolvePermissionPrecedence({
-      personalSettings: true, // Enable loading from ~/.continue/permissions.yaml
-      useDefaults: true,
-    });
-
-    // Combine mode policies with freshly loaded user policies
-    const allPolicies = [...freshPolicies];
-
-    this.setState({
-      permissions: { policies: allPolicies },
-      modePolicyCount: 0,
-    });
-
-    logger.debug(`Reloaded permissions: ${freshPolicies.length} user policies`);
+    this.setState({ permissions: { policies: this.buildPolicies() } });
   }
 
   /**
