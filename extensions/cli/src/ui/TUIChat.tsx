@@ -364,7 +364,7 @@ const TUIChat: React.FC<TUIChatProps> = ({
     !!activeQuizQuestion;
 
   // Check if verbose mode is enabled for resource debugging
-  const isVerboseMode = useMemo(() => process.argv.includes("--verbose"), []);
+  const isVerboseMode = useMemo(() => logger.isLevelEnabled("debug"), []);
 
   // State for image in clipboard status
   const [hasImageInClipboard, setHasImageInClipboard] = useState(false);

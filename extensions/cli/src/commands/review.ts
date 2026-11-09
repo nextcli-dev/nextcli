@@ -261,10 +261,6 @@ function outputResultsAndExit(
 export async function review(options: ReviewOptions = {}): Promise<void> {
   configureConsoleForHeadless(false);
 
-  if (options.verbose) {
-    logger.setLevel("debug");
-  }
-
   // Mount the live UI immediately with a loading state
   const uiProps: LiveUIProps = {
     checks: [],

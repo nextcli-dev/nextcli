@@ -197,6 +197,15 @@ program
   )
   .version(getVersion(), "-v, --version", "Display version number");
 
+// --log-level wins over --verbose, which wins over NEXTCLI_LOG_LEVEL
+program.hook("preAction", (_program, actionCommand) => {
+  const { logLevel, verbose } = actionCommand.optsWithGlobals();
+  const level = logLevel ?? (verbose ? "debug" : undefined);
+  if (level) {
+    logger.setLevel(level);
+  }
+});
+
 // Root command - chat functionality (default)
 // Add common options to the root command
 addCommonOptions(program)
@@ -265,19 +274,12 @@ addCommonOptions(program)
       handleValidationErrors(validation.errors);
     }
 
-    if (options.verbose) {
-      logger.setLevel("debug");
+    if (logger.isLevelEnabled("debug") && !isHeadless) {
       const logPath = logger.getLogPath();
-      const sessionId = logger.getSessionId();
-      // In headless mode, suppress these verbose logs
-      if (!isHeadless) {
-        console.log(`Verbose logging enabled (session: ${sessionId})`);
-        console.log(`Logs: ${logPath}`);
-        console.log(
-          `Filter this session: grep '\\[${sessionId}\\]' ${logPath}`,
-        );
-      }
-      logger.debug("Verbose logging enabled");
+      const runId = logger.getRunId();
+      console.log(`Verbose logging enabled (run: ${runId})`);
+      console.log(`Logs: ${logPath}`);
+      console.log(`Filter this run: grep '\\[${runId}\\]' ${logPath}`);
     }
 
     // Handle piped input for headless mode (only if we haven't already read it)
@@ -359,12 +361,6 @@ program
   .action(async (prompt, options) => {
     // Merge parent options with subcommand options
     const mergedOptions = mergeParentOptions(program, options);
-
-    if (mergedOptions.verbose) {
-      logger.setLevel("debug");
-      logger.debug("Verbose logging enabled");
-    }
-
     await serve(prompt, mergedOptions);
   });
 

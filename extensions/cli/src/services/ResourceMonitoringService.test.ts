@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ResourceMonitoringService } from "./ResourceMonitoringService.js";
 
+const isLevelEnabled = vi.hoisted(() => vi.fn(() => false));
+
 // Mock the logger and BaseService
 vi.mock("../util/logger.js", () => ({
   logger: {
@@ -9,6 +11,7 @@ vi.mock("../util/logger.js", () => ({
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
+    isLevelEnabled,
   },
 }));
 
@@ -44,8 +47,7 @@ describe("ResourceMonitoringService", () => {
   });
 
   it("should initialize without starting monitoring by default", () => {
-    expect(service).toBeDefined();
-    // Should not be monitoring unless --verbose is passed
+    expect((service as any).isMonitoring).toBe(false);
     const usage = service.getCurrentResourceUsage();
     expect(usage.timestamp).toBeGreaterThan(0);
   });
@@ -90,19 +92,14 @@ describe("ResourceMonitoringService", () => {
     service.stopMonitoring();
   });
 
-  it("should handle verbose mode initialization", async () => {
-    // Mock argv to include --verbose
-    const originalArgv = process.argv;
-    process.argv = [...originalArgv, "--verbose"];
+  it("starts monitoring at the debug log level (--verbose)", async () => {
+    isLevelEnabled.mockReturnValueOnce(true);
 
     const verboseService = new ResourceMonitoringService();
     await verboseService.initialize();
 
-    // Should start monitoring automatically
-    // Note: Testing this properly would require checking internal state
-    // which isn't directly exposed
-
+    expect((verboseService as any).isMonitoring).toBe(true);
+    verboseService.stopMonitoring();
     await verboseService.cleanup();
-    process.argv = originalArgv;
   });
 });

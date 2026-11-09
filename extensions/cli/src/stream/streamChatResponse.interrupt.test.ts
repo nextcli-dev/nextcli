@@ -38,7 +38,13 @@ vi.mock("../telemetry/telemetryService.js", () => ({
 }));
 
 vi.mock("../util/logger.js", () => ({
-  logger: { info: vi.fn(), debug: vi.fn(), error: vi.fn(), warn: vi.fn() },
+  logger: {
+    trace: vi.fn(),
+    info: vi.fn(),
+    debug: vi.fn(),
+    error: vi.fn(),
+    warn: vi.fn(),
+  },
 }));
 
 vi.mock("../services/index.js", () => ({

@@ -220,7 +220,7 @@ export async function processStreamingResponse(
 
   const streamFactory = async (retryAbortSignal: AbortSignal) => {
     logger.debug("Creating chat completion stream", {
-      model,
+      model: model.model,
       messageCount: chatHistory.length,
       toolCount: tools?.length || 0,
     });
@@ -272,7 +272,7 @@ export async function processStreamingResponse(
       chunkCount++;
       recordCallEnd(chunk);
 
-      logger.debug("Received chunk", { chunkCount, chunk });
+      logger.trace("Received chunk", { chunkCount, chunk });
 
       // Track token usage if available
       if (chunk.usage) {
@@ -410,7 +410,7 @@ export async function streamChatResponse(
   isCompacting = false,
 ) {
   logger.debug("streamChatResponse called", {
-    model,
+    model: model.model,
     historyLength: chatHistory.length,
     hasCallbacks: !!callbacks,
   });
