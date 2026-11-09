@@ -58,7 +58,7 @@ A `Bash(...)` pattern is matched against each command in the line, not the raw t
 
 ## `permissions.yaml`
 
-Persistent permissions are stored in `~/.continue/permissions.yaml`. This file is updated when you choose "NextCLI + don't ask again" in the TUI approval prompt.
+Persistent permissions are stored in `~/.continue/permissions.yaml`. This file is updated when you choose "NextCLI + don't ask again" in the TUI approval prompt. For `Bash` it remembers the command name, such as `Bash(npm*)` for `npm test`. A chained, redirected or wrapped command (`ls && npm test`, `env X=1 npm test`, `sh -c ...`) is approved once and not remembered, because a rule for it would also allow whatever runs through the wrapper.
 
 ```yaml
 # ~/.continue/permissions.yaml

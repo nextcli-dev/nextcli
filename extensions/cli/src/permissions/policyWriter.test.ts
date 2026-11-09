@@ -24,24 +24,46 @@ describe("policyWriter", () => {
       );
     });
 
-    it("should handle complex bash commands", () => {
-      expect(
-        generatePolicyRule("Bash", { command: "ls -la && echo test" }),
-      ).toBe("Bash(ls*)");
-      expect(
-        generatePolicyRule("Bash", {
-          command: "find . -name '*.ts' | head -10",
-        }),
-      ).toBe("Bash(find*)");
+    it("remembers a plain command by its name", () => {
       expect(
         generatePolicyRule("Bash", { command: "  grep -r test .  " }),
       ).toBe("Bash(grep*)");
+      expect(generatePolicyRule("Bash", { command: '"npm" test' })).toBe(
+        "Bash(npm*)",
+      );
+      expect(generatePolicyRule("Bash", { command: "./scripts/check" })).toBe(
+        "Bash(./scripts/check*)",
+      );
     });
 
-    it("should fallback to display name for bash tools without command", () => {
-      expect(generatePolicyRule("Bash", {})).toBe("Bash");
-      expect(generatePolicyRule("Bash", { command: "" })).toBe("Bash");
-      expect(generatePolicyRule("Bash", { command: "   " })).toBe("Bash");
+    it.each([
+      // Chains, pipes, redirects and substitutions: an allow can't cover them
+      "ls -la && echo test",
+      "find . -name '*.ts' | head -10",
+      "npm test > out.txt",
+      "echo $(whoami)",
+      // Wrappers and shells would allow every command run through them
+      "sh -c 'ls'",
+      "bash -lc 'npm test'",
+      "env FOO=1 npm test",
+      "FOO=1 npm test",
+      "timeout 60 npm test",
+      "sudo ls",
+      "xargs rm",
+      "eval ls",
+      // Code that can't be read
+      "python -c 'print(1)'",
+      "bash deploy.sh",
+      "$CMD",
+      "source env.sh",
+    ])("doesn't remember %j", (command) => {
+      expect(generatePolicyRule("Bash", { command })).toBeUndefined();
+    });
+
+    it("doesn't remember all of Bash for a call without a command", () => {
+      expect(generatePolicyRule("Bash", {})).toBeUndefined();
+      expect(generatePolicyRule("Bash", { command: "" })).toBeUndefined();
+      expect(generatePolicyRule("Bash", { command: "   " })).toBeUndefined();
     });
 
     it("should use exact tool names without normalization", () => {
