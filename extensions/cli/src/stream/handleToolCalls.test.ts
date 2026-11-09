@@ -121,6 +121,44 @@ describe("handleToolCalls - duplicate tool_result prevention", () => {
     expect(services.chatHistory.addHistoryItem).not.toHaveBeenCalled();
   });
 
+  it("passes the injected permissions source on to tool execution", async () => {
+    const getPermissions = vi.fn(async () => ({ policies: [] }));
+    const toolCalls = [
+      {
+        id: "tool-call-1",
+        name: "Read",
+        arguments: {},
+        argumentsStr: "{}",
+        startNotified: false,
+      },
+    ];
+    mockPreprocess.mockResolvedValue({
+      preprocessedCalls: [{ ...toolCalls[0], tool: { name: "Read" } } as any],
+      errorChatEntries: [],
+    });
+    mockExecute.mockResolvedValue({
+      hasRejection: false,
+      chatHistoryEntries: [],
+    });
+
+    await handleToolCalls({
+      toolCalls,
+      chatHistory,
+      content: "",
+      callbacks: undefined,
+      isHeadless: true,
+      getPermissions,
+    });
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.anything(),
+      undefined,
+      true,
+      undefined,
+      getPermissions,
+    );
+  });
+
   /**
    * This test verifies that when converting history to API format,
    * we get exactly one tool_result per tool call - not duplicates.

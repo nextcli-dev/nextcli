@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
   getServiceSync,
@@ -156,5 +156,31 @@ describe("getRequestTools - Tool Filtering", () => {
     // Read-only tools should be available
     expect(toolNames).toContain("Read");
     expect(toolNames).toContain("List");
+  });
+
+  test("offers only the tools the injected permissions source allows", async () => {
+    // The session itself allows everything, so only the injected source can
+    // explain a narrower tool list
+    await initializeServices({
+      headless: false,
+      toolPermissionOverrides: { mode: "auto" },
+    });
+    const sessionTools = await getRequestTools(true);
+    expect(sessionTools.map((t) => t.function.name)).toContain("Bash");
+
+    const getPermissions = vi.fn(async () => ({
+      policies: [
+        { tool: "Read", permission: "allow" as const },
+        { tool: "*", permission: "exclude" as const },
+      ],
+    }));
+    const tools = await getRequestTools(true, getPermissions);
+    const toolNames = tools.map((t) => t.function.name);
+
+    expect(getPermissions).toHaveBeenCalled();
+    expect(toolNames).toContain("Read");
+    expect(toolNames).not.toContain("Bash");
+    expect(toolNames).not.toContain("Edit");
+    expect(toolNames).not.toContain("Write");
   });
 });
