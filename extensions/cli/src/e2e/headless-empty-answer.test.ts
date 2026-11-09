@@ -109,12 +109,20 @@ describe("E2E: empty final answer in headless mode", () => {
         req.on("end", () => {
           requestCount++;
           res.writeHead(200, { "Content-Type": "text/event-stream" });
-          res.write(
-            `data: {"choices":[{"delta":{},"finish_reason":"length","index":0}]}\n\n`,
-          );
-          res.write(
-            `data: {"usage":{"prompt_tokens":10,"completion_tokens":4096}}\n\n`,
-          );
+          // The first call is cut off while thinking; the follow-up that asks
+          // for the answer stops normally with nothing to say
+          if (requestCount === 1) {
+            res.write(
+              `data: {"choices":[{"delta":{},"finish_reason":"length","index":0}]}\n\n`,
+            );
+            res.write(
+              `data: {"usage":{"prompt_tokens":10,"completion_tokens":4096}}\n\n`,
+            );
+          } else {
+            res.write(
+              `data: {"usage":{"prompt_tokens":10,"completion_tokens":20}}\n\n`,
+            );
+          }
           res.write(`data: [DONE]\n\n`);
           res.end();
         });
@@ -127,6 +135,7 @@ describe("E2E: empty final answer in headless mode", () => {
       expectError: true,
     });
 
+    expect(requestCount).toBe(2);
     expect(result.exitCode).toBe(1);
     const line = JSON.parse(result.stderr.trim().split("\n").pop()!);
     expect(line.message).toContain(

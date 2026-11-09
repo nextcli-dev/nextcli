@@ -131,6 +131,11 @@ function isClientErrorStatus(status: unknown): boolean {
   );
 }
 
+/** The HTTP status: `status` on OpenAI errors, `statusCode` on AI SDK ones. */
+function httpStatus(error: any): unknown {
+  return error?.status ?? error?.statusCode;
+}
+
 function isLocalException(error: any): boolean {
   return LOCAL_EXCEPTION_NAMES.has(error?.name);
 }
@@ -155,7 +160,8 @@ export function isRetryableError(error: any): boolean {
   }
 
   // HTTP status codes that are retryable
-  if (error.status && isRetryableHttpStatus(error.status)) {
+  const status = httpStatus(error);
+  if (typeof status === "number" && isRetryableHttpStatus(status)) {
     return true;
   }
 
@@ -183,7 +189,7 @@ export function isUnfinishedStreamError(error: any): boolean {
   if (isContextLengthError(error)) {
     return false;
   }
-  if (isClientErrorStatus(error?.status)) {
+  if (isClientErrorStatus(httpStatus(error))) {
     return false;
   }
   if (isLocalException(error)) {
@@ -285,6 +291,45 @@ export async function chatCompletionStreamWithBackoff(
 }
 
 /**
+ * Logs a retry and waits before it. A stream that died after it started is
+ * always reported, with the provider's message; a failure to open is reported
+ * after the first hidden retries.
+ */
+async function waitBeforeRetry(
+  attempt: number,
+  opts: Required<ExponentialBackoffOptions>,
+  err: any,
+  streamStarted: boolean,
+): Promise<void> {
+  const delay = calculateDelay(attempt, opts);
+  logger.debug("Retry attempt", { attempt, delay, error: err.message });
+  if (streamStarted) {
+    warn(
+      `Provider stream failed, retrying the request. Error: ${formatError(err)}`,
+    );
+  } else if (attempt >= opts.hiddenRetries) {
+    warn(
+      `Retrying request (${attempt + 1 - opts.hiddenRetries}/${
+        opts.maxRetries + 1 - opts.hiddenRetries
+      }). Error: ${formatError(err)}`,
+    );
+  }
+  logger.debug("Waiting before retry", { delayMs: delay });
+  await new Promise((resolve) => setTimeout(resolve, delay));
+}
+
+/** Observers for each attempt of a retried stream. */
+export interface StreamAttemptHooks<T> {
+  /** Every chunk as it arrives, before it is held for the attempt */
+  onChunk?: (chunk: T) => void;
+  /**
+   * An attempt that produced chunks and then failed. Its chunks are never
+   * yielded, but the provider may already have billed them.
+   */
+  onDiscardedAttempt?: (chunks: T[], error: unknown) => void;
+}
+
+/**
  * Wraps an async generator with exponential backoff retry logic.
  * Chunks from an attempt are yielded only after that attempt finishes, so a
  * retry replaces a failed attempt instead of appending to it. A stream that
@@ -296,6 +341,7 @@ export async function* withExponentialBackoff<T>(
   ) => Promise<AsyncGenerator<T>>,
   abortSignal: AbortSignal,
   options: ExponentialBackoffOptions = {},
+  hooks: StreamAttemptHooks<T> = {},
 ): AsyncGenerator<T> {
   const opts = { ...DEFAULT_OPTIONS, ...options };
   let lastError: any;
@@ -338,6 +384,7 @@ export async function* withExponentialBackoff<T>(
         }
 
         receivedChunk = true;
+        hooks.onChunk?.(chunk);
         buffered.push(chunk);
       }
 
@@ -352,6 +399,9 @@ export async function* withExponentialBackoff<T>(
       return;
     } catch (err: any) {
       lastError = err;
+      if (buffered.length > 0) {
+        hooks.onDiscardedAttempt?.(buffered, err);
+      }
 
       // Clean up the abort listener
       if (typeof abortSignal.removeEventListener === "function") {
@@ -381,24 +431,7 @@ export async function* withExponentialBackoff<T>(
         break;
       }
 
-      const delay = calculateDelay(attempt, opts);
-      logger.debug("Retry attempt", { attempt, delay, error: err.message });
-
-      if (receivedChunk) {
-        warn(
-          `Provider stream failed, retrying the request. Error: ${formatError(err)}`,
-        );
-      } else if (attempt >= opts.hiddenRetries) {
-        warn(
-          `Retrying request (${attempt + 1 - opts.hiddenRetries}/${
-            opts.maxRetries + 1 - opts.hiddenRetries
-          }). Error: ${formatError(err)}`,
-        );
-      }
-
-      // Wait before retrying
-      logger.debug("Waiting before retry", { delayMs: delay });
-      await new Promise((resolve) => setTimeout(resolve, delay));
+      await waitBeforeRetry(attempt, opts, err, receivedChunk);
     }
   }
 

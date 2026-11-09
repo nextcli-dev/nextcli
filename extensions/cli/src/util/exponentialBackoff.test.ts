@@ -199,6 +199,15 @@ describe("exponentialBackoff utilities", () => {
       expect(isUnfinishedStreamError(new SyntaxError("bug"))).toBe(false);
     });
 
+    it("reads the AI SDK's statusCode as well as status", () => {
+      expect(
+        isUnfinishedStreamError({ statusCode: 400, message: "bad request" }),
+      ).toBe(false);
+      expect(isUnfinishedStreamError({ statusCode: 503 })).toBe(true);
+      expect(isRetryableError({ statusCode: 503 })).toBe(true);
+      expect(isRetryableError({ statusCode: 401 })).toBe(false);
+    });
+
     it("still retries a timeout or a rate limit during the stream", () => {
       expect(isUnfinishedStreamError({ status: 408 })).toBe(true);
       expect(isUnfinishedStreamError({ status: 429 })).toBe(true);

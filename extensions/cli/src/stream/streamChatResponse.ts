@@ -33,6 +33,7 @@ import {
 } from "./agentLoopLimits.js";
 import { getRequestTools, handleToolCalls } from "./handleToolCalls.js";
 import { ReasoningAccumulator } from "./reasoning.js";
+import { trackStreamAttempts } from "./streamAttempts.js";
 import { processChunk } from "./streamChatResponse.chunk.js";
 import {
   handleNormalAutoCompaction,
@@ -249,11 +250,20 @@ export async function processStreamingResponse(
   let outputTokens = 0;
   let fullUsage: any = null;
   const reasoning = new ReasoningAccumulator();
+  const attempts = trackStreamAttempts({
+    requestStartTime,
+    model,
+    tools,
+    estimateInputTokens: () =>
+      countTotalInputTokens({ chatHistory, systemMessage, tools, model }),
+  });
 
   try {
     const streamWithBackoff = withExponentialBackoff(
       streamFactory,
       abortController.signal,
+      undefined,
+      attempts,
     );
 
     let chunkCount = 0;
@@ -281,7 +291,7 @@ export async function processStreamingResponse(
       firstTokenTime = trackFirstTokenTime(
         firstTokenTime,
         chunk,
-        requestStartTime,
+        { requestStartTime, arrivedAt: attempts.firstTokenAt() },
         model,
         tools,
       );

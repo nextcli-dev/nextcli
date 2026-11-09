@@ -7,6 +7,7 @@ import {
   getPriceSource,
 } from "../stream/agentLoopLimits.js";
 import {
+  forgetCallEnds,
   outputCapMessage,
   requireFinalAnswer,
 } from "../stream/turnContinuation.js";
@@ -38,6 +39,7 @@ export function headlessExitCode(error?: unknown): number {
  */
 export function startHeadlessRun(format?: "json"): UsageSnapshot {
   requireFinalAnswer(format === "json");
+  forgetCallEnds();
   return { ...getSessionUsage() };
 }
 
