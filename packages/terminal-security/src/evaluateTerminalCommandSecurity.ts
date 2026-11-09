@@ -29,8 +29,8 @@ export interface EvaluateOptions {
    * Build, test and file commands (cp, mv, tee, pytest, prettier...) normally
    * follow the base policy. In strict mode they need permission, so a base
    * "allow" only lets through commands the evaluator approves on its own
-   * (ls, cat, git status...). Unattended runs use this so a default allow
-   * doesn't run commands that change files.
+   * (ls, cat, git status...). Callers that must not let a default allow run
+   * commands that change files can opt in.
    */
   strict?: boolean;
 }
