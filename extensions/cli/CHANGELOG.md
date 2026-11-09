@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/nextcli-dev/nextcli/compare/cli-v0.9.0...cli-v0.9.1) (2026-11-09)
+
+
+### Bug Fixes
+
+* **cli:** pass --config, --org and --rule to cn review ([#104](https://github.com/nextcli-dev/nextcli/issues/104)) ([ed02535](https://github.com/nextcli-dev/nextcli/commit/ed025358b86231fb77fe45528d42ea6ad640b3af))
+
 ## [0.9.0](https://github.com/nextcli-dev/nextcli/compare/cli-v0.8.3...cli-v0.9.0) (2026-11-09)
 
 
