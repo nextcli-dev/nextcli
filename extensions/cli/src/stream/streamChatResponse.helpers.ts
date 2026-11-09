@@ -629,8 +629,12 @@ function writeCallRecord(
   attrs: Record<string, unknown>,
   timing: { ts: number; dur: number },
 ): void {
-  logger.verbose("Model call", { ...attrs, durationMs: timing.dur });
-  traceEvent("llm.request", attrs, timing);
+  // The log line would print an unset field as "[undefined]"
+  const set = Object.fromEntries(
+    Object.entries(attrs).filter(([, value]) => value !== undefined),
+  );
+  logger.verbose("Model call", { ...set, durationMs: timing.dur });
+  traceEvent("llm.request", set, timing);
 }
 
 /**

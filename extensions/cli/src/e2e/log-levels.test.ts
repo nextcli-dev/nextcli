@@ -50,6 +50,7 @@ describe("E2E: log levels", () => {
     const log = await runAndReadLog(["--log-level", "verbose"], {});
 
     expect(log).toContain("[verbose]: Model call");
+    expect(log).not.toContain("[undefined]");
     expect(log).not.toContain("[debug]");
   }, 20000);
 
