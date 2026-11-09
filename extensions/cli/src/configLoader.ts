@@ -556,7 +556,7 @@ async function loadAssistantSlug(
 /**
  * Determines if a config path is a file path vs assistant slug
  */
-function isFilePath(configPath: string): boolean {
+export function isFilePath(configPath: string): boolean {
   return (
     configPath.startsWith(".") ||
     configPath.startsWith("/") ||

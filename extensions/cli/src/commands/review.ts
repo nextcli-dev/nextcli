@@ -1,8 +1,12 @@
 import { execSync, fork } from "child_process";
+import fs from "fs";
+import path from "path";
 
 import chalk from "chalk";
 import React from "react";
 
+import { isFilePath } from "../configLoader.js";
+import { isRulePath } from "../hubLoader.js";
 import { configureConsoleForHeadless } from "../init.js";
 import { logger } from "../util/logger.js";
 
@@ -24,6 +28,39 @@ export interface ReviewOptions extends ExtendedCommandOptions {
   patch?: boolean;
   failFast?: boolean;
   reviewAgents?: string[];
+}
+
+/**
+ * The worker chdirs into the review worktree (in the temp dir) before it loads
+ * --config and --rule, so relative file paths must be made absolute against the
+ * user's working directory first. Slugs, inline rule content, absolute paths,
+ * `~` paths and `file://` URLs pass through unchanged; downstream loaders
+ * expand `~` and read `file://` themselves. `isRulePath` is only a heuristic
+ * (inline text like "Avoid default exports in index.js" matches it), so a
+ * --rule value is rewritten only when it names an existing file under cwd.
+ */
+export function resolveCliPathOptions(
+  options: Pick<ReviewOptions, "config" | "rule">,
+  cwd: string = process.cwd(),
+): { config?: string; rule?: string[] } {
+  const isRelativePath = (p: string) =>
+    !path.isAbsolute(p) && !p.startsWith("~") && !p.startsWith("file://");
+
+  const config =
+    options.config &&
+    isFilePath(options.config) &&
+    isRelativePath(options.config)
+      ? path.resolve(cwd, options.config)
+      : options.config;
+
+  const rule = options.rule?.map((r) => {
+    const trimmed = r.trim();
+    if (!isRulePath(r) || !isRelativePath(trimmed)) return r;
+    const resolved = path.resolve(cwd, trimmed);
+    return fs.existsSync(resolved) ? resolved : r;
+  });
+
+  return { config, rule };
 }
 
 /**
@@ -76,9 +113,8 @@ export async function runReviewInWorker(
           worktreePath,
           diffContext,
           options: {
-            config: options.config,
+            ...resolveCliPathOptions(options),
             org: options.org,
-            rule: options.rule,
           },
         };
         child.send({ type: "run-review", config });
