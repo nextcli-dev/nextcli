@@ -58,6 +58,7 @@ describe("trackStreamAttempts", () => {
         inputTokens: 30_000,
         outputTokens: 900,
         fullUsage: { prompt_tokens: 30_000, completion_tokens: 900 },
+        call: { discarded: true },
       }),
     );
     // The next attempt measures its own first token

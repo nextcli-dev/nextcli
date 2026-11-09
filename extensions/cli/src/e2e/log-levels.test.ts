@@ -46,9 +46,10 @@ describe("E2E: log levels", () => {
     expect(log).not.toContain("test-key");
   }, 20000);
 
-  it("--log-level verbose leaves debug lines out", async () => {
+  it("--log-level verbose logs each model call without debug lines", async () => {
     const log = await runAndReadLog(["--log-level", "verbose"], {});
 
+    expect(log).toContain("[verbose]: Model call");
     expect(log).not.toContain("[debug]");
   }, 20000);
 

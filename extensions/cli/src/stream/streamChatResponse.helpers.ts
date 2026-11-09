@@ -26,6 +26,7 @@ import {
 } from "../tools/index.js";
 import { ToolInterruptedError } from "../tools/toolInterruptedError.js";
 import { PreprocessedToolCall, ToolCall } from "../tools/types.js";
+import { traceEvent } from "../trace/trace.js";
 import { logger } from "../util/logger.js";
 import { getModelMaxTokens } from "../util/tokenizer.js";
 import {
@@ -484,6 +485,16 @@ export function recordStreamTelemetry(options: {
   model: any;
   tools?: any[];
   fullUsage?: any;
+  /** What only the caller knows, for the "Model call" log line and trace */
+  call: {
+    finishReason?: string;
+    ttftMs?: number;
+    contentChars?: number;
+    reasoningChars?: number;
+    toolCalls?: string[];
+    /** An attempt that failed partway and was not used */
+    discarded?: boolean;
+  };
 }): number {
   const {
     requestStartTime,
@@ -498,6 +509,7 @@ export function recordStreamTelemetry(options: {
 
   // Calculate cost using comprehensive pricing that includes caching
   let cost: number;
+  let priced: PriceSource;
   let usage: Usage;
 
   if (fullUsage) {
@@ -514,9 +526,7 @@ export function recordStreamTelemetry(options: {
         : undefined,
     };
 
-    const price = priceRequest(model, usage);
-    cost = price.cost;
-    recordPriceSource(price.priced);
+    ({ cost, priced } = priceRequest(model, usage));
   } else {
     // Fallback when fullUsage not available
     usage = {
@@ -524,8 +534,9 @@ export function recordStreamTelemetry(options: {
       completionTokens: outputTokens,
     };
     cost = calculateFallbackCost(inputTokens, outputTokens);
-    recordPriceSource("fallback");
+    priced = "fallback";
   }
+  recordPriceSource(priced);
 
   // Use tokens from fullUsage if available, otherwise use the passed params
   const actualInputTokens = fullUsage?.prompt_tokens ?? inputTokens;
@@ -569,7 +580,48 @@ export function recordStreamTelemetry(options: {
     costUsd: cost,
   });
 
+  const attrs = {
+    model: model.model,
+    // As the provider sent it, so its cache fields show as they are
+    usage: fullUsage ?? {
+      prompt_tokens: inputTokens,
+      completion_tokens: outputTokens,
+      estimated: true,
+    },
+    costUsd: cost,
+    priced,
+    ...options.call,
+  };
+  logger.verbose("Model call", { ...attrs, durationMs: totalDuration });
+  traceEvent("llm.request", attrs, {
+    ts: requestStartTime,
+    dur: totalDuration,
+  });
+
   return cost;
+}
+
+/** Records a model call that threw: the provider failed, or the user aborted */
+export function recordFailedCall(options: {
+  model: any;
+  requestStartTime: number;
+  error: any;
+  aborted: boolean;
+}): void {
+  const { model, requestStartTime, aborted } = options;
+  const durationMs = Date.now() - requestStartTime;
+  const error = options.error.message || String(options.error);
+  telemetryService.logApiRequest({
+    model: model.model,
+    durationMs,
+    success: false,
+    error,
+  });
+  traceEvent(
+    "llm.request",
+    { model: model.model, error, aborted },
+    { ts: requestStartTime, dur: durationMs },
+  );
 }
 
 /**

@@ -1,4 +1,6 @@
+import { promises as fs } from "fs";
 import * as http from "http";
+import path from "path";
 
 import {
   cleanupTestContext,
@@ -129,8 +131,10 @@ describe("E2E: empty final answer in headless mode", () => {
       },
     });
 
+    const traceDir = path.join(context.testDir, "traces");
     const result = await runCLI(context, {
       args: args(context),
+      env: { NEXTCLI_TRACE: "basic", NEXTCLI_TRACE_DIR: traceDir },
       timeout: 30000,
       expectError: true,
     });
@@ -141,6 +145,23 @@ describe("E2E: empty final answer in headless mode", () => {
     expect(line.message).toContain(
       "The model used all its output tokens (4096) before writing an answer.",
     );
+    // Neither call left a message in the session; the trace has both
+    const [traceFile] = await fs.readdir(traceDir);
+    const [header, ...calls] = (
+      await fs.readFile(path.join(traceDir, traceFile), "utf-8")
+    )
+      .trim()
+      .split("\n")
+      .map((traceLine) => JSON.parse(traceLine));
+    expect(header.name).toBe("header");
+    expect(calls.map((call) => call.attrs)).toEqual([
+      expect.objectContaining({
+        finishReason: "length",
+        contentChars: 0,
+        usage: { prompt_tokens: 10, completion_tokens: 4096 },
+      }),
+      expect.objectContaining({ contentChars: 0, toolCalls: [] }),
+    ]);
   }, 40000);
 
   // Plain -p may end silently, for example after a run that only edits files

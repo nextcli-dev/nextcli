@@ -5,9 +5,12 @@ import type { ChatCompletionChunk } from "openai/resources/chat/completions.mjs"
 import { vi } from "vitest";
 
 import { ToolCall } from "../tools/index.js";
+import { traceEvent } from "../trace/trace.js";
 
 import { preprocessStreamedToolCalls } from "./streamChatResponse.helpers.js";
 import { processStreamingResponse } from "./streamChatResponse.js";
+
+vi.mock("../trace/trace.js", () => ({ traceEvent: vi.fn() }));
 
 // Test the chunk processing logic that was identified as buggy
 describe("processStreamingResponse - content preservation", () => {
@@ -488,6 +491,68 @@ describe("processStreamingResponse - content preservation", () => {
     expect(result.toolCalls[0].name).toBe("Read");
     expect(result.toolCalls[0].argumentsStr).toBe(
       '{"filepath": "/Users/nate/gh/continuedev/cli/README.md"}',
+    );
+  });
+
+  it("traces how each call ended", async () => {
+    chunks = [
+      contentChunk("Hello"),
+      {
+        ...contentChunk(""),
+        choices: [{ index: 0, delta: {}, finish_reason: "length" }],
+      },
+      {
+        ...contentChunk(""),
+        choices: [],
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 32000,
+          total_tokens: 32010,
+        },
+      },
+    ];
+
+    await processStreamingResponse({
+      chatHistory,
+      model: mockModel,
+      llmApi: mockLlmApi,
+      abortController: mockAbortController,
+      systemMessage: "You are a helpful assistant.",
+    });
+
+    expect(traceEvent).toHaveBeenCalledWith(
+      "llm.request",
+      expect.objectContaining({
+        model: "test-model",
+        finishReason: "length",
+        contentChars: 5,
+        reasoningChars: 0,
+        toolCalls: [],
+        usage: expect.objectContaining({ completion_tokens: 32000 }),
+      }),
+      { ts: expect.any(Number), dur: expect.any(Number) },
+    );
+  });
+
+  it("traces a call that fails before its first chunk", async () => {
+    mockLlmApi.chatCompletionStream = vi.fn(async function* () {
+      throw Object.assign(new Error("Bad request"), { status: 400 });
+    }) as any;
+
+    await expect(
+      processStreamingResponse({
+        chatHistory,
+        model: mockModel,
+        llmApi: mockLlmApi,
+        abortController: mockAbortController,
+        systemMessage: "You are a helpful assistant.",
+      }),
+    ).rejects.toThrow("Bad request");
+
+    expect(traceEvent).toHaveBeenCalledWith(
+      "llm.request",
+      { model: "test-model", error: "Bad request", aborted: false },
+      { ts: expect.any(Number), dur: expect.any(Number) },
     );
   });
 

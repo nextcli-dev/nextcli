@@ -38,6 +38,7 @@ vi.mock("../telemetry/telemetryService.js", () => ({
 vi.mock("../util/logger.js", () => ({
   logger: {
     trace: vi.fn(),
+    verbose: vi.fn(),
     info: vi.fn(),
     debug: vi.fn(),
     error: vi.fn(),

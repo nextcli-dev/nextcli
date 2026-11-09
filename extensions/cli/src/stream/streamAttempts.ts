@@ -2,7 +2,6 @@ import { encode } from "gpt-tokenizer";
 import type { ChatCompletionChunk } from "openai/resources/chat/completions.mjs";
 
 import type { StreamAttemptHooks } from "../util/exponentialBackoff.js";
-import { logger } from "../util/logger.js";
 
 import { recordStreamTelemetry } from "./streamChatResponse.helpers.js";
 
@@ -54,23 +53,17 @@ export function trackStreamAttempts(options: {
     onDiscardedAttempt: (chunks) => {
       firstTokenAt = undefined;
       const usage = [...chunks].reverse().find((chunk) => chunk.usage)?.usage;
-      const inputTokens = usage?.prompt_tokens ?? options.estimateInputTokens();
-      const outputTokens =
-        usage?.completion_tokens ??
-        encode(chunks.map(generatedText).join("")).length;
-      logger.debug("Recording a discarded stream attempt", {
-        inputTokens,
-        outputTokens,
-        measured: !!usage,
-      });
       recordStreamTelemetry({
         requestStartTime: options.requestStartTime,
         responseEndTime: Date.now(),
-        inputTokens,
-        outputTokens,
+        inputTokens: usage?.prompt_tokens ?? options.estimateInputTokens(),
+        outputTokens:
+          usage?.completion_tokens ??
+          encode(chunks.map(generatedText).join("")).length,
         model: options.model,
         tools: options.tools,
         fullUsage: usage,
+        call: { discarded: true },
       });
     },
   };

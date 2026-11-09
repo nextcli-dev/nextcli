@@ -10,7 +10,6 @@ import type {
 
 import { pruneLastMessage } from "../compaction.js";
 import { services } from "../services/index.js";
-import { telemetryService } from "../telemetry/telemetryService.js";
 import { applyChatCompletionToolOverrides } from "../tools/applyToolOverrides.js";
 import { ToolCall } from "../tools/index.js";
 import { registerAbortController } from "../util/abortRegistry.js";
@@ -44,6 +43,7 @@ import {
   addUserMessage,
   estimateFinalCallCost,
   finalAnswerMaxTokens,
+  recordFailedCall,
   recordStreamTelemetry,
   trackFirstTokenTime,
 } from "./streamChatResponse.helpers.js";
@@ -52,9 +52,10 @@ import {
   StreamCallbacks,
 } from "./streamChatResponse.types.js";
 import {
+  type CallEnd,
   continueAfterResponse,
-  recordCallEnd,
-  resetCallEnd,
+  endCall,
+  readCallEnd,
   TurnState,
 } from "./turnContinuation.js";
 
@@ -267,10 +268,10 @@ export async function processStreamingResponse(
     );
 
     let chunkCount = 0;
-    resetCallEnd();
+    let callEnd: CallEnd = {};
     for await (const chunk of streamWithBackoff) {
       chunkCount++;
-      recordCallEnd(chunk);
+      callEnd = readCallEnd(callEnd, chunk);
 
       logger.trace("Received chunk", { chunkCount, chunk });
 
@@ -309,47 +310,35 @@ export async function processStreamingResponse(
       if (!result.shouldContinue) break;
     }
 
-    const responseEndTime = Date.now();
+    endCall(callEnd);
     const cost = recordStreamTelemetry({
       requestStartTime,
-      responseEndTime,
+      responseEndTime: Date.now(),
       inputTokens,
       outputTokens,
       model,
       tools,
       fullUsage,
+      call: {
+        finishReason: callEnd.finishReason,
+        ttftMs: firstTokenTime ? firstTokenTime - requestStartTime : undefined,
+        contentChars: aiResponse.length,
+        reasoningChars: reasoning.result()?.text.length ?? 0,
+        toolCalls: [...toolCallsMap.values()].map((call) => call.name),
+      },
     });
-    const totalDuration = responseEndTime - requestStartTime;
 
     // Enhance fullUsage with model and cost for saving to session
     if (fullUsage) {
       fullUsage.model = model.model;
       fullUsage.cost_cents = Math.round(cost * 100); // Convert dollars to cents
     }
-
-    logger.debug("Stream complete", {
-      chunkCount,
-      responseLength: aiResponse.length,
-      toolCallsCount: toolCallsMap.size,
-      inputTokens,
-      outputTokens,
-      cacheReadTokens: fullUsage?.prompt_tokens_details?.cache_read_tokens,
-      cacheWriteTokens: fullUsage?.prompt_tokens_details?.cache_write_tokens,
-      cost,
-      duration: totalDuration,
-    });
   } catch (error: any) {
-    const errorDuration = Date.now() - requestStartTime;
+    const aborted =
+      error.name === "AbortError" || abortController?.signal.aborted;
+    recordFailedCall({ model, requestStartTime, error, aborted });
 
-    // Log failed API request
-    telemetryService.logApiRequest({
-      model: model.model,
-      durationMs: errorDuration,
-      success: false,
-      error: error.message || String(error),
-    });
-
-    if (error.name === "AbortError" || abortController?.signal.aborted) {
+    if (aborted) {
       logger.debug("Stream aborted by user");
       return {
         content: aiResponse,
