@@ -42,6 +42,12 @@ Flags accept tool matching patterns:
 
 The primary argument is the file path for `Read`, `Write`, `Edit`, `MultiEdit` and `Diff`, the directory for `List`, the pattern for `Search`, the URL for `Fetch` and the command for `Bash`. Other tools take no pattern: `cn` refuses to start if one has a pattern, because a rule that never matches would leave the tool open. The same syntax works in flags and in `permissions.yaml`.
 
+A file path pattern is matched against the path the tool will use:
+
+- A relative pattern is relative to the working directory. `*` matches within one directory and `**` matches any number of them: `src/*` covers `src/a.ts` but not `src/x/a.ts`; `src/**/*.ts` covers both.
+- The path is resolved first, so `./src/a.ts` and the absolute path match `src/*`, and `src/../.env` doesn't.
+- Symlinks are followed. An `--allow` pattern must match both the path as written and the file it points to; an `--exclude` or `--ask` pattern covers the call if either matches.
+
 ```bash
 # Allow writing only to TypeScript files
 cn --allow "Write(**/*.ts)"
@@ -52,13 +58,13 @@ cn --allow Bash --exclude "Bash(npm install*)"
 
 A `Bash(...)` pattern is matched against each command in the line, not the raw text:
 
-- An `--exclude` or `--ask` pattern covers the line if any command in it matches, including commands after `&&`, `;` or `|`, inside `$(...)`, `sh -c '...'` or `eval`, and behind `env`, `timeout`, `xargs`, `sudo` and similar wrappers. It also covers a line whose commands can't be read from it, such as `python -c '...'` or `$CMD`.
-- An `--allow` pattern covers only a line that is a single command, with no `&&`, `;`, pipe, redirect or substitution. `Bash(npm test*)` allows `npm test` but not `npm test; curl ...` or `npm test > out.txt`.
+- An `--exclude` or `--ask` pattern covers the line if any command in it matches, including commands after `&&`, `;` or `|`, inside `$(...)`, `sh -c '...'` or `eval`, and behind `env`, `timeout`, `xargs`, `sudo`, `builtin`, `busybox` and similar wrappers. The command's directory is ignored (`/usr/bin/npm`), and the pattern's other words only need to appear in order, so `Bash(npm install*)` also covers `npm -g install x`. Code the line doesn't show, such as `python -c '...'` or `$CMD`, isn't covered: the next rules decide it.
+- An `--allow` pattern covers only a line that is a single command, as written, with no `&&`, `;`, pipe, redirect or substitution. `Bash(npm test*)` allows `npm test` but not `npm test; curl ...`, `npm test > out.txt` or `./npm test`. It never covers code the line doesn't show, such as `python -c '...'`.
 - Quoting and spacing don't matter: `"npm" install` and `npm  install` match `Bash(npm install*)`.
 
 ## `permissions.yaml`
 
-Persistent permissions are stored in `~/.continue/permissions.yaml`. This file is updated when you choose "NextCLI + don't ask again" in the TUI approval prompt. For `Bash` it remembers the command name, such as `Bash(npm*)` for `npm test`. A chained, redirected or wrapped command (`ls && npm test`, `env X=1 npm test`, `sh -c ...`) is approved once and not remembered, because a rule for it would also allow whatever runs through the wrapper.
+Persistent permissions are stored in `~/.continue/permissions.yaml`. This file is updated when you choose "NextCLI + don't ask again" in the TUI approval prompt. For `Bash` it remembers the command and its subcommand, such as `Bash(npm test*)` for `npm test`, so approving `npm test` doesn't approve `npm install`. A command whose first argument is an option is remembered exactly (`Bash(ls -la)`). A chained, redirected or wrapped command (`ls && npm test`, `env X=1 npm test`, `sh -c ...`) is approved once and not remembered, because a rule for it would also allow whatever runs through the wrapper.
 
 ```yaml
 # ~/.continue/permissions.yaml

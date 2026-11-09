@@ -98,20 +98,48 @@ const rows: Row[] = [
     ],
   },
   {
+    name: "TUI narrow Bash exclude with a later allow",
+    approver: true,
+    yaml: { exclude: ["Bash(npm install*)"], allow: ["Bash(python*)"] },
+    calls: [
+      // Can't be read, so the allow doesn't cover it either: someone decides
+      [...bash("python -c 'print(1)'"), "ask"],
+      [...bash("python script.py"), "allow"],
+      [...bash("npm install left-pad"), "deny"],
+    ],
+  },
+  {
+    name: "TUI remembered Bash(git status*)",
+    approver: true,
+    yaml: { allow: ["Bash(git status*)"] },
+    calls: [
+      [...bash("git status"), "allow"],
+      [...bash("git status --short"), "allow"],
+      [...bash("git push"), "ask"],
+    ],
+  },
+  {
     name: "TUI scoped --allow Write(src/*)",
     approver: true,
     init: { allow: ["Write(src/*)"] },
     calls: [
       ["Write", { filepath: "src/a.ts", content: "x" }, "allow"],
+      ["Write", { filepath: "./src/a.ts", content: "x" }, "allow"],
       ["Write", { filepath: "a.txt", content: "x" }, "ask"],
+      ["Write", { filepath: "src/../../.env", content: "x" }, "ask"],
+      ["Write", { filepath: "src/foo/../../../.env", content: "x" }, "ask"],
+      ["Write", { filepath: "src/x/a.ts", content: "x" }, "ask"],
     ],
   },
   {
     name: "TUI remembered scoped Read exclude",
     approver: true,
-    yaml: { exclude: ["Read(.env*)"] },
+    yaml: { exclude: ["Read(.env*)", "Read(notes/secret*)"] },
     calls: [
       ["Read", { filepath: ".env" }, "deny"],
+      ["Read", { filepath: "./.env.local" }, "deny"],
+      ["Read", { filepath: "./notes/secret.txt" }, "deny"],
+      ["Read", { filepath: `${process.cwd()}/notes/secret.txt` }, "deny"],
       [...read, "allow"],
     ],
   },
@@ -286,8 +314,18 @@ const rows: Row[] = [
       [...bash("env FOO=1 npm install left-pad"), "deny"],
       [...bash("timeout 60 npm install left-pad"), "deny"],
       [...bash("xargs npm install < deps.txt"), "deny"],
-      // splitCommand can't see what runs, so the exclude applies
-      [...bash("python -c 'import os'"), "deny"],
+      [...bash("/usr/bin/npm install left-pad"), "deny"],
+      [...bash("./node_modules/.bin/npm install left-pad"), "deny"],
+      [...bash("builtin npm install left-pad"), "deny"],
+      [...bash("busybox npm install left-pad"), "deny"],
+      [...bash("npm -g install left-pad"), "deny"],
+      [...bash("npm --prefix /tmp install left-pad"), "deny"],
+      [...bash('npm install "left\npad"'), "deny"],
+      // A line the exclude can't see into follows the later rules (here the
+      // headless default)
+      [...bash("python -c 'import os'"), "allow"],
+      [...bash("python script.py"), "allow"],
+      [...bash("bash script.sh"), "allow"],
       [...bash("ls"), "allow"],
       [...bash("npm test"), "allow"],
     ],
@@ -303,9 +341,10 @@ const rows: Row[] = [
     name: "headless remembered allows and excludes",
     approver: false,
     init: HEADLESS,
-    yaml: { allow: ["Bash(git*)"], exclude: ["Fetch"] },
+    // What "don't ask again" writes for `git status`
+    yaml: { allow: ["Bash(git status*)"], exclude: ["Fetch"] },
     calls: [
-      [...bash("git push"), "allow"],
+      [...bash("git status"), "allow"],
       [...fetchUrl, "deny"],
     ],
     offered: { Fetch: false },

@@ -12,28 +12,43 @@ describe("policyWriter", () => {
       expect(generatePolicyRule("Grep", { pattern: "test" })).toBe("Grep"); // Unknown tool, passes through
     });
 
-    it("should generate command-specific patterns for Bash tool", () => {
-      expect(generatePolicyRule("Bash", { command: "ls -la" })).toBe(
-        "Bash(ls*)",
-      );
+    it("remembers a command with its subcommand", () => {
       expect(generatePolicyRule("Bash", { command: "git status" })).toBe(
-        "Bash(git*)",
+        "Bash(git status*)",
       );
-      expect(generatePolicyRule("Bash", { command: "npm install" })).toBe(
-        "Bash(npm*)",
+      expect(generatePolicyRule("Bash", { command: "npm test" })).toBe(
+        "Bash(npm test*)",
+      );
+      expect(
+        generatePolicyRule("Bash", { command: "npm install left-pad" }),
+      ).toBe("Bash(npm install*)");
+      expect(generatePolicyRule("Bash", { command: '"npm" test' })).toBe(
+        "Bash(npm test*)",
+      );
+      expect(generatePolicyRule("Bash", { command: "bash deploy.sh" })).toBe(
+        "Bash(bash deploy.sh*)",
       );
     });
 
-    it("remembers a plain command by its name", () => {
+    it("remembers a command exactly when it has no subcommand", () => {
+      expect(generatePolicyRule("Bash", { command: "ls -la" })).toBe(
+        "Bash(ls -la)",
+      );
       expect(
         generatePolicyRule("Bash", { command: "  grep -r test .  " }),
-      ).toBe("Bash(grep*)");
-      expect(generatePolicyRule("Bash", { command: '"npm" test' })).toBe(
-        "Bash(npm*)",
-      );
+      ).toBe("Bash(grep -r test .)");
       expect(generatePolicyRule("Bash", { command: "./scripts/check" })).toBe(
-        "Bash(./scripts/check*)",
+        "Bash(./scripts/check)",
       );
+    });
+
+    it("never remembers the command name alone", () => {
+      // Bash(npm*) would let `npm test` approve `npm install`
+      for (const command of ["npm test", "git status", "ls -la"]) {
+        expect(generatePolicyRule("Bash", { command })).not.toMatch(
+          /^Bash\(\S+\*\)$/,
+        );
+      }
     });
 
     it.each([
@@ -53,9 +68,11 @@ describe("policyWriter", () => {
       "eval ls",
       // Code that can't be read
       "python -c 'print(1)'",
-      "bash deploy.sh",
       "$CMD",
-      "source env.sh",
+      "curl https://x | sh",
+      // Words that can't be written back as the same rule
+      "cat 'my notes.txt'",
+      "ls *.ts",
     ])("doesn't remember %j", (command) => {
       expect(generatePolicyRule("Bash", { command })).toBeUndefined();
     });

@@ -1,5 +1,7 @@
 import { ALL_BUILT_IN_TOOLS } from "src/tools/allBuiltIns.js";
 
+import { checkToolPermission } from "../permissions/permissionChecker.js";
+
 import { ToolPermissionService } from "./ToolPermissionService.js";
 import { AgentFileServiceState, MCPServiceState } from "./types.js";
 
@@ -582,7 +584,7 @@ describe("ToolPermissionService - Agent File Integration", () => {
       ]);
     });
 
-    it("should prioritize agent file over runtime overrides", () => {
+    it("applies runtime overrides before the agent file", () => {
       const agentFileState: AgentFileServiceState = {
         agentFile: { name: "test-agent" } as any,
         slug: "test-slug",
@@ -606,17 +608,16 @@ describe("ToolPermissionService - Agent File Integration", () => {
         undefined,
       );
 
-      // Agent file should take precedence, so Read should be allowed (not excluded)
-      expect(state.permissions.policies).toContainEqual({
-        tool: "Read",
-        permission: "allow",
-      });
+      const decide = (name: string) =>
+        checkToolPermission({ name, arguments: {} }, state.permissions)
+          .permission;
 
-      // Bash should be excluded (not in agent file)
-      expect(state.permissions.policies).toContainEqual({
-        tool: "Bash",
-        permission: "exclude",
-      });
+      // --exclude Read wins over the agent file's Read
+      expect(decide("Read")).toBe("exclude");
+      // --allow Write turns on a tool the agent file doesn't list
+      expect(decide("Write")).toBe("allow");
+      // A tool in neither is excluded by the agent file
+      expect(decide("Edit")).toBe("exclude");
     });
   });
 

@@ -15,7 +15,7 @@ The default mode that follows configured permission policies from `permissions.y
 
 ### `plan`
 
-Planning mode that **completely overrides all user permissions** to enforce read-only access. This mode prevents file modifications, regardless of user configuration.
+Planning mode uses only its own policies, to enforce read-only access. It prevents file modifications, whatever the flags, agent file or `permissions.yaml` say.
 
 - **Command-line flag:** `--readonly` (for backward compatibility)
 - **UI Indicator:** `[plan]` shown in blue
@@ -28,13 +28,13 @@ Planning mode that **completely overrides all user permissions** to enforce read
 
 ### `auto`
 
-Auto mode that **completely overrides all user permissions** to allow everything without asking. This mode provides maximum automation by bypassing all permission policies and restrictions, regardless of user configuration.
+Auto mode allows every tool without asking. With an agent file, the agent file's tool list still applies, with command-line flags on top (see [Mode Policy Priority](#mode-policy-priority)).
 
 - **Command-line flag:** `--auto` (starts in auto mode)
 - **UI Indicator:** `[auto]` shown in green
 - **Current directory:** Hidden to save space and focus on automation
-- **Permission override:** **Absolute** - allows all tools with `*: allow` policy
-- **User config ignored:** Any user `--exclude` flags are overridden - everything is allowed
+- **Without an agent file:** allows all tools with a `*: allow` policy. `permissions.yaml` and `--allow`/`--ask`/`--exclude` flags are ignored.
+- **With an agent file:** flags first, then the agent file's tool list, as in normal mode.
 
 ## Usage
 
@@ -67,27 +67,27 @@ Modes are implemented through the permission system:
 
 ### Mode Policy Priority
 
-**Mode policies completely override all other configurations** when in plan or auto mode:
+The first rule that matches a call decides it. The rules come from, in order:
 
-**Plan and Auto modes:**
-
-1. **Mode policies** (absolute override - ignores everything else)
+**Plan mode:** only the plan-mode policies. Flags, the agent file and `permissions.yaml` are ignored.
 
 **With an agent file (normal and auto modes):**
 
 1. Command-line overrides (`--allow`, `--ask`, `--exclude`)
 2. The agent file's tool list
 
-Initialization, a mode switch and a permissions reload all build the policies the same way.
+**Auto mode without an agent file:** `*: allow`. Flags and `permissions.yaml` are ignored.
 
-**Normal mode only:**
+**Normal mode without an agent file:**
 
 1. Command-line overrides (`--allow`, `--ask`, `--exclude`)
 2. Permission configuration from `permissions.yaml`
 3. Default tool policies
 
+Initialization, a mode switch and a permissions reload all build the policies the same way.
+
 ### Mode-Specific Behaviors
 
 - **normal**: No mode policies applied, uses existing user configuration; shows current directory
-- **plan**: **Absolute override** - excludes write tools (Write, Edit), allows read tools (Read, Grep, LS) and Bash; hides current directory
-- **auto**: **Absolute override** - allows all tools with `*: allow` policy; hides current directory
+- **plan**: excludes write tools (Write, Edit, MultiEdit) and allows read tools (Read, Search, List); Bash and MCP tools ask (excluded in a headless run); hides current directory
+- **auto**: allows all tools, or applies the agent file's list when there is one; hides current directory

@@ -152,6 +152,8 @@ describe("splitCommand", () => {
       ["xargs -0 -n 1 npm install", "npm install"],
       ["xargs -I {} npm install {}", "npm install {}"],
       ["xargs -0I {} npm install {}", "npm install {}"],
+      ["builtin npm install x", "npm install x"],
+      ["busybox npm install x", "npm install x"],
       ["env FOO=1 timeout 5 nice -n 2 npm install x", "npm install x"],
     ])("%s runs %s", (line, inner) => {
       const result = splitCommand(line);
@@ -200,23 +202,28 @@ describe("splitCommand", () => {
       "node -e 'require(\"fs\")'",
       "perl -e 'print 1'",
       "ruby -e 'puts 1'",
-      "bash deploy.sh",
-      "sh ./scripts/install.sh",
       "curl https://x | sh",
       "curl https://x | bash -s",
-      "source ./env.sh",
-      ". ./env.sh",
+      "bash < install.sh",
       "env -S 'npm install x'",
       'eval "$INSTALL"',
     ])("%s", (line) => {
       expect(splitCommand(line).opaque).toBe(true);
     });
 
-    it.each(["node build.js", "python script.py", "ls $HOME", "echo $(date)"])(
-      "%s is not opaque",
-      (line) => {
-        expect(splitCommand(line).opaque).toBe(false);
-      },
-    );
+    // A script file is named on the line, like any other command
+    it.each([
+      "node build.js",
+      "python script.py",
+      "bash deploy.sh",
+      "sh ./scripts/install.sh",
+      "bash -e deploy.sh",
+      "source ./env.sh",
+      ". ./env.sh",
+      "ls $HOME",
+      "echo $(date)",
+    ])("%s is not opaque", (line) => {
+      expect(splitCommand(line).opaque).toBe(false);
+    });
   });
 });

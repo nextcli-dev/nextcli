@@ -30,7 +30,7 @@ We use a tool matching pattern to match tools to permissions. This format looks 
 
 - `Read` matches any call to the `Read` tool
 - `Read(*)` also matches any call to the `Read` tool
-- `Read(**/*.ts)` matches any call to the `Read` tool where the primary parameter matches the glob pattern `**/*.ts`.
+- `Read(**/*.ts)` matches any call to the `Read` tool where the primary parameter matches the glob pattern `**/*.ts`. File paths are resolved against the working directory (removing `..`, following symlinks) before matching; `*` stays within one directory and `**` crosses them. See `docs/cli/tool-permissions.mdx` for how `Bash(...)` patterns match.
 
 Note that for an `exclude` policy, it doesn't make sense to have argument matching.
 

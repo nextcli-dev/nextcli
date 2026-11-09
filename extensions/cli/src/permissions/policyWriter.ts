@@ -14,11 +14,13 @@ import {
 /**
  * The rule to remember when someone picks "don't ask again" for a call, or
  * undefined when the call can't be remembered safely. A Bash call is
- * remembered by its command name (`ls -la` → `Bash(ls*)`), and only when the
- * line is one plain command: no chain, redirect, substitution, wrapper
- * (`env`, `timeout`, `sudo`...), `NAME=value` prefix, `sh -c` or code that
- * can't be read. Remembering `Bash(sh*)` or `Bash(sudo*)` would allow every
- * command run through them.
+ * remembered by its command and subcommand (`npm test` → `Bash(npm test*)`),
+ * or exactly when the first argument is an option (`ls -la` →
+ * `Bash(ls -la)`). Remembering only the command name would let `npm test`
+ * approve `npm install` and `git status` approve `git push`. It is
+ * remembered only when the line is one plain command: no chain, redirect,
+ * substitution, wrapper (`env`, `timeout`, `sudo`...), `NAME=value` prefix,
+ * `sh -c` or code that can't be read.
  */
 export function generatePolicyRule(
   toolName: string,
@@ -32,17 +34,24 @@ export function generatePolicyRule(
     return undefined;
   }
   const split = splitCommand(command);
-  const name = split.commands[0]?.[0];
+  const argv = split.commands[0] ?? [];
   if (
     !split.single ||
     split.opaque ||
     split.commands.length !== 1 ||
-    !name ||
-    /[*?()]/.test(name)
+    argv.length === 0
   ) {
     return undefined;
   }
-  return `Bash(${name}*)`;
+  const prefix = argv.length > 1 && !argv[1].startsWith("-");
+  const words = prefix ? argv.slice(0, 2) : argv;
+  // A word with a glob character, a parenthesis or a space can't be written
+  // back as the same rule
+  if (words.some((word) => word === "" || /[*?()\s]/.test(word))) {
+    return undefined;
+  }
+  const rule = words.join(" ");
+  return prefix ? `Bash(${rule}*)` : `Bash(${rule})`;
 }
 
 /**

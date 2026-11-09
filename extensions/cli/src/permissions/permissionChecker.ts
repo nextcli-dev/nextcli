@@ -1,7 +1,16 @@
-import { splitCommand, type ToolPolicy } from "@continuedev/terminal-security";
+import fs from "fs";
+import path from "path";
+
+import {
+  normalizeCommandName,
+  splitCommand,
+  type ToolPolicy,
+} from "@continuedev/terminal-security";
+import { minimatch } from "minimatch";
 
 import { ALL_BUILT_IN_TOOLS } from "src/tools/allBuiltIns.js";
 
+import { PATTERN_ARGUMENT } from "./toolPattern.js";
 import {
   PermissionCheckResult,
   PermissionPolicy,
@@ -9,6 +18,15 @@ import {
   ToolPermissionPolicy,
   ToolPermissions,
 } from "./types.js";
+
+/** `*` matches any characters (newlines too), `?` one character */
+function globToRegExp(glob: string): RegExp {
+  const escaped = glob.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(
+    `^${escaped.replace(/\*/g, ".*").replace(/\?/g, ".")}$`,
+    "s",
+  );
+}
 
 /**
  * Checks if a tool name matches a pattern.
@@ -21,12 +39,7 @@ export function matchesToolPattern(toolName: string, pattern: string): boolean {
 
   // Handle regular wildcard patterns like "external_*"
   if (pattern.includes("*") || pattern.includes("?")) {
-    // Escape all regex metacharacters except * and ?
-    const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-    // Convert * and ? to their regex equivalents
-    const regexPattern = escaped.replace(/\*/g, ".*").replace(/\?/g, ".");
-    const regex = new RegExp(`^${regexPattern}$`);
-    return regex.test(toolName);
+    return globToRegExp(pattern).test(toolName);
   }
 
   return false;
@@ -52,16 +65,7 @@ export function matchesArguments(
       typeof pattern === "string" &&
       (pattern.includes("*") || pattern.includes("?"))
     ) {
-      // Convert argValue to string for pattern matching
-      const stringValue = String(argValue ?? "");
-
-      // Escape all regex metacharacters except * and ?
-      const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-      // Convert * and ? to their regex equivalents
-      const regexPattern = escaped.replace(/\*/g, ".*").replace(/\?/g, ".");
-      const regex = new RegExp(`^${regexPattern}$`);
-
-      if (!regex.test(stringValue)) {
+      if (!globToRegExp(pattern).test(String(argValue ?? ""))) {
         return false;
       }
     } else {
@@ -76,12 +80,47 @@ export function matchesArguments(
 }
 
 /**
+ * Whether an exclude or ask written as `Bash(glob)` covers one command. It
+ * errs toward matching: the command name is compared without its directory
+ * (`/usr/bin/npm`), and the glob's other words need only appear in order, so
+ * `npm install*` covers `npm -g install x` and `npm --prefix /tmp install x`.
+ * An argument with an unexpanded `$` could be anything, so it matches any
+ * word. A command named by a variable (`$CMD`) matches no rule.
+ */
+function commandMatchesDenyRule(words: string[], glob: string): boolean {
+  if (words.length === 0) {
+    return false;
+  }
+  const argv = [normalizeCommandName(words[0]), ...words.slice(1)];
+  if (globToRegExp(glob).test(argv.join(" "))) {
+    return true;
+  }
+  const [name, ...rest] = glob.trim().split(/\s+/);
+  if (!globToRegExp(normalizeCommandName(name)).test(argv[0])) {
+    return false;
+  }
+  const argumentMatches = (word: string, part: string) =>
+    word.includes("$") || globToRegExp(part).test(word);
+  let next = 1;
+  for (const part of rest) {
+    while (next < argv.length && !argumentMatches(argv[next], part)) {
+      next++;
+    }
+    if (next === argv.length) {
+      return false;
+    }
+    next++;
+  }
+  return true;
+}
+
+/**
  * Matches a `Bash(glob)` rule against the commands in a shell line (see
- * splitCommand). An allow covers only a line that is one simple command
- * matching the glob, so `Bash(git log*)` doesn't allow `git log; curl x`. An
- * exclude or ask covers a line where any command matches, including one
- * behind a wrapper or inside `sh -c`, and a line splitCommand can't read
- * through (`python -c`, `$CMD`), so it fails closed.
+ * splitCommand). An allow covers only a line that is one simple command, as
+ * written, matching the glob, so `Bash(git log*)` doesn't allow
+ * `git log; curl x`, `./git log` or `python -c '...'`. An exclude or ask
+ * covers a line where any command it can see matches (see
+ * commandMatchesDenyRule), including one behind a wrapper or inside `sh -c`.
  */
 function matchesBashCommand(
   policy: ToolPermissionPolicy,
@@ -98,12 +137,76 @@ function matchesBashCommand(
     return command !== undefined && policy.permission !== "allow";
   }
   const split = splitCommand(command);
-  const matches = (words: string[]) =>
-    matchesArguments({ command: words.join(" ") }, { command: glob });
   if (policy.permission === "allow") {
-    return split.single && !split.opaque && matches(split.commands[0]);
+    return (
+      split.single &&
+      !split.opaque &&
+      globToRegExp(glob).test(split.commands[0].join(" "))
+    );
   }
-  return split.opaque || split.commands.some(matches);
+  return split.commands.some((words) => commandMatchesDenyRule(words, glob));
+}
+
+/** The real path, following symlinks, of a path that may not exist yet */
+function realPathOf(target: string): string {
+  const rest: string[] = [];
+  let current = target;
+  for (;;) {
+    try {
+      return path.join(fs.realpathSync(current), ...rest);
+    } catch {
+      const parent = path.dirname(current);
+      if (parent === current) {
+        return target;
+      }
+      rest.unshift(path.basename(current));
+      current = parent;
+    }
+  }
+}
+
+const toSlashes = (p: string) => p.split(path.sep).join("/");
+
+/** Tools whose pattern argument (PATTERN_ARGUMENT) is a file path */
+const PATH_TOOLS = new Set([
+  "Diff",
+  "Edit",
+  "List",
+  "MultiEdit",
+  "Read",
+  "Write",
+]);
+
+/**
+ * Matches a `Tool(glob)` rule for a file path (Read, Write, Edit...) the way
+ * the tool will use the path: resolved against the working directory, with
+ * `..` removed, and with symlinks followed. A relative glob is relative to
+ * the working directory; `*` stays within one directory and `**` crosses
+ * them. An allow must match both the path as written and the real path, so
+ * `Write(src/*)` covers neither `src/../.env` nor a symlink in src/ that
+ * points elsewhere. An exclude or ask matches either.
+ */
+function matchesPathArgument(
+  policy: ToolPermissionPolicy,
+  glob: string,
+  value: unknown,
+): boolean {
+  if (glob === "*") {
+    return true;
+  }
+  if (typeof value !== "string") {
+    // Missing: the probe for the tools offered to the model (see above)
+    return value !== undefined && policy.permission !== "allow";
+  }
+  const cwd = process.cwd();
+  const globs = [cwd, realPathOf(cwd)].map((base) =>
+    toSlashes(path.resolve(base, glob)),
+  );
+  const lexical = path.resolve(cwd, value);
+  const matches = (p: string) =>
+    globs.some((g) => minimatch(toSlashes(p), g, { dot: true }));
+  const [asWritten, real] = [matches(lexical), matches(realPathOf(lexical))];
+  return policy.permission === "allow" ? asWritten && real : asWritten || real;
 }
 
 function policyMatches(
@@ -113,9 +216,15 @@ function policyMatches(
   if (!matchesToolPattern(toolCall.name, policy.tool)) {
     return false;
   }
-  const commandGlob = policy.argumentMatches?.command;
-  if (toolCall.name === "Bash" && typeof commandGlob === "string") {
-    return matchesBashCommand(policy, commandGlob, toolCall.arguments?.command);
+  const argument = PATTERN_ARGUMENT[toolCall.name];
+  const glob = argument ? policy.argumentMatches?.[argument] : undefined;
+  if (typeof glob === "string") {
+    if (toolCall.name === "Bash") {
+      return matchesBashCommand(policy, glob, toolCall.arguments?.command);
+    }
+    if (PATH_TOOLS.has(toolCall.name)) {
+      return matchesPathArgument(policy, glob, toolCall.arguments?.[argument]);
+    }
   }
   return matchesArguments(toolCall.arguments, policy.argumentMatches);
 }

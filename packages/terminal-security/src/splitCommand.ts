@@ -20,8 +20,9 @@ export interface SplitCommand {
   /**
    * Part of what the line runs can't be read from it: a command named by a
    * variable or substitution (`$CMD`), inline code (`python -c`, `node -e`),
-   * a shell script or stdin (`bash script.sh`, `curl x | sh`), `source`, or a
-   * line that doesn't parse.
+   * a shell reading stdin (`curl x | sh`), or a line that doesn't parse. A
+   * script file (`bash deploy.sh`, `python x.py`, `source env.sh`) is a
+   * command like any other.
    */
   opaque: boolean;
 }
@@ -59,6 +60,8 @@ interface WrapperGrammar {
 
 /** Commands that run the command after their own options */
 const WRAPPERS: Record<string, WrapperGrammar> = {
+  builtin: {},
+  busybox: {},
   command: {},
   doas: { shortWithValue: "uC" },
   env: {
@@ -284,26 +287,23 @@ function addSimpleCommand(words: string[], result: State, depth: number) {
   result.opaque = true;
 }
 
-/** Commands that run more commands: shells, eval, find -exec, source, inline code */
+/** Commands that run more commands: shells, eval, find -exec, inline code */
 function runsMore(name: string, argv: string[], result: State, depth: number) {
   if (SHELLS.has(name)) {
-    const body = shellCommandString(argv);
-    if (body === undefined) {
-      // A script file or stdin: curl x | sh, bash deploy.sh
-      result.opaque = true;
-    } else {
+    const run = shellRuns(argv);
+    if (run.body !== undefined) {
       result.single = false;
-      splitInto(body, result, depth + 1);
+      splitInto(run.body, result, depth + 1);
+    } else if (run.stdin) {
+      // curl x | sh: the commands come from stdin
+      result.opaque = true;
     }
+    // Otherwise a script file, named on the line: bash deploy.sh
     return;
   }
   if (name === "eval") {
     result.single = false;
     splitInto(argv.slice(1).join(" "), result, depth + 1);
-    return;
-  }
-  if (name === "source" || name === ".") {
-    result.opaque = true;
     return;
   }
   if (name === "find") {
@@ -333,11 +333,13 @@ function runsMore(name: string, argv: string[], result: State, depth: number) {
 }
 
 /**
- * The command string a shell runs with `-c` (`sh -lc 'cmd'`, `bash -o
- * pipefail -c 'cmd'`), or undefined when it runs a script file or stdin.
+ * What a shell runs: the command string given with `-c` (`sh -lc 'cmd'`,
+ * `bash -o pipefail -c 'cmd'`), stdin (`sh`, `bash -s`), or else the script
+ * file named after its options.
  */
-function shellCommandString(argv: string[]): string | undefined {
+function shellRuns(argv: string[]): { body?: string; stdin: boolean } {
   let readsString = false;
+  let readsStdin = false;
   let i = 1;
   while (i < argv.length) {
     const arg = argv[i];
@@ -356,13 +358,18 @@ function shellCommandString(argv: string[]): string | undefined {
     if (/^[-+]./.test(arg)) {
       if (arg.startsWith("-") && arg.includes("c")) {
         readsString = true;
+      } else if (arg.startsWith("-") && arg.includes("s")) {
+        readsStdin = true;
       }
       i++;
       continue;
     }
     break;
   }
-  return readsString ? argv[i] : undefined;
+  if (readsString) {
+    return { body: argv[i], stdin: false };
+  }
+  return { stdin: readsStdin || i >= argv.length };
 }
 
 /** The command after a wrapper's options, or [] when it runs none */

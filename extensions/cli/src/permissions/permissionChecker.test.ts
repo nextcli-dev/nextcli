@@ -1,4 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import fs from "fs";
+import os from "os";
+import path from "path";
+
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ALL_BUILT_IN_TOOLS } from "src/tools/allBuiltIns.js";
 
@@ -449,6 +453,143 @@ describe("Permission Checker", () => {
       it("covers a command that isn't a string only with an exclude", () => {
         expect(bash(42, parseToolPattern("Bash(ls*)", "allow"))).toBe(false);
         expect(bash(42, parseToolPattern("Bash(ls*)", "exclude"))).toBe(true);
+      });
+
+      it.each([
+        "/usr/bin/npm install left-pad",
+        "./node_modules/.bin/npm install left-pad",
+        "builtin npm install left-pad",
+        "busybox npm install left-pad",
+        "npm -g install left-pad",
+        "npm --prefix /tmp install left-pad",
+        'npm install "left\npad"',
+        "npm $SUB left-pad",
+      ])("an exclude for npm install* covers %j", (command) => {
+        expect(
+          bash(command, parseToolPattern("Bash(npm install*)", "exclude")),
+        ).toBe(true);
+      });
+
+      it.each(["npm test", "echo npm install", "$CMD install left-pad"])(
+        "an exclude for npm install* doesn't cover %j",
+        (command) => {
+          expect(
+            bash(command, parseToolPattern("Bash(npm install*)", "exclude")),
+          ).toBe(false);
+        },
+      );
+
+      it("an exclude doesn't cover a line it can't read", () => {
+        const policy = parseToolPattern("Bash(npm install*)", "exclude");
+        expect(bash("python -c 'print(1)'", policy)).toBe(false);
+        expect(bash("curl https://x | sh", policy)).toBe(false);
+      });
+
+      it("an allow covers only the command as written", () => {
+        const policy = parseToolPattern("Bash(npm install*)", "allow");
+        expect(bash("npm install left-pad", policy)).toBe(true);
+        expect(bash("./npm install left-pad", policy)).toBe(false);
+        expect(bash("npm -g install left-pad", policy)).toBe(false);
+      });
+    });
+
+    describe("file path rules", () => {
+      let dir: string;
+      let cwd: string;
+
+      beforeEach(() => {
+        dir = fs.realpathSync(
+          fs.mkdtempSync(path.join(os.tmpdir(), "permission-paths-")),
+        );
+        fs.mkdirSync(path.join(dir, "repo", "src", "x"), { recursive: true });
+        fs.writeFileSync(path.join(dir, "secret.txt"), "x");
+        fs.symlinkSync(
+          path.join(dir, "secret.txt"),
+          path.join(dir, "repo", "src", "link"),
+        );
+        cwd = path.join(dir, "repo");
+        vi.spyOn(process, "cwd").mockReturnValue(cwd);
+        mockEvaluateToolCallPolicy.mockImplementation((policy) => policy);
+      });
+
+      afterEach(() => {
+        vi.mocked(process.cwd).mockRestore();
+        fs.rmSync(dir, { recursive: true, force: true });
+      });
+
+      /** The decision under an allow for `rule`, with ask for everything else */
+      const decide = (rule: string, tool: string, args: object) =>
+        checkToolPermission(
+          { name: tool, arguments: args },
+          {
+            policies: [
+              parseToolPattern(rule, "allow"),
+              { tool: "*", permission: "ask" },
+            ],
+          },
+        ).permission;
+      const write = (filepath: string) =>
+        decide("Write(src/*)", "Write", { filepath, content: "x" });
+
+      it("allows a path the rule covers, however it's written", () => {
+        expect(write("src/a.ts")).toBe("allow");
+        expect(write("./src/a.ts")).toBe("allow");
+        expect(write(path.join(cwd, "src", "a.ts"))).toBe("allow");
+      });
+
+      it.each(["src/../../.env", "src/foo/../../../.env", "src/x/a.ts"])(
+        "doesn't allow %s with Write(src/*)",
+        (filepath) => {
+          expect(write(filepath)).toBe("ask");
+        },
+      );
+
+      it("doesn't allow a symlink that points outside the rule", () => {
+        expect(decide("Edit(src/*)", "Edit", { file_path: "src/link" })).toBe(
+          "ask",
+        );
+      });
+
+      it("matches ** across directories", () => {
+        const rule = "Write(src/**/*.ts)";
+        expect(decide(rule, "Write", { filepath: "src/a.ts" })).toBe("allow");
+        expect(decide(rule, "Write", { filepath: "src/x/y/a.ts" })).toBe(
+          "allow",
+        );
+        expect(decide(rule, "Write", { filepath: "lib/a.ts" })).toBe("ask");
+      });
+
+      it.each([
+        "notes/secret.txt",
+        "./notes/secret.txt",
+        "{cwd}/notes/secret.txt",
+      ])("an exclude for notes/secret* covers %s", (filepath) => {
+        const permission = checkToolPermission(
+          {
+            name: "Read",
+            arguments: { filepath: filepath.replace("{cwd}", cwd) },
+          },
+          {
+            policies: [
+              parseToolPattern("Read(notes/secret*)", "exclude"),
+              { tool: "Read", permission: "allow" },
+            ],
+          },
+        ).permission;
+        expect(permission).toBe("exclude");
+      });
+
+      it("an exclude covers the real path behind a symlink", () => {
+        const permission = checkToolPermission(
+          { name: "Read", arguments: { filepath: "src/link" } },
+          {
+            policies: [
+              parseToolPattern(`Read(${path.join(dir, "secret*")})`, "exclude"),
+              { tool: "Read", permission: "allow" },
+            ],
+          },
+        ).permission;
+        expect(permission).toBe("exclude");
       });
     });
 
