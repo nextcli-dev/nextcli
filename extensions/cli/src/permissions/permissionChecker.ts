@@ -11,41 +11,12 @@ import {
 
 /**
  * Checks if a tool name matches a pattern.
- * Supports wildcards (*) for pattern matching.
- * Also handles special Bash command patterns like "Bash(ls*)"
+ * Supports wildcards (*) for pattern matching. A rule for some arguments,
+ * such as `Bash(ls*)`, is parsed into argumentMatches (see toolPattern.ts).
  */
-export function matchesToolPattern(
-  toolName: string,
-  pattern: string,
-  toolArguments?: Record<string, any>,
-): boolean {
+export function matchesToolPattern(toolName: string, pattern: string): boolean {
   if (pattern === "*") return true;
   if (pattern === toolName) return true;
-
-  // Handle special Bash command patterns like "Bash(ls*)"
-  const bashCommandMatch = pattern.match(/^Bash\((.+)\)$/);
-  if (bashCommandMatch) {
-    // Check if this is a bash/terminal tool
-    const isBashTool = toolName === "Bash";
-    if (isBashTool && toolArguments?.command) {
-      const commandPattern = bashCommandMatch[1];
-      const command = toolArguments.command;
-
-      // Handle command patterns with wildcards
-      if (commandPattern.includes("*") || commandPattern.includes("?")) {
-        // Escape all regex metacharacters except * and ?
-        const escaped = commandPattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-        // Convert * and ? to their regex equivalents
-        const regexPattern = escaped.replace(/\*/g, ".*").replace(/\?/g, ".");
-        const regex = new RegExp(`^${regexPattern}$`);
-        return regex.test(command);
-      }
-
-      // Exact command match
-      return command === commandPattern;
-    }
-    return false;
-  }
 
   // Handle regular wildcard patterns like "external_*"
   if (pattern.includes("*") || pattern.includes("?")) {
@@ -153,7 +124,7 @@ export function checkToolPermission(
 
   for (const policy of policies) {
     if (
-      matchesToolPattern(toolCall.name, policy.tool, toolCall.arguments) &&
+      matchesToolPattern(toolCall.name, policy.tool) &&
       matchesArguments(toolCall.arguments, policy.argumentMatches)
     ) {
       basePermission = policy.permission;

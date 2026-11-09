@@ -38,6 +38,9 @@ Flags accept tool matching patterns:
 - `Write` — matches any call to the `Write` tool
 - `Write(*)` — same as above
 - `Write(**/*.ts)` — matches `Write` calls where the primary argument matches the glob `**/*.ts`
+- `github_*` — matches every tool whose name starts with `github_`
+
+The primary argument is the file path for `Read`, `Write`, `Edit`, `MultiEdit` and `Diff`, the directory for `List`, the pattern for `Search`, the URL for `Fetch` and the command for `Bash`. Other tools take no pattern: `cn` refuses to start if one has a pattern, because a rule that never matches would leave the tool open. The same syntax works in flags and in `permissions.yaml`.
 
 ```bash
 # Allow writing only to TypeScript files

@@ -7,6 +7,7 @@ import {
   matchesArguments,
   matchesToolPattern,
 } from "./permissionChecker.js";
+import { parseToolPattern } from "./toolPattern.js";
 import { ToolPermissions } from "./types.js";
 
 // Create a mock function for evaluateToolCallPolicy
@@ -95,73 +96,6 @@ describe("Permission Checker", () => {
       expect(matchesToolPattern("file.test.txt", "*.test.*")).toBe(true);
       expect(matchesToolPattern("(tool)_name", "(tool)*")).toBe(true);
       expect(matchesToolPattern("tool+plus_extra", "tool+plus*")).toBe(true);
-    });
-
-    describe("Bash command patterns", () => {
-      it("should match Bash command patterns with Bash tool", () => {
-        expect(matchesToolPattern("Bash", "Bash(ls*)", { command: "ls" })).toBe(
-          true,
-        );
-        expect(
-          matchesToolPattern("Bash", "Bash(ls*)", { command: "ls -la" }),
-        ).toBe(true);
-        expect(
-          matchesToolPattern("Bash", "Bash(ls*)", { command: "pwd" }),
-        ).toBe(false);
-      });
-
-      it("should match Bash command patterns with Bash display name", () => {
-        expect(
-          matchesToolPattern("Bash", "Bash(git*)", { command: "git status" }),
-        ).toBe(true);
-        expect(
-          matchesToolPattern("Bash", "Bash(git*)", { command: "git commit" }),
-        ).toBe(true);
-        expect(
-          matchesToolPattern("Bash", "Bash(git*)", { command: "npm install" }),
-        ).toBe(false);
-      });
-
-      it("should match exact Bash commands", () => {
-        expect(matchesToolPattern("Bash", "Bash(ls)", { command: "ls" })).toBe(
-          true,
-        );
-        expect(
-          matchesToolPattern("Bash", "Bash(ls)", { command: "ls -la" }),
-        ).toBe(false);
-      });
-
-      it("should not match Bash patterns for non-bash tools", () => {
-        expect(matchesToolPattern("Read", "Bash(ls*)", { command: "ls" })).toBe(
-          false,
-        );
-        expect(
-          matchesToolPattern("Write", "Bash(git*)", { command: "git status" }),
-        ).toBe(false);
-      });
-
-      it("should not match Bash patterns without command argument", () => {
-        expect(matchesToolPattern("Bash", "Bash(ls*)", {})).toBe(false);
-        expect(
-          matchesToolPattern("Bash", "Bash(ls*)", { other: "value" }),
-        ).toBe(false);
-      });
-
-      it("should handle complex Bash command patterns", () => {
-        expect(
-          matchesToolPattern("Bash", "Bash(npm*)", { command: "npm install" }),
-        ).toBe(true);
-        expect(
-          matchesToolPattern("Bash", "Bash(npm*)", {
-            command: "npm run build",
-          }),
-        ).toBe(true);
-        expect(
-          matchesToolPattern("Bash", "Bash(git*commit*)", {
-            command: "git commit -m 'test'",
-          }),
-        ).toBe(true);
-      });
     });
   });
 
@@ -486,8 +420,8 @@ describe("Permission Checker", () => {
     it("should match Bash command patterns in checkToolPermission", () => {
       const permissions: ToolPermissions = {
         policies: [
-          { tool: "Bash(ls*)", permission: "allow" },
-          { tool: "Bash(git*)", permission: "ask" },
+          parseToolPattern("Bash(ls*)", "allow"),
+          parseToolPattern("Bash(git*)", "ask"),
           { tool: "Bash", permission: "ask" }, // Fallback for other commands
         ],
       };
@@ -498,7 +432,9 @@ describe("Permission Checker", () => {
         permissions,
       );
       expect(lsResult.permission).toBe("allow");
-      expect(lsResult.matchedPolicy?.tool).toBe("Bash(ls*)");
+      expect(lsResult.matchedPolicy?.argumentMatches).toEqual({
+        command: "ls*",
+      });
 
       // Should match "Bash(git*)" pattern and ask
       const gitResult = checkToolPermission(
@@ -506,7 +442,9 @@ describe("Permission Checker", () => {
         permissions,
       );
       expect(gitResult.permission).toBe("ask");
-      expect(gitResult.matchedPolicy?.tool).toBe("Bash(git*)");
+      expect(gitResult.matchedPolicy?.argumentMatches).toEqual({
+        command: "git*",
+      });
 
       // Should match general fallback for other commands
       const npmResult = checkToolPermission(

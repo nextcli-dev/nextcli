@@ -48,7 +48,7 @@ interface Row {
 
 const MCP_TOOL = "github_create_issue";
 const read = ["Read", { filepath: "src/a.ts" }] as const;
-const edit = ["Edit", { filepath: "src/a.ts" }] as const;
+const edit = ["Edit", { file_path: "src/a.ts" }] as const;
 const fetchUrl = ["Fetch", { url: "https://example.com" }] as const;
 const mcp = [MCP_TOOL, { title: "x" }] as const;
 const bash = (command: string) => ["Bash", { command }] as const;
@@ -94,6 +94,24 @@ const rows: Row[] = [
       [...bash("npm install left-pad"), "deny"],
       // main: an exclude glob is compared to the whole line
       [...bash("ls && npm install left-pad"), "ask"],
+    ],
+  },
+  {
+    name: "TUI scoped --allow Write(src/*)",
+    approver: true,
+    init: { allow: ["Write(src/*)"] },
+    calls: [
+      ["Write", { filepath: "src/a.ts", content: "x" }, "allow"],
+      ["Write", { filepath: "a.txt", content: "x" }, "ask"],
+    ],
+  },
+  {
+    name: "TUI remembered scoped Read exclude",
+    approver: true,
+    yaml: { exclude: ["Read(.env*)"] },
+    calls: [
+      ["Read", { filepath: ".env" }, "deny"],
+      [...read, "allow"],
     ],
   },
   {
