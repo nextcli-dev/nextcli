@@ -30,6 +30,15 @@ const DEFAULT_OPTIONS: Required<ExponentialBackoffOptions> = {
   hiddenRetries: 2,
 };
 
+/** A stream that already produced a token is not repeated ten times. */
+const MAX_UNFINISHED_STREAM_RETRIES = 2;
+
+const LOCAL_EXCEPTION_NAMES = new Set([
+  "TypeError",
+  "ReferenceError",
+  "SyntaxError",
+]);
+
 /**
  * Checks if the error is a network-related error
  */
@@ -111,10 +120,30 @@ export function isContextLengthError(error: unknown): boolean {
   );
 }
 
+/** A 4xx other than 408 and 429 is the caller's mistake, not a dead stream. */
+function isClientErrorStatus(status: unknown): boolean {
+  return (
+    typeof status === "number" &&
+    status >= 400 &&
+    status < 500 &&
+    status !== 408 &&
+    status !== 429
+  );
+}
+
+function isLocalException(error: any): boolean {
+  return LOCAL_EXCEPTION_NAMES.has(error?.name);
+}
+
 /**
- * Determines if an error is retryable based on the error type and status code
+ * An error while opening the request. An unrecognized failure, such as a bad
+ * API key with no status, is not retried.
  */
-function isRetryableError(error: any): boolean {
+export function isRetryableError(error: any): boolean {
+  if (error === null || typeof error !== "object") {
+    return false;
+  }
+
   // Context length errors are never retryable - they need user intervention
   if (isContextLengthError(error)) {
     return false;
@@ -142,6 +171,25 @@ function isRetryableError(error: any): boolean {
   }
 
   return false;
+}
+
+/**
+ * The generator already started and then threw, so the stream did not finish.
+ * Retry whatever the gateway wrote, unless the error cannot succeed on another
+ * try: the prompt is over the context limit, the status is a 4xx other than
+ * 408 or 429, or the throw is a bug in this process.
+ */
+export function isUnfinishedStreamError(error: any): boolean {
+  if (isContextLengthError(error)) {
+    return false;
+  }
+  if (isClientErrorStatus(error?.status)) {
+    return false;
+  }
+  if (isLocalException(error)) {
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -238,7 +286,9 @@ export async function chatCompletionStreamWithBackoff(
 
 /**
  * Wraps an async generator with exponential backoff retry logic.
- * If the generator throws an error during iteration, it will retry the entire generator.
+ * Chunks from an attempt are yielded only after that attempt finishes, so a
+ * retry replaces a failed attempt instead of appending to it. A stream that
+ * already produced a token is retried at most twice.
  */
 export async function* withExponentialBackoff<T>(
   generatorFactory: (
@@ -249,8 +299,11 @@ export async function* withExponentialBackoff<T>(
 ): AsyncGenerator<T> {
   const opts = { ...DEFAULT_OPTIONS, ...options };
   let lastError: any;
+  let unfinishedStreamRetries = 0;
+  let attempts = 0;
 
   for (let attempt = 0; attempt <= opts.maxRetries; attempt++) {
+    attempts++;
     // Create a new AbortController for this retry attempt
     // This prevents accumulating listeners on the original signal
     const retryAbortController = new AbortController();
@@ -266,6 +319,10 @@ export async function* withExponentialBackoff<T>(
       abortSignal.addEventListener("abort", abortListener);
     }
 
+    // Held until this attempt finishes, so a retry does not append to it
+    const buffered: T[] = [];
+    let receivedChunk = false;
+
     try {
       // Check if we should abort before creating the generator
       if (abortSignal.aborted) {
@@ -274,14 +331,14 @@ export async function* withExponentialBackoff<T>(
 
       const generator = await generatorFactory(retryAbortController.signal);
 
-      // Iterate through the generator and yield each value
       for await (const chunk of generator) {
         // Check abort signal during iteration
         if (abortSignal.aborted) {
           throw new Error("Request aborted");
         }
 
-        yield chunk;
+        receivedChunk = true;
+        buffered.push(chunk);
       }
 
       // Clean up the abort listener since we succeeded
@@ -289,7 +346,9 @@ export async function* withExponentialBackoff<T>(
         abortSignal.removeEventListener("abort", abortListener);
       }
 
-      // If we successfully completed the generator, we're done
+      for (const chunk of buffered) {
+        yield chunk;
+      }
       return;
     } catch (err: any) {
       lastError = err;
@@ -304,21 +363,32 @@ export async function* withExponentialBackoff<T>(
         throw err;
       }
 
-      // Don't retry on the last attempt
-      if (attempt === opts.maxRetries) {
-        break;
+      // A stream that already produced a token is retried on any provider
+      // failure. One that has not opened yet keeps the setup allow-list.
+      const retryable = receivedChunk
+        ? isUnfinishedStreamError(err)
+        : isRetryableError(err);
+      if (!retryable) {
+        throw err;
       }
 
-      // Only retry if the error is retryable
-      if (!isRetryableError(err)) {
-        throw err;
+      if (receivedChunk) {
+        if (unfinishedStreamRetries >= MAX_UNFINISHED_STREAM_RETRIES) {
+          break;
+        }
+        unfinishedStreamRetries++;
+      } else if (attempt === opts.maxRetries) {
+        break;
       }
 
       const delay = calculateDelay(attempt, opts);
       logger.debug("Retry attempt", { attempt, delay, error: err.message });
 
-      // Only log retry attempts after the first opts.hiddenRetries attempts
-      if (attempt >= opts.hiddenRetries) {
+      if (receivedChunk) {
+        warn(
+          `Provider stream failed, retrying the request. Error: ${formatError(err)}`,
+        );
+      } else if (attempt >= opts.hiddenRetries) {
         warn(
           `Retrying request (${attempt + 1 - opts.hiddenRetries}/${
             opts.maxRetries + 1 - opts.hiddenRetries
@@ -333,10 +403,6 @@ export async function* withExponentialBackoff<T>(
   }
 
   // If we get here, all retries failed
-  error(
-    `Failed after ${opts.maxRetries + 1} attempts. Last error: ${
-      lastError.message
-    }`,
-  );
+  error(`Failed after ${attempts} attempts. Last error: ${lastError.message}`);
   throw lastError;
 }

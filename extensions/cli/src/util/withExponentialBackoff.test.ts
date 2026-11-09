@@ -118,4 +118,82 @@ describe("withExponentialBackoff", () => {
 
     expect(generatorFactory).toHaveBeenCalledTimes(0);
   });
+
+  it("drops a partial attempt and retries an unrecognized stream failure", async () => {
+    let callCount = 0;
+    const generatorFactory = vi.fn(async () => {
+      callCount++;
+      if (callCount === 1) {
+        return (async function* () {
+          yield "partial";
+          throw new Error("provider stream failed");
+        })();
+      }
+      return (async function* () {
+        yield "verdict";
+      })();
+    });
+
+    const results: string[] = [];
+    const generator = withExponentialBackoff(
+      generatorFactory,
+      abortController.signal,
+      { initialDelay: 1, jitter: false },
+    );
+
+    for await (const chunk of generator) {
+      results.push(chunk);
+    }
+
+    expect(results).toEqual(["verdict"]);
+    expect(generatorFactory).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry a 400 that arrives after a chunk", async () => {
+    const generatorFactory = vi.fn(async () => {
+      return (async function* () {
+        yield "partial";
+        const error = new Error("Bad request");
+        (error as any).status = 400;
+        throw error;
+      })();
+    });
+
+    const generator = withExponentialBackoff(
+      generatorFactory,
+      abortController.signal,
+      { initialDelay: 1 },
+    );
+
+    await expect(async () => {
+      for await (const chunk of generator) {
+        // The failed attempt is not yielded
+      }
+    }).rejects.toThrow("Bad request");
+
+    expect(generatorFactory).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops after two retries of a stream that already produced a token", async () => {
+    const generatorFactory = vi.fn(async () => {
+      return (async function* () {
+        yield "partial";
+        throw new Error("provider stream failed");
+      })();
+    });
+
+    const generator = withExponentialBackoff(
+      generatorFactory,
+      abortController.signal,
+      { initialDelay: 1, jitter: false, maxRetries: 10 },
+    );
+
+    await expect(async () => {
+      for await (const _chunk of generator) {
+        // never completes
+      }
+    }).rejects.toThrow("provider stream failed");
+
+    expect(generatorFactory).toHaveBeenCalledTimes(3);
+  });
 });

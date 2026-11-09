@@ -102,6 +102,38 @@ describe("E2E: empty final answer in headless mode", () => {
     });
   }, 40000);
 
+  it("names the output cap when the model was cut off before answering", async () => {
+    mockServer = await setupMockLLMTest(context, {
+      customHandler: (req: http.IncomingMessage, res: http.ServerResponse) => {
+        req.on("data", () => {});
+        req.on("end", () => {
+          requestCount++;
+          res.writeHead(200, { "Content-Type": "text/event-stream" });
+          res.write(
+            `data: {"choices":[{"delta":{},"finish_reason":"length","index":0}]}\n\n`,
+          );
+          res.write(
+            `data: {"usage":{"prompt_tokens":10,"completion_tokens":4096}}\n\n`,
+          );
+          res.write(`data: [DONE]\n\n`);
+          res.end();
+        });
+      },
+    });
+
+    const result = await runCLI(context, {
+      args: args(context),
+      timeout: 30000,
+      expectError: true,
+    });
+
+    expect(result.exitCode).toBe(1);
+    const line = JSON.parse(result.stderr.trim().split("\n").pop()!);
+    expect(line.message).toContain(
+      "The model used all its output tokens (4096) before writing an answer.",
+    );
+  }, 40000);
+
   // Plain -p may end silently, for example after a run that only edits files
   it("leaves an empty answer alone without --format json", async () => {
     await serve([]);

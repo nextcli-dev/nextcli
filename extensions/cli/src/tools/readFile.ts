@@ -77,7 +77,7 @@ export const readFileTool: Tool = {
       if (!fs.existsSync(filepath)) {
         throw new ContinueError(
           ContinueErrorReason.Unspecified,
-          `File does not exist: ${filepath}`,
+          `File does not exist: ${filepath}. This path is missing. Other files can still be read.`,
         );
       }
       const realPath = fs.realpathSync(filepath);

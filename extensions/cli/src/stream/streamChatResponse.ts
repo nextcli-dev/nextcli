@@ -50,7 +50,12 @@ import {
   getCompletionOptions,
   StreamCallbacks,
 } from "./streamChatResponse.types.js";
-import { continueAfterResponse, TurnState } from "./turnContinuation.js";
+import {
+  continueAfterResponse,
+  recordCallEnd,
+  resetCallEnd,
+  TurnState,
+} from "./turnContinuation.js";
 
 dotenv.config();
 
@@ -252,8 +257,10 @@ export async function processStreamingResponse(
     );
 
     let chunkCount = 0;
+    resetCallEnd();
     for await (const chunk of streamWithBackoff) {
       chunkCount++;
+      recordCallEnd(chunk);
 
       logger.debug("Received chunk", { chunkCount, chunk });
 

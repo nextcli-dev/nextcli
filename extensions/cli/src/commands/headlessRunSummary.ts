@@ -6,7 +6,10 @@ import {
   getLimitReached,
   getPriceSource,
 } from "../stream/agentLoopLimits.js";
-import { requireFinalAnswer } from "../stream/turnContinuation.js";
+import {
+  outputCapMessage,
+  requireFinalAnswer,
+} from "../stream/turnContinuation.js";
 import { gracefulExit } from "../util/exit.js";
 
 type UsageSnapshot = {
@@ -71,7 +74,9 @@ export async function exitHeadlessOnError(
  */
 export function assertHeadlessAnswer(answer: string, format?: "json"): void {
   if (format === "json" && !answer?.trim()) {
-    throw new Error("The model finished without writing an answer.");
+    throw new Error(
+      outputCapMessage() ?? "The model finished without writing an answer.",
+    );
   }
 }
 

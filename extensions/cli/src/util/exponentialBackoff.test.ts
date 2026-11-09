@@ -1,56 +1,10 @@
 import { vi } from "vitest";
 
-import { ExponentialBackoffOptions } from "./exponentialBackoff.js";
-
-// Since the functions are not exported, we need to recreate them for testing
-function isRetryableError(error: any): boolean {
-  // Handle null/undefined
-  if (!error) {
-    return false;
-  }
-
-  // Network errors are retryable
-  if (
-    error.code === "ECONNRESET" ||
-    error.code === "ENOTFOUND" ||
-    error.code === "ETIMEDOUT" ||
-    error.code === "EPIPE" ||
-    error.code === "ECONNREFUSED"
-  ) {
-    return true;
-  }
-
-  // HTTP status codes that are retryable
-  if (error.status) {
-    const status = error.status;
-    // 429 (Too Many Requests), 502 (Bad Gateway), 503 (Service Unavailable), 504 (Gateway Timeout)
-    return status === 429 || status === 502 || status === 503 || status === 504;
-  }
-
-  // OpenAI specific errors
-  if (error.type === "server_error" || error.type === "rate_limit_exceeded") {
-    return true;
-  }
-
-  // Anthropic specific errors
-  const lower = error.message?.toLowerCase();
-  if (lower?.includes("overloaded")) {
-    return true;
-  }
-
-  // Check for premature close errors by message content
-  if (
-    lower?.includes("premature close") ||
-    lower?.includes("premature end") ||
-    lower?.includes("connection reset") ||
-    lower?.includes("socket hang up") ||
-    lower?.includes("aborted")
-  ) {
-    return true;
-  }
-
-  return false;
-}
+import {
+  ExponentialBackoffOptions,
+  isRetryableError,
+  isUnfinishedStreamError,
+} from "./exponentialBackoff.js";
 
 function calculateDelay(
   attempt: number,
@@ -223,6 +177,31 @@ describe("exponentialBackoff utilities", () => {
     it("should handle errors with both status and type", () => {
       const error = { status: 429, type: "client_error" };
       expect(isRetryableError(error)).toBe(true); // Status check comes first
+    });
+  });
+
+  describe("isUnfinishedStreamError", () => {
+    it("retries a stream that died with an unrecognized message", () => {
+      expect(isUnfinishedStreamError(new Error("provider stream failed"))).toBe(
+        true,
+      );
+    });
+
+    it("does not retry a 400, a context-length error, or a local exception", () => {
+      expect(isUnfinishedStreamError({ status: 400, message: "no" })).toBe(
+        false,
+      );
+      expect(
+        isUnfinishedStreamError(new Error("maximum context length exceeded")),
+      ).toBe(false);
+      expect(isUnfinishedStreamError(new TypeError("bug"))).toBe(false);
+      expect(isUnfinishedStreamError(new ReferenceError("bug"))).toBe(false);
+      expect(isUnfinishedStreamError(new SyntaxError("bug"))).toBe(false);
+    });
+
+    it("still retries a timeout or a rate limit during the stream", () => {
+      expect(isUnfinishedStreamError({ status: 408 })).toBe(true);
+      expect(isUnfinishedStreamError({ status: 429 })).toBe(true);
     });
   });
 
