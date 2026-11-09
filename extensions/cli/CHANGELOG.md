@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/nextcli-dev/nextcli/compare/cli-v0.8.3...cli-v0.9.0) (2026-11-09)
+
+
+### Features
+
+* **cli:** log levels and an opt-in model-call trace ([#102](https://github.com/nextcli-dev/nextcli/issues/102)) ([79df9dd](https://github.com/nextcli-dev/nextcli/commit/79df9dda2c8114d939e8cf9c80aaf6a33953e1b0))
+
 ## [0.8.3](https://github.com/nextcli-dev/nextcli/compare/cli-v0.8.2...cli-v0.8.3) (2026-11-09)
 
 
