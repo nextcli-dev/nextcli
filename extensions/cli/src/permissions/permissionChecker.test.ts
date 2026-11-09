@@ -417,6 +417,41 @@ describe("Permission Checker", () => {
       expect(result.permission).toBe("ask");
     });
 
+    describe("Bash(glob) rules", () => {
+      const bash = (command: unknown, policy: ToolPermissions["policies"][0]) =>
+        checkToolPermission(
+          {
+            name: "Bash",
+            arguments: command === undefined ? {} : { command },
+          },
+          { policies: [policy, { tool: "Bash", permission: "ask" }] },
+        ).matchedPolicy === policy;
+
+      beforeEach(() => {
+        mockEvaluateToolCallPolicy.mockImplementation((policy) => policy);
+      });
+
+      it("treats Bash(*) as the whole tool", () => {
+        const policy = parseToolPattern("Bash(*)", "allow");
+        expect(bash("ls; rm x", policy)).toBe(true);
+        expect(bash(undefined, policy)).toBe(true);
+      });
+
+      it("doesn't match the probe without a command", () => {
+        expect(bash(undefined, parseToolPattern("Bash(ls*)", "allow"))).toBe(
+          false,
+        );
+        expect(bash(undefined, parseToolPattern("Bash(ls*)", "exclude"))).toBe(
+          false,
+        );
+      });
+
+      it("covers a command that isn't a string only with an exclude", () => {
+        expect(bash(42, parseToolPattern("Bash(ls*)", "allow"))).toBe(false);
+        expect(bash(42, parseToolPattern("Bash(ls*)", "exclude"))).toBe(true);
+      });
+    });
+
     it("should match Bash command patterns in checkToolPermission", () => {
       const permissions: ToolPermissions = {
         policies: [

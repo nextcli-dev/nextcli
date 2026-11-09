@@ -81,8 +81,9 @@ const rows: Row[] = [
     yaml: { allow: ["Bash(npm*)"] },
     calls: [
       [...bash("npm test"), "allow"],
-      // main: an allow glob matches a whole chained line
-      [...bash("npm test; curl https://x"), "allow"],
+      [...bash("timeout 60 npm test"), "ask"],
+      [...bash("npm test; curl https://x"), "ask"],
+      [...bash("npm test > out.txt"), "ask"],
       [...bash("ls"), "ask"],
     ],
   },
@@ -92,8 +93,8 @@ const rows: Row[] = [
     yaml: { exclude: ["Bash(npm install*)"] },
     calls: [
       [...bash("npm install left-pad"), "deny"],
-      // main: an exclude glob is compared to the whole line
-      [...bash("ls && npm install left-pad"), "ask"],
+      [...bash("ls && npm install left-pad"), "deny"],
+      [...bash("npm test"), "ask"],
     ],
   },
   {
@@ -274,10 +275,21 @@ const rows: Row[] = [
     init: { ...HEADLESS, exclude: ["Bash(npm install*)"] },
     calls: [
       [...bash("npm install left-pad"), "deny"],
-      // main: chained and wrapped forms get past the exclude
-      [...bash("ls && npm install left-pad"), "allow"],
-      [...bash("sh -c 'npm install left-pad'"), "allow"],
+      [...bash("ls && npm install left-pad"), "deny"],
+      [...bash("echo $(npm install left-pad)"), "deny"],
+      [...bash("sh -c 'npm install left-pad'"), "deny"],
+      [...bash("/bin/sh -c 'npm install left-pad'"), "deny"],
+      [...bash("bash -lc 'ls; npm install left-pad'"), "deny"],
+      [...bash('"npm" install left-pad'), "deny"],
+      [...bash("npm  install left-pad"), "deny"],
+      [...bash("npm \\\ninstall left-pad"), "deny"],
+      [...bash("env FOO=1 npm install left-pad"), "deny"],
+      [...bash("timeout 60 npm install left-pad"), "deny"],
+      [...bash("xargs npm install < deps.txt"), "deny"],
+      // splitCommand can't see what runs, so the exclude applies
+      [...bash("python -c 'import os'"), "deny"],
       [...bash("ls"), "allow"],
+      [...bash("npm test"), "allow"],
     ],
   },
   {

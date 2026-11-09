@@ -50,6 +50,12 @@ cn --allow "Write(**/*.ts)"
 cn --allow Bash --exclude "Bash(npm install*)"
 ```
 
+A `Bash(...)` pattern is matched against each command in the line, not the raw text:
+
+- An `--exclude` or `--ask` pattern covers the line if any command in it matches, including commands after `&&`, `;` or `|`, inside `$(...)`, `sh -c '...'` or `eval`, and behind `env`, `timeout`, `xargs`, `sudo` and similar wrappers. It also covers a line whose commands can't be read from it, such as `python -c '...'` or `$CMD`.
+- An `--allow` pattern covers only a line that is a single command, with no `&&`, `;`, pipe, redirect or substitution. `Bash(npm test*)` allows `npm test` but not `npm test; curl ...` or `npm test > out.txt`.
+- Quoting and spacing don't matter: `"npm" install` and `npm  install` match `Bash(npm install*)`.
+
 ## `permissions.yaml`
 
 Persistent permissions are stored in `~/.continue/permissions.yaml`. This file is updated when you choose "NextCLI + don't ask again" in the TUI approval prompt.

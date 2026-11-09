@@ -1,4 +1,4 @@
-import type { ToolPolicy } from "@continuedev/terminal-security";
+import { splitCommand, type ToolPolicy } from "@continuedev/terminal-security";
 
 import { ALL_BUILT_IN_TOOLS } from "src/tools/allBuiltIns.js";
 
@@ -6,6 +6,7 @@ import {
   PermissionCheckResult,
   PermissionPolicy,
   ToolCallRequest,
+  ToolPermissionPolicy,
   ToolPermissions,
 } from "./types.js";
 
@@ -75,6 +76,51 @@ export function matchesArguments(
 }
 
 /**
+ * Matches a `Bash(glob)` rule against the commands in a shell line (see
+ * splitCommand). An allow covers only a line that is one simple command
+ * matching the glob, so `Bash(git log*)` doesn't allow `git log; curl x`. An
+ * exclude or ask covers a line where any command matches, including one
+ * behind a wrapper or inside `sh -c`, and a line splitCommand can't read
+ * through (`python -c`, `$CMD`), so it fails closed.
+ */
+function matchesBashCommand(
+  policy: ToolPermissionPolicy,
+  glob: string,
+  command: unknown,
+): boolean {
+  if (glob === "*") {
+    return true;
+  }
+  if (typeof command !== "string") {
+    // A missing command is the probe for the tools offered to the model. A
+    // command that isn't a string can't be read, so only an exclude or ask
+    // covers it.
+    return command !== undefined && policy.permission !== "allow";
+  }
+  const split = splitCommand(command);
+  const matches = (words: string[]) =>
+    matchesArguments({ command: words.join(" ") }, { command: glob });
+  if (policy.permission === "allow") {
+    return split.single && !split.opaque && matches(split.commands[0]);
+  }
+  return split.opaque || split.commands.some(matches);
+}
+
+function policyMatches(
+  policy: ToolPermissionPolicy,
+  toolCall: ToolCallRequest,
+): boolean {
+  if (!matchesToolPattern(toolCall.name, policy.tool)) {
+    return false;
+  }
+  const commandGlob = policy.argumentMatches?.command;
+  if (toolCall.name === "Bash" && typeof commandGlob === "string") {
+    return matchesBashCommand(policy, commandGlob, toolCall.arguments?.command);
+  }
+  return matchesArguments(toolCall.arguments, policy.argumentMatches);
+}
+
+/**
  * Converts CLI's PermissionPolicy to core's ToolPolicy
  */
 function permissionPolicyToToolPolicy(
@@ -123,10 +169,7 @@ export function checkToolPermission(
   let matchedPolicy = undefined;
 
   for (const policy of policies) {
-    if (
-      matchesToolPattern(toolCall.name, policy.tool) &&
-      matchesArguments(toolCall.arguments, policy.argumentMatches)
-    ) {
+    if (policyMatches(policy, toolCall)) {
       basePermission = policy.permission;
       matchedPolicy = policy;
       break;
