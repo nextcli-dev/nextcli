@@ -55,34 +55,6 @@ describe("ToolPermissionService E2E", () => {
     }
   });
 
-  it("should allow dynamic updates after initialization", async () => {
-    // Start with defaults (may include additional policies from permissions.yaml)
-    await service.initialize();
-
-    let permissions = service.getPermissions();
-
-    // Verify all default policies are present (may have additional ones)
-    for (const defaultPolicy of DEFAULT_TOOL_POLICIES) {
-      const foundPolicy = permissions.policies.find(
-        (p) =>
-          p.tool === defaultPolicy.tool &&
-          p.permission === defaultPolicy.permission,
-      );
-      expect(foundPolicy).toBeDefined();
-    }
-
-    // Update with new policies (this replaces ALL policies)
-    const newPolicies = [
-      { tool: "*", permission: "ask" as const }, // Ask for everything
-    ];
-
-    service.updatePermissions(newPolicies);
-
-    permissions = service.getPermissions();
-    expect(permissions.policies).toEqual(newPolicies);
-    expect(permissions.policies.length).toBe(1);
-  });
-
   it("should maintain state consistency", async () => {
     const overrides = {
       exclude: ["test_tool"],

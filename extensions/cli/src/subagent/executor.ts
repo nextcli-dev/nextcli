@@ -1,9 +1,8 @@
 import type { ChatHistoryItem } from "core";
 
+import type { ToolPermissions } from "../permissions/types.js";
 import { services } from "../services/index.js";
-import { serviceContainer } from "../services/ServiceContainer.js";
-import type { ToolPermissionServiceState } from "../services/ToolPermissionService.js";
-import { ModelServiceState, SERVICE_NAMES } from "../services/types.js";
+import { ModelServiceState } from "../services/types.js";
 import { streamChatResponse } from "../stream/streamChatResponse.js";
 import { escapeEvents } from "../util/cli.js";
 import { logger } from "../util/logger.js";
@@ -54,16 +53,10 @@ async function buildAgentSystemMessage(
 /**
  * Execute a subagent in a child session
  */
-// eslint-disable-next-line complexity
 export async function executeSubAgent(
   options: SubAgentExecutionOptions,
 ): Promise<SubAgentResult> {
   const { agent: subAgent, prompt, abortController, onOutputUpdate } = options;
-
-  const mainAgentPermissionsState =
-    await serviceContainer.get<ToolPermissionServiceState>(
-      SERVICE_NAMES.TOOL_PERMISSIONS,
-    );
 
   try {
     logger.debug("Starting subagent execution", {
@@ -75,18 +68,11 @@ export async function executeSubAgent(
       throw new Error("Model or LLM API not available");
     }
 
-    // allow all tools for now
-    // todo: eventually we want to show the same prompt in a dialog whether asking whether that tool call is allowed or not
-
-    serviceContainer.set<ToolPermissionServiceState>(
-      SERVICE_NAMES.TOOL_PERMISSIONS,
-      {
-        ...mainAgentPermissionsState,
-        permissions: {
-          policies: [{ tool: "*", permission: "allow" }],
-        },
-      },
-    );
+    // The child session's permissions, passed down its stream rather than
+    // written over the main session's. It allows all tools for now.
+    const childPermissions: ToolPermissions = {
+      policies: [{ tool: "*", permission: "allow" }],
+    };
 
     // Build agent system message
     const systemMessage = await buildAgentSystemMessage(subAgent, services);
@@ -159,6 +145,7 @@ export async function executeSubAgent(
           },
         },
         false, // Not compacting
+        async () => childPermissions,
       );
 
       // The last message (mostly) contains the important output to be submitted back to the main agent
@@ -191,12 +178,6 @@ export async function executeSubAgent(
       if (chatHistorySvc && originalIsReady) {
         chatHistorySvc.isReady = originalIsReady;
       }
-
-      // Restore original main agent tool permissions
-      serviceContainer.set<ToolPermissionServiceState>(
-        SERVICE_NAMES.TOOL_PERMISSIONS,
-        mainAgentPermissionsState,
-      );
     }
   } catch (error: any) {
     logger.error("Subagent execution failed", {

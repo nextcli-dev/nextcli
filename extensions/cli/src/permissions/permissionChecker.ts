@@ -122,6 +122,22 @@ function permissionPolicyToToolPolicy(
 }
 
 /**
+ * True when the model is offered this tool: a call can run without asking,
+ * or someone is present to approve it.
+ */
+export function isToolOffered(
+  toolName: string,
+  permissions: ToolPermissions,
+  isHeadless: boolean,
+): boolean {
+  const { permission } = checkToolPermission(
+    { name: toolName, arguments: {} },
+    permissions,
+  );
+  return permission === "allow" || (permission === "ask" && !isHeadless);
+}
+
+/**
  * Evaluates a tool call request against a set of permission policies.
  * Returns the permission for the first matching policy.
  */
