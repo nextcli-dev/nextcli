@@ -6,7 +6,7 @@ import YAML from "yaml";
 import { env } from "../env.js";
 import { logger } from "../util/logger.js";
 
-import { commandLineFlagsToPolicies, ToolPatternError } from "./toolPattern.js";
+import { patternListsToPolicies, ToolPatternError } from "./toolPattern.js";
 import { ToolPermissionPolicy } from "./types.js";
 
 export const PERMISSIONS_YAML_PATH = path.resolve(
@@ -76,7 +76,7 @@ export function yamlConfigToPolicies(
 ): ToolPermissionPolicy[] {
   try {
     // Order matters: more restrictive policies first
-    return commandLineFlagsToPolicies(config);
+    return patternListsToPolicies(config);
   } catch (error) {
     if (error instanceof ToolPatternError) {
       throw new ToolPatternError(`${PERMISSIONS_YAML_PATH}: ${error.message}`);

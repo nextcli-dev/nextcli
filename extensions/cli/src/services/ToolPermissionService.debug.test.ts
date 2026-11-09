@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { checkToolPermission } from "../permissions/permissionChecker.js";
 import { PermissionMode } from "../permissions/types.js";
 
 import { ToolPermissionService } from "./ToolPermissionService.js";
@@ -109,7 +110,12 @@ describe("ToolPermissionService - Debug Tool Permissions", () => {
       );
     });
 
-    const writePolicy = policies.find((p) => p.tool === "Write");
-    expect(writePolicy?.permission).toBe("exclude");
+    // The --allow Write flag still applies, but plan mode never writes
+    expect(
+      checkToolPermission(
+        { name: "Write", arguments: { filepath: "a.txt", content: "x" } },
+        service.getPermissions(),
+      ).permission,
+    ).toBe("exclude");
   });
 });

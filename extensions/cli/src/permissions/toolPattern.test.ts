@@ -90,9 +90,10 @@ describe("commandLineFlagsToPolicies", () => {
         tool: "Bash",
         permission: "exclude",
         argumentMatches: { command: "rm*" },
+        origin: "flag",
       },
-      { tool: "Write", permission: "ask" },
-      { tool: "Read", permission: "allow" },
+      { tool: "Write", permission: "ask", origin: "flag" },
+      { tool: "Read", permission: "allow", origin: "flag" },
     ]);
   });
 

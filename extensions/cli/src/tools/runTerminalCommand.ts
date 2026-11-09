@@ -170,10 +170,12 @@ IMPORTANT: To edit files, use Edit/MultiEdit tools instead of bash commands (sed
   evaluateToolCallPolicy: (
     basePolicy: ToolPolicy,
     parsedArgs: Record<string, unknown>,
+    options?: { strict?: boolean },
   ): ToolPolicy => {
     return evaluateTerminalCommandSecurity(
       basePolicy,
       parsedArgs.command as string,
+      options,
     );
   },
   // Broad deletes (top-level directories, unresolvable paths) need a person

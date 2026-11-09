@@ -36,15 +36,27 @@ cn -p "List all TODO comments in src/" --silent > todos.txt
 
 ## Tool permissions
 
-In headless mode, tools that would normally prompt for approval (`ask` permission) are automatically excluded — there's no one to approve them. To enable write operations, explicitly allow them:
+Headless mode is closed by default, because nobody is there to approve a tool. Reading, searching and listing work. `Bash` only runs commands NextCLI can tell are read-only, such as `ls`, `cat` and `git status`. File writes, `Fetch`, MCP tools and any other `Bash` command are refused. Rules you saved in the TUI with "don't ask again" don't apply here; only the excludes in `permissions.yaml` do. Opt in to what a run needs with `--allow`:
 
 ```bash
 # Allow the agent to write files
 cn -p "Fix the type errors in src/" --allow Write --allow Edit
 
+# Allow the agent to run its tests, and to fetch a page
+cn -p "Fix the failing test" --allow "Bash(npm test*)" --allow Edit --allow Fetch
+
+# Allow one MCP server's tools
+cn -p "Triage the issue" --allow "github_*"
+
 # Allow everything
 cn -p "Set up the project" --allow "*"
 ```
+
+<Warning>
+Scripts that ran `cn -p` with Bash, `Fetch` or MCP tools and no flags need `--allow` for each of them now.
+</Warning>
+
+`cn -p --readonly` never writes: `--allow` can add `Bash`, `Fetch` or MCP tools to a read-only run, but `Bash` still runs only read-only commands, and `Edit`, `MultiEdit` and `Write` stay off.
 
 See [tool permissions](/cli/tool-permissions) for the full policy system.
 

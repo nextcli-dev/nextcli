@@ -171,6 +171,12 @@ export const SERVICE_NAMES = {
 export interface ServiceInitOptions {
   options?: BaseCommandOptions; // Command-line options
   headless?: boolean;
+  /**
+   * A headless run whose client still answers permission requests (cn serve,
+   * through POST /permission). Its tool permissions use the terminal UI
+   * defaults instead of the closed headless ones.
+   */
+  approvalsAvailable?: boolean;
   skipOnboarding?: boolean; // Skip onboarding check even in TUI mode
   toolPermissionOverrides?: {
     allow?: string[];

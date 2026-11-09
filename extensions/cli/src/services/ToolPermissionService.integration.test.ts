@@ -72,6 +72,7 @@ describe("ToolPermissionService E2E", () => {
     expect(state.permissions.policies[0]).toEqual({
       tool: "test_tool",
       permission: "exclude",
+      origin: "flag",
     });
   });
 
