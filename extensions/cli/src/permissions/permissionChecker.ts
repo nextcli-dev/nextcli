@@ -151,35 +151,59 @@ function isCommandAllowThatChains(
   return SHELL_CONTROL.test(command);
 }
 
-/** A `sh -c` or `eval` wrapper, so the command inside is checked too. */
+/**
+ * The command inside `sh -c`, `bash -lc`, `bash --noprofile -c` or `eval`, so
+ * it is checked too. Any flag cluster with a `c` counts, as the shell reads it.
+ */
 function unwrapShellCommand(segment: string): string | undefined {
   const match = segment.match(
-    /^(?:sh|bash|zsh|dash|ksh)\s+(?:-[a-zA-Z]+\s+)*-c\s+(.+)$|^eval\s+(.+)$/,
+    /^(?:sh|bash|zsh|dash|ksh)\s+(?:--?[a-zA-Z][\w-]*\s+)*?-[a-zA-Z]*c[a-zA-Z]*\s+(.+)$|^eval\s+(.+)$/,
   );
   if (!match) {
     return undefined;
   }
-  const inner = (match[1] ?? match[2]).trim().replace(/^['"]|['"]$/g, "");
-  const unescaped = inner.replace(/\\([ \t])/g, "$1");
-  return unescaped.length > 0 ? unescaped : undefined;
+  const inner = (match[1] ?? match[2])
+    .trim()
+    .replace(/^['"]|['"]$/g, "")
+    .replace(/\\([ \t])/g, "$1");
+  return inner.length > 0 ? inner : undefined;
+}
+
+/**
+ * Leading environment assignments and wrappers that run the command after
+ * them: `FOO=1 env timeout 5 nice -n 2 xargs npm install` → `npm install`.
+ * Stripping too much only makes an exclude or ask match more often.
+ */
+const COMMAND_WRAPPER =
+  /^(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+|(?:env|nohup|command|exec|time|nice|xargs|stdbuf|sudo|doas)(?:\s+-{1,2}[\w-]+(?:[= ]\S+)?)*\s+|timeout(?:\s+-{1,2}[\w-]+(?:[= ]\S+)?)*\s+\S+\s+)/;
+
+function stripCommandWrappers(segment: string): string {
+  let current = segment;
+  for (let i = 0; i < 8; i++) {
+    const next = current.replace(COMMAND_WRAPPER, "");
+    if (next === current) {
+      return current;
+    }
+    current = next;
+  }
+  return current;
 }
 
 /**
  * The parts of a command line that the shell runs as separate commands,
- * including the command inside `sh -c` or `eval`.
+ * without leading wrappers, and the commands inside `sh -c` or `eval`.
  */
 function commandSegments(command: string): string[] {
   const parts = command
     .split(/[;&|`<>\r\n()]|\$\(/)
     .map((segment) => segment.trim())
     .filter((segment) => segment.length > 0);
-  return [
-    ...parts,
-    ...parts.flatMap((part) => {
-      const inner = unwrapShellCommand(part);
-      return inner ? [inner] : [];
-    }),
-  ];
+  return parts.flatMap((part) => {
+    const bare = stripCommandWrappers(part);
+    const inner = unwrapShellCommand(bare);
+    // The inner command can be a chain or wrapped again
+    return [part, bare, ...(inner ? commandSegments(inner) : [])];
+  });
 }
 
 /**
@@ -278,7 +302,8 @@ export function checkToolPermission(
     // offered, and each real call is checked.
     const narrowDefaultAllow =
       basePermission === "allow" &&
-      matchedPolicy?.source === "default" &&
+      (matchedPolicy?.source === "default" ||
+        matchedPolicy?.source === "remembered") &&
       Object.keys(toolCall.arguments ?? {}).length > 0;
 
     // Convert CLI permission to core policy

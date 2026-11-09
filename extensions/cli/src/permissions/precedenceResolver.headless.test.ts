@@ -44,7 +44,7 @@ describe("permissions.yaml in headless runs", () => {
 
   it("keeps only the yaml excludes", () => {
     const yamlTools = resolve(true)
-      .policies.filter((policy) => !policy.source)
+      .policies.filter((policy) => policy.source !== "default")
       .map((policy) => `${policy.tool}:${policy.permission}`);
 
     expect(yamlTools).toEqual(["Write:exclude"]);
@@ -97,7 +97,7 @@ describe("safe remembered rules in a headless run", () => {
 
   it("keeps scoped allows and open built-ins, and drops the rest", () => {
     const yamlTools = resolve(true)
-      .policies.filter((policy) => !policy.source)
+      .policies.filter((policy) => policy.source !== "default")
       .map((policy) => {
         const args = policy.argumentMatches
           ? `(${Object.values(policy.argumentMatches).join(",")})`
@@ -194,7 +194,7 @@ describe("a remembered allow for a built-in the headless defaults exclude", () =
   it("drops UploadArtifact and keeps Write", () => {
     const permissions = resolve(true);
     const kept = permissions.policies
-      .filter((policy) => !policy.source)
+      .filter((policy) => policy.source !== "default")
       .map((policy) => `${policy.tool}:${policy.permission}`);
 
     expect(kept).toEqual(["Write:allow"]);
@@ -204,5 +204,32 @@ describe("a remembered allow for a built-in the headless defaults exclude", () =
         permissions,
       ).permission,
     ).toBe("exclude");
+  });
+});
+
+describe("a remembered command glob in a headless run", () => {
+  beforeEach(() => {
+    // What "don't ask again" writes for a git command in the terminal UI
+    yamlConfig = { allow: ["Bash(git*)"], ask: [], exclude: [] };
+  });
+
+  it("is narrowed like a default: read-only git runs, git push does not", () => {
+    const permissions = resolve(true);
+    const bash = (command: string) =>
+      checkToolPermission({ name: "Bash", arguments: { command } }, permissions)
+        .permission;
+
+    expect(bash("git status")).toBe("allow");
+    expect(bash("git log --oneline -5")).toBe("allow");
+    expect(bash("git push origin main")).toBe("ask");
+  });
+
+  it("is taken as given in the terminal UI, where it was written", () => {
+    expect(
+      checkToolPermission(
+        { name: "Bash", arguments: { command: "git push origin main" } },
+        resolve(false),
+      ).permission,
+    ).toBe("allow");
   });
 });

@@ -12,12 +12,14 @@ export interface ToolPermissionPolicy {
   /** Optional argument matching patterns. If not specified, applies to all calls to this tool */
   argumentMatches?: Record<string, any>;
   /**
-   * Where the policy came from. A "default" allow is narrowed by a tool's own
-   * evaluator (Bash only runs commands it can approve without asking), while
-   * an "allow" the operator wrote is taken as given. A policy with no source
-   * counts as written by the operator (flags and permissions.yaml).
+   * Where the policy came from. A "default" allow, and a "remembered" one (a
+   * permissions.yaml allow a headless run kept), is narrowed by a tool's own
+   * evaluator: Bash only runs commands it can approve without asking. An
+   * allow the operator wrote is taken as given. A policy with no source
+   * counts as written by the operator (flags, and permissions.yaml in the
+   * terminal UI).
    */
-  source?: "default";
+  source?: "default" | "remembered";
 }
 
 export interface ToolPermissions {

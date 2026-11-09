@@ -7,13 +7,10 @@ import { ToolPermissionPolicy } from "./types.js";
 export function getDefaultToolPolicies(
   isHeadless = false,
 ): ToolPermissionPolicy[] {
-  // The TUI asks before Bash, MCP and any other tool, and allows Fetch. A
-  // headless run differs in three ways. Fetch and UploadArtifact are
-  // excluded, because they can send a file or a request off the machine.
-  // MCP and unknown tools are excluded, because nobody can approve them.
-  // Bash stays allow, but only for commands the evaluator approves without
-  // asking (see checkToolPermission), and anything else is refused. --allow
-  // opts a headless run back in.
+  // Headless closes Fetch, UploadArtifact (they can send data off the
+  // machine) and MCP or unknown tools (nobody can approve them). Bash is
+  // allow there, but checkToolPermission narrows it to commands the evaluator
+  // approves without asking. --allow opts a headless run back in.
   const source = "default" as const;
   return [
     { tool: "Edit", permission: "ask", source },
@@ -42,16 +39,10 @@ export function getDefaultToolPolicies(
 }
 
 /**
- * Plan mode (--readonly) defaults: all writes are excluded.
- *
- * Bash can change files (cp, mv, tee, build scripts) and MCP tools can do
- * anything, so by default a person approves each call in the TUI. Unattended
- * (headless) runs often review untrusted code with a provider key in the
- * environment, so by default they get no shell, no MCP tools and no Fetch,
- * which could send data out. The operator's --allow and --exclude come first
- * (`generateReadOnlyPolicies`): a scoped allow such as `Bash(git log*)` or
- * `github_*` opens one command or server; a whole-tool Bash or Fetch allow is
- * dropped, and writes are never allowed.
+ * Plan mode (--readonly) defaults: all writes are excluded. Bash can change
+ * files and MCP tools can do anything, so a person approves them in the TUI;
+ * unattended runs get neither, and no Fetch. `generateReadOnlyPolicies`
+ * applies the operator's flags on top.
  */
 export function getPlanModePolicies(
   isHeadless = false,

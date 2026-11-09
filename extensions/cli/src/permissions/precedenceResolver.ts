@@ -60,7 +60,13 @@ export function resolvePermissionPrecedence(
       const yamlPolicies = yamlConfigToPolicies(yamlConfig);
       policies.push(
         ...(sources.isHeadless
-          ? yamlPolicies.filter(headlessKeepsYamlPolicy)
+          ? yamlPolicies.filter(headlessKeepsYamlPolicy).map(
+              (policy): ToolPermissionPolicy =>
+                // A terminal answer is not an operator's flag: narrow it
+                policy.permission === "allow"
+                  ? { ...policy, source: "remembered" }
+                  : policy,
+            )
           : yamlPolicies),
       );
     }

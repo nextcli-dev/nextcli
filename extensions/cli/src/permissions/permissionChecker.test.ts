@@ -569,6 +569,50 @@ describe("Permission Checker", () => {
     });
 
     describe("Bash(pattern) policies on chained commands", () => {
+      it.each([
+        "sh -lc 'npm install left-pad'",
+        "bash -ec 'npm install left-pad'",
+        'bash --noprofile -c "npm install left-pad"',
+        "env FOO=1 npm install left-pad",
+        "FOO=1 npm install left-pad",
+        "timeout 60 npm install left-pad",
+        "nice -n 5 npm install left-pad",
+        "xargs npm install < deps.txt",
+        "sh -c 'cd app && npm install'",
+      ])("an exclude still blocks the wrapped command %s", (command) => {
+        mockEvaluateToolCallPolicy.mockImplementation((policy) => policy);
+        const permissions: ToolPermissions = {
+          policies: [
+            { tool: "Bash(npm install*)", permission: "exclude" },
+            { tool: "Bash", permission: "allow" },
+          ],
+        };
+
+        expect(
+          checkToolPermission(
+            { name: "Bash", arguments: { command } },
+            permissions,
+          ).permission,
+        ).toBe("exclude");
+      });
+
+      it("lets a wrapped command that the exclude does not name through", () => {
+        mockEvaluateToolCallPolicy.mockImplementation((policy) => policy);
+        const permissions: ToolPermissions = {
+          policies: [
+            { tool: "Bash(npm install*)", permission: "exclude" },
+            { tool: "Bash", permission: "allow" },
+          ],
+        };
+
+        expect(
+          checkToolPermission(
+            { name: "Bash", arguments: { command: "bash -lc 'npm test'" } },
+            permissions,
+          ).permission,
+        ).toBe("allow");
+      });
+
       beforeEach(() => {
         // Let the policy decide: the tool passes the base policy through
         mockEvaluateToolCallPolicy.mockImplementation((policy) => policy);
