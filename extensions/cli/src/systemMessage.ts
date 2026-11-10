@@ -2,7 +2,11 @@ import { execSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 
-import { parseMarkdownRule, RuleObject } from "@nextcli/config-yaml";
+import {
+  parseMarkdownRule,
+  PROJECT_AGENT_FILE_NAMES,
+  RuleObject,
+} from "@nextcli/config-yaml";
 
 import { env } from "./env.js";
 import { processRule } from "./hubLoader.js";
@@ -164,12 +168,10 @@ export async function constructSystemMessage(
   format?: "json",
   headless?: boolean,
 ): Promise<string> {
-  const agentFiles = ["AGENTS.md", "AGENT.md", "CLAUDE.md", "CODEX.md"];
-
   let agentContent = "";
 
   try {
-    for (const fileName of agentFiles) {
+    for (const fileName of PROJECT_AGENT_FILE_NAMES) {
       const filePath = path.join(process.cwd(), fileName);
 
       if (fs.existsSync(filePath)) {

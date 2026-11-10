@@ -1,13 +1,18 @@
-import { ConfigValidationError, markdownToRule } from "@nextcli/config-yaml";
+import {
+  ConfigValidationError,
+  markdownToRule,
+  PROJECT_AGENT_FILE_NAMES,
+} from "@nextcli/config-yaml";
 import { IDE, RuleWithSource } from "../..";
 import { PROMPTS_DIR_NAME, RULES_DIR_NAME } from "../../promptFiles";
 import { joinPathsToUri } from "../../util/uri";
 import { getAllDotContinueDefinitionFiles } from "../loadLocalAssistants";
 
-export const SUPPORTED_AGENT_FILES = ["AGENTS.md", "AGENT.md", "CLAUDE.md"];
+export const SUPPORTED_AGENT_FILES: readonly string[] =
+  PROJECT_AGENT_FILE_NAMES;
 /**
  * Loads rules from markdown files in the .continue/rules and .continue/prompts directories
- * and agent files (AGENTS.md, AGENT.md, CLAUDE.md) at workspace root
+ * and the first agent file (AGENTS.md, AGENT.md, CLAUDE.md, CODEX.md) at workspace root
  */
 export async function loadMarkdownRules(ide: IDE): Promise<{
   rules: RuleWithSource[];
@@ -25,22 +30,22 @@ export async function loadMarkdownRules(ide: IDE): Promise<{
       try {
         const agentFileUri = joinPathsToUri(workspaceDir, fileName);
         const exists = await ide.fileExists(agentFileUri);
-        if (exists) {
-          const agentContent = await ide.readFile(agentFileUri);
-
-          const rule = markdownToRule(agentContent, {
-            uriType: "file",
-            fileUri: agentFileUri,
-          });
-          rules.push({
-            ...rule,
-            source: "agentFile",
-            sourceFile: agentFileUri,
-            alwaysApply: true,
-          });
-          agentFileFound = true;
+        if (!exists) {
+          continue;
         }
+        const agentContent = await ide.readFile(agentFileUri);
 
+        const rule = markdownToRule(agentContent, {
+          uriType: "file",
+          fileUri: agentFileUri,
+        });
+        rules.push({
+          ...rule,
+          source: "agentFile",
+          sourceFile: agentFileUri,
+          alwaysApply: true,
+        });
+        agentFileFound = true;
         break; // Use the first found agent file in this workspace
       } catch (e) {
         // File doesn't exist or can't be read, continue to next file
