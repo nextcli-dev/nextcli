@@ -1,6 +1,6 @@
 # Permissions
 
-The user-facing description is [`docs/cli/tool-permissions.mdx`](../../../docs/cli/tool-permissions.mdx). This file records the model the code implements and where each part lives. The behavior itself is pinned by [`src/permissions/permissionMatrix.test.ts`](../src/permissions/permissionMatrix.test.ts): every row is a run setup, a tool call and the expected decision. A change in behavior edits the rows it changes in the same commit; a refactor leaves them unchanged.
+The user-facing description is [`docs/cli/tool-permissions/`](../../../docs/cli/tool-permissions/index.mdx) and [`docs/cli/modes/`](../../../docs/cli/modes/index.mdx). This file records the model the code implements and where each part lives. The behavior itself is pinned by [`src/permissions/permissionMatrix.test.ts`](../src/permissions/permissionMatrix.test.ts): every row is a run setup, a tool call and the expected decision. A change in behavior edits the rows it changes in the same commit; a refactor leaves them unchanged.
 
 ## Permission levels
 

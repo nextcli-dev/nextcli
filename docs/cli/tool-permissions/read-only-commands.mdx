@@ -1,0 +1,34 @@
+---
+title: "Read-only Commands"
+sidebarTitle: "Read-only Commands"
+description: "Which shell commands cn runs without a person, which it refuses, and which never run"
+---
+
+Three places evaluate `Bash` strictly: `cn -p` with the default rules, `--readonly` in every kind of run, and an agent file's `Bash` in `cn -p`. Strict means the command must be one the built-in checks approve on their own. The checks read the command text, so the lists below are what matters.
+
+## Run without asking
+
+- Listing and reading inside the workspace: `ls -la`, `cat package.json`, `head`, `tail`, `wc -l src/a.ts`, `stat`, `grep -rn TODO src`, `find . -name "*.ts"`.
+- Git commands that read: `git status`, `git diff HEAD~1`, `git log --oneline`, `git show`.
+
+## Ask, so refused when nobody can answer
+
+- File commands: `cp`, `mv`, `mkdir`, `touch`, `tee`, and any redirect to a file (`echo x > notes.txt`).
+- Build, test and lint commands: `npm`, `yarn`, `pnpm`, `make`, `cargo`, `gradle`, `mvn`, `tsc`, `jest`, `pytest`, `prettier --write`. They run code from the repository.
+- Reads outside the workspace: `cat ~/.ssh/id_rsa`, `head ~/.aws/credentials`, `ls /etc`.
+- Git commands that write or reach the network: `git push`, `git commit`, `git branch`, `git remote`, and `--output=` on any git command.
+- Archives: `tar`, `zip`.
+- Network: `curl`, `wget`, `ssh`.
+- Scripts and interpreters: `bash deploy.sh`, `python x.py`, `node script.js`. Their contents aren't read.
+- Inline code and variables: `python -c '...'`, `node -e '...'`, `$CMD`, `curl x | sh`.
+- Any command the checks don't recognise.
+
+## Never run
+
+In any mode and whatever the rules say:
+
+- Commands that destroy the system, a home directory or a disk: `rm -rf /`, `rm -rf ~`, `mkfs`, `find / -delete`, `wipefs -a`.
+
+Broad deletes (a top-level directory such as `/tmp`, or a path `cn` can't resolve such as `rm -rf $DIR`) always need a person, even under `--allow Bash` or `--auto`. The TUI asks; an unattended run refuses them.
+
+These checks are best-effort. They read one command line, so they can't follow a `cd`, a symlink created earlier, or what a script file does. For untrusted prompts or repositories, run `cn -p` in a container, and prefer `--readonly`.

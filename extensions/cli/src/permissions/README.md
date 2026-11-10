@@ -52,4 +52,4 @@ Strict means the tool's own evaluator must approve the call by itself (`evaluate
 - `../services/ToolPermissionService.ts`: builds the policies per mode (`buildPolicies`) from flags, the agent file and the yaml; mode switches and reloads rebuild the same way
 - `permissionMatrix.test.ts`: the behavior spec. A behavior change edits its rows in the same commit.
 
-The user-facing description is `docs/cli/tool-permissions.mdx`; the model is written up in `../../spec/permissions.md` and `../../spec/modes.md`. Both must change with the code (`.checks/documentation-freshness.md` checks this).
+The user-facing description is in `docs/cli/tool-permissions/` and `docs/cli/modes/`; the model is written up in `../../spec/permissions.md` and `../../spec/modes.md`. Both must change with the code (`.checks/documentation-freshness.md` checks this).

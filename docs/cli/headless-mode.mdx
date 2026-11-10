@@ -62,15 +62,15 @@ cn -p "Set up the project" --allow "*"
 Scripts that ran `cn -p` with Bash, `Fetch` or MCP tools and no flags need `--allow` for each of them now.
 </Warning>
 
-For untrusted input, such as a pull request in CI, add `--readonly`. It never writes, and `Bash` runs only read-only commands even when `--allow` turns it on: `cn -p --readonly --allow "Bash(git log*)"` adds `git log`, but `--allow Bash` or `--allow "Bash(git *)"` still can't run `git push`, `cp` or `curl`. `--allow Fetch` and `--allow "github_*"` work as in a normal run.
+For untrusted input, such as a pull request in CI, add `--readonly` ([plan mode](/cli/modes/plan-mode)). It never writes, and `Bash` runs only read-only commands even when `--allow` turns it on: `cn -p --readonly --allow "Bash(git log*)"` adds `git log`, but `--allow Bash` or `--allow "Bash(git *)"` still can't run `git push`, `cp` or `curl`. `--allow Fetch` and `--allow "github_*"` work as in a normal run.
 
-`cn -p --auto` is not "allow everything": it allows writes, `Fetch` and MCP tools, but `Bash` stays read-only and auto mode ignores `--allow`. Use `--allow "*"` instead.
+`cn -p --auto` ([auto mode](/cli/modes/auto-mode)) is not "allow everything": it allows writes, `Fetch` and MCP tools, but `Bash` stays read-only and auto mode ignores `--allow`. Use `--allow "*"` instead.
 
 When the model calls a tool the rules refuse, the call gets the result `Blocked by security policy: this tool call isn't allowed in an unattended run`, the run ends, and `cn` prints the answer so far. If a script needs that tool, pass the `--allow` for it.
 
 `cn review` runs its workers headless with the same closed defaults plus `Edit`, `MultiEdit` and `Write`, so a review can fix the files in its worktree.
 
-See [tool permissions](/cli/tool-permissions) for the rule syntax, the list of read-only commands, agent files and the full precedence.
+See [tool permissions](/cli/tool-permissions) for the full precedence, [flags & patterns](/cli/tool-permissions/flags-and-patterns) for the rule syntax, [read-only commands](/cli/tool-permissions/read-only-commands) for the list of commands a headless run allows, and [agent files](/cli/tool-permissions/agent-files).
 
 ## Resume in headless mode
 
