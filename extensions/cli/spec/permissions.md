@@ -1,83 +1,127 @@
 # Permissions
 
-The user-facing description is [`docs/cli/tool-permissions/`](../../../docs/cli/tool-permissions/index.mdx) and [`docs/cli/modes/`](../../../docs/cli/modes/index.mdx). This file records the model the code implements and where each part lives. The behavior itself is pinned by [`src/permissions/permissionMatrix.test.ts`](../src/permissions/permissionMatrix.test.ts): every row is a run setup, a tool call and the expected decision. A change in behavior edits the rows it changes in the same commit; a refactor leaves them unchanged.
+This file is the model the permission code implements. For users, see [`docs/cli/tool-permissions/`](../../../docs/cli/tool-permissions/index.mdx) and [`docs/cli/modes/`](../../../docs/cli/modes/index.mdx). For the files and the call flow, see [`src/permissions/README.md`](../src/permissions/README.md).
 
-## Permission levels
+The behavior is pinned by [`permissionMatrix.test.ts`](../src/permissions/permissionMatrix.test.ts). Each row is a run setup, a tool call and the expected decision.
 
-Every tool call ends with one of three permissions:
+## Summary
 
-- `allow`: the tool runs without asking.
-- `ask`: a person is asked. When nobody can answer, the call is refused.
-- `exclude`: the tool is not offered to the model, and a call to it is refused.
+Every tool call ends as `allow`, `ask` or `exclude`. The first rule that matches the call decides it. Two checks then run on every call, whatever the rules say: `--readonly` blocks the write tools, and `Bash` may be held to read-only commands. When nobody can answer, `ask` means refused.
 
-## Rules
+| Permission | Meaning                                                 |
+| ---------- | ------------------------------------------------------- |
+| `allow`    | Runs without asking                                     |
+| `ask`      | A person is asked. With nobody to answer, it is refused |
+| `exclude`  | Not offered to the model. A call to it is refused       |
 
-A rule (`ToolPermissionPolicy`, [`src/permissions/types.ts`](../src/permissions/types.ts)) is:
+## Guarantees
 
-- `tool`: a tool name or a glob over tool names (`github_*`, `*`).
-- `permission`: `allow`, `ask` or `exclude`.
-- `argumentMatches`: optional, one glob for the tool's pattern argument. `Bash(npm test*)` becomes `{ tool: "Bash", argumentMatches: { command: "npm test*" } }`.
-- `origin`: `"flag"` for a rule given on the command line. Nothing else sets it.
+No rule, flag or mode can undo these:
 
-Every source goes through one parser, `parseToolPattern` in [`src/permissions/toolPattern.ts`](../src/permissions/toolPattern.ts). `PATTERN_ARGUMENT` there lists the tools that take a pattern and the argument it matches (`Bash` → `command`, `Read` → `filepath`, `Write` → `filepath`, `Edit`/`MultiEdit` → `file_path`, `Diff` → `path`, `List` → `dirpath`, `Fetch` → `url`, `Search` → `pattern`). A pattern on any other tool throws `ToolPatternError`; `cn` refuses to start rather than keep a rule that would never match. Within one source the rules are ordered exclude, ask, allow (`patternListsToPolicies`).
+- `--readonly` never runs `Edit`, `MultiEdit` or `Write`.
+- Under `--readonly`, `Bash` runs only read-only commands.
+- A command `terminal-security` marks disabled (`rm -rf /`) never runs.
+- A destructive command (a broad delete) always needs a person.
+- `ask` with nobody to answer is refused.
 
-A session's rules are a `ToolPermissions`: the ordered `policies`, plus two limits that are not rules, `readonly` (`--readonly`) and `unattended` (nobody can approve).
-
-## Sources and their order
-
-[`ToolPermissionService.buildPolicies`](../src/services/ToolPermissionService.ts) builds the list the same way on initialization, on a mode switch and on a reload:
-
-| Mode                               | Rules, first match wins                                                                                                                       |
-| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| plan (`--readonly`)                | flags, then the plan defaults. `permissions.yaml` and the agent file are ignored.                                                             |
-| normal or auto, with an agent file | flags, then the agent file's rules, then `* allow` in the TUI or the closed headless defaults when unattended. `permissions.yaml` is ignored. |
-| auto, no agent file                | `* allow`. Flags and `permissions.yaml` are ignored.                                                                                          |
-| normal, no agent file              | flags, then `permissions.yaml` (only its excludes when unattended), then the defaults (`resolvePermissionPrecedence`).                        |
-
-The defaults are one table in [`src/permissions/defaultPolicies.ts`](../src/permissions/defaultPolicies.ts) with a column for each kind of run: TUI, headless, `--readonly` in the TUI, `--readonly` headless. A new built-in tool needs a row in every column; `defaultPolicies.test.ts` checks this, and the root AGENTS.md says to make the headless default `exclude` when in doubt.
+So `--readonly --allow "*"` still can't write, and `cn -p --readonly --allow "Bash(* *)"` still can't run `curl`. Safety comes from these checks, not from the order of the rules.
 
 ## Deciding a call
 
-`checkToolPermission` in [`src/permissions/permissionChecker.ts`](../src/permissions/permissionChecker.ts):
+`checkToolPermission` does four steps:
 
-1. The first rule that matches the call gives the base permission. No match means `ask`.
-2. `readonly` excludes `Edit`, `MultiEdit` and `Write`, whatever matched.
-3. A tool with its own evaluator (today only `Bash`, through `terminal-security`) is consulted. `disabled` always wins. The evaluation is **strict** when `readonly` is set, or when `unattended` is set and the matching rule is not an operator's flag; a strict allow covers only calls the evaluator approves on its own (the read-only commands), and everything else becomes `ask`. Outside strict mode an allow is taken as given, except that a destructive command (`requiresHumanApproval`) still asks.
-4. The stream refuses an `ask` when nobody can answer (`streamChatResponse.helpers.ts`), and a headless run ends after a refused call (`handleToolCalls.ts`).
+1. **First match.** The first rule that matches gives the base permission. No match means `ask`.
+2. **Read-only.** Under `--readonly`, `Edit`, `MultiEdit` and `Write` become `exclude`.
+3. **Bash check.** `Bash` has its own evaluator, from `terminal-security`. It rates every call:
 
-Safety therefore comes from step 2 and step 3 on every call, not from rule order. `--readonly --allow "*"` still can't write, and `cn -p --allow "Bash(* *)" --readonly` still can't run `curl`.
+   | Command                            | Result                                      |
+   | ---------------------------------- | ------------------------------------------- |
+   | Disabled (`rm -rf /`, `mkfs`)      | `exclude`, whatever the rule said           |
+   | Destructive (broad delete)         | an `allow` becomes `ask`                    |
+   | Not read-only (`npm test`, `curl`) | an `allow` becomes `ask` **in strict mode** |
+   | Read-only (`ls`, `git diff`)       | the rule's permission                       |
 
-### Matching
+   Strict mode is on when:
 
-- Tool names: exact, or a glob with `*` and `?`. Case-sensitive.
-- File paths (`Read`, `Write`, `Edit`, `MultiEdit`, `Diff`, `List`): `minimatch` against the path resolved from the working directory, with symlinks followed. An allow must match the path as written and its real path; an exclude or ask matches either.
-- `Bash`: `splitCommand` from `terminal-security` splits the line into the simple commands it runs. An allow matches only a line that is one plain, readable command matching the glob. An exclude or ask matches when any command in the line matches, with the command's directory ignored and the pattern's other words matched in order, so it also covers wrappers, `sh -c`, substitutions and continuations. A line it can't read (`python -c`, `$CMD`) matches no scoped rule and falls to the next rule.
-- Everything else (`Fetch`, `Search`): a plain glob over the argument's text.
+   - the run is `--readonly`, or
+   - nobody can answer, and the matching rule didn't come from a flag.
+
+   So `cn -p` with the default `Bash` allow runs only read-only commands, while `cn -p --allow Bash` runs `npm test`.
+
+4. **Ask.** An `ask` goes to the person. With nobody to answer it is refused, and a headless run ends there.
 
 ### Offering tools
 
-`isToolOffered` decides which tools go in the request. A tool is offered when a call to it can run, or would ask and someone can answer. A rule scoped to some arguments offers the tool; the call is still checked. Offering is not the security boundary; `checkToolPermission` is.
+Before each request, `isToolOffered` picks the tools the model sees. A tool is offered when a call to it can run, or would ask and someone can answer. A rule for some arguments, like `Write(src/*)`, offers the tool. Offering is not the security boundary: every call still goes through `checkToolPermission`.
 
-## Command line flags
+## Rules
 
-`--allow`, `--ask` and `--exclude` each take a pattern and can be repeated. They become rules with `origin: "flag"` and come before every other source. Because `--exclude` rules come before `--allow` rules, `--exclude Bash --allow "Bash(git log*)"` denies `git log`.
+A rule has:
 
-```bash
-cn --allow Read --ask Write --exclude Bash
-cn --readonly "Help me understand this codebase"
-cn -p "Fix the failing test" --allow "Bash(npm test*)" --allow Edit
-```
+- `tool`: a tool name, or a glob over names (`github_*`, `*`).
+- `permission`: `allow`, `ask` or `exclude`.
+- `argumentMatches` (optional): a glob for one argument. `Bash(npm test*)` becomes `{ tool: "Bash", argumentMatches: { command: "npm test*" } }`.
+- `origin` (optional): `"flag"` for a rule from `--allow`, `--ask` or `--exclude`. Step 3 uses it.
 
-`--readonly` and `--auto` set the mode (`flagProcessor.ts`); together they are an error.
+All sources use one parser, `parseToolPattern` in `toolPattern.ts`. Its `PATTERN_ARGUMENT` table says which argument each tool's pattern matches (`Bash` → `command`, `Read`/`Write` → `filepath`, `Edit`/`MultiEdit` → `file_path`, `Diff` → `path`, `List` → `dirpath`, `Fetch` → `url`, `Search` → `pattern`). A pattern on any other tool, like `github_create_issue(x)`, throws `ToolPatternError`, and `cn` doesn't start.
+
+A session's rules are a `ToolPermissions`: the ordered rules, plus two limits that aren't rules, `readonly` and `unattended`.
+
+Within one source, excludes come first, then asks, then allows. So `--exclude Bash --allow "Bash(git log*)"` denies `git log`.
+
+## Where the rules come from
+
+`ToolPermissionService.buildPolicies` builds the list. It runs the same way at startup, on a mode switch and on a reload. Sources are listed in the order they're checked:
+
+| Mode                       | Flags   | Agent file | `permissions.yaml`         | Then                                           |
+| -------------------------- | ------- | ---------- | -------------------------- | ---------------------------------------------- |
+| normal                     | ✓       | –          | ✓ (only excludes headless) | defaults                                       |
+| normal or auto, agent file | ✓       | ✓          | ignored                    | `* allow` in the TUI, closed defaults headless |
+| plan (`--readonly`)        | ✓       | ignored    | ignored                    | plan defaults                                  |
+| auto, no agent file        | ignored | –          | ignored                    | `* allow` only                                 |
+
+The defaults are one table in `defaultPolicies.ts`, with a column for each kind of run: TUI, headless, `--readonly` TUI, `--readonly` headless. A new built-in tool needs a row in every column; `defaultPolicies.test.ts` checks this. When unsure, make the headless default `exclude`.
+
+`flagProcessor.ts` turns `--readonly` and `--auto` into the mode. The two together are an error.
+
+## Matching
+
+| Argument                                                        | An `allow` matches when                          | An `exclude` or `ask` matches when |
+| --------------------------------------------------------------- | ------------------------------------------------ | ---------------------------------- |
+| Tool name                                                       | the name matches (`*`, `?`, case-sensitive)      | same                               |
+| File path: `Read`, `Write`, `Edit`, `MultiEdit`, `Diff`, `List` | both the path as written and its real path match | either path matches                |
+| `Bash` command                                                  | the line is one plain command that matches       | any command in the line matches    |
+| `Fetch` URL, `Search` pattern                                   | the text matches the glob                        | same                               |
+
+Paths are resolved from the working directory, with symlinks followed, and matched with `minimatch`.
+
+`Bash` lines are split into commands with `splitCommand` from `terminal-security`. An exclude or ask also looks inside `&&`, pipes, `sh -c`, `$(...)` and wrappers like `env` or `timeout`, ignores the command's directory, and matches the pattern's words in order. A line it can't read (`python -c '...'`, `$CMD`) matches no `Bash(...)` rule and falls to the next rule.
+
+## Kinds of run
+
+"Nobody can answer" is the `unattended` limit. `services/index.ts` sets it when a run is headless and has no approver.
+
+| Run                | Who answers `ask`                      | Rules                                                                                                  |
+| ------------------ | -------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `cn`               | you                                    | as in the table above                                                                                  |
+| `cn -p`            | nobody                                 | as above, with the closed headless defaults                                                            |
+| `cn serve`         | the client, through `POST /permission` | TUI defaults; it is headless but not unattended                                                        |
+| `cn review` worker | nobody                                 | closed headless defaults plus `allow` `Edit`, `MultiEdit`, `Write`. The operator's flags aren't passed |
+| Subagent           | nobody                                 | the parent's rules plus `exclude Subagent`, re-read each request                                       |
+
+The review worker's rules are set in `reviewWorker.ts`, and a subagent's in `subagent/executor.ts`.
+
+A refused call in a headless run gets `Blocked by security policy: this tool call isn't allowed in an unattended run...`, and the run returns the answer so far.
 
 ## `~/.continue/permissions.yaml`
 
-Personal rules, in the same pattern syntax, under `allow`, `ask` and `exclude` ([`src/permissions/permissionsYamlLoader.ts`](../src/permissions/permissionsYamlLoader.ts)). `CONTINUE_GLOBAL_DIR` moves the directory. The file is created on first start and rewritten by "Continue + don't ask again" ([`src/permissions/policyWriter.ts`](../src/permissions/policyWriter.ts)), which appends to `allow`. `generatePolicyRule` decides what is remembered: a non-Bash tool by name; a Bash command by command and subcommand (`Bash(npm test*)`), or exactly when the first argument is an option (`Bash(ls -la)`); nothing for a chained, redirected, wrapped, `sh -c` or unreadable line, which is approved once.
+- **Format.** Three optional lists, `allow`, `ask` and `exclude`, in the same pattern syntax. `CONTINUE_GLOBAL_DIR` moves the directory. The file is created on first start.
+- **Saving.** "Continue + don't ask again" appends a rule to `allow`. `generatePolicyRule` decides the rule: a non-Bash tool by name; a Bash command by command and subcommand (`Bash(npm test*)`), or exactly if the first argument is an option (`Bash(ls -la)`). A chained, redirected, wrapped or unreadable line saves nothing and is approved once.
+- **Reading.** The file is re-read on every rebuild of the rules, so a saved rule applies to the next call.
+- **Errors.** A bad structure (an unknown key, a value that isn't a list) makes `cn` ignore the file with a warning. A bad pattern stops `cn`, and the message names the file.
 
-An invalid structure makes the loader ignore the file with a warning. An invalid pattern throws, with the file path in the message. The file is read on every rebuild of the rules, so a saved rule applies to the next call in the same session.
+## Changing permissions
 
-## Headless and other unattended runs
-
-`unattended` is set when `headless` is true and nobody can approve (`services/index.ts`). `cn -p` and `cn review` are unattended; `cn serve` is headless but answers asks through `POST /permission`, so it keeps the TUI defaults. The review worker runs with the closed defaults plus `allow` for `Edit`, `MultiEdit` and `Write` (`reviewWorker.ts`), and does not receive the operator's flags. A subagent runs with the parent's `ToolPermissions` plus `exclude Subagent`, read for each request so a mode switch applies (`subagent/executor.ts`); its stream has no approval callback, so an `ask` is refused.
-
-A refused call in a headless run gets the message `Blocked by security policy: this tool call isn't allowed in an unattended run...` and the run returns the answer so far.
+1. Edit the rows of `permissionMatrix.test.ts` that the change affects, in the same commit. A refactor leaves them unchanged.
+2. A new built-in tool needs a row in `defaultPolicies.ts` for every kind of run.
+3. Update this file, `src/permissions/README.md` and the user docs. `.checks/documentation-freshness.md` lists them.

@@ -68,30 +68,7 @@ Modes are implemented through the permission system:
 
 ### Mode Policy Priority
 
-The first rule that matches a call decides it. The rules come from, in order:
-
-**Plan mode:**
-
-1. Command-line overrides (`--allow`, `--ask`, `--exclude`)
-2. Plan-mode defaults
-
-Write tools stay excluded and Bash stays strict whatever the flags say. The agent file and `permissions.yaml` are ignored.
-
-**With an agent file (normal and auto modes):**
-
-1. Command-line overrides (`--allow`, `--ask`, `--exclude`)
-2. The agent file's tool list: listed tools `allow`, unlisted built-ins `exclude`
-3. `*: allow` in the TUI, so MCP tools the file doesn't mention run without asking; the closed headless defaults when unattended, where the file's Bash is also evaluated strictly
-
-**Auto mode without an agent file:** `*: allow`. Flags and `permissions.yaml` are ignored.
-
-**Normal mode without an agent file:**
-
-1. Command-line overrides (`--allow`, `--ask`, `--exclude`)
-2. Permission configuration from `permissions.yaml`
-3. Default tool policies
-
-Initialization, a mode switch and a permissions reload all build the policies the same way.
+The order the rules are checked in for each mode, and the limits no flag can undo, are in [permissions.md](./permissions.md#where-the-rules-come-from).
 
 ### Mode-Specific Behaviors
 
