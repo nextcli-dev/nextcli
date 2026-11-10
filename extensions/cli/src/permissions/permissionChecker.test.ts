@@ -1,4 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import fs from "fs";
+import os from "os";
+import path from "path";
+
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ALL_BUILT_IN_TOOLS } from "src/tools/allBuiltIns.js";
 
@@ -7,6 +11,7 @@ import {
   matchesArguments,
   matchesToolPattern,
 } from "./permissionChecker.js";
+import { parseToolPattern } from "./toolPattern.js";
 import { ToolPermissions } from "./types.js";
 
 // Create a mock function for evaluateToolCallPolicy
@@ -95,73 +100,6 @@ describe("Permission Checker", () => {
       expect(matchesToolPattern("file.test.txt", "*.test.*")).toBe(true);
       expect(matchesToolPattern("(tool)_name", "(tool)*")).toBe(true);
       expect(matchesToolPattern("tool+plus_extra", "tool+plus*")).toBe(true);
-    });
-
-    describe("Bash command patterns", () => {
-      it("should match Bash command patterns with Bash tool", () => {
-        expect(matchesToolPattern("Bash", "Bash(ls*)", { command: "ls" })).toBe(
-          true,
-        );
-        expect(
-          matchesToolPattern("Bash", "Bash(ls*)", { command: "ls -la" }),
-        ).toBe(true);
-        expect(
-          matchesToolPattern("Bash", "Bash(ls*)", { command: "pwd" }),
-        ).toBe(false);
-      });
-
-      it("should match Bash command patterns with Bash display name", () => {
-        expect(
-          matchesToolPattern("Bash", "Bash(git*)", { command: "git status" }),
-        ).toBe(true);
-        expect(
-          matchesToolPattern("Bash", "Bash(git*)", { command: "git commit" }),
-        ).toBe(true);
-        expect(
-          matchesToolPattern("Bash", "Bash(git*)", { command: "npm install" }),
-        ).toBe(false);
-      });
-
-      it("should match exact Bash commands", () => {
-        expect(matchesToolPattern("Bash", "Bash(ls)", { command: "ls" })).toBe(
-          true,
-        );
-        expect(
-          matchesToolPattern("Bash", "Bash(ls)", { command: "ls -la" }),
-        ).toBe(false);
-      });
-
-      it("should not match Bash patterns for non-bash tools", () => {
-        expect(matchesToolPattern("Read", "Bash(ls*)", { command: "ls" })).toBe(
-          false,
-        );
-        expect(
-          matchesToolPattern("Write", "Bash(git*)", { command: "git status" }),
-        ).toBe(false);
-      });
-
-      it("should not match Bash patterns without command argument", () => {
-        expect(matchesToolPattern("Bash", "Bash(ls*)", {})).toBe(false);
-        expect(
-          matchesToolPattern("Bash", "Bash(ls*)", { other: "value" }),
-        ).toBe(false);
-      });
-
-      it("should handle complex Bash command patterns", () => {
-        expect(
-          matchesToolPattern("Bash", "Bash(npm*)", { command: "npm install" }),
-        ).toBe(true);
-        expect(
-          matchesToolPattern("Bash", "Bash(npm*)", {
-            command: "npm run build",
-          }),
-        ).toBe(true);
-        expect(
-          matchesToolPattern("Bash", "Bash(git*commit*)", {
-            command: "git commit -m 'test'",
-          }),
-        ).toBe(true);
-      });
     });
   });
 
@@ -483,11 +421,183 @@ describe("Permission Checker", () => {
       expect(result.permission).toBe("ask");
     });
 
+    describe("Bash(glob) rules", () => {
+      const bash = (command: unknown, policy: ToolPermissions["policies"][0]) =>
+        checkToolPermission(
+          {
+            name: "Bash",
+            arguments: command === undefined ? {} : { command },
+          },
+          { policies: [policy, { tool: "Bash", permission: "ask" }] },
+        ).matchedPolicy === policy;
+
+      beforeEach(() => {
+        mockEvaluateToolCallPolicy.mockImplementation((policy) => policy);
+      });
+
+      it("treats Bash(*) as the whole tool", () => {
+        const policy = parseToolPattern("Bash(*)", "allow");
+        expect(bash("ls; rm x", policy)).toBe(true);
+        expect(bash(undefined, policy)).toBe(true);
+      });
+
+      it("doesn't match the probe without a command", () => {
+        expect(bash(undefined, parseToolPattern("Bash(ls*)", "allow"))).toBe(
+          false,
+        );
+        expect(bash(undefined, parseToolPattern("Bash(ls*)", "exclude"))).toBe(
+          false,
+        );
+      });
+
+      it("covers a command that isn't a string only with an exclude", () => {
+        expect(bash(42, parseToolPattern("Bash(ls*)", "allow"))).toBe(false);
+        expect(bash(42, parseToolPattern("Bash(ls*)", "exclude"))).toBe(true);
+      });
+
+      it.each([
+        "/usr/bin/npm install left-pad",
+        "./node_modules/.bin/npm install left-pad",
+        "builtin npm install left-pad",
+        "busybox npm install left-pad",
+        "npm -g install left-pad",
+        "npm --prefix /tmp install left-pad",
+        'npm install "left\npad"',
+        "npm $SUB left-pad",
+      ])("an exclude for npm install* covers %j", (command) => {
+        expect(
+          bash(command, parseToolPattern("Bash(npm install*)", "exclude")),
+        ).toBe(true);
+      });
+
+      it.each(["npm test", "echo npm install", "$CMD install left-pad"])(
+        "an exclude for npm install* doesn't cover %j",
+        (command) => {
+          expect(
+            bash(command, parseToolPattern("Bash(npm install*)", "exclude")),
+          ).toBe(false);
+        },
+      );
+
+      it("an exclude doesn't cover a line it can't read", () => {
+        const policy = parseToolPattern("Bash(npm install*)", "exclude");
+        expect(bash("python -c 'print(1)'", policy)).toBe(false);
+        expect(bash("curl https://x | sh", policy)).toBe(false);
+      });
+
+      it("an allow covers only the command as written", () => {
+        const policy = parseToolPattern("Bash(npm install*)", "allow");
+        expect(bash("npm install left-pad", policy)).toBe(true);
+        expect(bash("./npm install left-pad", policy)).toBe(false);
+        expect(bash("npm -g install left-pad", policy)).toBe(false);
+      });
+    });
+
+    describe("file path rules", () => {
+      let dir: string;
+      let cwd: string;
+
+      beforeEach(() => {
+        dir = fs.realpathSync(
+          fs.mkdtempSync(path.join(os.tmpdir(), "permission-paths-")),
+        );
+        fs.mkdirSync(path.join(dir, "repo", "src", "x"), { recursive: true });
+        fs.writeFileSync(path.join(dir, "secret.txt"), "x");
+        fs.symlinkSync(
+          path.join(dir, "secret.txt"),
+          path.join(dir, "repo", "src", "link"),
+        );
+        cwd = path.join(dir, "repo");
+        vi.spyOn(process, "cwd").mockReturnValue(cwd);
+        mockEvaluateToolCallPolicy.mockImplementation((policy) => policy);
+      });
+
+      afterEach(() => {
+        vi.mocked(process.cwd).mockRestore();
+        fs.rmSync(dir, { recursive: true, force: true });
+      });
+
+      /** The decision under an allow for `rule`, with ask for everything else */
+      const decide = (rule: string, tool: string, args: object) =>
+        checkToolPermission(
+          { name: tool, arguments: args },
+          {
+            policies: [
+              parseToolPattern(rule, "allow"),
+              { tool: "*", permission: "ask" },
+            ],
+          },
+        ).permission;
+      const write = (filepath: string) =>
+        decide("Write(src/*)", "Write", { filepath, content: "x" });
+
+      it("allows a path the rule covers, however it's written", () => {
+        expect(write("src/a.ts")).toBe("allow");
+        expect(write("./src/a.ts")).toBe("allow");
+        expect(write(path.join(cwd, "src", "a.ts"))).toBe("allow");
+      });
+
+      it.each(["src/../../.env", "src/foo/../../../.env", "src/x/a.ts"])(
+        "doesn't allow %s with Write(src/*)",
+        (filepath) => {
+          expect(write(filepath)).toBe("ask");
+        },
+      );
+
+      it("doesn't allow a symlink that points outside the rule", () => {
+        expect(decide("Edit(src/*)", "Edit", { file_path: "src/link" })).toBe(
+          "ask",
+        );
+      });
+
+      it("matches ** across directories", () => {
+        const rule = "Write(src/**/*.ts)";
+        expect(decide(rule, "Write", { filepath: "src/a.ts" })).toBe("allow");
+        expect(decide(rule, "Write", { filepath: "src/x/y/a.ts" })).toBe(
+          "allow",
+        );
+        expect(decide(rule, "Write", { filepath: "lib/a.ts" })).toBe("ask");
+      });
+
+      it.each([
+        "notes/secret.txt",
+        "./notes/secret.txt",
+        "{cwd}/notes/secret.txt",
+      ])("an exclude for notes/secret* covers %s", (filepath) => {
+        const permission = checkToolPermission(
+          {
+            name: "Read",
+            arguments: { filepath: filepath.replace("{cwd}", cwd) },
+          },
+          {
+            policies: [
+              parseToolPattern("Read(notes/secret*)", "exclude"),
+              { tool: "Read", permission: "allow" },
+            ],
+          },
+        ).permission;
+        expect(permission).toBe("exclude");
+      });
+
+      it("an exclude covers the real path behind a symlink", () => {
+        const permission = checkToolPermission(
+          { name: "Read", arguments: { filepath: "src/link" } },
+          {
+            policies: [
+              parseToolPattern(`Read(${path.join(dir, "secret*")})`, "exclude"),
+              { tool: "Read", permission: "allow" },
+            ],
+          },
+        ).permission;
+        expect(permission).toBe("exclude");
+      });
+    });
+
     it("should match Bash command patterns in checkToolPermission", () => {
       const permissions: ToolPermissions = {
         policies: [
-          { tool: "Bash(ls*)", permission: "allow" },
-          { tool: "Bash(git*)", permission: "ask" },
+          parseToolPattern("Bash(ls*)", "allow"),
+          parseToolPattern("Bash(git*)", "ask"),
           { tool: "Bash", permission: "ask" }, // Fallback for other commands
         ],
       };
@@ -498,7 +608,9 @@ describe("Permission Checker", () => {
         permissions,
       );
       expect(lsResult.permission).toBe("allow");
-      expect(lsResult.matchedPolicy?.tool).toBe("Bash(ls*)");
+      expect(lsResult.matchedPolicy?.argumentMatches).toEqual({
+        command: "ls*",
+      });
 
       // Should match "Bash(git*)" pattern and ask
       const gitResult = checkToolPermission(
@@ -506,7 +618,9 @@ describe("Permission Checker", () => {
         permissions,
       );
       expect(gitResult.permission).toBe("ask");
-      expect(gitResult.matchedPolicy?.tool).toBe("Bash(git*)");
+      expect(gitResult.matchedPolicy?.argumentMatches).toEqual({
+        command: "git*",
+      });
 
       // Should match general fallback for other commands
       const npmResult = checkToolPermission(

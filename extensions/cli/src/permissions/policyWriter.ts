@@ -1,5 +1,6 @@
 import fs from "fs";
 
+import { splitCommand } from "@continuedev/terminal-security";
 import YAML from "yaml";
 
 import { logger } from "../util/logger.js";
@@ -11,27 +12,41 @@ import {
 } from "./permissionsYamlLoader.js";
 
 /**
- * Generates a policy rule for a given tool call
- * For most tools, returns the display name (e.g., "Read", "Write")
- * For Bash tool, generates command-specific patterns like "Bash(ls*)"
+ * The rule to remember when someone picks "don't ask again" for a call, or
+ * undefined when the call can't be remembered safely. A Bash call is
+ * remembered by its command and subcommand (`npm test` → `Bash(npm test*)`),
+ * or exactly when the first argument is an option (`ls -la` →
+ * `Bash(ls -la)`). Remembering only the command name would let `npm test`
+ * approve `npm install` and `git status` approve `git push`. It is
+ * remembered only when the line is one plain command: no chain, redirect,
+ * substitution, wrapper (`env`, `timeout`, `sudo`...), `NAME=value` prefix,
+ * `sh -c` or code that can't be read.
  */
-export function generatePolicyRule(toolName: string, toolArgs: any): string {
-  const normalizedName = toolName;
-
-  // For Bash tool, create command-specific policies
-  if (normalizedName === "Bash" && toolArgs?.command) {
-    const command = toolArgs.command.trim();
-    // Extract the first command (before pipes, &&, ||, etc.)
-    const firstCommand = command.split(/[;&|]|&&|\|\|/)[0]?.trim();
-    if (firstCommand) {
-      // Extract just the command name (before spaces or flags)
-      const commandName = firstCommand.split(/\s+/)[0];
-      return `Bash(${commandName}*)`;
-    }
+export function generatePolicyRule(
+  toolName: string,
+  toolArgs: any,
+): string | undefined {
+  if (toolName !== "Bash") {
+    return toolName;
   }
-
-  // For all other tools, return the display name
-  return normalizedName;
+  const command = toolArgs?.command;
+  if (typeof command !== "string") {
+    return undefined;
+  }
+  const split = splitCommand(command);
+  if (!split.single || split.opaque || split.commands.length !== 1) {
+    return undefined;
+  }
+  const argv = split.commands[0];
+  const prefix = argv.length > 1 && !argv[1].startsWith("-");
+  const words = prefix ? argv.slice(0, 2) : argv;
+  // A word with a glob character, a parenthesis or a space can't be written
+  // back as the same rule
+  if (words.some((word) => word === "" || /[*?()\s]/.test(word))) {
+    return undefined;
+  }
+  const rule = words.join(" ");
+  return prefix ? `Bash(${rule}*)` : `Bash(${rule})`;
 }
 
 /**
@@ -73,4 +88,20 @@ ${yamlContent}`;
     });
     throw error;
   }
+}
+
+/**
+ * Saves "don't ask again" for a call to permissions.yaml. Returns the rule
+ * saved, or undefined when the call can't be remembered (see
+ * generatePolicyRule) and was approved once only.
+ */
+export async function rememberToolApproval(
+  toolName: string,
+  toolArgs: any,
+): Promise<string | undefined> {
+  const policyRule = generatePolicyRule(toolName, toolArgs);
+  if (policyRule) {
+    await addPolicyToYaml(policyRule);
+  }
+  return policyRule;
 }

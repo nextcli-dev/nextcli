@@ -29,7 +29,6 @@ describe("ToolPermissionService", () => {
         permissions: { policies: [] },
         currentMode: "normal",
         isHeadless: false,
-        modePolicyCount: 0,
       });
     });
 
@@ -157,7 +156,6 @@ describe("ToolPermissionService", () => {
         { tool: "Tool1", permission: "allow" },
         { tool: "Tool2", permission: "ask" },
       ]);
-      expect(state.modePolicyCount).toBe(0);
     });
   });
 
@@ -186,19 +184,6 @@ describe("ToolPermissionService", () => {
       expect(state.permissions.policies).not.toContainEqual({
         tool: "UserTool1",
         permission: "allow",
-      });
-    });
-
-    test("should store original policies when leaving normal mode", () => {
-      service.initializeSync({ mode: "normal" });
-      const originalState = service.getState();
-
-      service.switchMode("plan");
-      const planState = service.getState();
-
-      // Should have stored original policies
-      expect(planState.originalPolicies).toEqual({
-        policies: originalState.permissions.policies,
       });
     });
 
@@ -388,21 +373,6 @@ describe("ToolPermissionService", () => {
       });
       expect(state.isHeadless).toBe(true);
     });
-
-    test("should have modePolicyCount of 0 in normal mode regardless of headless", () => {
-      vi.mocked(precedenceResolver.resolvePermissionPrecedence).mockReturnValue(
-        [],
-      );
-
-      const headlessState = service.initializeSync({ isHeadless: true });
-      expect(headlessState.modePolicyCount).toBe(0);
-
-      const nonHeadlessService = new ToolPermissionService();
-      const nonHeadlessState = nonHeadlessService.initializeSync({
-        isHeadless: false,
-      });
-      expect(nonHeadlessState.modePolicyCount).toBe(0);
-    });
   });
 
   describe("reloadPermissions", () => {
@@ -418,7 +388,11 @@ describe("ToolPermissionService", () => {
       );
 
       const service = new ToolPermissionService();
-      service.initializeSync({ mode: "normal" });
+      service.initializeSync({
+        mode: "normal",
+        isHeadless: true,
+        exclude: ["Bash"],
+      });
 
       // Verify initial state
       expect(service.getPermissions().policies).toEqual(mockPolicies);
@@ -435,17 +409,19 @@ describe("ToolPermissionService", () => {
       // Reload permissions
       await service.reloadPermissions();
 
-      // Verify policies were reloaded
+      // Verify policies were reloaded, keeping the flags and headless mode
       expect(service.getPermissions().policies).toEqual(newMockPolicies);
       expect(
         precedenceResolver.resolvePermissionPrecedence,
-      ).toHaveBeenCalledWith({
+      ).toHaveBeenLastCalledWith({
+        commandLineFlags: { exclude: ["Bash"] },
         personalSettings: true,
         useDefaults: true,
+        isHeadless: true,
       });
     });
 
-    test("should skip reload in non-normal modes", async () => {
+    test("keeps the plan-mode policies on reload", async () => {
       const service = new ToolPermissionService();
       service.initializeSync({ mode: "plan" });
 
@@ -457,7 +433,7 @@ describe("ToolPermissionService", () => {
       // Try to reload
       await service.reloadPermissions();
 
-      // Verify no reload happened
+      // Plan mode doesn't read permissions.yaml
       expect(service.getPermissions().policies).toEqual(initialPolicies);
       expect(
         precedenceResolver.resolvePermissionPrecedence,

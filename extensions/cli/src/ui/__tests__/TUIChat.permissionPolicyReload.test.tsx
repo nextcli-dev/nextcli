@@ -46,7 +46,9 @@ describe("Permission Policy Reload Workflow", () => {
           mockActiveRequest.toolArgs,
         );
 
-        await addPolicyToYaml(policyRule);
+        if (policyRule) {
+          await addPolicyToYaml(policyRule);
+        }
 
         // This is the key part we're testing - reload should be called
         await services.toolPermissions.reloadPermissions();
@@ -101,7 +103,9 @@ describe("Permission Policy Reload Workflow", () => {
         mockActiveRequest.toolArgs,
       );
 
-      await addPolicyToYaml(policyRule);
+      if (policyRule) {
+        await addPolicyToYaml(policyRule);
+      }
 
       // This should fail but not break the flow
       await services.toolPermissions.reloadPermissions();
@@ -154,7 +158,9 @@ describe("Permission Policy Reload Workflow", () => {
         mockActiveRequest.toolArgs,
       );
 
-      await addPolicyToYaml(policyRule);
+      if (policyRule) {
+        await addPolicyToYaml(policyRule);
+      }
       await services.toolPermissions.reloadPermissions();
     }
 

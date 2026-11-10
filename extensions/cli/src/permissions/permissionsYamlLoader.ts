@@ -6,7 +6,8 @@ import YAML from "yaml";
 import { env } from "../env.js";
 import { logger } from "../util/logger.js";
 
-import { PermissionPolicy, ToolPermissionPolicy } from "./types.js";
+import { commandLineFlagsToPolicies, ToolPatternError } from "./toolPattern.js";
+import { ToolPermissionPolicy } from "./types.js";
 
 export const PERMISSIONS_YAML_PATH = path.resolve(
   path.join(env.continueHome, "permissions.yaml"),
@@ -68,82 +69,20 @@ export function loadPermissionsYaml(): PermissionsYamlConfig | null {
 }
 
 /**
- * Parses a pattern string into a ToolPermissionPolicy
- * Supports formats like:
- * - "Write" -> { tool: "Write", permission }
- * - "Write(pattern)" -> { tool: "Write", permission, argumentMatches: { file_path: "pattern" } }
- * - "Bash(npm install)" -> { tool: "Bash", permission, argumentMatches: { command: "npm install" } }
- */
-export function parseToolPattern(
-  pattern: string,
-  permission: PermissionPolicy,
-): ToolPermissionPolicy {
-  const match = pattern.match(/^([^(]+)(?:\(([^)]*)\))?$/);
-  if (!match) {
-    throw new Error(`Invalid tool pattern: ${pattern}`);
-  }
-
-  const [, toolName, args] = match;
-  const normalizedName = toolName.trim();
-
-  const policy: ToolPermissionPolicy = {
-    tool: normalizedName,
-    permission,
-  };
-
-  if (args) {
-    const trimmedArgs = args.trim();
-    if (trimmedArgs) {
-      // Map tool names to their primary argument parameter
-      const toolArgMappings: Record<string, string> = {
-        Write: "file_path",
-        Edit: "file_path",
-        Read: "file_path",
-        List: "path",
-        Search: "query",
-        Bash: "command",
-        Fetch: "url",
-        Diff: "file_path",
-      };
-
-      const argKey = toolArgMappings[normalizedName] || "pattern";
-      policy.argumentMatches = {
-        [argKey]: trimmedArgs,
-      };
-    }
-  }
-
-  return policy;
-}
-
-/**
  * Converts permissions YAML config to ToolPermissionPolicy array
  */
 export function yamlConfigToPolicies(
   config: PermissionsYamlConfig,
 ): ToolPermissionPolicy[] {
-  const policies: ToolPermissionPolicy[] = [];
-
-  // Order matters: more restrictive policies first
-  if (config.exclude) {
-    for (const pattern of config.exclude) {
-      policies.push(parseToolPattern(pattern, "exclude"));
+  try {
+    // Order matters: more restrictive policies first
+    return commandLineFlagsToPolicies(config);
+  } catch (error) {
+    if (error instanceof ToolPatternError) {
+      throw new ToolPatternError(`${PERMISSIONS_YAML_PATH}: ${error.message}`);
     }
+    throw error;
   }
-
-  if (config.ask) {
-    for (const pattern of config.ask) {
-      policies.push(parseToolPattern(pattern, "ask"));
-    }
-  }
-
-  if (config.allow) {
-    for (const pattern of config.allow) {
-      policies.push(parseToolPattern(pattern, "allow"));
-    }
-  }
-
-  return policies;
 }
 
 /**

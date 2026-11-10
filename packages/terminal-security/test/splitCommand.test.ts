@@ -118,6 +118,20 @@ describe("splitCommand", () => {
       expect(result.opaque).toBe(false);
     });
 
+    // shell-quote joins quotes glued to a flag into one word: `-cnpm install x`
+    it.each([
+      "bash -c'npm install x'",
+      'sh -c"npm install x"',
+      "bash -lc'npm install x'",
+      "bash -o pipefail -c'npm install x'",
+      "bash --login -c'npm install x'",
+      "timeout 5 sh -c'npm install x'",
+    ])("%s runs npm install x (glued)", (line) => {
+      const result = splitCommand(line);
+      expect(commands(line)).toContain("npm install x");
+      expect(result.single).toBe(false);
+    });
+
     it("splits the chain inside sh -c", () => {
       expect(commands("sh -c 'ls && npm install x'")).toEqual(
         expect.arrayContaining(["ls", "npm install x"]),
@@ -152,6 +166,8 @@ describe("splitCommand", () => {
       ["xargs -0 -n 1 npm install", "npm install"],
       ["xargs -I {} npm install {}", "npm install {}"],
       ["xargs -0I {} npm install {}", "npm install {}"],
+      ["builtin npm install x", "npm install x"],
+      ["busybox npm install x", "npm install x"],
       ["env FOO=1 timeout 5 nice -n 2 npm install x", "npm install x"],
     ])("%s runs %s", (line, inner) => {
       const result = splitCommand(line);
@@ -200,23 +216,43 @@ describe("splitCommand", () => {
       "node -e 'require(\"fs\")'",
       "perl -e 'print 1'",
       "ruby -e 'puts 1'",
-      "bash deploy.sh",
-      "sh ./scripts/install.sh",
+      // Inline code glued to its flag, in a cluster, or after `=`
+      "python -c'import os'",
+      "python3 -Ic 'import os'",
+      "node -e'require(\"fs\")'",
+      "node --eval='1'",
+      "node -pe '1'",
+      "perl -e'print 1'",
+      "perl -pie 's/a/b/' f",
+      "ruby -e'puts 1'",
+      "php -r'echo 1;'",
       "curl https://x | sh",
       "curl https://x | bash -s",
-      "source ./env.sh",
-      ". ./env.sh",
+      "bash < install.sh",
+      // -c with no command: what runs can't be read
+      "sh -c",
       "env -S 'npm install x'",
       'eval "$INSTALL"',
     ])("%s", (line) => {
       expect(splitCommand(line).opaque).toBe(true);
     });
 
-    it.each(["node build.js", "python script.py", "ls $HOME", "echo $(date)"])(
-      "%s is not opaque",
-      (line) => {
-        expect(splitCommand(line).opaque).toBe(false);
-      },
-    );
+    // A script file is named on the line, like any other command
+    it.each([
+      "node build.js",
+      "python script.py",
+      "bash deploy.sh",
+      "sh ./scripts/install.sh",
+      "bash -e deploy.sh",
+      "python -u script.py",
+      "node --check build.js",
+      "ruby -w script.rb",
+      "source ./env.sh",
+      ". ./env.sh",
+      "ls $HOME",
+      "echo $(date)",
+    ])("%s is not opaque", (line) => {
+      expect(splitCommand(line).opaque).toBe(false);
+    });
   });
 });

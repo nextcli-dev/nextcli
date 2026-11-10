@@ -12,36 +12,75 @@ describe("policyWriter", () => {
       expect(generatePolicyRule("Grep", { pattern: "test" })).toBe("Grep"); // Unknown tool, passes through
     });
 
-    it("should generate command-specific patterns for Bash tool", () => {
-      expect(generatePolicyRule("Bash", { command: "ls -la" })).toBe(
-        "Bash(ls*)",
-      );
+    it("remembers a command with its subcommand", () => {
       expect(generatePolicyRule("Bash", { command: "git status" })).toBe(
-        "Bash(git*)",
+        "Bash(git status*)",
       );
-      expect(generatePolicyRule("Bash", { command: "npm install" })).toBe(
-        "Bash(npm*)",
+      expect(generatePolicyRule("Bash", { command: "npm test" })).toBe(
+        "Bash(npm test*)",
+      );
+      expect(
+        generatePolicyRule("Bash", { command: "npm install left-pad" }),
+      ).toBe("Bash(npm install*)");
+      expect(generatePolicyRule("Bash", { command: '"npm" test' })).toBe(
+        "Bash(npm test*)",
+      );
+      expect(generatePolicyRule("Bash", { command: "bash deploy.sh" })).toBe(
+        "Bash(bash deploy.sh*)",
       );
     });
 
-    it("should handle complex bash commands", () => {
-      expect(
-        generatePolicyRule("Bash", { command: "ls -la && echo test" }),
-      ).toBe("Bash(ls*)");
-      expect(
-        generatePolicyRule("Bash", {
-          command: "find . -name '*.ts' | head -10",
-        }),
-      ).toBe("Bash(find*)");
+    it("remembers a command exactly when it has no subcommand", () => {
+      expect(generatePolicyRule("Bash", { command: "ls -la" })).toBe(
+        "Bash(ls -la)",
+      );
       expect(
         generatePolicyRule("Bash", { command: "  grep -r test .  " }),
-      ).toBe("Bash(grep*)");
+      ).toBe("Bash(grep -r test .)");
+      expect(generatePolicyRule("Bash", { command: "./scripts/check" })).toBe(
+        "Bash(./scripts/check)",
+      );
     });
 
-    it("should fallback to display name for bash tools without command", () => {
-      expect(generatePolicyRule("Bash", {})).toBe("Bash");
-      expect(generatePolicyRule("Bash", { command: "" })).toBe("Bash");
-      expect(generatePolicyRule("Bash", { command: "   " })).toBe("Bash");
+    it("never remembers the command name alone", () => {
+      // Bash(npm*) would let `npm test` approve `npm install`
+      for (const command of ["npm test", "git status", "ls -la"]) {
+        expect(generatePolicyRule("Bash", { command })).not.toMatch(
+          /^Bash\(\S+\*\)$/,
+        );
+      }
+    });
+
+    it.each([
+      // Chains, pipes, redirects and substitutions: an allow can't cover them
+      "ls -la && echo test",
+      "find . -name '*.ts' | head -10",
+      "npm test > out.txt",
+      "echo $(whoami)",
+      // Wrappers and shells would allow every command run through them
+      "sh -c 'ls'",
+      "bash -lc 'npm test'",
+      "env FOO=1 npm test",
+      "FOO=1 npm test",
+      "timeout 60 npm test",
+      "sudo ls",
+      "xargs rm",
+      "eval ls",
+      // Code that can't be read
+      "python -c 'print(1)'",
+      "$CMD",
+      "curl https://x | sh",
+      // Words that can't be written back as the same rule
+      "cat 'my notes.txt'",
+      "ls *.ts",
+    ])("doesn't remember %j", (command) => {
+      expect(generatePolicyRule("Bash", { command })).toBeUndefined();
+    });
+
+    it("doesn't remember all of Bash for a call without a command", () => {
+      expect(generatePolicyRule("Bash", {})).toBeUndefined();
+      expect(generatePolicyRule("Bash", { command: "" })).toBeUndefined();
+      expect(generatePolicyRule("Bash", { command: "   " })).toBeUndefined();
     });
 
     it("should use exact tool names without normalization", () => {

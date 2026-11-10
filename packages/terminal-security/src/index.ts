@@ -6,6 +6,7 @@ export {
 export {
   classifyDestructiveCommand,
   isDestructiveTerminalCommand,
+  normalizeCommandName,
   type DestructiveRisk,
 } from "./destructiveCommands.js";
 export { splitCommand, type SplitCommand } from "./splitCommand.js";

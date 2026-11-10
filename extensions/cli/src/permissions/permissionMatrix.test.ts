@@ -48,7 +48,7 @@ interface Row {
 
 const MCP_TOOL = "github_create_issue";
 const read = ["Read", { filepath: "src/a.ts" }] as const;
-const edit = ["Edit", { filepath: "src/a.ts" }] as const;
+const edit = ["Edit", { file_path: "src/a.ts" }] as const;
 const fetchUrl = ["Fetch", { url: "https://example.com" }] as const;
 const mcp = [MCP_TOOL, { title: "x" }] as const;
 const bash = (command: string) => ["Bash", { command }] as const;
@@ -81,9 +81,21 @@ const rows: Row[] = [
     yaml: { allow: ["Bash(npm*)"] },
     calls: [
       [...bash("npm test"), "allow"],
-      // main: an allow glob matches a whole chained line
-      [...bash("npm test; curl https://x"), "allow"],
+      [...bash("timeout 60 npm test"), "ask"],
+      [...bash("npm test; curl https://x"), "ask"],
+      [...bash("npm test > out.txt"), "ask"],
       [...bash("ls"), "ask"],
+    ],
+  },
+  {
+    name: "TUI remembered Bash(bash*) allow",
+    approver: true,
+    yaml: { allow: ["Bash(bash*)"] },
+    calls: [
+      [...bash("bash deploy.sh"), "allow"],
+      // The command glued to -c is read, so the allow doesn't cover it
+      [...bash("bash -c'npm install x'"), "ask"],
+      [...bash("bash -c"), "ask"],
     ],
   },
   {
@@ -92,8 +104,54 @@ const rows: Row[] = [
     yaml: { exclude: ["Bash(npm install*)"] },
     calls: [
       [...bash("npm install left-pad"), "deny"],
-      // main: an exclude glob is compared to the whole line
-      [...bash("ls && npm install left-pad"), "ask"],
+      [...bash("ls && npm install left-pad"), "deny"],
+      [...bash("npm test"), "ask"],
+    ],
+  },
+  {
+    name: "TUI narrow Bash exclude with a later allow",
+    approver: true,
+    yaml: { exclude: ["Bash(npm install*)"], allow: ["Bash(python*)"] },
+    calls: [
+      // Can't be read, so the allow doesn't cover it either: someone decides
+      [...bash("python -c 'print(1)'"), "ask"],
+      [...bash("python script.py"), "allow"],
+      [...bash("npm install left-pad"), "deny"],
+    ],
+  },
+  {
+    name: "TUI remembered Bash(git status*)",
+    approver: true,
+    yaml: { allow: ["Bash(git status*)"] },
+    calls: [
+      [...bash("git status"), "allow"],
+      [...bash("git status --short"), "allow"],
+      [...bash("git push"), "ask"],
+    ],
+  },
+  {
+    name: "TUI scoped --allow Write(src/*)",
+    approver: true,
+    init: { allow: ["Write(src/*)"] },
+    calls: [
+      ["Write", { filepath: "src/a.ts", content: "x" }, "allow"],
+      ["Write", { filepath: "./src/a.ts", content: "x" }, "allow"],
+      ["Write", { filepath: "a.txt", content: "x" }, "ask"],
+      ["Write", { filepath: "src/../../.env", content: "x" }, "ask"],
+      ["Write", { filepath: "src/foo/../../../.env", content: "x" }, "ask"],
+      ["Write", { filepath: "src/x/a.ts", content: "x" }, "ask"],
+    ],
+  },
+  {
+    name: "TUI remembered scoped Read exclude",
+    approver: true,
+    yaml: { exclude: ["Read(.env*)", "Read(notes/secret*)"] },
+    calls: [
+      ["Read", { filepath: ".env" }, "deny"],
+      ["Read", { filepath: "./.env.local" }, "deny"],
+      ["Read", { filepath: "./notes/secret.txt" }, "deny"],
+      ["Read", { filepath: `${process.cwd()}/notes/secret.txt` }, "deny"],
+      [...read, "allow"],
     ],
   },
   {
@@ -155,20 +213,65 @@ const rows: Row[] = [
     offered: { Edit: false, [MCP_TOOL]: true },
   },
   {
-    name: "TUI agent file ignores flags",
+    name: "TUI agent file with flags",
     approver: true,
-    init: { exclude: ["Read"] },
+    init: { exclude: ["Read"], allow: ["Edit"] },
     agentFileTools: "Read, Bash",
-    // main: flags are dropped when an agent file is loaded
-    calls: [[...read, "allow"]],
+    calls: [
+      [...read, "deny"],
+      [...edit, "allow"],
+    ],
   },
   {
     name: "TUI agent file after a permissions reload",
     approver: true,
     agentFileTools: "Read, Bash",
     steps: ["reload"],
-    // main: the reload drops the agent file's rules
-    calls: [[...edit, "ask"]],
+    calls: [[...edit, "deny"]],
+  },
+  {
+    name: "TUI agent file then auto mode",
+    approver: true,
+    agentFileTools: "Read, Bash",
+    steps: ["auto"],
+    calls: [
+      [...edit, "deny"],
+      [...read, "allow"],
+    ],
+  },
+  {
+    name: "TUI agent file then plan mode",
+    approver: true,
+    agentFileTools: "Read, Write",
+    steps: ["plan"],
+    calls: [["Write", { filepath: "a.txt", content: "x" }, "deny"]],
+  },
+  {
+    name: "TUI --readonly with an agent file",
+    approver: true,
+    init: { mode: "plan" },
+    agentFileTools: "Read, Write",
+    calls: [
+      ["Write", { filepath: "a.txt", content: "x" }, "deny"],
+      [...read, "allow"],
+    ],
+  },
+  {
+    name: "TUI plan mode after a permissions reload",
+    approver: true,
+    init: { mode: "plan" },
+    steps: ["reload"],
+    calls: [[...edit, "deny"]],
+  },
+  {
+    name: "headless flags after a permissions reload",
+    approver: false,
+    init: { ...HEADLESS, exclude: ["Read"] },
+    steps: ["reload"],
+    calls: [
+      [...read, "deny"],
+      [...edit, "deny"],
+    ],
   },
 
   // Unattended (cn -p)
@@ -206,15 +309,51 @@ const rows: Row[] = [
     offered: { Edit: true },
   },
   {
+    name: "headless scoped --allow Write(src/*)",
+    approver: false,
+    init: { ...HEADLESS, allow: ["Write(src/*)", "Edit(src/*)"] },
+    calls: [
+      ["Write", { filepath: "src/a.ts", content: "x" }, "allow"],
+      ["Write", { filepath: "a.txt", content: "x" }, "deny"],
+      [...edit, "allow"],
+    ],
+    // Offered for the calls the rule allows; each call is still checked
+    offered: { Write: true, Edit: true, MultiEdit: false },
+  },
+  {
     name: "headless --exclude Bash(npm install*)",
     approver: false,
     init: { ...HEADLESS, exclude: ["Bash(npm install*)"] },
     calls: [
       [...bash("npm install left-pad"), "deny"],
-      // main: chained and wrapped forms get past the exclude
-      [...bash("ls && npm install left-pad"), "allow"],
-      [...bash("sh -c 'npm install left-pad'"), "allow"],
+      [...bash("ls && npm install left-pad"), "deny"],
+      [...bash("echo $(npm install left-pad)"), "deny"],
+      [...bash("sh -c 'npm install left-pad'"), "deny"],
+      [...bash("/bin/sh -c 'npm install left-pad'"), "deny"],
+      [...bash("bash -lc 'ls; npm install left-pad'"), "deny"],
+      [...bash("bash -c'npm install left-pad'"), "deny"],
+      [...bash('sh -c"npm install left-pad"'), "deny"],
+      [...bash("timeout 5 bash -lc'npm install left-pad'"), "deny"],
+      [...bash('"npm" install left-pad'), "deny"],
+      [...bash("npm  install left-pad"), "deny"],
+      [...bash("npm \\\ninstall left-pad"), "deny"],
+      [...bash("env FOO=1 npm install left-pad"), "deny"],
+      [...bash("timeout 60 npm install left-pad"), "deny"],
+      [...bash("xargs npm install < deps.txt"), "deny"],
+      [...bash("/usr/bin/npm install left-pad"), "deny"],
+      [...bash("./node_modules/.bin/npm install left-pad"), "deny"],
+      [...bash("builtin npm install left-pad"), "deny"],
+      [...bash("busybox npm install left-pad"), "deny"],
+      [...bash("npm -g install left-pad"), "deny"],
+      [...bash("npm --prefix /tmp install left-pad"), "deny"],
+      [...bash('npm install "left\npad"'), "deny"],
+      // A line the exclude can't see into follows the later rules (here the
+      // headless default)
+      [...bash("python -c 'import os'"), "allow"],
+      [...bash("python script.py"), "allow"],
+      [...bash("bash script.sh"), "allow"],
       [...bash("ls"), "allow"],
+      [...bash("npm test"), "allow"],
     ],
   },
   {
@@ -228,9 +367,10 @@ const rows: Row[] = [
     name: "headless remembered allows and excludes",
     approver: false,
     init: HEADLESS,
-    yaml: { allow: ["Bash(git*)"], exclude: ["Fetch"] },
+    // What "don't ask again" writes for `git status`
+    yaml: { allow: ["Bash(git status*)"], exclude: ["Fetch"] },
     calls: [
-      [...bash("git push"), "allow"],
+      [...bash("git status"), "allow"],
       [...fetchUrl, "deny"],
     ],
     offered: { Fetch: false },
@@ -238,12 +378,12 @@ const rows: Row[] = [
   {
     name: "headless agent file",
     approver: false,
-    init: HEADLESS,
+    init: { ...HEADLESS, exclude: ["Bash"] },
     agentFileTools: "Read, Bash",
     calls: [
+      [...bash("ls"), "deny"],
       [...read, "allow"],
       [...edit, "deny"],
-      [...bash("curl https://x"), "allow"],
       [...mcp, "allow"],
     ],
   },

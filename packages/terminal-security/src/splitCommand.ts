@@ -19,9 +19,11 @@ export interface SplitCommand {
   single: boolean;
   /**
    * Part of what the line runs can't be read from it: a command named by a
-   * variable or substitution (`$CMD`), inline code (`python -c`, `node -e`),
-   * a shell script or stdin (`bash script.sh`, `curl x | sh`), `source`, or a
-   * line that doesn't parse.
+   * variable or substitution (`$CMD`), inline code (`python -c`, `node -e`,
+   * also glued to its flag: `python -c'...'`), a shell reading stdin
+   * (`curl x | sh`) or given `-c` with no command, or a line that doesn't
+   * parse. A script file (`bash deploy.sh`, `python x.py`, `source env.sh`)
+   * is a command like any other: its contents are not read.
    */
   opaque: boolean;
 }
@@ -59,6 +61,8 @@ interface WrapperGrammar {
 
 /** Commands that run the command after their own options */
 const WRAPPERS: Record<string, WrapperGrammar> = {
+  builtin: {},
+  busybox: {},
   command: {},
   doas: { shortWithValue: "uC" },
   env: {
@@ -108,7 +112,9 @@ const VARIABLE_ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
  * written for one command (`npm install*`) can be checked against each of
  * them. The result is a superset: it may list words that never run (a
  * heredoc body), but not miss a command it can see. What it can't see is
- * reported as `opaque`.
+ * reported as `opaque`, except a script file named on the line (`bash
+ * deploy.sh`, `python x.py`, `source env.sh`): that is an ordinary command,
+ * and its contents are neither listed nor reported as `opaque`.
  */
 export function splitCommand(command: string): SplitCommand {
   const state: State = {
@@ -284,26 +290,24 @@ function addSimpleCommand(words: string[], result: State, depth: number) {
   result.opaque = true;
 }
 
-/** Commands that run more commands: shells, eval, find -exec, source, inline code */
+/** Commands that run more commands: shells, eval, find -exec, inline code */
 function runsMore(name: string, argv: string[], result: State, depth: number) {
   if (SHELLS.has(name)) {
-    const body = shellCommandString(argv);
-    if (body === undefined) {
-      // A script file or stdin: curl x | sh, bash deploy.sh
-      result.opaque = true;
-    } else {
+    const run = shellRuns(argv);
+    if (run.bodies.length > 0) {
       result.single = false;
-      splitInto(body, result, depth + 1);
+      for (const body of run.bodies) {
+        splitInto(body, result, depth + 1);
+      }
+    }
+    if (run.opaque) {
+      result.opaque = true;
     }
     return;
   }
   if (name === "eval") {
     result.single = false;
     splitInto(argv.slice(1).join(" "), result, depth + 1);
-    return;
-  }
-  if (name === "source" || name === ".") {
-    result.opaque = true;
     return;
   }
   if (name === "find") {
@@ -324,7 +328,7 @@ function runsMore(name: string, argv: string[], result: State, depth: number) {
   for (const [pattern, flags] of INLINE_CODE_FLAGS) {
     if (
       pattern.test(name) &&
-      argv.slice(1).some((arg) => flags.includes(arg))
+      argv.slice(1).some((arg) => runsInlineCode(arg, flags))
     ) {
       result.opaque = true;
       return;
@@ -333,11 +337,38 @@ function runsMore(name: string, argv: string[], result: State, depth: number) {
 }
 
 /**
- * The command string a shell runs with `-c` (`sh -lc 'cmd'`, `bash -o
- * pipefail -c 'cmd'`), or undefined when it runs a script file or stdin.
+ * Whether an interpreter argument runs code given on the line: the flag
+ * itself (`-c`), a short flag with the code glued on (`-c'import os'` is
+ * one word, `-cimport os`) or ending a cluster (`-Ic`, `-ne`), or a long
+ * flag with `=` (`--eval=...`).
  */
-function shellCommandString(argv: string[]): string | undefined {
+function runsInlineCode(arg: string, flags: string[]): boolean {
+  return flags.some((flag) => {
+    if (flag.startsWith("--")) {
+      return arg === flag || arg.startsWith(`${flag}=`);
+    }
+    if (/^-[A-Za-z]$/.test(flag)) {
+      return (
+        arg.startsWith(flag) ||
+        (/^-[A-Za-z]+$/.test(arg) && arg.endsWith(flag[1]))
+      );
+    }
+    return arg === flag;
+  });
+}
+
+/**
+ * What a shell runs: the command string given with `-c` (`sh -lc 'cmd'`,
+ * `bash -o pipefail -c 'cmd'`, or glued: `bash -c'cmd'` is the one word
+ * `-ccmd`), stdin (`sh`, `bash -s`), or else the script file named after its
+ * options. `opaque` when what runs can't be read: stdin, or `-c` with no
+ * command. Any text after `c` in an option word is taken as a command too,
+ * so a glued command is never missed; the superset is harmless.
+ */
+function shellRuns(argv: string[]): { bodies: string[]; opaque: boolean } {
+  const bodies: string[] = [];
   let readsString = false;
+  let readsStdin = false;
   let i = 1;
   while (i < argv.length) {
     const arg = argv[i];
@@ -354,15 +385,28 @@ function shellCommandString(argv: string[]): string | undefined {
       continue;
     }
     if (/^[-+]./.test(arg)) {
-      if (arg.startsWith("-") && arg.includes("c")) {
+      const c = arg.startsWith("-") ? arg.indexOf("c") : -1;
+      if (c !== -1) {
         readsString = true;
+        if (c < arg.length - 1) {
+          bodies.push(arg.slice(c + 1));
+        }
+      } else if (arg.startsWith("-") && arg.includes("s")) {
+        readsStdin = true;
       }
       i++;
       continue;
     }
     break;
   }
-  return readsString ? argv[i] : undefined;
+  if (readsString) {
+    if (i < argv.length) {
+      bodies.push(argv[i]);
+    }
+    return { bodies, opaque: bodies.length === 0 };
+  }
+  // No script file named: the commands come from stdin (curl x | sh)
+  return { bodies, opaque: readsStdin || i >= argv.length };
 }
 
 /** The command after a wrapper's options, or [] when it runs none */
