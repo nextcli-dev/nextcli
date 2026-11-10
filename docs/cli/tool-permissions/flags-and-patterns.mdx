@@ -88,16 +88,107 @@ cn -p "What changed in v2?" --allow "Fetch(https://docs.example.com/*)"
 
 ### Bash commands
 
-A `Bash(...)` pattern is matched against the commands in the line, not the raw text, so quoting and spacing don't matter: `"npm" install` and `npm  install` match `Bash(npm install*)`.
+A `Bash(...)` pattern is matched against the **commands** in the line, not the raw text, so quoting and extra spaces don't matter: `"npm" install` and `npm  install` both match `Bash(npm install*)`.
 
-An `--exclude` or `--ask` pattern errs toward matching. It covers the line if any command in it matches: after `&&`, `;` or a pipe; inside `$(...)`, `sh -c '...'`, `/bin/sh -c`, `bash -lc`, `eval` or `find -exec`; behind `env FOO=1`, `timeout 60`, `xargs`, `sudo`, `nice`, `nohup`, `builtin`, `busybox` and similar wrappers; glued to a flag (`bash -c'npm install x'`); or split across lines with a backslash. The command's directory is ignored (`/usr/bin/npm`, `./node_modules/.bin/npm`), and the pattern's other words only need to appear in order, so `Bash(npm install*)` also covers `npm -g install x` and `npm --prefix /tmp install x`. What an exclude can't see falls through to the next rule: `python -c '...'`, `bash script.sh` and `$CMD` aren't covered by `Bash(npm install*)`, so in a headless run the default decides them, and the default refuses them.
+`--allow` and `--exclude` read the same pattern differently, and each one is cautious in its own direction:
 
-An `--allow` pattern errs toward not matching. It covers only a line that is one plain command, as written, with no `&&`, `;`, pipe, redirect or substitution. `Bash(npm test*)` allows `npm test` and `npm test -- --watch=false` but not `npm test; curl ...`, `npm test > out.txt`, `timeout 60 npm test` or `./npm test`. It never covers inline code or a variable command. A quoted operator inside an argument is part of that argument, so `Bash(grep*)` allows `grep "<div" index.html`. A script file named on the line is a command like any other: `Bash(python*)` allows `python x.py` whatever the script does.
+| | `--allow` | `--exclude` and `--ask` |
+|---|---|---|
+| Matches | one plain command, exactly as written | any command anywhere in the line |
+| When in doubt | doesn't match, so the command is not allowed | matches, so the command is blocked |
+
+#### `--allow`: one plain command only
+
+An allow covers a line only when the whole line is a single command that matches the pattern. Anything extra (another command, a pipe, a redirect, a wrapper, a path) means it doesn't match, and the next rule decides. In a headless run that usually means refused.
+
+With `--allow "Bash(npm test*)"`:
+
+| Command | Allowed | Why |
+|---|---|---|
+| `npm test` | ✅ | matches |
+| `npm test -- --watch=false` | ✅ | `*` covers the extra arguments |
+| `"npm"  test` | ✅ | quotes and spaces don't matter |
+| `npm tests` | ✅ | `*` is plain text matching, so `test*` also matches `tests` |
+| `npm run test` | ❌ | different words |
+| `npm test && npm run lint` | ❌ | two commands |
+| `npm test; curl https://example.com` | ❌ | two commands |
+| `npm test \| tee out.txt` | ❌ | pipe |
+| `npm test > out.txt` | ❌ | redirect |
+| `timeout 60 npm test` | ❌ | wrapped in another command |
+| `CI=1 npm test` | ❌ | variable set in front of the command |
+| `./npm test` or `/usr/bin/npm test` | ❌ | path differs from the pattern |
+| `sh -c 'npm test'` | ❌ | inline shell code |
+
+Things to know:
+
+- **`*` doesn't stop at a word.** `Bash(ls*)` also allows `lsof`, and `Bash(python*)` also allows `python3`. To allow exactly `npm test`, with or without arguments, and nothing else, use two patterns:
+
+  ```bash
+  cn -p "Make the tests pass" --allow "Bash(npm test)" --allow "Bash(npm test *)"
+  ```
+
+- **A pattern without `*` is exact.** `Bash(git status)` allows `git status` but not `git status -s`.
+- **Quoted operators are fine.** Inside quotes, `&&`, `|` or `<` is part of the argument, so `Bash(grep*)` allows `grep "<div" index.html` and `grep '&&' build.sh`.
+- **Inline code is never allowed, but script files are.** `Bash(python*)` allows `python x.py`, whatever the script does, but not `python -c 'print(1)'`. Allow a script only if you trust what it contains.
+
+#### `--exclude` and `--ask`: any command in the line
+
+An exclude (or ask) looks inside the line and covers it if **any** command in it matches. It also ignores the command's directory, and the words in the pattern only have to appear in order, with anything in between.
+
+With `--exclude "Bash(npm install*)"`, all of these are blocked:
+
+| Command | How the exclude finds `npm install` |
+|---|---|
+| `npm install left-pad` | matches directly |
+| `npm ci && npm install left-pad` | after `&&`, `;` or `\|` |
+| `cat pkgs.txt \| xargs npm install` | behind `xargs` |
+| `echo $(npm install left-pad)` | inside `$(...)` |
+| `sh -c 'npm install left-pad'`, `bash -lc '...'`, `eval '...'` | inside a shell string |
+| `bash -c'npm install left-pad'` | shell string glued to the flag |
+| `find . -exec npm install {} \;` | inside `find -exec` |
+| `sudo npm install -g x`, `env CI=1 npm install`, `timeout 60 npm install`, `nohup ...`, `nice ...` | behind a wrapper |
+| `/usr/bin/npm install x`, `./node_modules/.bin/npm install x` | directory ignored |
+| `npm -g install x`, `npm --prefix /tmp install x` | extra words in between |
+| `npm \` + newline + `install x` | line split with a backslash |
+
+Because the words only have to appear in order, an exclude also covers extra arguments even without `*`: `--exclude "Bash(git push)"` blocks `git push --force origin main` and `git -C repo push`.
+
+These are **not** blocked by `--exclude "Bash(npm install*)"`:
+
+| Command | Why |
+|---|---|
+| `npm i left-pad`, `npm add left-pad` | a different spelling. Exclude each one: `--exclude "Bash(npm i *)" --exclude "Bash(npm add*)"` |
+| `python -c 'import os; os.system("npm install x")'` | inline code in another language |
+| `bash install.sh` | the exclude can't see inside a script file |
+| `$CMD install x` | the command is a variable |
+| `echo npm install`, `git commit -m "npm install"` | `npm install` is only text here, not a command |
+
+A line the exclude doesn't cover isn't allowed by that. It goes to the next rule, and what happens depends on the rest of your setup:
 
 ```bash
-# Allow bash, but never install packages
-cn --allow Bash --exclude "Bash(npm install*)"
+# Safe: the headless default decides the rest, and it refuses
+# python -c '...', bash install.sh and $CMD
+cn -p "Fix the build" --exclude "Bash(npm install*)"
 
-# Headless: run the tests, nothing else beyond the read-only defaults
-cn -p "Make the tests pass" --allow "Bash(npm test*)" --allow Edit
+# Not safe: --allow Bash runs everything the exclude misses,
+# including npm i, bash install.sh and python -c '...'
+cn -p "Fix the build" --allow Bash --exclude "Bash(npm install*)"
+```
+
+<Warning>
+An exclude is a guardrail, not a sandbox. Combined with `--allow Bash`, it stops the obvious spellings of a command but not a script or inline code that does the same thing. To keep a headless run from doing something, allow only the commands it needs instead of allowing `Bash` and excluding what it shouldn't run.
+</Warning>
+
+#### Examples
+
+```bash
+# Headless: run the tests and edit code; any other command beyond the
+# read-only defaults is refused
+cn -p "Make the tests pass" --allow "Bash(npm test)" --allow "Bash(npm test *)" --allow Edit
+
+# Interactive: run any command without asking, but ask before installing packages
+cn --allow Bash --ask "Bash(npm install*)" --ask "Bash(npm i *)" --ask "Bash(npm add*)"
+
+# Never run git push, even chained, behind sudo or inside sh -c
+cn --exclude "Bash(git push)"
 ```
