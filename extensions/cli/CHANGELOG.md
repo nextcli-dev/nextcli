@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.11.0](https://github.com/nextcli-dev/nextcli/compare/cli-v0.10.0...cli-v0.11.0) (2026-11-10)
+
+
+### Features
+
+* make /init create AGENTS.md or update the existing agent file ([#119](https://github.com/nextcli-dev/nextcli/issues/119)) ([1e10559](https://github.com/nextcli-dev/nextcli/commit/1e1055961ee077abb987b891742b1cf60e37f080))
+
+
+### Bug Fixes
+
+* **terminal-security:** NodeNext tsconfig; docs(cli): headless defaults ([#116](https://github.com/nextcli-dev/nextcli/issues/116)) ([7497064](https://github.com/nextcli-dev/nextcli/commit/7497064239487302de74d511af0a3a0970f0d41d))
+
 ## [0.10.0](https://github.com/nextcli-dev/nextcli/compare/cli-v0.9.1...cli-v0.10.0) (2026-11-10)
 
 
