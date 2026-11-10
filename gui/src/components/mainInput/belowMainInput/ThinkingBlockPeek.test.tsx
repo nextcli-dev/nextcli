@@ -2,6 +2,7 @@ import { act, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { updateConfig } from "../../../redux/slices/configSlice";
 import { setModelSettings } from "../../../redux/slices/modelSettingsSlice";
+import { varWithFallback } from "../../../styles/theme";
 import { renderWithProviders } from "../../../util/test/render";
 import ThinkingBlockPeek from "./ThinkingBlockPeek";
 
@@ -71,5 +72,85 @@ describe("ThinkingBlockPeek", () => {
     await selectHiddenModel(store);
     await user.click(screen.getByTestId("thinking-block-peek"));
     expect(screen.getByText("Earlier plan")).toBeInTheDocument();
+  });
+
+  it("is open while the model thinks and collapses when thinking ends", async () => {
+    const { rerender } = await renderWithProviders(
+      <ThinkingBlockPeek
+        content="Working it out"
+        index={0}
+        prevItem={null}
+        inProgress
+      />,
+    );
+    const peek = screen.getByTestId("thinking-block-peek");
+    expect(peek).toHaveTextContent("Thinking");
+    expect(peek).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("Working it out")).toBeVisible();
+
+    await act(async () => {
+      rerender(
+        <ThinkingBlockPeek
+          content="Working it out"
+          index={0}
+          prevItem={null}
+          inProgress={false}
+        />,
+      );
+    });
+    expect(peek).toHaveAttribute("aria-expanded", "false");
+    expect(peek).toHaveTextContent(/^Thought \d+s$/);
+    expect(screen.queryByText("Working it out")).not.toBeInTheDocument();
+  });
+
+  it("keeps a block the user toggled while thinking in that state", async () => {
+    const { user, rerender } = await renderWithProviders(
+      <ThinkingBlockPeek
+        content="Draft"
+        index={0}
+        prevItem={null}
+        inProgress
+      />,
+    );
+    // Close, then reopen by hand during streaming
+    await user.click(screen.getByTestId("thinking-block-peek"));
+    await user.click(screen.getByTestId("thinking-block-peek"));
+
+    await act(async () => {
+      rerender(
+        <ThinkingBlockPeek
+          content="Draft"
+          index={0}
+          prevItem={null}
+          inProgress={false}
+        />,
+      );
+    });
+    expect(screen.getByTestId("thinking-block-peek")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(screen.getByText("Draft")).toBeVisible();
+  });
+
+  it("is a plain text row with the reasoning in the muted color", async () => {
+    const { user } = await renderWithProviders(
+      <ThinkingBlockPeek content="Muted plan" index={0} prevItem={null} />,
+    );
+    const peek = screen.getByTestId("thinking-block-peek");
+    expect(peek.className).not.toMatch(/rounded-full|border-solid/);
+    // Same size as the reasoning and answers, not a smaller caption
+    expect(peek).toHaveStyle({ fontSize: "14px" });
+    expect(peek.className).not.toMatch(/text-xs/);
+
+    await user.click(peek);
+    const content = screen.getByTestId("thinking-block-content");
+    // No inner scroll box: the reasoning takes its full height
+    expect(content.className).not.toMatch(/overflow-y-auto|max-h-/);
+    const markdown = content.querySelector('[data-muted="true"]')!;
+    const noSpaces = (v: string) => v.replace(/\s/g, "");
+    expect(noSpaces(getComputedStyle(markdown).color)).toBe(
+      noSpaces(varWithFallback("description")),
+    );
   });
 });

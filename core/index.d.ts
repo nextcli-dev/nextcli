@@ -470,6 +470,16 @@ export interface PromptLog {
   modelProvider: string;
   prompt: string;
   completion: string;
+  /**
+   * How the provider stream ended, for providers on the OpenAI adapter:
+   * the last `finish_reason` it sent ("stop", "length", "tool_calls", ...).
+   * Undefined when the provider path doesn't report it.
+   */
+  finishReason?: string;
+  /** The adapter stream closed without any chunk carrying a finish reason */
+  streamEndedWithoutFinish?: boolean;
+  /** Output tokens the provider reported for this call, thinking included */
+  outputTokens?: number;
 }
 
 export type MessageModes = "chat" | "agent" | "plan" | "background";
@@ -603,6 +613,8 @@ export interface LLMInteractionEnd extends LLMInteractionBase {
 
 export interface LLMInteractionSuccess extends LLMInteractionEnd {
   kind: "success";
+  /** How the provider stream ended, when the provider path reports it */
+  finishReason?: string;
 }
 
 export interface LLMInteractionCancel extends LLMInteractionEnd {

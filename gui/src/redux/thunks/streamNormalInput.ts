@@ -1,5 +1,5 @@
 import { createAsyncThunk, unwrapResult } from "@reduxjs/toolkit";
-import { LLMFullCompletionOptions, ModelDescription } from "core";
+import { LLMFullCompletionOptions, ModelDescription, PromptLog } from "core";
 import type { ResolvedModelSettings } from "core/llm/modelSettings";
 import { getRuleId } from "core/llm/rules/getSystemMessageWithRules";
 import { ToCoreProtocol } from "core/protocol";
@@ -26,6 +26,7 @@ import {
 import { selectModelSettings } from "../slices/modelSettingsSlice";
 import { ThunkApiType } from "../store";
 import { constructMessages } from "../util/constructMessages";
+import { getNoAnswerNotice } from "../util/noAnswerNotice";
 
 import { modelSupportsNativeTools } from "core/llm/toolSupport";
 import { applyToolOverrides } from "core/tools/applyToolOverrides";
@@ -216,6 +217,7 @@ export const streamNormalInput = createAsyncThunk<
 
     const start = Date.now();
     const streamAborter = state.session.streamAborter;
+    let promptLog: PromptLog | undefined;
     try {
       let gen = extra.ideMessenger.llmStreamChat(
         {
@@ -248,6 +250,7 @@ export const streamNormalInput = createAsyncThunk<
 
       // Attach prompt log and end thinking for reasoning models
       if (next.done && next.value) {
+        promptLog = next.value;
         dispatch(addPromptCompletionPair([next.value]));
 
         try {
@@ -352,6 +355,12 @@ export const streamNormalInput = createAsyncThunk<
 
     // 4. Execute remaining tool calls
     if (originalToolCalls.length === 0) {
+      const notice = promptLog
+        ? getNoAnswerNotice(getState().session.history, promptLog)
+        : undefined;
+      if (notice) {
+        dispatch(setInlineErrorMessage(notice));
+      }
       dispatch(setInactive());
     } else if (needsApprovalPolicies.length > 0) {
       const builtInReadonlyAutoApproved = autoApprovedPolicies.filter(

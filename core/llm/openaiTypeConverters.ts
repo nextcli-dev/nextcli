@@ -357,24 +357,26 @@ export function fromChatCompletionChunk(
       })
     | undefined;
 
+  // Some gateways send text and tool calls in one delta; keep both
+  const toolCalls = delta?.tool_calls
+    ?.filter((tool_call) => !tool_call.type || tool_call.type === "function")
+    .map((tool_call) => ({
+      id: tool_call.id,
+      type: "function" as const,
+      function: {
+        name: (tool_call as any).function?.name,
+        arguments: (tool_call as any).function?.arguments,
+      },
+    }));
+
   if (delta?.content) {
     return {
       role: "assistant",
       content: delta.content,
+      ...(toolCalls?.length && { toolCalls }),
     };
   } else if (delta?.tool_calls) {
-    const toolCalls = delta?.tool_calls
-      .filter((tool_call) => !tool_call.type || tool_call.type === "function")
-      .map((tool_call) => ({
-        id: tool_call.id,
-        type: "function" as const,
-        function: {
-          name: (tool_call as any).function?.name,
-          arguments: (tool_call as any).function?.arguments,
-        },
-      }));
-
-    if (toolCalls.length > 0) {
+    if (toolCalls?.length) {
       return {
         role: "assistant",
         content: "",

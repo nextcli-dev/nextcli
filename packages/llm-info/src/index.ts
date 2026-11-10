@@ -3,6 +3,7 @@ import { Azure } from "./providers/azure.js";
 import { Bedrock } from "./providers/bedrock.js";
 import { Cohere } from "./providers/cohere.js";
 import { CometAPI } from "./providers/cometapi.js";
+import { DeepSeek } from "./providers/deepseek.js";
 import { Gemini } from "./providers/gemini.js";
 import { Inception } from "./providers/inception.js";
 import { MiniMax } from "./providers/minimax.js";
@@ -30,6 +31,7 @@ export const allModelProviders: ModelProvider[] = [
   Bedrock,
   Cohere,
   CometAPI,
+  DeepSeek,
   Inception,
   MiniMax,
   xAI,
