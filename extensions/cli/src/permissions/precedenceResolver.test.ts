@@ -25,8 +25,16 @@ describe("precedenceResolver", () => {
       });
 
       // Command line flags should come first
-      expect(policies[0]).toEqual({ tool: "Read", permission: "exclude" });
-      expect(policies[1]).toEqual({ tool: "Write", permission: "allow" });
+      expect(policies[0]).toEqual({
+        tool: "Read",
+        permission: "exclude",
+        origin: "flag",
+      });
+      expect(policies[1]).toEqual({
+        tool: "Write",
+        permission: "allow",
+        origin: "flag",
+      });
     });
 
     it("should handle wildcard patterns", () => {
@@ -40,8 +48,8 @@ describe("precedenceResolver", () => {
       });
 
       expect(policies).toEqual([
-        { tool: "*", permission: "exclude" },
-        { tool: "external_*", permission: "allow" },
+        { tool: "*", permission: "exclude", origin: "flag" },
+        { tool: "external_*", permission: "allow", origin: "flag" },
       ]);
     });
 
@@ -55,9 +63,9 @@ describe("precedenceResolver", () => {
       });
 
       expect(policies).toEqual([
-        { tool: "Read", permission: "allow" },
-        { tool: "write", permission: "allow" },
-        { tool: "BASH", permission: "allow" },
+        { tool: "Read", permission: "allow", origin: "flag" },
+        { tool: "write", permission: "allow", origin: "flag" },
+        { tool: "BASH", permission: "allow", origin: "flag" },
       ]);
     });
 
@@ -84,12 +92,12 @@ describe("precedenceResolver", () => {
 
       // Order should be: exclude, ask, allow (as specified in the function)
       expect(policies).toEqual([
-        { tool: "Write", permission: "exclude" },
-        { tool: "Bash", permission: "exclude" },
-        { tool: "List", permission: "ask" },
-        { tool: "Search", permission: "ask" },
-        { tool: "Read", permission: "allow" },
-        { tool: "Fetch", permission: "allow" },
+        { tool: "Write", permission: "exclude", origin: "flag" },
+        { tool: "Bash", permission: "exclude", origin: "flag" },
+        { tool: "List", permission: "ask", origin: "flag" },
+        { tool: "Search", permission: "ask", origin: "flag" },
+        { tool: "Read", permission: "allow", origin: "flag" },
+        { tool: "Fetch", permission: "allow", origin: "flag" },
       ]);
     });
 
@@ -131,7 +139,11 @@ describe("precedenceResolver", () => {
         });
 
         // CLI exclusion should come first
-        expect(policies[0]).toEqual({ tool: "Write", permission: "exclude" });
+        expect(policies[0]).toEqual({
+          tool: "Write",
+          permission: "exclude",
+          origin: "flag",
+        });
         // Default policies should follow
         expect(policies.slice(1)).toEqual(DEFAULT_TOOL_POLICIES);
       });

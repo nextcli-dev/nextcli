@@ -123,6 +123,10 @@ export async function initializeServices(initOptions: ServiceInitOptions = {}) {
         serviceContainer.get<AgentFileServiceState>(SERVICE_NAMES.AGENT_FILE),
       ]);
 
+      // Nobody to approve a call: closed defaults, and every ask is refused
+      const unattended =
+        !!initOptions.headless && !initOptions.approvalsAvailable;
+
       // Initialize mode service with tool permission overrides
       if (initOptions.toolPermissionOverrides) {
         const overrides = { ...initOptions.toolPermissionOverrides };
@@ -132,7 +136,7 @@ export async function initializeServices(initOptions: ServiceInitOptions = {}) {
           allow: overrides.allow,
           ask: overrides.ask,
           exclude: overrides.exclude,
-          isHeadless: initOptions.headless,
+          isHeadless: unattended,
         };
         // Only set the boolean flag that corresponds to the mode
         if (overrides.mode) {
@@ -148,7 +152,7 @@ export async function initializeServices(initOptions: ServiceInitOptions = {}) {
         // Even if no overrides, we need to initialize with defaults
         return await toolPermissionService.initialize(
           {
-            isHeadless: initOptions.headless,
+            isHeadless: unattended,
           },
           agentFileState,
           mcpState,

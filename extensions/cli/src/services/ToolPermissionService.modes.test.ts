@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { checkToolPermission } from "../permissions/permissionChecker.js";
+
 import { ToolPermissionService } from "./ToolPermissionService.js";
 
 describe("ToolPermissionService - Mode Functionality", () => {
@@ -116,31 +118,20 @@ describe("ToolPermissionService - Mode Functionality", () => {
       ).toBe(true);
     });
 
-    it("should use absolute override for plan mode (ignore non-mode policies)", () => {
-      // Initialize with some existing policies
+    it("applies the flags in plan mode but never allows writes", () => {
       service.initializeSync({
-        allow: ["allowedTool"],
+        allow: ["allowedTool", "Write"],
         exclude: ["excludedTool"],
       });
 
-      const initialPolicies = service.getPermissions().policies;
-      const nonModePolicyCount = initialPolicies.length;
-
       service.switchMode("plan");
-      const newPolicies = service.getPermissions().policies;
+      const permissions = service.getPermissions();
+      const check = (name: string) =>
+        checkToolPermission({ name, arguments: {} }, permissions).permission;
 
-      // Plan mode should use ONLY mode policies (absolute override)
-      // Should contain Write exclude policy for plan mode
-      const writePolicy = newPolicies.find((p) => p.tool === "Write");
-      expect(writePolicy?.permission).toBe("exclude");
-
-      // Should not contain any user-defined policies from the initial setup
-      const userAllowPolicy = newPolicies.find((p) => p.tool === "allowedTool");
-      const userExcludePolicy = newPolicies.find(
-        (p) => p.tool === "excludedTool",
-      );
-      expect(userAllowPolicy).toBeUndefined();
-      expect(userExcludePolicy).toBeUndefined();
+      expect(check("allowedTool")).toBe("allow");
+      expect(check("excludedTool")).toBe("exclude");
+      expect(check("Write")).toBe("exclude");
     });
 
     it("should handle switching between different modes", () => {
@@ -175,14 +166,14 @@ describe("ToolPermissionService - Mode Functionality", () => {
       service.switchMode("plan");
       const planPolicies = service.getPermissions().policies;
 
-      // Plan mode should not have user policies
+      // Plan mode keeps the flags too
       const planUserPolicyCount = planPolicies.filter(
         (p) =>
           p.tool === "customAllowedTool" ||
           p.tool === "customExcludedTool" ||
           p.tool === "customAskTool",
       ).length;
-      expect(planUserPolicyCount).toBe(0);
+      expect(planUserPolicyCount).toBe(3);
 
       // Switch back to normal mode (should restore original policies)
       service.switchMode("normal");

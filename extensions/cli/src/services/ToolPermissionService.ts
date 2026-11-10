@@ -1,5 +1,6 @@
 import {
   AUTO_MODE_POLICIES,
+  getDefaultToolPolicies,
   getPlanModePolicies,
 } from "src/permissions/defaultPolicies.js";
 
@@ -84,16 +85,16 @@ export class ToolPermissionService
   generateAgentFilePolicies(
     agentFileServiceState?: AgentFileServiceState,
     mcpServiceState?: MCPServiceState,
+    isHeadless = false,
   ): ToolPermissionPolicy[] {
-    // With --agent, all available tools are allowed if not specified
+    // What the agent file doesn't list: every tool in the terminal UI, the
+    // closed headless defaults in a headless run
+    const rest: ToolPermissionPolicy[] = isHeadless
+      ? getDefaultToolPolicies(true)
+      : [{ tool: "*", permission: "allow" }];
     const parsedTools = agentFileServiceState?.parsedTools;
     if (!parsedTools) {
-      return [
-        {
-          tool: "*",
-          permission: "allow",
-        },
-      ];
+      return rest;
     }
 
     const policies: ToolPermissionPolicy[] = [];
@@ -164,11 +165,7 @@ export class ToolPermissionService
       policies.push(...disallowed);
     }
 
-    // Allow all other tools
-    policies.push({
-      tool: "*",
-      permission: "allow",
-    });
+    policies.push(...rest);
 
     return policies;
   }
@@ -177,7 +174,9 @@ export class ToolPermissionService
    * The policies for the current mode, built from the stored sources. Used on
    * init, on a mode switch and on a reload, so all three agree.
    *
-   * - Plan mode (--readonly) uses only the plan-mode policies.
+   * - Plan mode (--readonly) layers the flags and the plan-mode defaults; it
+   *   ignores permissions.yaml and the agent file. checkToolPermission keeps
+   *   writes excluded and Bash strict whatever the flags say.
    * - An agent file's policies apply in normal and auto mode, after the flags.
    * - Auto mode without an agent file allows every tool.
    * - Normal mode layers flags, permissions.yaml and the defaults.
@@ -186,12 +185,15 @@ export class ToolPermissionService
     const { currentMode, isHeadless } = this.currentState;
     const { flags, agentFile, mcp } = this.sources;
     if (currentMode === "plan") {
-      return getPlanModePolicies(isHeadless);
+      return [
+        ...commandLineFlagsToPolicies(flags),
+        ...getPlanModePolicies(isHeadless),
+      ];
     }
     if (agentFile?.agentFile) {
       return [
         ...commandLineFlagsToPolicies(flags),
-        ...this.generateAgentFilePolicies(agentFile, mcp),
+        ...this.generateAgentFilePolicies(agentFile, mcp, isHeadless),
       ];
     }
     if (currentMode === "auto") {
@@ -203,6 +205,14 @@ export class ToolPermissionService
       useDefaults: true,
       isHeadless,
     });
+  }
+
+  private buildPermissions(): ToolPermissions {
+    return {
+      policies: this.buildPolicies(),
+      readonly: this.currentState.currentMode === "plan",
+      unattended: this.currentState.isHeadless,
+    };
   }
 
   /**
@@ -229,7 +239,7 @@ export class ToolPermissionService
       currentMode: runtimeOverrides?.mode ?? this.currentState.currentMode,
       isHeadless: runtimeOverrides?.isHeadless ?? this.currentState.isHeadless,
     });
-    this.setState({ permissions: { policies: this.buildPolicies() } });
+    this.setState({ permissions: this.buildPermissions() });
 
     (this as any).isInitialized = true;
 
@@ -270,7 +280,7 @@ export class ToolPermissionService
 
     this.setState({ currentMode: newMode });
     this.emit("modeChanged", newMode, currentMode);
-    this.setState({ permissions: { policies: this.buildPolicies() } });
+    this.setState({ permissions: this.buildPermissions() });
 
     return this.getState();
   }
@@ -295,7 +305,7 @@ export class ToolPermissionService
    */
   async reloadPermissions(): Promise<void> {
     logger.debug("Reloading permissions from configuration files");
-    this.setState({ permissions: { policies: this.buildPolicies() } });
+    this.setState({ permissions: this.buildPermissions() });
   }
 
   /**

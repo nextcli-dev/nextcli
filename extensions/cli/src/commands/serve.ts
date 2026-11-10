@@ -102,6 +102,8 @@ export async function serve(prompt?: string, options: ServeOptions = {}) {
     options,
     toolPermissionOverrides: permissionOverrides,
     headless: true, // Skip onboarding in serve mode
+    // Tool calls are approved through POST /permission
+    approvalsAvailable: true,
   });
 
   // Get initialized services from the service container

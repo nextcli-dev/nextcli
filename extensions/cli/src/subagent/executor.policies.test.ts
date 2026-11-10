@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { getDefaultToolPolicies } from "../permissions/defaultPolicies.js";
 import { checkToolPermission } from "../permissions/permissionChecker.js";
 import type {
   ToolPermissions,
@@ -11,11 +12,21 @@ import { executeSubAgent } from "./executor.js";
 const { containerSet } = vi.hoisted(() => ({ containerSet: vi.fn() }));
 let childPermissions: ToolPermissions | undefined;
 
+// The parent: a headless run with the closed defaults
+const parent: ToolPermissions = {
+  policies: getDefaultToolPolicies(true),
+  unattended: true,
+};
+
 vi.mock("../services/ServiceContainer.js", () => ({
   serviceContainer: { get: vi.fn(), set: containerSet },
 }));
 
 vi.mock("../services/index.js", () => ({ services: {} }));
+
+vi.mock("../stream/streamChatResponse.helpers.js", () => ({
+  readSessionPermissions: async () => parent,
+}));
 
 vi.mock("../stream/streamChatResponse.js", () => ({
   // The child runs with the permissions passed to its stream
@@ -32,7 +43,7 @@ describe("executeSubAgent permissions", () => {
     childPermissions = undefined;
   });
 
-  it("passes the child its permissions without replacing the main session's", async () => {
+  it("runs the child under the parent's permissions, without another subagent", async () => {
     const result = await executeSubAgent({
       agent: { model: { name: "child" }, llmApi: {} } as any,
       prompt: "look around",
@@ -41,12 +52,16 @@ describe("executeSubAgent permissions", () => {
     });
 
     expect(result.success).toBe(true);
-    const check = (name: string) =>
-      checkToolPermission({ name, arguments: {} }, childPermissions!)
+    const check = (name: string, args: Record<string, unknown> = {}) =>
+      checkToolPermission({ name, arguments: args }, childPermissions!)
         .permission;
-    // main: the child allows every tool
     expect(check("Read")).toBe("allow");
-    expect(check("github_create_issue")).toBe("allow");
+    expect(check("Bash", { command: "ls" })).toBe("allow");
+    expect(check("Bash", { command: "curl https://x" })).toBe("ask");
+    expect(check("Fetch")).toBe("exclude");
+    expect(check("github_create_issue")).toBe("exclude");
+    expect(check("Subagent")).toBe("exclude");
+    expect(childPermissions!.unattended).toBe(true);
     // A mode switch in the main session during the child's run is not undone
     expect(containerSet).not.toHaveBeenCalled();
   });

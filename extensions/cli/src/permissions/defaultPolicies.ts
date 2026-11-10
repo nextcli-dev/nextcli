@@ -1,78 +1,106 @@
-import { ToolPermissionPolicy } from "./types.js";
+import { PermissionPolicy, ToolPermissionPolicy } from "./types.js";
+
+type Defaults = {
+  /** Terminal UI */
+  normal: PermissionPolicy;
+  /** cn -p and other runs with nobody to approve a call */
+  headless: PermissionPolicy;
+  /** --readonly in the terminal UI */
+  plan: PermissionPolicy;
+  /** --readonly with nobody to approve a call (what nextcli-checks runs) */
+  planHeadless: PermissionPolicy;
+};
+
+const allow: Defaults = {
+  normal: "allow",
+  headless: "allow",
+  plan: "allow",
+  planHeadless: "allow",
+};
+const write: Defaults = {
+  normal: "ask",
+  headless: "ask",
+  plan: "exclude",
+  planHeadless: "exclude",
+};
+/** Sends data off the machine: closed when nobody is watching */
+const network: Defaults = {
+  normal: "allow",
+  headless: "exclude",
+  plan: "allow",
+  planHeadless: "exclude",
+};
 
 /**
- * Default permission policies for all built-in tools.
- * These policies are applied in order - first match wins.
+ * The default permission of each built-in tool, in each kind of run. A new
+ * built-in tool needs a row here (defaultPolicies.test.ts checks this).
+ *
+ * Headless Bash is "allow", but a default allow is evaluated strictly
+ * (checkToolPermission), so only commands terminal-security approves on its
+ * own run. `*` covers MCP and unknown tools; nobody can approve them in a
+ * headless run, so they are excluded there. --allow opts a run back in.
  */
+const TOOL_DEFAULTS: Record<string, Defaults> = {
+  Edit: write,
+  MultiEdit: write,
+  Write: write,
+  AskQuestion: allow,
+  CheckBackgroundJob: allow,
+  Checklist: allow,
+  Diff: allow,
+  Exit: allow,
+  List: allow,
+  Read: allow,
+  ReportFailure: allow,
+  Search: allow,
+  Skills: allow,
+  Status: allow,
+  Fetch: network,
+  UploadArtifact: network,
+  Bash: {
+    normal: "ask",
+    headless: "allow",
+    plan: "ask",
+    planHeadless: "exclude",
+  },
+  Subagent: {
+    normal: "ask",
+    headless: "exclude",
+    plan: "ask",
+    planHeadless: "exclude",
+  },
+  "*": {
+    normal: "ask",
+    headless: "exclude",
+    plan: "ask",
+    planHeadless: "exclude",
+  },
+};
+
+function policiesFor(column: keyof Defaults): ToolPermissionPolicy[] {
+  return Object.entries(TOOL_DEFAULTS).map(([tool, defaults]) => ({
+    tool,
+    permission: defaults[column],
+  }));
+}
+
+/** Default policies for normal mode. First match wins; `*` is last. */
 export function getDefaultToolPolicies(
   isHeadless = false,
 ): ToolPermissionPolicy[] {
-  const policies: ToolPermissionPolicy[] = [
-    // Write tools
-    { tool: "Edit", permission: "ask" },
-    { tool: "MultiEdit", permission: "ask" },
-    { tool: "Write", permission: "ask" },
-    { tool: "CheckBackgroundJob", permission: "allow" },
-    { tool: "AskQuestion", permission: "allow" },
-    { tool: "Checklist", permission: "allow" },
-    { tool: "Diff", permission: "allow" },
-    { tool: "Skills", permission: "allow" },
-    { tool: "Exit", permission: "allow" }, // Exit tool is generally safe (headless mode only)
-    { tool: "Fetch", permission: "allow" }, // Technically not read only but edge casey to post w query params
-    { tool: "List", permission: "allow" },
-    { tool: "Read", permission: "allow" },
-    { tool: "Search", permission: "allow" },
-    { tool: "Status", permission: "allow" },
-    { tool: "ReportFailure", permission: "allow" },
-    { tool: "UploadArtifact", permission: "allow" },
-  ];
-
-  // MCP and Bash are ask in TUI mode, auto in headless
-  if (isHeadless) {
-    policies.push({ tool: "Bash", permission: "allow" });
-    policies.push({ tool: "*", permission: "allow" });
-  } else {
-    policies.push({ tool: "Bash", permission: "ask" });
-    policies.push({ tool: "*", permission: "ask" });
-  }
-
-  return policies;
+  return policiesFor(isHeadless ? "headless" : "normal");
 }
 
 /**
- * Plan mode (--readonly): a complete override that excludes all writes.
- *
- * Bash can change files (cp, mv, tee, build scripts) and MCP tools can do
- * anything, so a person approves each call in the TUI. Unattended (headless)
- * runs often review untrusted code with a provider key in the environment, so
- * they get no shell, no MCP tools and no Fetch, which could send data out.
+ * Plan mode (--readonly) defaults: writes excluded. A person approves Bash
+ * and MCP tools in the terminal UI; a headless run gets neither, and no
+ * Fetch, unless --allow opts in. Edit, MultiEdit and Write stay excluded
+ * whatever the flags say (checkToolPermission).
  */
 export function getPlanModePolicies(
   isHeadless = false,
 ): ToolPermissionPolicy[] {
-  return [
-    { tool: "Edit", permission: "exclude" },
-    { tool: "MultiEdit", permission: "exclude" },
-    { tool: "Write", permission: "exclude" },
-
-    { tool: "Bash", permission: isHeadless ? "exclude" : "ask" },
-    { tool: "Fetch", permission: isHeadless ? "exclude" : "allow" },
-    { tool: "CheckBackgroundJob", permission: "allow" },
-    { tool: "AskQuestion", permission: "allow" },
-    { tool: "Checklist", permission: "allow" },
-    { tool: "Diff", permission: "allow" },
-    { tool: "Exit", permission: "allow" },
-    { tool: "List", permission: "allow" },
-    { tool: "Read", permission: "allow" },
-    { tool: "ReportFailure", permission: "allow" },
-    { tool: "Search", permission: "allow" },
-    { tool: "Skills", permission: "allow" },
-    { tool: "Status", permission: "allow" },
-    { tool: "UploadArtifact", permission: "allow" },
-
-    // MCP tools
-    { tool: "*", permission: isHeadless ? "exclude" : "ask" },
-  ];
+  return policiesFor(isHeadless ? "planHeadless" : "plan");
 }
 
 // Auto mode: Complete override - allow everything without asking

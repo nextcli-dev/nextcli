@@ -15,16 +15,16 @@ The default mode that follows configured permission policies from `permissions.y
 
 ### `plan`
 
-Planning mode uses only its own policies, to enforce read-only access. It prevents file modifications, whatever the flags, agent file or `permissions.yaml` say.
+Planning mode enforces read-only access. It prevents file modifications, whatever the flags say; the agent file and `permissions.yaml` are ignored.
 
 - **Command-line flag:** `--readonly` (for backward compatibility)
 - **UI Indicator:** `[plan]` shown in blue
 - **Current directory:** Hidden to save space and focus on analysis
-- **Permission override:** **Absolute** - excludes write tools (Write, Edit, etc.) and allows read tools (Read, Search, List, etc.)
+- **Permission override:** excludes write tools (Write, Edit, MultiEdit) on every call, so no flag can bring them back, and allows read tools (Read, Search, List, etc.)
 - **Bash, Fetch and MCP tools:**
   - Interactive: Bash and MCP tools ask before every call, because they can change files. Fetch is allowed.
   - Headless (`cn -p --readonly`): Bash, Fetch and MCP tools are excluded. Unattended runs often read untrusted code, such as a pull request, with a provider key in the environment, so they get no shell and no way to send data out.
-- **User config ignored:** Any user `--allow` flags are overridden
+- **User flags:** `--allow` and `--exclude` apply before the plan defaults, so a read-only run can be given a tool, for example `--allow "Bash(git log*)"`, `--allow Fetch` or `--allow "github_*"`. Bash is evaluated strictly on every call: only commands terminal-security approves on its own run, so `--allow Bash` turns the shell on for read-only commands only. `permissions.yaml` and agent files are ignored.
 
 ### `auto`
 
@@ -69,7 +69,12 @@ Modes are implemented through the permission system:
 
 The first rule that matches a call decides it. The rules come from, in order:
 
-**Plan mode:** only the plan-mode policies. Flags, the agent file and `permissions.yaml` are ignored.
+**Plan mode:**
+
+1. Command-line overrides (`--allow`, `--ask`, `--exclude`)
+2. Plan-mode defaults
+
+Write tools stay excluded and Bash stays strict whatever the flags say. The agent file and `permissions.yaml` are ignored.
 
 **With an agent file (normal and auto modes):**
 
@@ -89,5 +94,5 @@ Initialization, a mode switch and a permissions reload all build the policies th
 ### Mode-Specific Behaviors
 
 - **normal**: No mode policies applied, uses existing user configuration; shows current directory
-- **plan**: excludes write tools (Write, Edit, MultiEdit) and allows read tools (Read, Search, List); Bash and MCP tools ask (excluded in a headless run); hides current directory
+- **plan**: excludes write tools (Write, Edit, MultiEdit), allows read tools, asks for Bash and MCP tools in the TUI and excludes them headless unless `--allow` adds them; hides current directory
 - **auto**: allows all tools, or applies the agent file's list when there is one; hides current directory
