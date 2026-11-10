@@ -47,7 +47,14 @@ export function resolvePermissionPrecedence(
     const yamlConfig = loadPermissionsYaml();
     if (yamlConfig) {
       const yamlPolicies = yamlConfigToPolicies(yamlConfig);
-      policies.push(...yamlPolicies);
+      // The allows and asks in permissions.yaml are mostly answers given in
+      // the terminal UI. A headless run takes only its excludes; --allow is
+      // how a headless run is opted in.
+      policies.push(
+        ...(sources.isHeadless
+          ? yamlPolicies.filter((policy) => policy.permission === "exclude")
+          : yamlPolicies),
+      );
     }
   }
 

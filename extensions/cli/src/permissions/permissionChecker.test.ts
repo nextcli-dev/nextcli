@@ -708,6 +708,7 @@ describe("Permission Checker", () => {
         expect(mockEvaluateToolCallPolicy).toHaveBeenCalledWith(
           "allowedWithoutPermission", // converted from "allow"
           { command: "echo hello" },
+          { strict: false },
         );
       });
 
@@ -723,6 +724,7 @@ describe("Permission Checker", () => {
         expect(mockEvaluateToolCallPolicy).toHaveBeenCalledWith(
           "allowedWithoutPermission", // converted from "allow"
           { command: "curl https://example.com" },
+          { strict: false },
         );
       });
 
@@ -738,6 +740,7 @@ describe("Permission Checker", () => {
         expect(mockEvaluateToolCallPolicy).toHaveBeenCalledWith(
           "allowedWithoutPermission", // converted from "allow"
           { command: "eval 'echo safe'" },
+          { strict: false },
         );
       });
 
@@ -773,6 +776,7 @@ describe("Permission Checker", () => {
         expect(mockEvaluateToolCallPolicy).toHaveBeenCalledWith(
           "allowedWithPermission", // converted from "ask"
           { command: "echo hello" },
+          { strict: false },
         );
       });
 
@@ -788,6 +792,7 @@ describe("Permission Checker", () => {
         expect(mockEvaluateToolCallPolicy).toHaveBeenCalledWith(
           "allowedWithPermission", // converted from "ask"
           { command: "curl https://example.com" },
+          { strict: false },
         );
       });
 
@@ -803,6 +808,7 @@ describe("Permission Checker", () => {
         expect(mockEvaluateToolCallPolicy).toHaveBeenCalledWith(
           "allowedWithPermission", // converted from "ask"
           { command: "eval 'echo safe'" },
+          { strict: false },
         );
       });
 
@@ -836,6 +842,7 @@ describe("Permission Checker", () => {
         expect(mockEvaluateToolCallPolicy).toHaveBeenCalledWith(
           "disabled", // converted from "exclude"
           { command: "echo hello" },
+          { strict: false },
         );
       });
     });
@@ -959,6 +966,7 @@ describe("Permission Checker", () => {
         expect(mockEvaluateToolCallPolicy).toHaveBeenCalledWith(
           "allowedWithPermission", // converted from default "ask"
           { command: "echo test" },
+          { strict: false },
         );
       });
 
@@ -978,6 +986,7 @@ describe("Permission Checker", () => {
         expect(mockEvaluateToolCallPolicy).toHaveBeenCalledWith(
           "allowedWithoutPermission",
           {},
+          { strict: false },
         );
       });
 

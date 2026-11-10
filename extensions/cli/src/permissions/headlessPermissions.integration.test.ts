@@ -40,6 +40,7 @@ describe("Headless Permissions Integration", () => {
       expect(policies[0]).toEqual({
         tool: "dangerous_tool",
         permission: "exclude",
+        origin: "flag",
       });
       // Default policies should follow
       expect(policies.slice(1)).toEqual(DEFAULT_TOOL_POLICIES);

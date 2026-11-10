@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { BUILT_IN_TOOL_NAMES } from "../tools/builtInToolNames.js";
+
 import {
   getDefaultToolPolicies,
   getPlanModePolicies,
@@ -92,5 +94,34 @@ describe("plan mode policies", () => {
     expect(policies).toContainEqual({ tool: "Read", permission: "allow" });
     expect(policies).toContainEqual({ tool: "List", permission: "allow" });
     expect(policies).toContainEqual({ tool: "Search", permission: "allow" });
+  });
+});
+
+describe("every built-in tool", () => {
+  it.each([false, true])(
+    "has an explicit default (headless: %s), not only the catch-all",
+    (isHeadless) => {
+      for (const policies of [
+        getDefaultToolPolicies(isHeadless),
+        getPlanModePolicies(isHeadless),
+      ]) {
+        const named = new Set(policies.map((p) => p.tool));
+        for (const tool of BUILT_IN_TOOL_NAMES) {
+          expect(named.has(tool), tool).toBe(true);
+        }
+        expect(policies.at(-1)?.tool).toBe("*");
+      }
+    },
+  );
+
+  it("closes the network, MCP tools and subagents in a headless run", () => {
+    const permissionOf = (tool: string) =>
+      getDefaultToolPolicies(true).find((p) => p.tool === tool)?.permission;
+    expect(permissionOf("Fetch")).toBe("exclude");
+    expect(permissionOf("UploadArtifact")).toBe("exclude");
+    expect(permissionOf("Subagent")).toBe("exclude");
+    expect(permissionOf("*")).toBe("exclude");
+    // Narrowed to what terminal-security approves on its own (checkToolPermission)
+    expect(permissionOf("Bash")).toBe("allow");
   });
 });
