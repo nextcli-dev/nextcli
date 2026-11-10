@@ -1,0 +1,37 @@
+---
+title: "Agent Files"
+sidebarTitle: "Agent Files"
+description: "How an agent file's tools: line sets tool permissions for a cn session"
+---
+
+```bash
+cn --agent my-org/pr-triage
+```
+
+An agent file is a markdown file with YAML frontmatter. Its `tools:` line replaces the default rules for the session:
+
+```yaml
+---
+name: pr-triage
+tools: Read, Search, Bash, github/mcp:create_issue
+---
+```
+
+The line is a comma-separated list of:
+
+- a built-in tool name: `Read`, `Bash`, `Write`
+- `owner/package`: every tool from that MCP server
+- `owner/package:tool_name` or `https://mcp.example.com:tool_name`: one tool from that server
+- `built_in`: leave the built-in tools at the run's defaults, instead of listing them
+
+## How the list is applied
+
+- A listed tool is **allowed**, not asked. In the TUI, an agent file that lists `Bash` runs `curl` without a prompt.
+- A built-in tool that isn't listed is excluded, once the list names any built-in or any MCP server.
+- When the list names a specific tool of a server, that server's other tools are excluded.
+- Tools the list says nothing about fall back to the run's default: in the TUI that is `allow`, so **MCP tools from servers the file doesn't mention are allowed without asking**; in `cn -p` it is the closed headless defaults, so they are excluded.
+- `--allow`, `--ask` and `--exclude` apply before the file: `cn --agent my-org/pr-triage --exclude Bash` removes the shell the file grants.
+- `permissions.yaml` is ignored while an agent file is loaded. `--readonly` ignores the agent file.
+- In `cn -p`, the file's `Bash` is evaluated strictly ([read-only commands](/cli/tool-permissions/read-only-commands) only), while its `Write` is a plain allow. `--allow Bash` opens the shell. A server named in the list that isn't connected is skipped with a warning in the log, and its tools fall back to the default.
+
+With [auto mode](/cli/modes/auto-mode), the flags and the file's tool list still apply.

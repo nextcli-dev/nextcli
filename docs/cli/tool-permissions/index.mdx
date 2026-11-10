@@ -1,0 +1,58 @@
+---
+title: "Tool Permissions"
+sidebarTitle: "Overview"
+description: "How the cn CLI decides whether a tool call runs, asks or is refused"
+---
+
+Every tool has one of three permission levels:
+
+| Permission | Behavior |
+|------------|----------|
+| `allow` | Runs without asking |
+| `ask` | Asks before running. With nobody to answer, the call is refused |
+| `exclude` | Not offered to the model |
+
+Permissions are applied twice. Before each model request, `cn` decides which tools to offer: a tool is offered when a call can run, or when someone is present to approve it. A tool that is allowed only for some arguments, such as `Write(src/*)`, is offered too. Then every call the model makes is checked against the rules and the limits of the run, so a tool that is offered can still be refused for a given call.
+
+"Nobody to answer" means a run without a person at the terminal: `cn -p` and `cn review`. There, `ask` means refused. See [Kinds of run](/cli/tool-permissions/defaults#kinds-of-run).
+
+## In this section
+
+- [Defaults](/cli/tool-permissions/defaults): what each tool gets in each kind of run.
+- [Read-only commands](/cli/tool-permissions/read-only-commands): which shell commands run without a person.
+- [Flags & patterns](/cli/tool-permissions/flags-and-patterns): `--allow`, `--ask`, `--exclude` and the pattern syntax.
+- [`permissions.yaml`](/cli/tool-permissions/permissions-yaml): rules saved from the TUI.
+- [Agent files](/cli/tool-permissions/agent-files): a `tools:` line that replaces the defaults.
+
+[Modes](/cli/modes) (normal, plan and auto) sit on top of these rules.
+
+## Precedence
+
+The first rule that matches a call decides it. The rules come from, in order:
+
+1. **Mode** — `--readonly` applies its two limits on every call; `--auto` without an agent file replaces every other source with `*: allow`. See [Modes](/cli/modes).
+2. **Flags** — `--exclude`, then `--ask`, then `--allow`.
+3. **Agent file** — its tool list, when one is loaded. It replaces `permissions.yaml` and the defaults.
+4. **`permissions.yaml`** — in a headless run, only its excludes.
+5. **Defaults** — the [defaults table](/cli/tool-permissions/defaults), per kind of run.
+
+Within one source, excludes come before asks, which come before allows.
+
+## What a refusal looks like
+
+At the terminal, a call the rules block gets the tool result `Command blocked by security policy`, and the model continues with that information. A call you reject at the prompt gets `Permission denied by user`.
+
+In `cn -p`, a refused call gets:
+
+```
+Blocked by security policy: this tool call isn't allowed in an unattended run. Use a different approach. An operator can allow it with --allow.
+```
+
+and the run ends there: `cn` prints the answer the model had written so far and exits as a completed run. If a script relies on a tool, pass the `--allow` for it.
+
+## Limits no rule changes
+
+- Commands that destroy the system, a home directory or a disk never run.
+- Broad deletes always need a person.
+- `--readonly` never allows `Edit`, `MultiEdit` or `Write`.
+- `Read` and `Edit` refuse files that usually hold secrets, whatever the rules say: `.env*`, `*.key`, `*.pem`, `*.p12`, `id_rsa` and the other SSH keys, `*.db`, `*.bak`, `auth.json`, `config.yaml`, `settings.json`, and anything under `.ssh/`, `.aws/`, `.kube/`, `secrets/` or `certs/`. The model is told the file is a security concern.

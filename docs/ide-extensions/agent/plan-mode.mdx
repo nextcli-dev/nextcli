@@ -15,7 +15,7 @@ Plan mode is a restricted environment that provides read-only access to your cod
 - **Read-only tools**: Access files, search, and analyze without risk
 - **Safe exploration**: Perfect for understanding unfamiliar codebases
 - **Planning focus**: Develop implementation strategies before execution
-- **MCP support**: Works with all MCP tools alongside built-in read-only tools
+- **MCP support**: MCP tools stay available alongside the built-in read-only tools
 
 ### How Plan Mode Works
 
@@ -25,13 +25,14 @@ Plan mode filters the available tools to only include read-only operations. This
 - Search through code with grep and glob patterns
 - View repository structure and diffs
 - Fetch web content for additional context
-- Use all MCP tools
+- Use MCP tools
 
 But you cannot:
 
 - Create, edit, or delete files
 - Run terminal commands
-- Make any system changes
+
+Plan mode filters the built-in tools only. MCP tools keep whatever policy you gave them, and the extension can't tell whether one of them writes, so set the policy of an MCP tool that changes things to **Ask First** or **Excluded** before relying on Plan mode. The `cn` CLI's `--readonly` is stricter: it asks before every shell command and MCP tool at the terminal, and refuses them in a headless run (see [CLI tool permissions](/cli/modes/plan-mode)).
 
 ### How to Get Started with Plan Mode
 

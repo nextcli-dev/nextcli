@@ -90,7 +90,7 @@ After ensuring you meet the **Prerequisites** above, you have two paths to get s
         From your project directory, start with a comprehensive security scan:
         ```bash
          # Headless mode
-        cn -p "Run a complete security scan on this project including code vulnerabilities, dependencies, and any IaC files. Summarize findings by severity." --auto
+        cn -p "Run a complete security scan on this project including code vulnerabilities, dependencies, and any IaC files. Summarize findings by severity." --allow "*"
         ```
 
         That's it! The agent handles everything automatically.
@@ -169,7 +169,7 @@ Now you can use natural language prompts to run comprehensive security scans. Th
   **Where to run these workflows:**
   - **IDE Extensions**: Use NextCLI in VS Code. In a JetBrains IDE, run the CLI (`cn`)
   - **Terminal (TUI mode)**: Run `cn` to enter interactive mode, then type your prompts
-  - **CLI (headless mode)**: Use `cn -p "your prompt" --auto` for headless commands
+  - **CLI (headless mode)**: Use `cn --agent continuedev/snyk-continuous-ai-agent -p "your prompt"`; the agent file grants the Snyk tools. Add `--allow "*"` when a prompt also has to edit files or run the Snyk CLI
 
   **Test in Plan Mode First**: Before running security scans that might make
   changes, test your prompts in plan mode (see the [Plan Mode
@@ -192,7 +192,7 @@ and rerun to verify.
 
 **Headless Mode Prompt:**
 ```bash
-cn -p "Run a Snyk Code scan on this repo with severity threshold medium. Summarize issues with file:line. Propose minimal diffs for the top 3 and rerun to verify." --auto
+cn -p "Run a Snyk Code scan on this repo with severity threshold medium. Summarize issues with file:line. Propose minimal diffs for the top 3 and rerun to verify." --allow "*"
 ```
 
 </Card>
@@ -211,7 +211,7 @@ Re-test after the plan (dry run).
 
 **Headless Mode Prompt:**
 ```bash
-cn -p "Run Snyk Open Source on this repo (include dev deps). Summarize vulnerable paths and propose a minimal-risk upgrade plan. Re-test after the plan (dry run)." --auto
+cn -p "Run Snyk Open Source on this repo (include dev deps). Summarize vulnerable paths and propose a minimal-risk upgrade plan. Re-test after the plan (dry run)." --allow "*"
 ```
 
 </Card>
@@ -229,7 +229,7 @@ with exact files/lines. Provide code changes and re-scan to confirm.
 
 **Headless Mode Prompt:**
 ```bash
-cn -p "Scan ./infra with Snyk IaC. Report high/critical misconfigs with exact files/lines. Provide code changes and re-scan to confirm." --auto
+cn -p "Scan ./infra with Snyk IaC. Report high/critical misconfigs with exact files/lines. Provide code changes and re-scan to confirm." --allow "*"
 ```
 
 </Card>
@@ -248,7 +248,7 @@ Re-test after the change (dry run).
 
 **Headless Mode Prompt:**
 ```bash
-cn -p "Scan image my-api:latest. Exclude base image vulns. Print dependency tree. Recommend a safer base image or upgrades. Re-test after the change (dry run)." --auto
+cn -p "Scan image my-api:latest. Exclude base image vulns. Print dependency tree. Recommend a safer base image or upgrades. Re-test after the change (dry run)." --allow "*"
 ```
 
 </Card>
@@ -266,7 +266,7 @@ Block if new high issues would be introduced. Show deltas.
 
 **Headless Mode Prompt:**
 ```bash
-cn -p "Scan only files changed since origin/main with Snyk Code. Block if new high issues would be introduced. Show deltas." --auto
+cn -p "Scan only files changed since origin/main with Snyk Code. Block if new high issues would be introduced. Show deltas." --allow "*"
 ```
 
 </Card>
@@ -283,7 +283,7 @@ Open Snyk Learn lessons related to the top CWE(s) from this scan.
 
 **Headless Mode Prompt:**
 ```bash
-cn -p "Open Snyk Learn lessons related to the top CWE(s) from this scan." --auto
+cn -p "Open Snyk Learn lessons related to the top CWE(s) from this scan." --allow "*"
 ```
 
 </Card>
@@ -294,7 +294,7 @@ This example demonstrates a **Continuous AI workflow** where security scanning r
 
 <Info>
 
-  **About the --auto flag**: The `--auto` flag enables tools to run continuously without manual confirmation. This is essential for headless mode where the agent needs to execute multiple tools automatically to complete tasks like security scanning, vulnerability analysis, and fix validation.
+  **About permissions in headless mode**: `cn -p` has nobody to approve a tool, so it refuses writes, MCP tools, `Fetch` and shell commands beyond read-only ones unless you opt in. The agent file's `tools:` line grants its MCP tools; pass `--allow "*"` only when the run should also write files and run the Snyk CLI. See [tool permissions](/cli/tool-permissions/agent-files).
 
 </Info>
 
@@ -442,7 +442,7 @@ jobs:
             # Use NextCLI CLI to generate mitigation suggestions
             PROMPT="Analyze these Snyk security findings and provide specific, actionable mitigation steps for each issue. Focus on: 1) Root cause, 2) Immediate fix, 3) Long-term prevention. Findings: $FINDINGS_SUMMARY. Provide clear, prioritized recommendations."
 
-            cn --agent continuedev/snyk-continuous-ai-agent -p "$PROMPT" --auto > mitigation-suggestions.md || {
+            cn --agent continuedev/snyk-continuous-ai-agent -p "$PROMPT" > mitigation-suggestions.md || {
               echo "⚠️ Warning: Could not generate AI suggestions"
               exit 0
             }

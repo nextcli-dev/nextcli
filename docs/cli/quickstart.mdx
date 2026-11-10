@@ -64,14 +64,15 @@ Or pass a config file with `--config`. NextCLI does not sign you in, and it does
 | `-p "prompt"` | Headless mode — run prompt and exit |
 | `--config <path or slug>` | Use a specific config file or assistant |
 | `--resume` | Resume the most recent session |
-| `--auto` | Allow all tools without prompting |
-| `--readonly` | Plan mode — read-only tools only |
-| `--allow <tool>` | Allow a specific tool (repeatable) |
-| `--exclude <tool>` | Exclude a specific tool (repeatable) |
+| `--auto` | [Auto mode](/cli/modes/auto-mode): every tool runs without asking. In `cn -p`, Bash stays read-only; use `--allow "*"` there |
+| `--readonly` | [Plan mode](/cli/modes/plan-mode): never writes, Bash runs read-only commands only |
+| `--allow <tool>` | Allow a tool, or a pattern such as `"Bash(npm test*)"` (repeatable) |
+| `--ask <tool>` | Ask before a tool runs (repeatable) |
+| `--exclude <tool>` | Hide a tool from the agent (repeatable) |
 | `--rule <rule>` | Add a rule — file path or string (repeatable) |
 | `--mcp <slug>` | Add an MCP server by slug (repeatable) |
 | `--model <slug>` | Add a model by slug (repeatable) |
-| `--agent <slug>` | Load an agent file by slug |
+| `--agent <slug>` | Load an agent file; its `tools:` line sets the [permissions](/cli/tool-permissions/agent-files) |
 | `--log-level <level>` | How much to write to `~/.continue/logs/cn.log`: `error`, `warn`, `info` (default), `verbose`, `debug` or `trace` |
 | `--verbose` | Same as `--log-level debug` |
 

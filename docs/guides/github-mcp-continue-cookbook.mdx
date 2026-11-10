@@ -134,7 +134,7 @@ Use natural language to explore, triage, and act on open issues. The agent calls
   **Where to run these workflows:**
   - **IDE Extensions**: Use NextCLI in VS Code. In a JetBrains IDE, run the CLI (`cn`)
   - **Terminal (TUI mode)**: Run `cn` to enter interactive mode, then type your prompts
-  - **CLI (headless mode)**: Use `cn -p "your prompt" --auto` for automation
+  - **CLI (headless mode)**: Use `cn --agent continuedev/github-project-manager-agent -p "your prompt"` for automation; the agent file grants the GitHub tools
   
   To run any of the example prompts below in headless mode, use `cn -p "prompt"`
 </Info>
@@ -177,7 +177,7 @@ Then post the comment.
 ```
 
 <Note>
-  Requires a token with permission to comment (`public_repo` or `repo`). The agent will confirm before posting unless `--auto` is used.
+  Requires a token with permission to comment (`public_repo` or `repo`). At the terminal the agent asks before posting. In a headless run with the agent file, the GitHub tools run without asking.
 </Note>
 </Card>
 
@@ -280,7 +280,7 @@ jobs:
         run: |
           cn --agent continuedev/github-project-manager-agent \
              -p "List open issues updated in the last 14 days. Group by label and priority. Propose top 5 actions and include issue links." \
-             --auto > issue_summary.txt
+             --allow "*" > issue_summary.txt
 
       - name: Post PR Context Comment
         if: github.event_name == 'pull_request'
@@ -289,7 +289,7 @@ jobs:
         run: |
           REPORT=$(        cn --agent continuedev/github-project-manager-agent \
             -p "Summarize the context for PR #${PR_NUMBER}: related open issues, risk areas, and test suggestions. Keep under 200 words." \
-            --auto)
+            --allow "*")
           gh pr comment ${PR_NUMBER} --body "$REPORT"
 ```
 

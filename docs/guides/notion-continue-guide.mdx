@@ -160,7 +160,7 @@ Before starting, ensure you have:
       <Step title="Run Automated Commands">
         Execute prompts directly from the command line:
         ```bash
-        cn -p --auto "
+        cn -p --allow "*" "
         1. Fetch my Notion databases using the Notion API key
         and Database ID stored in this terminal session.
         2. Analyze all merged GitHub PRs from the past week.
@@ -170,12 +170,12 @@ Before starting, ensure you have:
 
         **Flags explained:**
         - `-p`: Run without TUI interface
-        - `--auto`: Execute without manual approval
+        - `--allow "*"`: Allow every tool. A headless run is closed by default; use `--allow "<tool>"` for only the tools a prompt needs (see [tool permissions](/cli/tool-permissions))
 
         <Warning>
 
           Always test prompts in TUI mode first before running
-          them with `--auto` in production.
+          them with `--allow "*"` in production.
 
         </Warning>
       </Step>
@@ -205,7 +205,7 @@ Working example that demonstrates the power of NextCLI with Notion API:
 
   ```bash
   # Weekly Sprint Summary
-  cn -p --auto "
+  cn -p --allow "*" "
   1. Fetch Notion Sprint database
   2. Analyze completed tasks vs planned
   3. Generate sprint retrospective page
@@ -239,7 +239,7 @@ With the Notion API configured, you can use natural language prompts to automate
     
     **Headless Mode:**
     ```bash
-    cn -p --auto "Fetch my Notion databases using the API key and secrets stored in this session. Generate API docs 
+    cn -p --allow "*" "Fetch my Notion databases using the API key and secrets stored in this session. Generate API docs 
     for src/api/routes and save to Notion in Technical Docs database"
     ```
   </Card>
@@ -247,7 +247,7 @@ With the Notion API configured, you can use natural language prompts to automate
   <Card title="Sprint Planning from Code" icon="list-checks">
     **Headless Mode (Automated):**
     ```bash
-    cn -p --auto "
+    cn -p --allow "*" "
     1. Fetch my Notion databases using the API key stored in this session
     2. Scan codebase for TODO and FIXME comments
     3. Create tasks in my Notion Engineering Backlog database
@@ -257,7 +257,7 @@ With the Notion API configured, you can use natural language prompts to automate
   
   <Card title="Changelog from PRs" icon="rocket">
     ```bash
-        cn -p --auto "
+        cn -p --allow "*" "
         1. Fetch my Notion databases using the API key stored in this session
         2. Analyze all merged GitHub PRs from past month
         3. In my Notion Launch Database, review the Launch Template.
@@ -268,7 +268,7 @@ With the Notion API configured, you can use natural language prompts to automate
   
   <Card title="Daily Standup Automation" icon="comments">
     ```bash
-    cn -p --auto "
+    cn -p --allow "*" "
     1. Fetch my Tasks database from Notion using the API key
     2. Find tasks completed yesterday
     3. Find tasks in progress
@@ -283,7 +283,7 @@ With the Notion API configured, you can use natural language prompts to automate
 <CardGroup cols={1}>
   <Card title="Notion + GitHub" icon="github">
     ```bash
-    cn -p --auto "
+    cn -p --allow "*" "
     1. Connect to Notion using the API key in this session
     2. Get merged PRs from last 7 days using GitHub
     3. Extract feature descriptions and changes
@@ -300,7 +300,7 @@ With the Notion API configured, you can use natural language prompts to automate
   
   <Card title="Test Coverage Report" icon="chart-bar">
     ```bash
-    cn -p --auto "
+    cn -p --allow "*" "
     1. Connect to Notion using the API key in this session
     2. Run test coverage report (npm test -- --coverage)
     3. Parse coverage metrics
@@ -320,7 +320,7 @@ With the Notion API configured, you can use natural language prompts to automate
   
   <Card title="Weekly Report Generation" icon="list">
     ```bash
-    cn -p --auto "
+    cn -p --allow "*" "
     1. Connect to Notion databases using API key
     2. Aggregate completed tasks from the week
     3. Calculate velocity and burndown metrics

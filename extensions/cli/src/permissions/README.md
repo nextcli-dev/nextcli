@@ -1,101 +1,86 @@
 # Tool Permissions System
 
-The tool permissions system allows you to control which tools the AI can use and how it can use them. There are three permission levels:
+The tool permissions system controls which tools the model can use and when it must ask first. There are three permission levels:
 
-- **allow**: The tool will be executed automatically without asking for permission
-- **ask**: The tool will prompt the user for permission before execution
-- **exclude**: The tool will be filtered out entirely and won't be available to the AI
+- **allow**: the tool runs without asking.
+- **ask**: the user is asked before the tool runs. With nobody to answer (`cn -p`), the call is refused.
+- **exclude**: the tool is not offered to the model, and a call to it is refused.
+
+The full decision model (rule order, strict `Bash`, modes, matching) is in [`spec/permissions.md`](../../spec/permissions.md). This file is a map of the code.
 
 ## Default Policies
 
-The system comes with sensible default policies:
+The defaults live in one table in `defaultPolicies.ts`, with a column for each kind of run. In short:
 
-Defaults are one table in `defaultPolicies.ts`, with a column for each kind of run (TUI, headless, `--readonly` in the TUI, `--readonly` headless). A new built-in tool needs a row.
+- Read-only tools (`Read`, `List`, `Search`, `Diff`, ...) are **allowed**.
+- Write tools (`Edit`, `MultiEdit`, `Write`) **ask**.
+- A few tools are open in the TUI and closed in headless mode, because nobody is there to approve them:
 
-- Read-only tools (`Read`, `List`, `Search`, `Diff`, ...) are **allowed**
-- Write operations (`Edit`, `MultiEdit`, `Write`) **ask**
-- `Bash`, `Fetch`, `UploadArtifact`, `Subagent` and MCP tools differ between the TUI and headless mode:
+| Tool                      | TUI       | Headless                                   |
+| ------------------------- | --------- | ------------------------------------------ |
+| `Bash`                    | **ask**   | **allow**, but only for read-only commands |
+| `Fetch`, `UploadArtifact` | **allow** | **exclude**                                |
+| `Subagent`, MCP, others   | **ask**   | **exclude**                                |
 
-| Tool                      | TUI       | Headless (nobody to approve)                                                                                                      |
-| ------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `Bash`                    | **ask**   | **allow** only for commands the evaluator approves on its own (`ls`, `cat`, `git status`...), otherwise **ask**, which is refused |
-| `Fetch`, `UploadArtifact` | **allow** | **exclude**                                                                                                                       |
-| `Subagent`, MCP, others   | **ask**   | **exclude**                                                                                                                       |
+`--readonly` (plan mode) never allows the write tools and keeps `Bash` to read-only commands, whatever the flags say.
 
-Any `ask` in a headless run is refused, because nobody can answer it.
-
-Two things are decided per call in `checkToolPermission`, not by policy order, so no rule can undo them:
-
-- `ToolPermissions.readonly` (`--readonly`): `Edit`, `MultiEdit` and `Write` are excluded, and `Bash` is evaluated strictly.
-- `ToolPermissions.unattended` (headless): an allow that isn't an operator's flag (`origin: "flag"`), such as the default Bash allow or an agent file's, is evaluated strictly.
-
-Strict means the tool's own evaluator must approve the call by itself (`evaluateTerminalCommandSecurity(..., { strict: true })`); anything else asks. A headless run takes only the excludes from `permissions.yaml`.
-
-`Bash(glob)` rules are matched per command with terminal-security's `splitCommand`: an allow covers only a line that is one simple command, and an exclude or ask covers a line where any command matches, or whose commands can't be read.
+A new built-in tool needs a row in `defaultPolicies.ts`. When unsure, make the headless default **exclude**.
 
 ## How It Works
 
-### 1. Tool Filtering (Exclude Policy)
+### 1. Offering tools
 
-Tools with "exclude" permission are filtered out before being sent to the AI model. This means the AI won't even know these tools exist.
+Before each model request, only the tools that can be used are sent. A tool is offered when a call to it can run, or when someone is present to approve it. Excluded tools are never shown to the model.
 
-### 2. Permission Checking (Ask Policy)
+### 2. Checking each call
 
-When the AI tries to use a tool with "ask" permission, the system will:
+Every tool call is checked by `checkToolPermission`:
 
-1. Display a permission request in the UI
-2. Wait for user approval (y/n)
-3. Execute the tool if approved, or return an error if denied
+- **allow**: the tool runs.
+- **exclude**: the call is cancelled with `Command blocked by security policy`. A headless run gets a longer message that points at `--allow`, and ends.
+- **ask**: the user is asked (step 3).
 
-### 3. Automatic Execution (Allow Policy)
+`Bash` calls also go through the `terminal-security` evaluator, which can turn an **allow** into **ask**. See [Deciding a call](../../spec/permissions.md#deciding-a-call).
 
-Tools with "allow" permission are executed immediately without user intervention.
+### 3. Asking the user
+
+The request is shown in the TUI (`ToolPermissionSelector`), or sent to a `cn serve` client. The user can:
+
+- **Continue**: approve this call once,
+- **Continue + don't ask again**: approve and save a rule to `~/.continue/permissions.yaml`, or
+- **No, and tell NextCLI what to do differently**: reject the call and stop, so the user can type new instructions.
+
+A saved rule applies from the next call.
 
 ## Architecture
 
 ### Core Components
 
-- **`types.ts`**: Defines the permission policy types and interfaces
-- **`defaultPolicies.ts`**: Contains the hardcoded default permission policies
-- **`permissionChecker.ts`**: Implements the permission checking logic
-- **`permissionManager.ts`**: Manages permission requests and user responses
-- **UI Components**: Handle displaying permission requests and collecting user input
+- **`types.ts`**: the rule type (`ToolPermissionPolicy`) and a session's rules (`ToolPermissions`)
+- **`defaultPolicies.ts`**: the default rules for each kind of run
+- **`toolPattern.ts`**: parses `Tool`, `Tool(glob)` and name globs like `github_*`
+- **`precedenceResolver.ts`**: layers flags, `permissions.yaml` and the defaults in normal mode
+- **`permissionChecker.ts`**: decides a call (`checkToolPermission`) and whether a tool is offered (`isToolOffered`)
+- **`permissionsYamlLoader.ts`**: reads and creates `~/.continue/permissions.yaml`
+- **`policyWriter.ts`**: decides and saves the rule for **don't ask again**
+- **`permissionManager.ts`**: holds pending approval requests
+- **`../services/ToolPermissionService.ts`**: builds a session's rules for the current mode, and rebuilds them on a mode switch or reload
 
 ### Data Flow
 
-1. **Tool Loading**: `getAllowedTools()` in `streamChatResponse.ts` filters out excluded tools
-2. **Tool Execution**: Before executing each tool call, permissions are checked
-3. **User Interaction**: For "ask" policies, UI displays permission request
-4. **Execution**: Tool is executed or denied based on permission result
+1. **Building rules**: `ToolPermissionService.buildPolicies` combines the flags, the agent file, `permissions.yaml` and the defaults.
+2. **Offering**: `getRequestTools` (`stream/handleToolCalls.ts`) keeps the tools `isToolOffered` accepts.
+3. **Checking**: `executeStreamedToolCalls` (`stream/streamChatResponse.helpers.ts`) calls `checkToolPermission` for each call.
+4. **Asking**: `requestUserPermission` sends an **ask** to `toolPermissionManager`, which shows it in the UI or sends it to `cn serve`.
+5. **Remembering**: **don't ask again** calls `rememberToolApproval` (`policyWriter.ts`), then `reloadPermissions`.
 
-## UI Integration
+## Tests
 
-The permission system integrates with the existing chat UI:
+`permissionMatrix.test.ts` is the behavior spec. Each row is a run setup, a tool call and the expected decision. A behavior change edits its rows in the same commit.
 
-- Permission requests appear as special message types
-- Users can approve/deny with y/n keys
-- The decision is shown in the chat history
-- The system handles the async nature of permission requests
+## Related docs
 
-## Future Enhancements
+- Users: `docs/cli/tool-permissions/` and `docs/cli/modes/`
+- Model: [`spec/permissions.md`](../../spec/permissions.md) and [`spec/modes.md`](../../spec/modes.md)
 
-The system is designed to be extensible for future features like:
-
-- Custom permission policies loaded from configuration
-- "Remember this decision" functionality
-- Argument-based permission matching (partially implemented)
-- Per-session or per-project permission overrides
-
-## Example Usage
-
-```typescript
-// Check permission for a tool call
-const result = checkToolPermission({
-  name: "writeFile",
-  arguments: { path: "/important.txt", content: "data" },
-});
-
-if (result.permission === "ask") {
-  // Request user permission
-}
-```
+All of them change with the code; `.checks/documentation-freshness.md` checks this.

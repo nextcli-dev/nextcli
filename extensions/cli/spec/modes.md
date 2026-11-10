@@ -35,6 +35,7 @@ Auto mode allows every tool without asking. With an agent file, the agent file's
 - **Current directory:** Hidden to save space and focus on automation
 - **Without an agent file:** allows all tools with a `*: allow` policy. `permissions.yaml` and `--allow`/`--ask`/`--exclude` flags are ignored.
 - **With an agent file:** flags first, then the agent file's tool list, as in normal mode.
+- **Headless (`cn -p --auto`):** the `*: allow` rule is not an operator's flag, so Bash is evaluated strictly and runs read-only commands only, while Edit, Write, Fetch and MCP tools are allowed. `--allow Bash` is ignored in auto mode; `cn -p --allow "*"` is the unattended way to open everything.
 
 ## Usage
 
@@ -67,29 +68,7 @@ Modes are implemented through the permission system:
 
 ### Mode Policy Priority
 
-The first rule that matches a call decides it. The rules come from, in order:
-
-**Plan mode:**
-
-1. Command-line overrides (`--allow`, `--ask`, `--exclude`)
-2. Plan-mode defaults
-
-Write tools stay excluded and Bash stays strict whatever the flags say. The agent file and `permissions.yaml` are ignored.
-
-**With an agent file (normal and auto modes):**
-
-1. Command-line overrides (`--allow`, `--ask`, `--exclude`)
-2. The agent file's tool list
-
-**Auto mode without an agent file:** `*: allow`. Flags and `permissions.yaml` are ignored.
-
-**Normal mode without an agent file:**
-
-1. Command-line overrides (`--allow`, `--ask`, `--exclude`)
-2. Permission configuration from `permissions.yaml`
-3. Default tool policies
-
-Initialization, a mode switch and a permissions reload all build the policies the same way.
+The order the rules are checked in for each mode, and the limits no flag can undo, are in [permissions.md](./permissions.md#where-the-rules-come-from).
 
 ### Mode-Specific Behaviors
 

@@ -1,0 +1,29 @@
+---
+title: "Modes"
+sidebarTitle: "Overview"
+description: "Normal, plan and auto modes in the cn CLI: what each one allows and how to switch between them"
+---
+
+A mode sets how much `cn` may do without asking. Pick one at startup with a flag, or switch during a TUI session with Shift+Tab.
+
+```bash
+cn --readonly   # plan mode: never writes, Bash read-only
+cn --auto       # auto mode: every tool runs without asking
+```
+
+| Mode | Indicator | Effect |
+|------|-----------|--------|
+| **normal** (default) | none | Flags, then `permissions.yaml`, then the defaults |
+| **plan** (`--readonly`) | `⏸ plan` | Never writes. Reads are allowed. `Bash` and MCP tools ask in the TUI; in `cn -p` they and `Fetch` are excluded unless `--allow` adds them |
+| **auto** (`--auto`) | `⏵⏵ auto` | One rule, `*: allow` |
+
+Shift+Tab cycles normal → plan → auto during a TUI session; switching back to normal restores the normal rules. `--readonly` and `--auto` together are an error.
+
+## Normal mode
+
+Normal mode is the default. It applies the [tool permissions](/cli/tool-permissions) as they are: your `--allow`, `--ask` and `--exclude` [flags](/cli/tool-permissions/flags-and-patterns), then [`permissions.yaml`](/cli/tool-permissions/permissions-yaml) or an [agent file](/cli/tool-permissions/agent-files), then the [defaults](/cli/tool-permissions/defaults). See [precedence](/cli/tool-permissions#precedence) for where a mode sits among the rules.
+
+## Plan and auto mode
+
+- [Plan mode](/cli/modes/plan-mode) (`--readonly`) is for exploring and reviewing: it never writes, and `Bash` runs only read-only commands.
+- [Auto mode](/cli/modes/auto-mode) (`--auto`) runs every tool without asking.

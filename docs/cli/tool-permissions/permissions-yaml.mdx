@@ -1,0 +1,39 @@
+---
+title: "permissions.yaml"
+sidebarTitle: "permissions.yaml"
+description: "Personal tool permission rules for cn, saved from the TUI's \"don't ask again\" choice"
+---
+
+```yaml
+# ~/.continue/permissions.yaml
+allow:
+  - Bash(npm test*)
+  - Write(**/*.ts)
+
+ask:
+  - Fetch
+
+exclude:
+  - Read(.env*)
+```
+
+Personal permissions live in `~/.continue/permissions.yaml` (`CONTINUE_GLOBAL_DIR` moves the directory). `cn` creates the file on first start. It has three optional lists, `allow`, `ask` and `exclude`, in the same [pattern syntax](/cli/tool-permissions/flags-and-patterns#tool-matching-patterns) as the flags. You can edit it, but it is mostly written by the TUI: choosing **Continue + don't ask again** at an approval prompt appends a rule to `allow`.
+
+## What gets remembered
+
+| You approved | Rule saved |
+|--------------|------------|
+| `npm test` | `Bash(npm test*)`, so `npm install` still asks |
+| `git status --short` | `Bash(git status*)`, so `git push` still asks |
+| `ls -la` | `Bash(ls -la)`, exactly, because the first argument is an option |
+| `Write` of any file | `Write`, the whole tool, not the path |
+| `ls && npm test`, `npm test > out.txt`, `env X=1 npm test`, `sh -c '...'`, `python -c '...'` | Nothing. The call is approved once, because a rule for it would also allow whatever runs through the wrapper |
+
+## Things to know
+
+- The file is re-read at startup, after each **don't ask again**, and on a mode switch (Shift+Tab). A rule you add by hand applies on the next session or mode switch.
+- Saving a rule rewrites the file; comments are dropped.
+- A key other than `allow`, `ask` or `exclude`, or a value that isn't a list, makes `cn` ignore the whole file with a warning in `~/.continue/logs/cn.log`. A pattern that can't work (`github_create_issue(x)`) stops `cn` at startup with a message that names the file.
+- Within the file, `exclude` rules come before `ask` rules, which come before `allow` rules.
+- A headless run (`cn -p`) takes only the `exclude` rules. The file holds answers given at the terminal; a personal `exclude: Bash` also removes the shell from `cn -p`, but a remembered `allow: Bash(git status*)` or `allow: Write` doesn't apply there. Opt a headless run in with `--allow` or an [agent file](/cli/tool-permissions/agent-files).
+- [Plan mode](/cli/modes/plan-mode) and sessions with an [agent file](/cli/tool-permissions/agent-files) ignore the file entirely. A rule saved with **don't ask again** in such a session applies only to plain sessions.

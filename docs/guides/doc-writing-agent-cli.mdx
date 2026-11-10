@@ -218,8 +218,8 @@ jobs:
       run: |
         echo "Running NextCLI agent to generate documentation..."
         cn --config <continue-user>/<agent-config> \
-           --auto \
            --allow Write \
+           --allow Edit \
            -p \
            --prompt ./context.txt \
            "Analyze the provided git diff and identify any new functionality introduced. Summarise the new features in a few sentences. Then search the existing documentation in the site docs/ directory to determine whether these features are already documented in a way that enables users to use them. If documentation is missing or incomplete, create or modify Markdown files under the site diretory (without changing any code) to add clear explanations, usage instructions and examples for the new features in the same style and format as the existing documentation. Finally, print a brief summary of the documentation changes you made."
@@ -286,8 +286,8 @@ git checkout -b "$DOCS_BRANCH_NAME"
 # Generate documentation with NextCLI CLI
 echo "Running NextCLI agent to generate documentation..."
 cn -config "$CONTINUE_ORG/$CONTINUE_CONFIG" \
-   --auto \
    --allow Write \
+   --allow Edit \
    -p \
    --prompt ./context.txt \
    "Analyze the provided git diff and identify any new functionality introduced. Summarise the new features in a few sentences. Then search the existing documentation in the site docs/ directory to determine whether these features are already documented in a way that enables users to use them. If documentation is missing or incomplete, create or modify Markdown files under the site diretory (without changing any code) to add clear explanations, usage instructions and examples for the new features in the same style and format as the existing documentation. Finally, print a brief summary of the documentation changes you made."

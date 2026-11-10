@@ -1,0 +1,17 @@
+---
+title: "Auto Mode"
+sidebarTitle: "Auto Mode"
+description: "Auto mode (--auto) in the cn CLI: every tool runs without asking"
+---
+
+```bash
+cn --auto
+```
+
+Auto mode is shown as `⏵⏵ auto` in the TUI. Start it with `--auto`, or switch to it with Shift+Tab (see [Modes](/cli/modes)).
+
+Auto mode is the single rule `*: allow`. Without an agent file it ignores `permissions.yaml` and every flag, `--exclude` included. With an [agent file](/cli/tool-permissions/agent-files), the flags and the file's tool list still apply. Catastrophic commands still never run, and broad deletes still ask (see [limits no rule changes](/cli/tool-permissions#limits-no-rule-changes)).
+
+## In a headless run
+
+In a headless run, `cn -p --auto` allows writes, `Fetch` and MCP tools, but `Bash` stays [read-only](/cli/tool-permissions/read-only-commands): the auto rule isn't an operator's flag, so it is evaluated strictly, and auto mode ignores `--allow Bash`. The unattended equivalent of "run everything" is `cn -p --allow "*"`.
