@@ -1,5 +1,37 @@
 # Changelog
 
+## [1.6.12](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.11...vscode-v1.6.12) (2026-11-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** close the headless defaults; unattended runs no longer offer MCP tools, Fetch, UploadArtifact, Subagent, or Bash commands beyond read-only ones (ls, cat, git status...), so scripts that used them need --allow, for example --allow Fetch, --allow "Bash(npm test*)" or --allow "github_*" ([#115](https://github.com/nextcli-dev/nextcli/issues/115))
+* **cli:** Bash(pattern) rules match each command in the line: an exclude covers chained, wrapped and sh -c commands, an allow covers only a single command ([#109](https://github.com/nextcli-dev/nextcli/issues/109))
+* **cli:** --allow, --ask and --exclude take Tool(pattern) like permissions.yaml, and a pattern on a tool that takes none is an error ([#109](https://github.com/nextcli-dev/nextcli/issues/109))
+
+### Features
+
+* **cli:** --readonly applies --allow and --exclude, never runs Edit, MultiEdit or Write, and keeps Bash read-only whatever the flags say ([#115](https://github.com/nextcli-dev/nextcli/issues/115)) ([0b6fb3e](https://github.com/nextcli-dev/nextcli/commit/0b6fb3ed458c956ec384eae10f265a635a20338f))
+* **cli:** a headless run takes only the excludes from permissions.yaml ([#115](https://github.com/nextcli-dev/nextcli/issues/115)) ([0b6fb3e](https://github.com/nextcli-dev/nextcli/commit/0b6fb3ed458c956ec384eae10f265a635a20338f))
+* **cli:** close the headless defaults; unattended runs no longer offer MCP tools, Fetch, UploadArtifact, Subagent, or Bash commands beyond read-only ones (ls, cat, git status...), so scripts that used them need --allow, for example --allow Fetch, --allow "Bash(npm test*)" or --allow "github_*" ([#115](https://github.com/nextcli-dev/nextcli/issues/115)) ([0b6fb3e](https://github.com/nextcli-dev/nextcli/commit/0b6fb3ed458c956ec384eae10f265a635a20338f))
+* **cli:** cn review no longer runs in auto mode; it gets Edit, MultiEdit and Write plus the closed defaults ([#115](https://github.com/nextcli-dev/nextcli/issues/115)) ([0b6fb3e](https://github.com/nextcli-dev/nextcli/commit/0b6fb3ed458c956ec384eae10f265a635a20338f))
+* make /init create AGENTS.md or update the existing agent file ([#119](https://github.com/nextcli-dev/nextcli/issues/119)) ([1e10559](https://github.com/nextcli-dev/nextcli/commit/1e1055961ee077abb987b891742b1cf60e37f080))
+* **terminal-security:** add splitCommand and a strict evaluation mode ([#108](https://github.com/nextcli-dev/nextcli/issues/108)) ([483fcd9](https://github.com/nextcli-dev/nextcli/commit/483fcd934fa94b93f166f1f9179374c09ff577ac))
+
+
+### Bug Fixes
+
+* **cli:** --allow and --exclude apply on top of an agent file ([#109](https://github.com/nextcli-dev/nextcli/issues/109)) ([88985e6](https://github.com/nextcli-dev/nextcli/commit/88985e6d07a14fddf5183dfc1ce93e5fa90a7073))
+* **cli:** --allow, --ask and --exclude take Tool(pattern) like permissions.yaml, and a pattern on a tool that takes none is an error ([#109](https://github.com/nextcli-dev/nextcli/issues/109)) ([88985e6](https://github.com/nextcli-dev/nextcli/commit/88985e6d07a14fddf5183dfc1ce93e5fa90a7073))
+* **cli:** --readonly with an agent file stays read-only, and an agent file's exclusions still apply in auto mode ([#109](https://github.com/nextcli-dev/nextcli/issues/109)) ([88985e6](https://github.com/nextcli-dev/nextcli/commit/88985e6d07a14fddf5183dfc1ce93e5fa90a7073))
+* **cli:** "don't ask again" no longer remembers a wrapper, a shell or a chain as a Bash rule ([#109](https://github.com/nextcli-dev/nextcli/issues/109)) ([88985e6](https://github.com/nextcli-dev/nextcli/commit/88985e6d07a14fddf5183dfc1ce93e5fa90a7073))
+* **cli:** a permissions reload keeps the agent file, the command line flags and headless mode ([#109](https://github.com/nextcli-dev/nextcli/issues/109)) ([88985e6](https://github.com/nextcli-dev/nextcli/commit/88985e6d07a14fddf5183dfc1ce93e5fa90a7073))
+* **cli:** a subagent runs under the parent session's permissions and can't start another subagent ([#115](https://github.com/nextcli-dev/nextcli/issues/115)) ([0b6fb3e](https://github.com/nextcli-dev/nextcli/commit/0b6fb3ed458c956ec384eae10f265a635a20338f))
+* **cli:** Bash(pattern) rules match each command in the line: an exclude covers chained, wrapped and sh -c commands, an allow covers only a single command ([#109](https://github.com/nextcli-dev/nextcli/issues/109)) ([88985e6](https://github.com/nextcli-dev/nextcli/commit/88985e6d07a14fddf5183dfc1ce93e5fa90a7073))
+* **cli:** cn serve tool calls can be approved through POST /permission again ([#115](https://github.com/nextcli-dev/nextcli/issues/115)) ([0b6fb3e](https://github.com/nextcli-dev/nextcli/commit/0b6fb3ed458c956ec384eae10f265a635a20338f))
+* **cli:** scoped rules in permissions.yaml match the tool's real argument, so exclude: [Read(.env*)] excludes .env ([#109](https://github.com/nextcli-dev/nextcli/issues/109)) ([88985e6](https://github.com/nextcli-dev/nextcli/commit/88985e6d07a14fddf5183dfc1ce93e5fa90a7073))
+* **terminal-security:** NodeNext tsconfig; docs(cli): headless defaults ([#116](https://github.com/nextcli-dev/nextcli/issues/116)) ([7497064](https://github.com/nextcli-dev/nextcli/commit/7497064239487302de74d511af0a3a0970f0d41d))
+
 ## [1.6.11](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.10...vscode-v1.6.11) (2026-11-08)
 
 
