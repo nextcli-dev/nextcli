@@ -189,7 +189,7 @@ jobs:
           # Run NextCLI CLI in headless mode
           cn --config continuedev/review-bot \
              -p "$PROMPT" \
-             --auto > review_output.md
+             --readonly > review_output.md
 
       - name: Post Review Comment
         env:
@@ -353,7 +353,7 @@ The workflow will respond with a targeted review based on your request.
     run: |
       cn --config $CONTINUE_ORG/$CONTINUE_CONFIG \
         -p "$PROMPT" \
-        --auto > review_output.md
+        --readonly > review_output.md
   ```
 
   Store `CONTINUE_ORG` and `CONTINUE_CONFIG` as repository variables for easy updates.
@@ -415,7 +415,7 @@ The workflow will respond with a targeted review based on your request.
 <Accordion title="No review generated">
 - Verify your NextCLI config is accessible
 - Check NextCLI CLI logs in the workflow run
-- Try running locally: `cn -p "Test prompt" --auto`
+- Try running locally: `cn -p "Test prompt" --readonly`
 </Accordion>
 <Accordion title="Review comment not posted">
 - Ensure `pull-requests: write` permission is set

@@ -35,6 +35,7 @@ Auto mode allows every tool without asking. With an agent file, the agent file's
 - **Current directory:** Hidden to save space and focus on automation
 - **Without an agent file:** allows all tools with a `*: allow` policy. `permissions.yaml` and `--allow`/`--ask`/`--exclude` flags are ignored.
 - **With an agent file:** flags first, then the agent file's tool list, as in normal mode.
+- **Headless (`cn -p --auto`):** the `*: allow` rule is not an operator's flag, so Bash is evaluated strictly and runs read-only commands only, while Edit, Write, Fetch and MCP tools are allowed. `--allow Bash` is ignored in auto mode; `cn -p --allow "*"` is the unattended way to open everything.
 
 ## Usage
 
@@ -79,7 +80,8 @@ Write tools stay excluded and Bash stays strict whatever the flags say. The agen
 **With an agent file (normal and auto modes):**
 
 1. Command-line overrides (`--allow`, `--ask`, `--exclude`)
-2. The agent file's tool list
+2. The agent file's tool list: listed tools `allow`, unlisted built-ins `exclude`
+3. `*: allow` in the TUI, so MCP tools the file doesn't mention run without asking; the closed headless defaults when unattended, where the file's Bash is also evaluated strictly
 
 **Auto mode without an agent file:** `*: allow`. Flags and `permissions.yaml` are ignored.
 

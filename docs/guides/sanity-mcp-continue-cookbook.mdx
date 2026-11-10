@@ -226,7 +226,7 @@ Now you can use natural language prompts to manage your Sanity content and schem
 
 <Info>
 
-  **About the --auto flag**: The `--auto` flag enables tools to run continuously without manual confirmation. This is essential for headless mode where the agent needs to execute multiple tools automatically to complete tasks like schema exploration, GROQ execution, and content migration.
+  **About permissions in headless mode**: `cn -p` has nobody to approve a tool, so it refuses writes, MCP tools, `Fetch` and shell commands beyond read-only ones unless you opt in. The agent file's `tools:` line grants its MCP tools; pass `--allow "*"` only when the run should also write files and run the Sanity CLI. See [tool permissions](/cli/tool-permissions#agent-files).
 
 </Info>
 
@@ -399,24 +399,21 @@ jobs:
           echo "🔍 Validating schema structure..."
           cn --agent continuedev/sanity-assistant-agent \
              -p "Analyze the Sanity schema for any structural issues,
-                 missing required fields, or broken references between document types." \
-             --auto
+                 missing required fields, or broken references between document types."
 
       - name: Check Content Integrity
         run: |
           echo "📊 Checking content integrity..."
           cn --agent continuedev/sanity-assistant-agent \
              -p "Run GROQ queries to identify any orphaned documents,
-                 broken references, or missing required fields in the content." \
-             --auto
+                 broken references, or missing required fields in the content."
 
       - name: Generate Schema Documentation
         run: |
           echo "📝 Generating schema documentation..."
           cn --agent continuedev/sanity-assistant-agent \
              -p "Generate a markdown summary of all schema changes
-                 in this PR and their potential impact on existing content." \
-             --auto > schema-changes.md
+                 in this PR and their potential impact on existing content." > schema-changes.md
 
       - name: Comment Report on PR
         if: always() && github.event_name == 'pull_request'
@@ -429,7 +426,7 @@ jobs:
                  - Content integrity checks
                  - Any breaking changes detected
                  - Recommended actions before merging" \
-             --auto)
+             --allow "*")
 
           gh pr comment ${{ github.event.pull_request.number }} --body "$REPORT"
 ```

@@ -162,7 +162,7 @@ Now you can use natural language prompts to develop and debug your dlt pipelines
 
 <Info>
 
-  **About the --auto flag**: The `--auto` flag enables tools to run continuously without manual confirmation. This is essential for headless mode where the agent needs to execute multiple tools automatically to complete tasks like pipeline inspection, schema retrieval, and error analysis.
+  **About permissions in headless mode**: `cn -p` has nobody to approve a tool, so it refuses writes, MCP tools, `Fetch` and shell commands beyond read-only ones unless you opt in. The agent file's `tools:` line grants its MCP tools; pass `--allow "*"` only when the run should also write files and run pipeline commands. See [tool permissions](/cli/tool-permissions#agent-files).
 
 </Info>
 
@@ -307,16 +307,14 @@ jobs:
           echo "🔍 Validating pipeline schema..."
           cn --agent continuedev/dlt-agent \
              -p "Inspect the pipeline schema and verify all required tables
-                 and columns are present. Flag any missing or unexpected changes." \
-             --auto
+                 and columns are present. Flag any missing or unexpected changes."
 
       - name: Check Pipeline Health
         run: |
           echo "📊 Checking pipeline health..."
           cn --agent continuedev/dlt-agent \
              -p "Analyze the last pipeline run for errors or warnings.
-                 Report any issues that need attention." \
-             --auto
+                 Report any issues that need attention."
 
       - name: Comment Pipeline Report on PR
         if: always() && github.event_name == 'pull_request'
@@ -329,7 +327,7 @@ jobs:
                  - Any load errors or warnings
                  - Performance metrics (timing, file sizes)
                  - Recommended improvements" \
-             --auto)
+             --allow "*")
 
           gh pr comment ${{ github.event.pull_request.number }} --body "$REPORT"
 ```

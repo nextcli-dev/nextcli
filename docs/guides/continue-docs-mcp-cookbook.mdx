@@ -394,7 +394,7 @@ jobs:
           If no updates needed, respond with 'NO_DOCS_NEEDED'.
           Be specific and concise."
 
-          cn --config continuedev/docs-mintlify -p "$PROMPT" --auto > analysis.md || {
+          cn --config continuedev/docs-mintlify -p "$PROMPT" --readonly > analysis.md || {
             echo "⚠️ Analysis failed"
             echo "needs_docs=false" >> $GITHUB_OUTPUT
             exit 0

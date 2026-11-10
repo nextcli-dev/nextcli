@@ -185,6 +185,16 @@ const rows: Row[] = [
     ],
   },
   {
+    name: "TUI allow Bash(echo*) covers a quoted control character",
+    approver: true,
+    init: { allow: ["Bash(echo*)"] },
+    calls: [
+      // The `;` is inside an argument, so the line is still one command
+      [...bash('echo "a; b"'), "allow"],
+      [...bash("echo a; b"), "ask"],
+    ],
+  },
+  {
     name: "TUI auto mode",
     approver: true,
     init: { mode: "auto" },
@@ -473,6 +483,29 @@ const rows: Row[] = [
       ["Write", { filepath: "a.txt", content: "x" }, "allow"],
       [...edit, "deny"],
     ],
+  },
+
+  {
+    name: "headless --auto",
+    approver: false,
+    init: { ...HEADLESS, mode: "auto" },
+    // The auto rule isn't an operator's flag, so Bash is still strict
+    calls: [
+      [...edit, "allow"],
+      [...fetchUrl, "allow"],
+      [...mcp, "allow"],
+      [...bash("ls"), "allow"],
+      [...bash("curl https://x"), "deny"],
+      [...bash("npm test"), "deny"],
+    ],
+    offered: { Edit: true, Fetch: true, Bash: true },
+  },
+  {
+    name: "headless --auto --allow Bash",
+    approver: false,
+    init: { ...HEADLESS, mode: "auto", allow: ["Bash"] },
+    // Auto mode without an agent file ignores the flags
+    calls: [[...bash("curl https://x"), "deny"]],
   },
 
   // Unattended --readonly (what nextcli-checks runs)

@@ -71,16 +71,16 @@ Learn how to add custom models [here](/customize/overview). Then, you can use th
 
 #### How to Set Tool Permissions
 
-`cn` includes a tool permission system to make sure you approve of the agent's actions. It will begin with minimal permissions but as you approve tool calls, it will add policies to `~/.continue/permissions.yaml` to remember your preferences.
+`cn` includes a tool permission system to make sure you approve of the agent's actions. Tools that change things ask first; choosing "Continue + don't ask again" saves a rule to `~/.continue/permissions.yaml`. A headless run (`cn -p`) has nobody to ask, so it is closed by default and needs `--allow` for writes, the shell beyond read-only commands, `Fetch` or MCP tools. See [tool permissions](/cli/tool-permissions).
 
 If you want to explicitly allow or deny tools for a single session, you can use the command line flags `--allow`, `--ask`, and `--exclude`. For example:
 
 ```bash
 # Always allow the Write tool
-cn --allow Write()
+cn --allow Write
 
 # Always ask before running curl
-cn --ask Bash(curl*)
+cn --ask "Bash(curl*)"
 
 # Never use the Fetch tool
 cn --exclude Fetch

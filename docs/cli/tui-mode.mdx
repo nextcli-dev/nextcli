@@ -72,12 +72,27 @@ The agent can use the `AskQuestion` tool to gather clarifications before it cont
 
 This is useful when the agent needs decisions like scope, preferences, or environment details before making edits.
 
-## Tool Permissions
+## Tool permissions
 
-Tools that can modify your system (file writes, terminal commands) prompt for approval before executing. You get three options:
+Tools that can change your system (file writes, shell commands, MCP tools) stop and ask before running:
 
-- **NextCLI** — approve this call
-- **NextCLI + don't ask again** — approve and save a policy rule to `~/.continue/permissions.yaml`
-- **No** — reject the call and give the agent new instructions
+```
+Bash
+Will run: npm test
 
-Read-only tools (`Read`, `List`, `Search`, `Fetch`, `Diff`, `AskQuestion`) run automatically. See [tool permissions](/cli/tool-permissions) for the full policy system.
+Would you like to continue?
+
+Note: Dangerous commands will be blocked regardless of your preference.
+
+> Continue (tab)
+  Continue + don't ask again (shift+tab)
+  No, and tell NextCLI what to do differently (esc)
+```
+
+- **Continue** (Tab or `y`) approves this call.
+- **Continue + don't ask again** (Shift+Tab) approves it and saves a rule to `~/.continue/permissions.yaml`, so the same command or tool runs without asking from now on. For a shell command the rule covers the command and its subcommand (`npm test` saves `Bash(npm test*)`); a chained or wrapped command is approved once and nothing is saved.
+- **No, and tell NextCLI what to do differently** (Esc or `n`) rejects the call, stops the turn and lets you type new instructions. Ctrl+C does the same.
+
+The note under a shell command means what it says: `rm -rf /` and the like never run, whatever you answer.
+
+Read-only tools (`Read`, `List`, `Search`, `Diff`, `Fetch`, `AskQuestion`, `Checklist`, `Status`, `Skills`) run without asking. Shift+Tab outside a prompt cycles the permission mode: normal → plan (`⏸ plan`, never writes) → auto (`⏵⏵ auto`, nothing asks). See [tool permissions](/cli/tool-permissions) for the rules, the flags and `permissions.yaml`.

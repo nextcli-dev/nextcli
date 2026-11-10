@@ -35,67 +35,21 @@ Strict means the tool's own evaluator must approve the call by itself (`evaluate
 
 ## How It Works
 
-### 1. Tool Filtering (Exclude Policy)
+1. **Offering.** `getRequestTools` (`stream/handleToolCalls.ts`) keeps the tools `isToolOffered` accepts: a call can run, or would ask and someone is present. A rule scoped to some arguments (`Write(src/*)`) offers the tool; each call is still checked.
+2. **Deciding.** `executeStreamedToolCalls` (`stream/streamChatResponse.helpers.ts`) calls `checkToolPermission` for every call. `allow` runs it. `exclude` cancels it with `Command blocked by security policy` (headless: a longer message that points at `--allow`), and a headless run returns after a cancelled call.
+3. **Asking.** `ask` goes through `requestUserPermission` to `toolPermissionManager` (`permissionManager.ts`), which emits the request to the UI (`ui/components/ToolPermissionSelector.tsx`) or to `cn serve`'s `POST /permission`. Without an approver the request is denied. "Continue + don't ask again" calls `rememberToolApproval` (`policyWriter.ts`) and then `reloadPermissions`, so the saved rule applies to the next call.
 
-Tools with "exclude" permission are filtered out before being sent to the AI model. This means the AI won't even know these tools exist.
+## Files
 
-### 2. Permission Checking (Ask Policy)
+- `types.ts`: `ToolPermissionPolicy`, `ToolPermissions` (policies plus the `readonly` and `unattended` limits), `ToolPermissionsSource`
+- `defaultPolicies.ts`: the defaults table
+- `toolPattern.ts`: the one parser for `Tool`, `Tool(glob)` and tool-name globs, `PATTERN_ARGUMENT`, and the exclude → ask → allow ordering within a source
+- `precedenceResolver.ts`: normal mode's layering of flags, `permissions.yaml` and defaults
+- `permissionChecker.ts`: `checkToolPermission`, `isToolOffered`, path and Bash matching
+- `permissionsYamlLoader.ts`: reads and creates `~/.continue/permissions.yaml`
+- `policyWriter.ts`: what "don't ask again" remembers, and how it is written
+- `permissionManager.ts`: pending approval requests
+- `../services/ToolPermissionService.ts`: builds the policies per mode (`buildPolicies`) from flags, the agent file and the yaml; mode switches and reloads rebuild the same way
+- `permissionMatrix.test.ts`: the behavior spec. A behavior change edits its rows in the same commit.
 
-When the AI tries to use a tool with "ask" permission, the system will:
-
-1. Display a permission request in the UI
-2. Wait for user approval (y/n)
-3. Execute the tool if approved, or return an error if denied
-
-### 3. Automatic Execution (Allow Policy)
-
-Tools with "allow" permission are executed immediately without user intervention.
-
-## Architecture
-
-### Core Components
-
-- **`types.ts`**: Defines the permission policy types and interfaces
-- **`defaultPolicies.ts`**: Contains the hardcoded default permission policies
-- **`permissionChecker.ts`**: Implements the permission checking logic
-- **`permissionManager.ts`**: Manages permission requests and user responses
-- **UI Components**: Handle displaying permission requests and collecting user input
-
-### Data Flow
-
-1. **Tool Loading**: `getAllowedTools()` in `streamChatResponse.ts` filters out excluded tools
-2. **Tool Execution**: Before executing each tool call, permissions are checked
-3. **User Interaction**: For "ask" policies, UI displays permission request
-4. **Execution**: Tool is executed or denied based on permission result
-
-## UI Integration
-
-The permission system integrates with the existing chat UI:
-
-- Permission requests appear as special message types
-- Users can approve/deny with y/n keys
-- The decision is shown in the chat history
-- The system handles the async nature of permission requests
-
-## Future Enhancements
-
-The system is designed to be extensible for future features like:
-
-- Custom permission policies loaded from configuration
-- "Remember this decision" functionality
-- Argument-based permission matching (partially implemented)
-- Per-session or per-project permission overrides
-
-## Example Usage
-
-```typescript
-// Check permission for a tool call
-const result = checkToolPermission({
-  name: "writeFile",
-  arguments: { path: "/important.txt", content: "data" },
-});
-
-if (result.permission === "ask") {
-  // Request user permission
-}
-```
+The user-facing description is `docs/cli/tool-permissions.mdx`; the model is written up in `../../spec/permissions.md` and `../../spec/modes.md`. Both must change with the code (`.checks/documentation-freshness.md` checks this).
