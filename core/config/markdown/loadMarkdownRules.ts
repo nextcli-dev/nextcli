@@ -10,9 +10,39 @@ import { getAllDotContinueDefinitionFiles } from "../loadLocalAssistants";
 
 export const SUPPORTED_AGENT_FILES: readonly string[] =
   PROJECT_AGENT_FILE_NAMES;
+
+export interface ProjectAgentFileLocation {
+  uri: string;
+  workspaceDir: string;
+}
+
+/**
+ * Finds the project agent file: the first workspace that has any of
+ * SUPPORTED_AGENT_FILES at its root, and the first name in that workspace.
+ * Decided by existence only, so the loader and `/init` agree on the file.
+ */
+export async function findProjectAgentFile(
+  ide: IDE,
+): Promise<ProjectAgentFileLocation | undefined> {
+  const workspaceDirs = await ide.getWorkspaceDirs();
+  for (const workspaceDir of workspaceDirs) {
+    for (const fileName of SUPPORTED_AGENT_FILES) {
+      const uri = joinPathsToUri(workspaceDir, fileName);
+      try {
+        if (await ide.fileExists(uri)) {
+          return { uri, workspaceDir };
+        }
+      } catch {
+        // Treat a failed existence check as "not there"
+      }
+    }
+  }
+  return undefined;
+}
+
 /**
  * Loads rules from markdown files in the .continue/rules and .continue/prompts directories
- * and the first agent file (AGENTS.md, AGENT.md, CLAUDE.md, CODEX.md) at workspace root
+ * and the project agent file (see findProjectAgentFile)
  */
 export async function loadMarkdownRules(ide: IDE): Promise<{
   rules: RuleWithSource[];
@@ -21,38 +51,27 @@ export async function loadMarkdownRules(ide: IDE): Promise<{
   const errors: ConfigValidationError[] = [];
   const rules: RuleWithSource[] = [];
 
-  // First, try to load agent files from workspace root
-  const workspaceDirs = await ide.getWorkspaceDirs();
-
-  for (const workspaceDir of workspaceDirs) {
-    let agentFileFound = false;
-    for (const fileName of SUPPORTED_AGENT_FILES) {
-      try {
-        const agentFileUri = joinPathsToUri(workspaceDir, fileName);
-        const exists = await ide.fileExists(agentFileUri);
-        if (!exists) {
-          continue;
-        }
-        const agentContent = await ide.readFile(agentFileUri);
-
-        const rule = markdownToRule(agentContent, {
-          uriType: "file",
-          fileUri: agentFileUri,
-        });
-        rules.push({
-          ...rule,
-          source: "agentFile",
-          sourceFile: agentFileUri,
-          alwaysApply: true,
-        });
-        agentFileFound = true;
-        break; // Use the first found agent file in this workspace
-      } catch (e) {
-        // File doesn't exist or can't be read, continue to next file
-      }
-    }
-    if (agentFileFound) {
-      break; // Use agent file from first workspace that has one
+  const agentFile = await findProjectAgentFile(ide);
+  if (agentFile) {
+    // No fallback to a lower-priority name: `/init` writes this file, so
+    // loading another one would hide it.
+    try {
+      const agentContent = await ide.readFile(agentFile.uri);
+      const rule = markdownToRule(agentContent, {
+        uriType: "file",
+        fileUri: agentFile.uri,
+      });
+      rules.push({
+        ...rule,
+        source: "agentFile",
+        sourceFile: agentFile.uri,
+        alwaysApply: true,
+      });
+    } catch (e) {
+      errors.push({
+        fatal: false,
+        message: `Failed to load agent file ${agentFile.uri}: ${e instanceof Error ? e.message : e}`,
+      });
     }
   }
 

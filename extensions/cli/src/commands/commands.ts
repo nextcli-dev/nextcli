@@ -59,7 +59,7 @@ export const SYSTEM_SLASH_COMMANDS: SystemCommand[] = [
   },
   {
     name: "init",
-    description: "Create or update AGENTS.md",
+    description: "Create AGENTS.md, or update the existing agent file",
     category: "system",
   },
   {

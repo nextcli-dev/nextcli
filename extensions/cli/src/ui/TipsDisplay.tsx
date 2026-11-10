@@ -9,7 +9,7 @@ const CONTINUE_CLI_TIPS = [
   'Multi-line input is supported by typing "\\" and pressing enter',
   "Use `cn ls` or `/resume` to resume a previous conversation",
   'Run `cn` with the `-p` flag for headless mode. For example: `cn -p "Generate a commit message for the current changes. Output _only_ the commit message and nothing else."`',
-  "Use the /init slash command to create or update AGENTS.md. This will help `cn` understand your codebase and generate better responses.",
+  "Use the /init slash command to create AGENTS.md, or update the agent file you already have (AGENTS.md, AGENT.md, CLAUDE.md or CODEX.md). This will help `cn` understand your codebase and generate better responses.",
 ];
 
 interface TipsDisplayProps {

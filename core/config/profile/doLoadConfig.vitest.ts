@@ -73,7 +73,10 @@ vi.mock("../../util/GlobalContext", () => ({
   },
 }));
 vi.mock("../../promptFiles/initPrompt", () => ({
-  initSlashCommand: { name: "init", description: "init" },
+  createInitSlashCommand: vi.fn().mockResolvedValue({
+    name: "init",
+    description: "init",
+  }),
 }));
 
 // Mock fs.existsSync to simulate missing file on disk
