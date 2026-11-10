@@ -7,6 +7,7 @@ import { parseMarkdownRule, RuleObject } from "@nextcli/config-yaml";
 import { env } from "./env.js";
 import { processRule } from "./hubLoader.js";
 import { PermissionMode } from "./permissions/types.js";
+import { findProjectAgentFile } from "./projectAgentFile.js";
 import { serviceContainer } from "./services/ServiceContainer.js";
 import { ConfigServiceState, SERVICE_NAMES } from "./services/types.js";
 
@@ -164,22 +165,20 @@ export async function constructSystemMessage(
   format?: "json",
   headless?: boolean,
 ): Promise<string> {
-  const agentFiles = ["AGENTS.md", "AGENT.md", "CLAUDE.md", "CODEX.md"];
-
   let agentContent = "";
 
-  try {
-    for (const fileName of agentFiles) {
-      const filePath = path.join(process.cwd(), fileName);
-
-      if (fs.existsSync(filePath)) {
-        agentContent = fs.readFileSync(filePath, "utf-8");
-        break; // Use the first found agent file
-      }
+  // No fallback to a lower-priority name: `/init` writes this file, so
+  // loading another one would hide it.
+  const agentFilePath = findProjectAgentFile(process.cwd());
+  if (agentFilePath) {
+    try {
+      agentContent = fs.readFileSync(agentFilePath, "utf-8");
+    } catch (error) {
+      console.warn(
+        `Warning: Could not read agent file ${agentFilePath}:`,
+        error,
+      );
     }
-  } catch (error) {
-    // If there's any error reading the file, continue without agent content
-    console.warn("Warning: Could not read agent configuration file:", error);
   }
 
   // Process additional rules from --rule flags

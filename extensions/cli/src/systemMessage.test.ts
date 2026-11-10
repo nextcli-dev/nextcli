@@ -1,4 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 // Use the actual implementation instead of the mocked one
 vi.unmock("./systemMessage.js");
@@ -258,5 +262,51 @@ Rule 3: Third rule`;
     expect(result).toContain(
       "which means that your goal is to help the user investigate their ideas",
     );
+  });
+
+  describe("project agent file", () => {
+    let dir: string | undefined;
+    const spies: { mockRestore: () => void }[] = [];
+
+    function useWorkingDirectory(files: Record<string, string>) {
+      dir = fs.mkdtempSync(path.join(os.tmpdir(), "cn-system-message-"));
+      for (const [name, content] of Object.entries(files)) {
+        fs.writeFileSync(path.join(dir, name), content);
+      }
+      spies.push(vi.spyOn(process, "cwd").mockReturnValue(dir));
+      return dir;
+    }
+
+    afterEach(() => {
+      spies.splice(0).forEach((spy) => spy.mockRestore());
+      if (dir) {
+        fs.rmSync(dir, { recursive: true, force: true });
+        dir = undefined;
+      }
+    });
+
+    it("loads CODEX.md when it is the only agent file", async () => {
+      useWorkingDirectory({ "CODEX.md": "codex-only-guidance" });
+
+      const result = await constructSystemMessage("normal");
+
+      expect(result).toContain("codex-only-guidance");
+    });
+
+    it("does not fall back to CLAUDE.md when AGENTS.md can't be read", async () => {
+      const cwd = useWorkingDirectory({ "CLAUDE.md": "claude-guidance" });
+      // A directory passes the existence check but fails to read.
+      fs.mkdirSync(path.join(cwd, "AGENTS.md"));
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      spies.push(warn);
+
+      const result = await constructSystemMessage("normal");
+
+      expect(result).not.toContain("claude-guidance");
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining(path.join(cwd, "AGENTS.md")),
+        expect.anything(),
+      );
+    });
   });
 });
