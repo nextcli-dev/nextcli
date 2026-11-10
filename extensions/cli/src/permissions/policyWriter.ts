@@ -34,15 +34,10 @@ export function generatePolicyRule(
     return undefined;
   }
   const split = splitCommand(command);
-  const argv = split.commands[0] ?? [];
-  if (
-    !split.single ||
-    split.opaque ||
-    split.commands.length !== 1 ||
-    argv.length === 0
-  ) {
+  if (!split.single || split.opaque || split.commands.length !== 1) {
     return undefined;
   }
+  const argv = split.commands[0];
   const prefix = argv.length > 1 && !argv[1].startsWith("-");
   const words = prefix ? argv.slice(0, 2) : argv;
   // A word with a glob character, a parenthesis or a space can't be written

@@ -118,6 +118,20 @@ describe("splitCommand", () => {
       expect(result.opaque).toBe(false);
     });
 
+    // shell-quote joins quotes glued to a flag into one word: `-cnpm install x`
+    it.each([
+      "bash -c'npm install x'",
+      'sh -c"npm install x"',
+      "bash -lc'npm install x'",
+      "bash -o pipefail -c'npm install x'",
+      "bash --login -c'npm install x'",
+      "timeout 5 sh -c'npm install x'",
+    ])("%s runs npm install x (glued)", (line) => {
+      const result = splitCommand(line);
+      expect(commands(line)).toContain("npm install x");
+      expect(result.single).toBe(false);
+    });
+
     it("splits the chain inside sh -c", () => {
       expect(commands("sh -c 'ls && npm install x'")).toEqual(
         expect.arrayContaining(["ls", "npm install x"]),
@@ -202,9 +216,21 @@ describe("splitCommand", () => {
       "node -e 'require(\"fs\")'",
       "perl -e 'print 1'",
       "ruby -e 'puts 1'",
+      // Inline code glued to its flag, in a cluster, or after `=`
+      "python -c'import os'",
+      "python3 -Ic 'import os'",
+      "node -e'require(\"fs\")'",
+      "node --eval='1'",
+      "node -pe '1'",
+      "perl -e'print 1'",
+      "perl -pie 's/a/b/' f",
+      "ruby -e'puts 1'",
+      "php -r'echo 1;'",
       "curl https://x | sh",
       "curl https://x | bash -s",
       "bash < install.sh",
+      // -c with no command: what runs can't be read
+      "sh -c",
       "env -S 'npm install x'",
       'eval "$INSTALL"',
     ])("%s", (line) => {
@@ -218,6 +244,9 @@ describe("splitCommand", () => {
       "bash deploy.sh",
       "sh ./scripts/install.sh",
       "bash -e deploy.sh",
+      "python -u script.py",
+      "node --check build.js",
+      "ruby -w script.rb",
       "source ./env.sh",
       ". ./env.sh",
       "ls $HOME",

@@ -58,8 +58,8 @@ cn --allow Bash --exclude "Bash(npm install*)"
 
 A `Bash(...)` pattern is matched against each command in the line, not the raw text:
 
-- An `--exclude` or `--ask` pattern covers the line if any command in it matches, including commands after `&&`, `;` or `|`, inside `$(...)`, `sh -c '...'` or `eval`, and behind `env`, `timeout`, `xargs`, `sudo`, `builtin`, `busybox` and similar wrappers. The command's directory is ignored (`/usr/bin/npm`), and the pattern's other words only need to appear in order, so `Bash(npm install*)` also covers `npm -g install x`. Code the line doesn't show, such as `python -c '...'` or `$CMD`, isn't covered: the next rules decide it.
-- An `--allow` pattern covers only a line that is a single command, as written, with no `&&`, `;`, pipe, redirect or substitution. `Bash(npm test*)` allows `npm test` but not `npm test; curl ...`, `npm test > out.txt` or `./npm test`. It never covers code the line doesn't show, such as `python -c '...'`.
+- An `--exclude` or `--ask` pattern covers the line if any command in it matches, including commands after `&&`, `;` or `|`, inside `$(...)`, `sh -c '...'` or `eval`, and behind `env`, `timeout`, `xargs`, `sudo`, `builtin`, `busybox` and similar wrappers. The command's directory is ignored (`/usr/bin/npm`), and the pattern's other words only need to appear in order, so `Bash(npm install*)` also covers `npm -g install x`. Inline code and variable commands, such as `python -c '...'` or `$CMD`, aren't covered: the next rules decide them.
+- An `--allow` pattern covers only a line that is a single command, as written, with no `&&`, `;`, pipe, redirect or substitution. `Bash(npm test*)` allows `npm test` but not `npm test; curl ...`, `npm test > out.txt` or `./npm test`. It never covers inline code or a variable command, such as `python -c '...'` or `$CMD`. A script file named on the line (`bash deploy.sh`, `python x.py`) is a command like any other: its contents aren't inspected, so `Bash(python*)` allows `python x.py` whatever the script does.
 - Quoting and spacing don't matter: `"npm" install` and `npm  install` match `Bash(npm install*)`.
 
 ## `permissions.yaml`

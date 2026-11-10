@@ -88,6 +88,17 @@ const rows: Row[] = [
     ],
   },
   {
+    name: "TUI remembered Bash(bash*) allow",
+    approver: true,
+    yaml: { allow: ["Bash(bash*)"] },
+    calls: [
+      [...bash("bash deploy.sh"), "allow"],
+      // The command glued to -c is read, so the allow doesn't cover it
+      [...bash("bash -c'npm install x'"), "ask"],
+      [...bash("bash -c"), "ask"],
+    ],
+  },
+  {
     name: "TUI remembered Bash exclude",
     approver: true,
     yaml: { exclude: ["Bash(npm install*)"] },
@@ -298,6 +309,18 @@ const rows: Row[] = [
     offered: { Edit: true },
   },
   {
+    name: "headless scoped --allow Write(src/*)",
+    approver: false,
+    init: { ...HEADLESS, allow: ["Write(src/*)", "Edit(src/*)"] },
+    calls: [
+      ["Write", { filepath: "src/a.ts", content: "x" }, "allow"],
+      ["Write", { filepath: "a.txt", content: "x" }, "deny"],
+      [...edit, "allow"],
+    ],
+    // Offered for the calls the rule allows; each call is still checked
+    offered: { Write: true, Edit: true, MultiEdit: false },
+  },
+  {
     name: "headless --exclude Bash(npm install*)",
     approver: false,
     init: { ...HEADLESS, exclude: ["Bash(npm install*)"] },
@@ -308,6 +331,9 @@ const rows: Row[] = [
       [...bash("sh -c 'npm install left-pad'"), "deny"],
       [...bash("/bin/sh -c 'npm install left-pad'"), "deny"],
       [...bash("bash -lc 'ls; npm install left-pad'"), "deny"],
+      [...bash("bash -c'npm install left-pad'"), "deny"],
+      [...bash('sh -c"npm install left-pad"'), "deny"],
+      [...bash("timeout 5 bash -lc'npm install left-pad'"), "deny"],
       [...bash('"npm" install left-pad'), "deny"],
       [...bash("npm  install left-pad"), "deny"],
       [...bash("npm \\\ninstall left-pad"), "deny"],

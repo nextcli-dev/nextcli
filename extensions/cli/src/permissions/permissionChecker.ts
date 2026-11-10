@@ -85,7 +85,9 @@ export function matchesArguments(
  * (`/usr/bin/npm`), and the glob's other words need only appear in order, so
  * `npm install*` covers `npm -g install x` and `npm --prefix /tmp install x`.
  * An argument with an unexpanded `$` could be anything, so it matches any
- * word. A command named by a variable (`$CMD`) matches no rule.
+ * word. A rule that names a concrete command (`npm install*`) doesn't match
+ * a command named by a variable (`$CMD`); `Bash(*)` and a rule that spells
+ * the variable out (`Bash($CMD*)`) do.
  */
 function commandMatchesDenyRule(words: string[], glob: string): boolean {
   if (words.length === 0) {
@@ -115,6 +117,19 @@ function commandMatchesDenyRule(words: string[], glob: string): boolean {
 }
 
 /**
+ * Whether a scoped rule covers an argument it can't read. A missing one is
+ * the probe for the tools offered to the model (see isToolOffered) and
+ * matches no scoped rule; one that isn't a string is covered only by an
+ * exclude or ask.
+ */
+function matchesUnreadableArgument(
+  policy: ToolPermissionPolicy,
+  value: unknown,
+): boolean {
+  return value !== undefined && policy.permission !== "allow";
+}
+
+/**
  * Matches a `Bash(glob)` rule against the commands in a shell line (see
  * splitCommand). An allow covers only a line that is one simple command, as
  * written, matching the glob, so `Bash(git log*)` doesn't allow
@@ -131,10 +146,7 @@ function matchesBashCommand(
     return true;
   }
   if (typeof command !== "string") {
-    // A missing command is the probe for the tools offered to the model. A
-    // command that isn't a string can't be read, so only an exclude or ask
-    // covers it.
-    return command !== undefined && policy.permission !== "allow";
+    return matchesUnreadableArgument(policy, command);
   }
   const split = splitCommand(command);
   if (policy.permission === "allow") {
@@ -195,8 +207,7 @@ function matchesPathArgument(
     return true;
   }
   if (typeof value !== "string") {
-    // Missing: the probe for the tools offered to the model (see above)
-    return value !== undefined && policy.permission !== "allow";
+    return matchesUnreadableArgument(policy, value);
   }
   const cwd = process.cwd();
   const globs = [cwd, realPathOf(cwd)].map((base) =>
@@ -249,13 +260,32 @@ function permissionPolicyToToolPolicy(
 
 /**
  * True when the model is offered this tool: a call can run without asking,
- * or someone is present to approve it.
+ * or someone is present to approve it. A tool allowed only for some
+ * arguments, such as `Bash(git log*)` or `Write(src/*)`, is offered unless a
+ * rule for the whole tool comes first; each real call is still checked.
  */
 export function isToolOffered(
   toolName: string,
   permissions: ToolPermissions,
   isHeadless: boolean,
 ): boolean {
+  for (const policy of permissions.policies) {
+    if (!matchesToolPattern(toolName, policy.tool)) {
+      continue;
+    }
+    const scoped = Object.values(policy.argumentMatches ?? {}).some(
+      (glob) => glob !== "*",
+    );
+    if (!scoped) {
+      break;
+    }
+    if (
+      policy.permission === "allow" ||
+      (policy.permission === "ask" && !isHeadless)
+    ) {
+      return true;
+    }
+  }
   const { permission } = checkToolPermission(
     { name: toolName, arguments: {} },
     permissions,
