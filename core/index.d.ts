@@ -613,7 +613,10 @@ export interface LLMInteractionEnd extends LLMInteractionBase {
 
 export interface LLMInteractionSuccess extends LLMInteractionEnd {
   kind: "success";
-  /** How the provider stream ended, when the provider path reports it */
+  /**
+   * The provider's finish reason, or "none (stream closed early)" when the
+   * stream sent none. Only set on the OpenAI adapter's streaming path.
+   */
   finishReason?: string;
 }
 

@@ -23,8 +23,8 @@ export const EMPTY_ANSWER_PROMPT =
 /**
  * Returns a notice when the model call that just finished wrote no answer
  * and called no tool, for example when a reasoning model spent its output
- * on thinking. Without it the turn ends on a "Thought for..." block that
- * looks as if the answer were inside it.
+ * on thinking. Without it the turn ends on a collapsed thinking block
+ * ("Thought 17s") that looks as if the answer were inside it.
  */
 export function getNoAnswerNotice(
   history: ChatHistoryItem[],

@@ -31,11 +31,6 @@ interface ThinkingBlockPeekProps {
   hidden?: boolean;
 }
 
-/** Whole seconds, at least 1, like "17s" */
-function formatElapsed(ms: number): string {
-  return `${Math.max(1, Math.round(ms / 1000))}s`;
-}
-
 /**
  * Reasoning shown as a quiet text row ("Thinking...", then "Thought 17s")
  * with the reasoning below it in the muted color, so it reads apart from the
@@ -51,7 +46,8 @@ function ThinkingBlockPeek({
   tokens,
   hidden,
 }: ThinkingBlockPeekProps) {
-  // undefined until the user toggles: then the block follows inProgress
+  // undefined until the user toggles, so the block follows inProgress;
+  // after a toggle it keeps the user's choice
   const [userOpen, setUserOpen] = useState<boolean | undefined>(undefined);
   // Thinking was Hidden when this streamed: show that the model thought,
   // not what. Judged per block, so changing models doesn't change it
@@ -71,7 +67,8 @@ function ThinkingBlockPeek({
       setStartTime(Date.now());
       setElapsedTime("");
     } else if (startTime) {
-      setElapsedTime(formatElapsed(Date.now() - startTime));
+      const seconds = Math.max(1, Math.round((Date.now() - startTime) / 1000));
+      setElapsedTime(`${seconds}s`);
     }
   }, [inProgress]);
 

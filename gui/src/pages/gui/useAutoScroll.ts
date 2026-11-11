@@ -8,10 +8,6 @@ function getNumUserMsgs(history: ChatHistoryItemWithMessageId[]) {
   return history.filter((msg) => msg.message.role === "user").length;
 }
 
-function distanceFromBottom(elem: HTMLElement) {
-  return elem.scrollHeight - elem.scrollTop - elem.clientHeight;
-}
-
 /**
  * Keeps the chat at the end while new content grows (streamed answers,
  * inline reasoning, tool output), but only while the user is there.
@@ -47,7 +43,8 @@ export const useAutoScroll = (
 
     // Our own scrollToEnd lands at distance 0, so it keeps auto on
     const handleScroll = () => {
-      stickRef.current = distanceFromBottom(elem) <= STICK_THRESHOLD_PX;
+      const distance = elem.scrollHeight - elem.scrollTop - elem.clientHeight;
+      stickRef.current = distance <= STICK_THRESHOLD_PX;
     };
 
     const resizeObserver = new ResizeObserver(scrollToEnd);
