@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.13](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.12...vscode-v1.6.13) (2026-11-11)
+
+
+### Bug Fixes
+
+* **vscode:** explain turns that end on thinking alone and restyle reasoning ([#120](https://github.com/nextcli-dev/nextcli/issues/120)) ([caf7763](https://github.com/nextcli-dev/nextcli/commit/caf77632a06c7f88173a7f74315ba71439598dbf))
+
 ## [1.6.12](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.11...vscode-v1.6.12) (2026-11-10)
 
 
