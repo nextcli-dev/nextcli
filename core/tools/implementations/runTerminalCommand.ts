@@ -1,3 +1,7 @@
+import {
+  filterSecretEnv,
+  secureShellCommand,
+} from "@continuedev/terminal-security";
 import iconv from "iconv-lite";
 import childProcess from "node:child_process";
 import os from "node:os";
@@ -39,19 +43,6 @@ function getDecodedOutput(data: Buffer): string {
     }
   } else {
     return data.toString();
-  }
-} // Simple helper function to use login shell on Unix/macOS and PowerShell on Windows
-function getShellCommand(command: string): { shell: string; args: string[] } {
-  if (process.platform === "win32") {
-    // Windows: Use PowerShell
-    return {
-      shell: "powershell.exe",
-      args: ["-NoLogo", "-ExecutionPolicy", "Bypass", "-Command", command],
-    };
-  } else {
-    // Unix/macOS: Use login shell to source .bashrc/.zshrc etc.
-    const userShell = process.env.SHELL || "/bin/bash";
-    return { shell: userShell, args: ["-l", "-c", command] };
   }
 }
 
@@ -107,8 +98,11 @@ function resolveWorkingDirectory(workspaceDirs: string[]): string {
 }
 
 // Add color-supporting environment variables
-const getColorEnv = () => ({
-  ...process.env,
+// The extension's environment without secret-like variables (provider keys,
+// tokens), plus color settings. `passEnv` is the continue.terminalPassEnv
+// setting.
+const getColorEnv = (passEnv: string[]) => ({
+  ...filterSecretEnv(process.env, passEnv).env,
   FORCE_COLOR: "1",
   COLORTERM: "truecolor",
   TERM: "xterm-256color",
@@ -133,6 +127,9 @@ export const runTerminalCommandImpl: ToolImpl = async (args, extras) => {
 
   const ideInfo = await extras.ide.getIdeInfo();
   const toolCallId = extras.toolCallId || "";
+  // Secret-like variables the user lets commands see; a login shell's profile
+  // can export the others again, so secureShellCommand removes them in the shell
+  const passEnv = (await extras.ide.getIdeSettings()).terminalPassEnv ?? [];
 
   if (LOCAL_ONLY.includes(ideInfo.remoteName)) {
     // For streaming output
@@ -164,10 +161,10 @@ export const runTerminalCommandImpl: ToolImpl = async (args, extras) => {
           }
 
           // Use spawn with color environment
-          const { shell, args } = getShellCommand(command);
+          const { shell, args } = secureShellCommand(command, passEnv);
           const childProc = childProcess.spawn(shell, args, {
             cwd,
-            env: getColorEnv(), // Add enhanced environment for colors
+            env: getColorEnv(passEnv), // Add enhanced environment for colors
           });
 
           // Track this process for foreground cancellation
@@ -397,7 +394,7 @@ export const runTerminalCommandImpl: ToolImpl = async (args, extras) => {
         try {
           // Use spawn approach for consistency with streaming version
           const { shell: nonStreamingShell, args: nonStreamingArgs } =
-            getShellCommand(command);
+            secureShellCommand(command, passEnv);
           const output = await new Promise<{ stdout: string; stderr: string }>(
             (resolve, reject) => {
               let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -408,7 +405,7 @@ export const runTerminalCommandImpl: ToolImpl = async (args, extras) => {
                 nonStreamingArgs,
                 {
                   cwd,
-                  env: getColorEnv(),
+                  env: getColorEnv(passEnv),
                 },
               );
 
@@ -525,10 +522,10 @@ export const runTerminalCommandImpl: ToolImpl = async (args, extras) => {
         try {
           // Use spawn with color environment
           const { shell: detachedShell, args: detachedArgs } =
-            getShellCommand(command);
+            secureShellCommand(command, passEnv);
           const childProc = childProcess.spawn(detachedShell, detachedArgs, {
             cwd,
-            env: getColorEnv(), // Add color environment
+            env: getColorEnv(passEnv), // Add color environment
             // Detach the process so it's not tied to the parent
             detached: true,
             // Redirect to /dev/null equivalent (works cross-platform)

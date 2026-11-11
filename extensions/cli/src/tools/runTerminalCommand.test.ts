@@ -1,8 +1,13 @@
+import fs from "fs";
+import os from "os";
+import path from "path";
+
+import { backgroundJobService } from "../services/BackgroundJobService.js";
 import { signalAllProcessTrees } from "../util/processTree.js";
 
 import { setRunSafetyOptions } from "./runSafetyOptions.js";
 import {
-  isRunningInWsl,
+  runCommandInBackground,
   runTerminalCommandTool,
 } from "./runTerminalCommand.js";
 
@@ -107,20 +112,6 @@ describe("runTerminalCommandTool", () => {
           command: "uname -s",
         });
         expect(result.trim()).toBe("Linux");
-      });
-    }
-  });
-
-  describe("WSL detection", () => {
-    it("should cache the WSL detection result", () => {
-      const firstResult = isRunningInWsl();
-      const secondResult = isRunningInWsl();
-      expect(firstResult).toBe(secondResult);
-    });
-
-    if (!isLinux) {
-      it("should return false on non-Linux platforms", () => {
-        expect(isRunningInWsl()).toBe(false);
       });
     }
   });
@@ -324,6 +315,96 @@ describe.skipIf(process.platform === "win32")(
         command: 'echo "secret=$TEST_SECRET_TOKEN"',
       });
       expect(result.trim()).toBe("secret=secret-value");
+    });
+  },
+);
+
+// A login shell re-reads the profile, which can export keys again; the
+// prelude must remove them while the rest of the profile still applies
+describe.skipIf(process.platform === "win32")(
+  "runTerminalCommandTool shell profile",
+  () => {
+    const saved = {
+      HOME: process.env.HOME,
+      SHELL: process.env.SHELL,
+      ZDOTDIR: process.env.ZDOTDIR,
+    };
+    let home: string;
+    const profile = (binDir: string) =>
+      [
+        "export PROFILE_API_KEY=from-profile",
+        "export PROFILE_PLAIN=plain",
+        `export PATH="${binDir}:$PATH"`,
+      ].join("\n") + "\n";
+    const command =
+      'echo "key=${PROFILE_API_KEY:-unset} plain=${PROFILE_PLAIN:-unset} path=$(command -v profile-tool)"';
+
+    beforeEach(() => {
+      home = fs.mkdtempSync(path.join(os.tmpdir(), "cn-profile-"));
+      const binDir = path.join(home, "bin");
+      fs.mkdirSync(binDir);
+      fs.writeFileSync(path.join(binDir, "profile-tool"), "#!/bin/sh\n", {
+        mode: 0o755,
+      });
+      fs.writeFileSync(path.join(home, ".bash_profile"), profile(binDir));
+      fs.writeFileSync(path.join(home, ".zprofile"), profile(binDir));
+      process.env.HOME = home;
+      process.env.ZDOTDIR = home;
+    });
+
+    afterEach(() => {
+      for (const [name, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+      setRunSafetyOptions({});
+      fs.rmSync(home, { recursive: true, force: true });
+    });
+
+    const shells = ["/bin/bash", "/bin/zsh"].filter((shell) =>
+      fs.existsSync(shell),
+    );
+
+    describe.each(shells)("%s", (shell) => {
+      beforeEach(() => {
+        process.env.SHELL = shell;
+      });
+
+      it("removes a key the profile exports and keeps the rest", async () => {
+        const result = await runTerminalCommandTool.run({ command });
+        expect(result.trim()).toBe(
+          `key=unset plain=plain path=${path.join(home, "bin", "profile-tool")}`,
+        );
+      });
+
+      it("keeps a profile key named with --pass-env", async () => {
+        setRunSafetyOptions({ passEnv: ["PROFILE_API_KEY"] });
+        const result = await runTerminalCommandTool.run({
+          command: 'echo "key=$PROFILE_API_KEY"',
+        });
+        expect(result.trim()).toBe("key=from-profile");
+      });
+
+      it("removes it from background jobs too", async () => {
+        const started = runCommandInBackground(command);
+        expect(started.success).toBe(true);
+        let job = backgroundJobService.getJob(started.jobId!)!;
+        for (let i = 0; i < 50 && job.status === "running"; i++) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          job = backgroundJobService.getJob(started.jobId!)!;
+        }
+        expect(job.output.trim()).toBe(
+          `key=unset plain=plain path=${path.join(home, "bin", "profile-tool")}`,
+        );
+      });
+    });
+
+    it("falls back to a POSIX shell for a non-POSIX $SHELL", async () => {
+      process.env.SHELL = "/usr/local/bin/fish";
+      const result = await runTerminalCommandTool.run({ command });
+      expect(result.trim()).toBe(
+        `key=unset plain=plain path=${path.join(home, "bin", "profile-tool")}`,
+      );
     });
   },
 );

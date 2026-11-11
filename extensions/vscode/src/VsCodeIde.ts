@@ -702,6 +702,7 @@ class VsCodeIde implements IDE {
         "pauseCodebaseIndexOnStart",
         false,
       ),
+      terminalPassEnv: settings.get<string[]>("terminalPassEnv", []),
     };
     return ideSettings;
   }

@@ -76,7 +76,9 @@ See [tool permissions](/cli/tool-permissions) for the full precedence, [flags & 
 
 These two guards apply in every run, interactive or headless. They stop a prompt injection, for example text in a pull request, from making the agent read your provider key or CI token.
 
-**Shell commands run without secret-like environment variables.** `Bash` and background jobs don't get a variable whose name contains `API_KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `PRIVATE_KEY`, `CREDENTIAL` or `ACCESS_KEY`, or ends in `_KEY` or `_PAT`. That includes the GitHub Actions OIDC variables (`ACTIONS_ID_TOKEN_REQUEST_TOKEN` and `_URL`). A variable is dropped whatever its name if its value looks like a key (`sk-…`, `ghp_…`, `AKIA…`, a private key) or like a URL with a password in it, such as `HTTPS_PROXY=http://user:pass@proxy:3128`. `SSH_AUTH_SOCK` is kept, so `git push` over SSH works. Hooks and MCP servers come from your own config and still get the full environment.
+**Shell commands run without secret-like environment variables.** `Bash` and background jobs don't get a variable whose name contains `API_KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `PRIVATE_KEY`, `CREDENTIAL` or `ACCESS_KEY`, or ends in `_KEY` or `_PAT`. That includes the GitHub Actions OIDC variables (`ACTIONS_ID_TOKEN_REQUEST_TOKEN` and `_URL`). A variable is dropped whatever its name if its value looks like a key (`sk-…`, `ghp_…`, `AKIA…`, a private key) or like a URL with a password in it, such as `HTTPS_PROXY=http://user:pass@proxy:3128`. A variable that holds the path to a file, such as `GOOGLE_APPLICATION_CREDENTIALS`, is kept: the shell could read the file anyway, and tools like `gcloud` need the path. `SSH_AUTH_SOCK` is kept too, so `git push` over SSH works.
+
+The shell still runs your profile (`~/.zprofile`, `~/.bash_profile`), so `PATH` from nvm or Homebrew works. A key the profile exports is removed after the profile runs and before the command. That step needs `awk`; without it, only keys the profile adds get through. Hooks and MCP servers come from your own config and still get the full environment. The VS Code extension's terminal tool removes the same variables; list the ones it should keep in the `continue.terminalPassEnv` setting. In a remote workspace, VS Code runs commands in its own terminal, which doesn't remove them.
 
 If a command needs one of these variables, pass it back by name:
 
@@ -95,7 +97,6 @@ These guards close the easy paths, not every path. A shell that runs as your use
 
 - On Linux, `/proc/<pid>/environ` shows the environment `cn` started with, and the shell can read `~/.continue/config.yaml` too. Wherever the provider key comes from, only a container or a separate user keeps it out of the shell's reach.
 - `actions/checkout` keeps the job token in `.git/config` unless you set `persist-credentials: false`.
-- A login shell runs your shell profile, which can export keys again.
 - Give the job a token with the fewest permissions it needs.
 </Warning>
 

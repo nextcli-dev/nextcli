@@ -146,6 +146,14 @@
           "type": "number",
           "default": 60,
           "description": "The period of time in minutes between automatic syncs."
+        },
+        "continue.terminalPassEnv": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Environment variables the agent's terminal commands keep even though they look like secrets (API keys, tokens, passwords), for example `NPM_TOKEN`. Every other secret-like variable is removed, including ones your shell profile exports."
         }
       }
     },

@@ -104,7 +104,7 @@ describe("runTerminalCommandImpl", () => {
       getWorkspaceDirs: mockGetWorkspaceDirs,
       runCommand: mockRunCommand,
       // Add stubs for other required IDE methods
-      getIdeSettings: vi.fn(),
+      getIdeSettings: vi.fn().mockResolvedValue({}),
       getDiff: vi.fn(),
       getClipboardContent: vi.fn(),
       isTelemetryEnabled: vi.fn(),
@@ -148,6 +148,41 @@ describe("runTerminalCommandImpl", () => {
     expect(result[0].content).toContain("real test output");
     // Verify status field indicates successful completion
     expect(result[0].status).toBe("Command completed");
+  });
+
+  // A command the model writes must not read the provider key or a token
+  describe("environment", () => {
+    const printEnv = `node -e "console.log(process.env.TEST_SECRET_TOKEN || 'unset', process.env.TEST_PLAIN)"`;
+
+    beforeEach(() => {
+      process.env.TEST_SECRET_TOKEN = "secret-value";
+      process.env.TEST_PLAIN = "plain-value";
+    });
+
+    afterEach(() => {
+      delete process.env.TEST_SECRET_TOKEN;
+      delete process.env.TEST_PLAIN;
+    });
+
+    it("runs commands without secret-like variables", async () => {
+      const result = await runTerminalCommandImpl(
+        { command: printEnv, waitForCompletion: true },
+        createMockExtras(),
+      );
+      expect(result[0].content.trim()).toBe("unset plain-value");
+    });
+
+    it("keeps the variables named in continue.terminalPassEnv", async () => {
+      const extras = createMockExtras();
+      extras.ide.getIdeSettings = vi
+        .fn()
+        .mockResolvedValue({ terminalPassEnv: ["TEST_SECRET_TOKEN"] });
+      const result = await runTerminalCommandImpl(
+        { command: printEnv, waitForCompletion: true },
+        extras,
+      );
+      expect(result[0].content.trim()).toBe("secret-value plain-value");
+    });
   });
 
   it("should stream output when onPartialOutput is provided", async () => {
@@ -375,7 +410,7 @@ describe("runTerminalCommandImpl", () => {
         .mockReturnValue(Promise.resolve({ remoteName: "local" })),
       getWorkspaceDirs: mockEmptyWorkspace,
       runCommand: vi.fn(),
-      getIdeSettings: vi.fn(),
+      getIdeSettings: vi.fn().mockResolvedValue({}),
       getDiff: vi.fn(),
       getClipboardContent: vi.fn(),
       isTelemetryEnabled: vi.fn(),
@@ -435,7 +470,7 @@ describe("runTerminalCommandImpl", () => {
           .mockReturnValue(Promise.resolve({ remoteName: "local" })),
         getWorkspaceDirs: mockEmptyWorkspace,
         runCommand: vi.fn(),
-        getIdeSettings: vi.fn(),
+        getIdeSettings: vi.fn().mockResolvedValue({}),
         getDiff: vi.fn(),
         getClipboardContent: vi.fn(),
         isTelemetryEnabled: vi.fn(),

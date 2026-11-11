@@ -3,7 +3,6 @@
  */
 
 import { PermissionMode } from "../permissions/types.js";
-import { setRunSafetyOptions } from "../tools/runSafetyOptions.js";
 
 export interface PermissionOverrides {
   allow?: string[];
@@ -68,17 +67,9 @@ export function processCommandFlags(options: {
   allow?: string[];
   ask?: string[];
   exclude?: string[];
-  passEnv?: string[];
-  allowPrivateFetch?: boolean;
 }): ProcessedFlags {
   // Convert legacy flags to mode
   const mode = convertLegacyModeFlags(options.readonly, options.auto);
-
-  // What Bash and Fetch may reach in this run (--pass-env, --allow-private-fetch)
-  setRunSafetyOptions({
-    passEnv: options.passEnv,
-    allowPrivateFetch: options.allowPrivateFetch,
-  });
 
   // Build permission overrides
   const permissionOverrides = buildPermissionOverrides(

@@ -1,10 +1,10 @@
 import { ChildProcess, spawn } from "child_process";
-import fs from "fs";
 import type { Socket } from "net";
 
 import {
   evaluateTerminalCommandSecurity,
   isDestructiveTerminalCommand,
+  secureShellCommand,
   type ToolPolicy,
 } from "@continuedev/terminal-security";
 
@@ -29,6 +29,7 @@ import {
   truncateOutputFromStart,
 } from "../util/truncateOutput.js";
 
+import { getRunSafetyOptions } from "./runSafetyOptions.js";
 import { Tool, ToolRunContext } from "./types.js";
 
 // Output truncation defaults
@@ -53,28 +54,6 @@ function appendToTail(
     : combined;
 }
 
-/**
- * When running on Windows, but inside WSL, shell commands need to run using the WSL environment.
- */
-export function isRunningInWsl(): boolean {
-  // WSL only applies when platform reports as Linux
-  if (process.platform !== "linux") {
-    return false;
-  }
-
-  if (process.env.WSL_DISTRO_NAME) {
-    return true;
-  }
-
-  // Check /proc/version for Microsoft/WSL indicators
-  try {
-    const procVersion = fs.readFileSync("/proc/version", "utf8").toLowerCase();
-    return procVersion.includes("microsoft") || procVersion.includes("wsl");
-  } catch {
-    return false;
-  }
-}
-
 function getBashMaxChars(): number {
   return parseEnvNumber(
     process.env.CONTINUE_CLI_BASH_MAX_OUTPUT_CHARS,
@@ -89,28 +68,9 @@ function getBashMaxLines(): number {
   );
 }
 
-// Helper function to use login shell on Unix/macOS and PowerShell on Windows and available shell in WSL
+/** A login shell (PowerShell on Windows) that removes secrets the profile sets */
 function getShellCommand(command: string): { shell: string; args: string[] } {
-  if (process.platform === "win32") {
-    // Windows: Use PowerShell
-    return {
-      shell: "powershell.exe",
-      args: ["-NoLogo", "-ExecutionPolicy", "Bypass", "-Command", command],
-    };
-  }
-
-  if (isRunningInWsl()) {
-    // in WSL, bash is always available
-    const wslShell = process.env.SHELL || "/bin/bash";
-    return {
-      shell: wslShell,
-      args: ["-l", "-c", command],
-    };
-  }
-
-  // Unix/macOS: Use login shell to source .bashrc/.zshrc etc.
-  const userShell = process.env.SHELL || "/bin/bash";
-  return { shell: userShell, args: ["-l", "-c", command] };
+  return secureShellCommand(command, getRunSafetyOptions().passEnv);
 }
 
 export function runCommandInBackground(command: string): {
@@ -151,7 +111,7 @@ Commands are automatically executed from the current working directory (${proces
 
 IMPORTANT: To edit files, use Edit/MultiEdit tools instead of bash commands (sed, awk, etc).
 
-Secret-like environment variables (API keys, tokens, passwords) are removed before the command runs. If a command needs one, tell the user to pass it with --pass-env <NAME>.
+Secret-like environment variables (API keys, tokens, passwords) are removed before the command runs, including ones the shell profile sets. Variables that hold a path to a credential file, such as GOOGLE_APPLICATION_CREDENTIALS, are kept. If a command needs a removed variable, tell the user to pass it with --pass-env <NAME>.
 `,
   parameters: {
     type: "object",

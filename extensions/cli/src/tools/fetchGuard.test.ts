@@ -129,6 +129,13 @@ describe("createGuardedFetch against local servers", () => {
     });
     b = await listen(serverB);
     serverA = http.createServer((req, res) => {
+      // /hops/N redirects N times before answering
+      const hops = req.url?.match(/^\/hops\/(\d+)$/);
+      if (hops && Number(hops[1]) > 0) {
+        res.writeHead(302, { location: `/hops/${Number(hops[1]) - 1}` });
+        res.end();
+        return;
+      }
       const location =
         req.url === "/to-b"
           ? `${b}/page`
@@ -216,5 +223,43 @@ describe("createGuardedFetch against local servers", () => {
       }),
     })(url);
     expect(await response.text()).toBe("docs from A");
+  });
+
+  // The Fetch standard's limit, which undici enforces
+  it("follows 20 redirects and refuses the 21st", async () => {
+    const guarded = createGuardedFetch({ allowPrivate: true });
+    expect(await (await guarded(`${a}/hops/20`)).text()).toBe("docs from A");
+    await expect(guarded(`${a}/hops/21`)).rejects.toThrow();
+  });
+});
+
+describe("createGuardedFetch error reporting", () => {
+  const refusal = new FetchRefusedError("10.0.0.1", "10.0.0.1", "private");
+  const failingWith = (error: Error) =>
+    createGuardedFetch({
+      dispatcher: new Agent({
+        connect: (_options, callback) => callback(error, null),
+      }),
+    });
+
+  it.each([
+    [
+      "wrapped in another error",
+      new Error("connect failed", { cause: refusal }),
+    ],
+    [
+      "inside an AggregateError",
+      new AggregateError([new Error("other"), refusal]),
+    ],
+  ])("reports a refusal %s", async (_label, error) => {
+    await expect(failingWith(error)("http://example.test/")).rejects.toBe(
+      refusal,
+    );
+  });
+
+  it("passes other failures through", async () => {
+    await expect(
+      failingWith(new Error("ECONNRESET"))("http://example.test/"),
+    ).rejects.toThrow(/fetch failed/);
   });
 });

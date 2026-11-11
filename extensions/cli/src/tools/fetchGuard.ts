@@ -238,9 +238,21 @@ export function createGuardedFetch({
         ...(signal ? { signal } : {}),
       })) as unknown as Response;
     } catch (error) {
-      // undici reports a refused connect as "fetch failed" with the cause
-      const cause = (error as { cause?: unknown })?.cause;
-      throw cause instanceof FetchRefusedError ? cause : error;
+      // undici reports a refused connect as "fetch failed" with the refusal
+      // somewhere in its causes; the model needs the refusal's message
+      throw findRefusal(error) ?? error;
     }
   };
+}
+
+/** The FetchRefusedError in an error's cause chain or AggregateError list */
+function findRefusal(error: unknown, depth = 0): FetchRefusedError | undefined {
+  if (error instanceof FetchRefusedError) return error;
+  if (!error || typeof error !== "object" || depth > 10) return undefined;
+  const { cause, errors } = error as { cause?: unknown; errors?: unknown };
+  for (const inner of [cause, ...(Array.isArray(errors) ? errors : [])]) {
+    const found = findRefusal(inner, depth + 1);
+    if (found) return found;
+  }
+  return undefined;
 }

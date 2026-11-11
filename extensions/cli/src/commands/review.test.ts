@@ -41,4 +41,42 @@ describe("runReviewInWorker", () => {
       NEXTCLI_LOG_LEVEL: "verbose",
     });
   });
+
+  it("doesn't pass --pass-env or --allow-private-fetch to the worker", async () => {
+    let sent: any;
+    fork.mockImplementation(() => {
+      const child = Object.assign(new EventEmitter(), {
+        send: vi.fn((message: unknown) => {
+          sent = message;
+          queueMicrotask(() =>
+            child.emit("message", {
+              type: "result",
+              result: { patch: "", agentOutput: "", duration: 1 },
+            }),
+          );
+        }),
+        kill: vi.fn(),
+      });
+      queueMicrotask(() => child.emit("message", { type: "ready" }));
+      return child;
+    });
+
+    await runReviewInWorker(
+      "agent",
+      "/tmp/worktree",
+      { changedFiles: [] } as any,
+      {
+        allow: ["Bash"],
+        passEnv: ["GH_TOKEN"],
+        allowPrivateFetch: true,
+      } as any,
+    );
+
+    expect(sent.type).toBe("run-review");
+    expect(Object.keys(sent.config.options).sort()).toEqual([
+      "config",
+      "org",
+      "rule",
+    ]);
+  });
 });

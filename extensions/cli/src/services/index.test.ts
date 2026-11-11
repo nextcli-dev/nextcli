@@ -1,5 +1,7 @@
 import { vi } from "vitest";
 
+import { getRunSafetyOptions } from "../tools/runSafetyOptions.js";
+
 import { MCPService } from "./MCPService.js";
 
 import { initializeServices, services } from "./index.js";
@@ -40,6 +42,33 @@ describe("initializeServices", () => {
           tools: [],
         },
       );
+    });
+  });
+
+  // Every entry point initializes services; the cn review worker passes only
+  // config, org and rule, so it must end up with the safe defaults
+  describe("run safety options", () => {
+    it("takes --pass-env and --allow-private-fetch from the options", async () => {
+      await initializeServices({
+        headless: true,
+        options: { passEnv: ["GH_TOKEN"], allowPrivateFetch: true },
+      });
+      expect(getRunSafetyOptions()).toEqual({
+        passEnv: ["GH_TOKEN"],
+        allowPrivateFetch: true,
+      });
+    });
+
+    it("resets them for a run without the flags", async () => {
+      await initializeServices({
+        headless: true,
+        options: { passEnv: ["GH_TOKEN"], allowPrivateFetch: true },
+      });
+      await initializeServices({ headless: true, options: { rule: [] } });
+      expect(getRunSafetyOptions()).toEqual({
+        passEnv: [],
+        allowPrivateFetch: false,
+      });
     });
   });
 });
