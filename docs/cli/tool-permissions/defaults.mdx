@@ -8,7 +8,8 @@ description: "The permission each cn tool gets by default in the TUI, in headles
 
 | Tool | `cn` (TUI) | `cn -p` | `cn --readonly` | `cn -p --readonly` |
 |------|------------|---------|-----------------|--------------------|
-| `Read`, `List`, `Search`, `Diff`, `AskQuestion`, `Checklist`, `Status`, `CheckBackgroundJob`, `Skills`, `Exit`, `ReportFailure` | `allow` | `allow` | `allow` | `allow` |
+| `Read`, `List`, `Search`, `Diff`, `Checklist`, `Status`, `CheckBackgroundJob`, `Skills`, `Exit`, `ReportFailure` | `allow` | `allow` | `allow` | `allow` |
+| `AskQuestion` | `allow` | `exclude` | `allow` | `exclude` |
 | `Edit`, `MultiEdit`, `Write` | `ask` | `ask`, so refused | `exclude` | `exclude` |
 | `Bash` | `ask` | `allow`, [read-only commands](/cli/tool-permissions/read-only-commands) only | `ask` | `exclude` |
 | `Fetch`, `UploadArtifact` | `allow` | `exclude` | `allow` | `exclude` |
@@ -17,7 +18,7 @@ description: "The permission each cn tool gets by default in the TUI, in headles
 
 The `--readonly` columns are [plan mode](/cli/modes/plan-mode).
 
-`Fetch`, `UploadArtifact` and `Subagent` can send data off the machine or start work nobody reviews, so they are closed when nobody is watching. Some tools exist only in some runs: `Exit` in `cn -p`, `ReportFailure` with `--id`, `UploadArtifact` with `--id` and `--beta-upload-artifact-tool`, `Subagent` with `--beta-subagent-tool`. A capable model gets `MultiEdit` and others get `Edit`; the two have the same permissions.
+`Fetch`, `UploadArtifact` and `Subagent` can send data off the machine or start work nobody reviews, so they are closed when nobody is watching. Some tools exist only in some runs: `Exit` in `cn -p`, `AskQuestion` only in the TUI, since nobody can answer a question in `cn -p`, `ReportFailure` with `--id`, `UploadArtifact` with `--id` and `--beta-upload-artifact-tool`, `Subagent` with `--beta-subagent-tool`. A capable model gets `MultiEdit` and others get `Edit`; the two have the same permissions.
 
 The headless `Bash` allow is not an ordinary allow. It runs only commands `cn` can tell are read-only; every other command asks, and so is refused. This keeps a run that reads untrusted code, such as a pull request in CI, from running arbitrary commands or sending data out while it holds a provider key. Opt in to more with `--allow`.
 

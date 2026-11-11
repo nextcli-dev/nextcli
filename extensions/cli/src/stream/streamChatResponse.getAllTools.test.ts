@@ -183,4 +183,32 @@ describe("getRequestTools - Tool Filtering", () => {
     expect(toolNames).not.toContain("Edit");
     expect(toolNames).not.toContain("Write");
   });
+
+  test("offers AskQuestion only when someone can answer it", async () => {
+    await initializeServices({
+      headless: false,
+      toolPermissionOverrides: { mode: "normal" },
+    });
+    const interactive = (await getRequestTools(false)).map(
+      (t) => t.function.name,
+    );
+    expect(interactive).toContain("AskQuestion");
+    expect(interactive).not.toContain("Exit");
+
+    await initializeServices({ headless: true });
+    const headless = (await getRequestTools(true)).map((t) => t.function.name);
+    expect(headless).not.toContain("AskQuestion");
+    expect(headless).toContain("Exit");
+    expect(headless).toContain("Read");
+  });
+
+  test("a headless run allowing every tool still gets no AskQuestion", async () => {
+    await initializeServices({
+      headless: true,
+      toolPermissionOverrides: { mode: "auto" },
+    });
+    const toolNames = (await getRequestTools(true)).map((t) => t.function.name);
+    expect(toolNames).toContain("Bash");
+    expect(toolNames).not.toContain("AskQuestion");
+  });
 });

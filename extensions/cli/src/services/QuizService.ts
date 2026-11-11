@@ -49,6 +49,14 @@ export class QuizService extends EventEmitter {
 
   /**set a pending question to be answered and return a promise that resolves when the question is answered */
   async askQuestion(question: QuizQuestion): Promise<string> {
+    // Only the terminal UI answers questions. Without it the promise below
+    // would never settle, and Node would exit with no output.
+    if (this.listenerCount("questionRequested") === 0) {
+      throw new Error(
+        "Nobody can answer questions in this run. Continue without asking, and state the assumptions you make.",
+      );
+    }
+
     const requestId = `quiz-${Date.now()}`;
 
     return new Promise<string>((resolve) => {

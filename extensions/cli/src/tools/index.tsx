@@ -71,7 +71,6 @@ const BASE_BUILTIN_TOOLS: Tool[] = [
   fetchTool,
   writeChecklistTool,
   checkBackgroundJobTool,
-  askQuestionTool,
 ];
 
 const BUILTIN_SEARCH_TOOLS: Tool[] = [searchCodeTool];
@@ -127,6 +126,10 @@ export async function getAllAvailableTools(
 
   if (isHeadless) {
     tools.push(exitTool);
+  } else {
+    // Nobody is there to answer a question in a headless run. A model that
+    // asked one would wait forever, and the process would exit silently.
+    tools.push(askQuestionTool);
   }
 
   if (isBetaSubagentToolEnabled()) {
