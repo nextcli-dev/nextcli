@@ -25,7 +25,7 @@ export const LOG_LEVELS = [
 ] as const;
 export type LogLevel = (typeof LOG_LEVELS)[number];
 
-function parseLogLevel(value: string | undefined): LogLevel | undefined {
+export function parseLogLevel(value: string | undefined): LogLevel | undefined {
   const level = value?.trim().toLowerCase();
   return LOG_LEVELS.find((known) => known === level);
 }

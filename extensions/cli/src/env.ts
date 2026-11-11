@@ -1,9 +1,9 @@
 import * as os from "os";
 import * as path from "path";
 
-import dotenv from "dotenv";
-
-dotenv.config();
+// .env files load in the preAction hook (src/projectEnv.ts). A project's
+// .continue/.env and .env load only in a trusted folder; ~/.continue/.env
+// loads in every folder. Neither may set the variables read here.
 
 export const env = {
   // Empty unless opted in. NextCLI does not call api.nextcli.dev.

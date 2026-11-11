@@ -16,14 +16,20 @@ import {
   validateFlags,
 } from "./flags/flagValidator.js";
 import { configureConsoleForHeadless, safeStderr } from "./init.js";
+import {
+  canAskForTrust,
+  loadProjectEnvironment,
+  type EnvironmentReport,
+} from "./projectEnv.js";
 import { addCommonOptions, mergeParentOptions } from "./shared-options.js";
 import { post } from "./util/apiClient.js";
 import { markUnhandledError } from "./util/errorState.js";
 import { gracefulExit } from "./util/exit.js";
-import { logger } from "./util/logger.js";
+import { logger, parseLogLevel } from "./util/logger.js";
 import { signalForegroundProcessTrees } from "./util/processTree.js";
 import { readStdinSync } from "./util/stdin.js";
 import { getVersion } from "./version.js";
+import { listStoredTrust, setStoredTrust } from "./workspaceTrust.js";
 
 // TUI lifecycle and two-stage exit state management
 let tuiUnmount: (() => void) | null;
@@ -197,13 +203,45 @@ program
   )
   .version(getVersion(), "-v, --version", "Display version number");
 
-// --log-level wins over --verbose, which wins over NEXTCLI_LOG_LEVEL
-program.hook("preAction", (_program, actionCommand) => {
-  const { logLevel, verbose } = actionCommand.optsWithGlobals();
-  const level = logLevel ?? (verbose ? "debug" : undefined);
+function logEnvironmentReport(report: EnvironmentReport): void {
+  logger.debug("Environment files", {
+    trusted: report.trusted,
+    loaded: report.loaded,
+  });
+  if (report.skippedNames.length > 0) {
+    logger.debug(
+      `Not taken from a .env file: ${report.skippedNames.join(", ")}. Set them in the environment instead.`,
+    );
+  }
+}
+
+// Runs once commander knows the command, before its action: decides folder
+// trust, loads .env files (src/projectEnv.ts), then sets the log level.
+// --help and --version exit before this, so they never ask.
+program.hook("preAction", async (_program, actionCommand) => {
+  const opts = actionCommand.optsWithGlobals();
+  const report = await loadProjectEnvironment({
+    canAsk: canAskForTrust({
+      interactiveChat: actionCommand === program && !opts.print,
+      stdinIsTTY: !!process.stdin.isTTY,
+      stdoutIsTTY: !!process.stdout.isTTY,
+      env: process.env,
+    }),
+    trustFlag: !!opts.trustWorkspace,
+    quietNotice: ["trust", "untrust"].includes(actionCommand.name()),
+    notice: safeStderr,
+  });
+
+  // --log-level wins over --verbose, which wins over NEXTCLI_LOG_LEVEL (which
+  // a trusted folder's .env may set)
+  const level =
+    opts.logLevel ??
+    (opts.verbose ? "debug" : undefined) ??
+    parseLogLevel(process.env.NEXTCLI_LOG_LEVEL);
   if (level) {
     logger.setLevel(level);
   }
+  logEnvironmentReport(report);
 });
 
 // Root command - chat functionality (default)
@@ -338,6 +376,56 @@ program
   .option("-y, --yes", "Delete without asking")
   .action(async (options) => {
     await cleanupCommand({ yes: options.yes });
+  });
+
+// Folder trust: whether a folder's .env and .continue/.env may set cn's
+// environment (src/workspaceTrust.ts)
+// Saves a trust decision; a store cn can't write fails the command loudly, so
+// an untrust that didn't save never looks like it worked
+function saveTrust(folder: string | undefined, trusted: boolean) {
+  try {
+    return setStoredTrust(folder ?? process.cwd(), trusted);
+  } catch (error) {
+    console.error(
+      `Couldn't save the trust decision: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    process.exitCode = 1;
+    return undefined;
+  }
+}
+
+program
+  .command("trust [folder]")
+  .description(
+    "Trust a folder (default: this one), so its .env and .continue/.env load",
+  )
+  .option("--list", "List the folders you trusted or refused")
+  .action((folder: string | undefined, options: { list?: boolean }) => {
+    if (options.list) {
+      const folders = Object.entries(listStoredTrust());
+      if (folders.length === 0) console.log("No folders trusted or refused.");
+      for (const [dir, trusted] of folders) {
+        console.log(`${trusted ? "trusted" : "refused"}  ${dir}`);
+      }
+      return;
+    }
+    const dir = saveTrust(folder, true);
+    if (dir)
+      console.log(`Trusted ${dir}. Its .env files load from the next run.`);
+  });
+
+program
+  .command("untrust [folder]")
+  .description(
+    "Stop trusting a folder (default: this one), even if a parent folder is trusted",
+  )
+  .action((folder: string | undefined) => {
+    const dir = saveTrust(folder, false);
+    if (dir) {
+      console.log(
+        `${dir} is no longer trusted. Run \`cn trust\` to trust it again.`,
+      );
+    }
   });
 
 // Serve subcommand

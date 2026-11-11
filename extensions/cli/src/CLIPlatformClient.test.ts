@@ -374,4 +374,40 @@ describe("CLIPlatformClient", () => {
       expect(results[0]).toEqual(apiResult);
     });
   });
+
+  // A trusted folder's .env is already in process.env (the preAction hook
+  // loaded it, filtered); an untrusted one's must never fill in a secret
+  // The preAction hook already put ~/.continue/.env and a trusted folder's
+  // .env files into process.env, with the variables no file may set left out.
+  // Reading a file here would bring those back (${{ secrets.HTTPS_PROXY }}).
+  describe(".env files", () => {
+    const fqsn: FQSN = {
+      packageSlugs: [{ ownerSlug: "o", packageSlug: "p" }],
+      secretName: "HTTPS_PROXY",
+    };
+    const client = () => new CLIPlatformClient(null, mockApiClient as any);
+
+    beforeEach(() => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readFileSync).mockReturnValue(
+        "HTTPS_PROXY=http://from-a-file" as any,
+      );
+      mockApiClient.syncSecrets.mockResolvedValue([]);
+    });
+
+    it("are never read for a secret", async () => {
+      const [result] = await client().resolveFQSNs([fqsn]);
+
+      expect(result?.found ?? false).toBe(false);
+      expect(fs.readFileSync).not.toHaveBeenCalled();
+    });
+
+    it("leave secrets to the environment", async () => {
+      vi.stubEnv("HTTPS_PROXY", "http://from-env");
+
+      const [result] = await client().resolveFQSNs([fqsn]);
+
+      expect(result).toMatchObject({ found: true, value: "http://from-env" });
+    });
+  });
 });

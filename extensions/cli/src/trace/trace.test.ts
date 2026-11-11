@@ -60,6 +60,16 @@ describe("traceEvent", () => {
     expect(fs.existsSync(dir)).toBe(false);
   });
 
+  // A trusted folder's .env loads after the modules do, in the preAction hook
+  it("reads NEXTCLI_TRACE at the first event, not when the module loads", async () => {
+    const traceEvent = await loadTrace();
+    process.env.NEXTCLI_TRACE = "basic";
+
+    traceEvent("llm.request", { model: "m" }, { ts: 1000 });
+
+    expect(readLines()).toHaveLength(2);
+  });
+
   it("writes a header, then one line per event", async () => {
     const traceEvent = await loadTrace("basic");
 

@@ -201,6 +201,7 @@
               "cli/quickstart",
               "cli/tui-mode",
               "cli/headless-mode",
+              "cli/workspace-trust",
               "cli/configuration",
               {
                 "group": "Modes",

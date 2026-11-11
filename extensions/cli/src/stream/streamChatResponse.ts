@@ -2,7 +2,6 @@ import { ModelConfig } from "@nextcli/config-yaml";
 import { BaseLlmApi } from "@nextcli/openai-adapters";
 import type { ChatHistoryItem, Reasoning } from "core/index.js";
 import { convertFromUnifiedHistoryWithSystemMessage } from "core/util/messageConversion.js";
-import * as dotenv from "dotenv";
 import type {
   ChatCompletionMessageParam,
   ChatCompletionTool,
@@ -59,8 +58,6 @@ import {
   readCallEnd,
   TurnState,
 } from "./turnContinuation.js";
-
-dotenv.config();
 
 function updateFinalResponse(
   content: string,

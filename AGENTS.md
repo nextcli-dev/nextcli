@@ -43,6 +43,7 @@ Dependencies flow `packages/*` → `core` → `gui`, `extensions/vscode`, `exten
 - **Keep these identifiers** unless the change is an explicit, migrated compatibility break: the `cn` command, `~/.continue`, `.continue/`, `.continueignore` and the remaining `@continuedev/*` package names.
 - **No telemetry by default.** Don't add a default endpoint, analytics key or Sentry DSN. Keep the `@opentelemetry/*` dependencies in the CLI; upgrade them, don't remove them.
 - **Don't rename the publish workflows** (`publish-vscode.yaml`, `release-cli.yml`). Open VSX, the Marketplace and npm trusted publishing are bound to those file names.
+- **Workspace trust:** files in the working directory may configure `cn` only in a folder the person trusted (`extensions/cli/src/workspaceTrust.ts`). Load a project `.env` only in `extensions/cli/src/projectEnv.ts`. Never call `dotenv.config()` elsewhere, including in `core/` and `packages/`.
 - **New tools and permissions:** a new built-in tool needs an explicit default policy for interactive, headless and `--readonly` runs. When unsure, make the headless default `exclude`.
 - **Supported runtimes:** Node 22.15 or later for the CLI (`.nvmrc` pins the dev version), VS Code 1.103 or later for the extension.
 - **`node:sqlite`** (used in `core/`) needs Node 22.16 or later for FTS5, has foreign keys on by default, and blocks the event loop on large synchronous queries.

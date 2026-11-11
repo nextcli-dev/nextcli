@@ -5,7 +5,6 @@ import express, { Request, Response } from "express";
 import { ToolPermissionServiceState } from "src/services/ToolPermissionService.js";
 import { prependPrompt } from "src/util/promptProcessor.js";
 
-import { runEnvironmentInstallSafe } from "../environment/environmentHandler.js";
 import { processCommandFlags } from "../flags/flagProcessor.js";
 import { setAgentId } from "../index.js";
 import { toolPermissionManager } from "../permissions/permissionManager.js";
@@ -92,8 +91,6 @@ export async function serve(prompt?: string, options: ServeOptions = {}) {
   const timeoutSeconds = parseInt(options.timeout || "300", 10);
   const timeoutMs = timeoutSeconds * 1000;
   const port = parseInt(options.port || "8000", 10);
-
-  // Environment install script will be deferred until after server startup to avoid blocking
 
   // Initialize services with tool permission overrides
   const { permissionOverrides } = processCommandFlags(options);
@@ -417,9 +414,6 @@ export async function serve(prompt?: string, options: ServeOptions = {}) {
         `\nServer will shut down after ${timeoutSeconds} seconds of inactivity`,
       ),
     );
-
-    // Run environment install script after server startup
-    runEnvironmentInstallSafe();
 
     // If initial prompt provided, queue it for processing
     const initialPrompt = prependPrompt(

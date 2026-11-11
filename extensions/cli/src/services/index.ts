@@ -183,7 +183,8 @@ export async function initializeServices(initOptions: ServiceInitOptions = {}) {
 
   serviceContainer.register(
     SERVICE_NAMES.UPDATE,
-    () => updateService.initialize(),
+    // Headless runs (-p, cn review) never check for updates or install one
+    () => updateService.initialize(initOptions.headless),
     [], // No dependencies
   );
 

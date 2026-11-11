@@ -7,15 +7,22 @@ import { logger, warnBadEnv } from "../util/logger.js";
 import { getVersion } from "../version.js";
 
 // NEXTCLI_TRACE=basic writes one JSON line per model call: timings, token
-// counts and tool names. Read once, when cn starts.
-const rawLevel = process.env.NEXTCLI_TRACE;
-const level = rawLevel?.trim().toLowerCase();
-if (level && level !== "basic") {
-  warnBadEnv(`Unknown NEXTCLI_TRACE "${rawLevel}", tracing is off. Use basic.`);
+// counts and tool names. Read once, at the first event, so a trusted
+// folder's .env (loaded after modules load) can set it.
+function traceOn(): boolean {
+  const rawLevel = process.env.NEXTCLI_TRACE;
+  const level = rawLevel?.trim().toLowerCase();
+  if (level && level !== "basic") {
+    warnBadEnv(
+      `Unknown NEXTCLI_TRACE "${rawLevel}", tracing is off. Use basic.`,
+    );
+  }
+  return level === "basic";
 }
 
-// undefined until the first event opens the file; null when tracing is off
-let tracePath: string | null | undefined = level === "basic" ? undefined : null;
+// Not read yet; then the open trace file, or null when tracing is off
+const NOT_READ = Symbol("not read");
+let tracePath: string | null | undefined | typeof NOT_READ = NOT_READ;
 
 function openTrace(): string {
   const dir =
@@ -47,6 +54,9 @@ export function traceEvent(
   attrs: Record<string, unknown>,
   timing: { ts: number; dur?: number },
 ): void {
+  if (tracePath === NOT_READ) {
+    tracePath = traceOn() ? undefined : null;
+  }
   if (tracePath === null) {
     return;
   }
