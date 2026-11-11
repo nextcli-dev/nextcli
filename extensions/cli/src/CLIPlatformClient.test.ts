@@ -1,5 +1,4 @@
 import * as fs from "node:fs";
-import * as path from "node:path";
 
 import { FQSN, SecretResult, SecretType } from "@nextcli/config-yaml";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -378,41 +377,37 @@ describe("CLIPlatformClient", () => {
 
   // A trusted folder's .env is already in process.env (the preAction hook
   // loaded it, filtered); an untrusted one's must never fill in a secret
-  describe("local .env files", () => {
+  // The preAction hook already put ~/.continue/.env and a trusted folder's
+  // .env files into process.env, with the variables no file may set left out.
+  // Reading a file here would bring those back (${{ secrets.HTTPS_PROXY }}).
+  describe(".env files", () => {
     const fqsn: FQSN = {
       packageSlugs: [{ ownerSlug: "o", packageSlug: "p" }],
-      secretName: "LOCAL_SECRET",
+      secretName: "HTTPS_PROXY",
     };
     const client = () => new CLIPlatformClient(null, mockApiClient as any);
 
     beforeEach(() => {
       vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readFileSync).mockReturnValue(
+        "HTTPS_PROXY=http://from-a-file" as any,
+      );
       mockApiClient.syncSecrets.mockResolvedValue([]);
     });
 
-    it("never reads the working directory's .env files", async () => {
-      vi.mocked(fs.readFileSync).mockImplementation(((file: unknown) =>
-        String(file).startsWith(process.cwd())
-          ? "LOCAL_SECRET=from-repo"
-          : "") as any);
-
+    it("are never read for a secret", async () => {
       const [result] = await client().resolveFQSNs([fqsn]);
 
       expect(result?.found ?? false).toBe(false);
-      for (const [file] of vi.mocked(fs.readFileSync).mock.calls) {
-        expect(String(file).startsWith(process.cwd())).toBe(false);
-      }
+      expect(fs.readFileSync).not.toHaveBeenCalled();
     });
 
-    it("reads ~/.continue/.env", async () => {
-      vi.mocked(fs.readFileSync).mockImplementation(((file: unknown) =>
-        String(file) === path.join("/home/user/.continue", ".env")
-          ? "LOCAL_SECRET=from-home"
-          : "") as any);
+    it("leave secrets to the environment", async () => {
+      vi.stubEnv("HTTPS_PROXY", "http://from-env");
 
       const [result] = await client().resolveFQSNs([fqsn]);
 
-      expect(result).toMatchObject({ found: true, value: "from-home" });
+      expect(result).toMatchObject({ found: true, value: "http://from-env" });
     });
   });
 });

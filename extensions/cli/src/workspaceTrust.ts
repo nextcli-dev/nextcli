@@ -17,7 +17,7 @@ interface TrustStore {
 }
 
 /** Files a trusted folder may load environment variables from */
-export const PROJECT_ENV_FILES = [path.join(".continue", ".env"), ".env"];
+const PROJECT_ENV_FILES = [path.join(".continue", ".env"), ".env"];
 
 /**
  * The real environment's config directory. Called before any .env is loaded,
@@ -85,9 +85,13 @@ export function setStoredTrust(
   const key = realFolder(folder);
   store.folders[key] = trusted;
   fs.mkdirSync(path.dirname(storePath), { recursive: true });
-  fs.writeFileSync(storePath, `${JSON.stringify(store, null, 2)}\n`, {
+  // Written whole, then renamed over the store, so a reader never sees half a
+  // file. Decisions are made at human speed, so there is no lock.
+  const tempPath = `${storePath}.${process.pid}.tmp`;
+  fs.writeFileSync(tempPath, `${JSON.stringify(store, null, 2)}\n`, {
     mode: 0o600,
   });
+  fs.renameSync(tempPath, storePath);
   return key;
 }
 
@@ -98,9 +102,18 @@ export function listStoredTrust(
   return readStore(trustStorePath(env)).folders;
 }
 
-export function hasProjectEnvFiles(folder: string): boolean {
-  return PROJECT_ENV_FILES.some((file) =>
-    fs.existsSync(path.join(folder, file)),
+/**
+ * The folder's .continue/.env and .env that exist. Never the user's own
+ * ~/.continue/.env, which loads in every folder: started in the home folder,
+ * .continue/.env is that file.
+ */
+export function projectEnvFiles(
+  folder: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string[] {
+  const userEnvFile = realFolder(path.join(continueHomeDir(env), ".env"));
+  return PROJECT_ENV_FILES.map((file) => path.join(folder, file)).filter(
+    (file) => fs.existsSync(file) && realFolder(file) !== userEnvFile,
   );
 }
 
@@ -127,5 +140,7 @@ export function trustDecision(options: {
   }
   const stored = storedTrust(folder, env);
   if (stored !== undefined) return stored ? "trusted" : "untrusted";
-  return canAsk && hasProjectEnvFiles(folder) ? "ask" : "untrusted";
+  return canAsk && projectEnvFiles(folder, env).length > 0
+    ? "ask"
+    : "untrusted";
 }

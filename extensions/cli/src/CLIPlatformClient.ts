@@ -1,6 +1,3 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
-
 import { DefaultApiInterface } from "@continuedev/sdk/dist/api";
 import {
   FQSN,
@@ -8,9 +5,6 @@ import {
   SecretResult,
   SecretType,
 } from "@nextcli/config-yaml";
-import * as dotenv from "dotenv";
-
-import { env } from "./env.js";
 
 export class CLIPlatformClient implements PlatformClient {
   constructor(
@@ -18,26 +12,9 @@ export class CLIPlatformClient implements PlatformClient {
     private readonly apiClient: DefaultApiInterface,
   ) {}
 
-  private findSecretInEnvFile(
-    filePath: string,
-    secretName: string,
-  ): string | undefined {
-    try {
-      if (!fs.existsSync(filePath)) return undefined;
-
-      const envContent = fs.readFileSync(filePath, "utf8");
-      const env = dotenv.parse(envContent);
-      return env[secretName];
-    } catch (error) {
-      console.warn(
-        `Error reading .env file at ${filePath}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-      return undefined;
-    }
-  }
-
+  // ~/.continue/.env and a trusted folder's .continue/.env and .env are
+  // already in process.env: the preAction hook loaded them (src/projectEnv.ts),
+  // without the variables no file may set. No .env file is read here.
   private findSecretInProcessEnv(fqsn: FQSN): SecretResult | undefined {
     const secretValue = process.env[fqsn.secretName];
     if (secretValue) {
@@ -54,37 +31,6 @@ export class CLIPlatformClient implements PlatformClient {
     return undefined;
   }
 
-  private findSecretInLocalEnvFiles(fqsn: FQSN): SecretResult | undefined {
-    // First check process.env (highest priority)
-    const processEnvSecret = this.findSecretInProcessEnv(fqsn);
-    if (processEnvSecret) {
-      return processEnvSecret;
-    }
-
-    // Then ~/.continue/.env. A trusted folder's .continue/.env and .env are
-    // already in process.env: the preAction hook loaded them
-    // (src/projectEnv.ts), with the variables no file may set filtered out.
-    // An untrusted folder's files are never read.
-    const envPaths = [path.join(env.continueHome, ".env")];
-
-    for (const envPath of envPaths) {
-      const secretValue = this.findSecretInEnvFile(envPath, fqsn.secretName);
-      if (secretValue) {
-        return {
-          found: true,
-          fqsn,
-          value: secretValue,
-          secretLocation: {
-            secretName: fqsn.secretName,
-            secretType: SecretType.LocalEnv,
-          },
-        };
-      }
-    }
-
-    return undefined;
-  }
-
   async resolveFQSNs(fqsns: FQSN[]): Promise<(SecretResult | undefined)[]> {
     if (fqsns.length === 0) {
       return [];
@@ -94,10 +40,10 @@ export class CLIPlatformClient implements PlatformClient {
       undefined,
     );
 
-    // First, check local env files for secrets (highest priority for CLI)
+    // First, check the environment for secrets (highest priority for CLI)
     // This allows users to override any secret with a local environment variable
     for (let i = 0; i < fqsns.length; i++) {
-      const secretFromEnv = this.findSecretInLocalEnvFiles(fqsns[i]);
+      const secretFromEnv = this.findSecretInProcessEnv(fqsns[i]);
       if (secretFromEnv?.found) {
         results[i] = secretFromEnv;
       }

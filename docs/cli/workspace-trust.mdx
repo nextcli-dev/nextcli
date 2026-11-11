@@ -5,12 +5,12 @@ title: "Workspace Trust"
 `cn` loads environment variables from a folder's `.env` and `.continue/.env` only if you trust that folder. The first time you start an interactive `cn` session in a folder that has one of these files, it asks:
 
 ```text
-Trust /Users/you/code/api? Its .env and .continue/.env can set environment variables for cn. [y/N]
+Trust /Users/you/code/api? Its .env and .continue/.env, and those of folders inside it, can set cn's environment, including its model endpoint and keys. [y/N]
 ```
 
 The answer is saved in `~/.continue/trusted-folders.json` and applies to that folder and everything under it. `cn` doesn't ask again. Trusting `~/code` trusts every repository in it.
 
-A repository you didn't write, such as a pull request's checkout or a project you just cloned, can contain a `.env`. Without trust, that file could set variables like `NODE_OPTIONS` or `GIT_CONFIG_*`, which make `cn` or the `git` commands it runs execute code before any tool is called.
+A repository you didn't write, such as a pull request's checkout or a project you just cloned, can contain a `.env`. Trust decides whether that file may set `cn`'s environment: which provider keys and model `cn` uses, and which endpoint its model requests go to. Variables that would run code or redirect `cn` itself, such as `NODE_OPTIONS` or `GIT_CONFIG_*`, are never taken from a `.env` file, trusted or not (listed below).
 
 ## Trust or untrust a folder
 
@@ -42,18 +42,21 @@ These variables are never taken from a `.env` file, even in a trusted folder, be
 | Variables | What they control |
 | --- | --- |
 | `NODE_OPTIONS`, `NODE_PATH`, `NODE_EXTRA_CA_CERTS`, `NODE_TLS_REJECT_UNAUTHORIZED` | Node code and certificate checks for `cn` and its child processes |
+| `SSL_CERT_FILE`, `SSL_CERT_DIR`, `CURL_CA_BUNDLE`, `REQUESTS_CA_BUNDLE` | Which certificates OpenSSL, curl and Python trust in the commands `cn` runs |
 | `npm_config_*` (any case) | npm settings, including the registry `cn` updates itself from |
-| `LD_*`, `DYLD_*`, `PATH`, `HOME`, `SHELL`, `BASH_ENV`, `ENV` | Which programs and startup files run |
+| `LD_*`, `DYLD_*`, `PATH`, `SHELL` | Which programs run |
+| `BASH_ENV`, `ENV`, `ZDOTDIR`, `SHELLOPTS`, `BASHOPTS`, `PS4`, `PROMPT_COMMAND` | Shell startup files and options that run code |
+| `HOME`, `USERPROFILE`, `HOMEDRIVE`, `HOMEPATH`, `XDG_CONFIG_HOME` | Where per-user configuration, such as git's and npm's, is read from |
 | `GIT_*` | git configuration for the `git` commands `cn` runs |
 | `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY` (any case) | Where model requests, which carry your API key, are sent |
 | `CONTINUE_GLOBAL_DIR` | Where `cn` reads its config, permissions and trust decisions |
-| `NEXTCLI_TRUST_WORKSPACE`, `NEXTCLI_VERSION_INFO_URL`, `NEXTCLI_API_BASE`, `OTEL_*`, `CONTINUE_CLI_ENABLE_TELEMETRY` | Trust, update checks, the API endpoint and telemetry |
+| `NEXTCLI_TRUST_WORKSPACE`, `NEXTCLI_VERSION_INFO_URL`, `NEXTCLI_API_BASE`, `OTEL_*`, `CONTINUE_CLI_ENABLE_TELEMETRY`, `CONTINUE_METRICS_ENABLED` | Trust, update checks, the API endpoint and telemetry |
 
 Run with `--verbose` to see which names were skipped, in `~/.continue/logs/cn.log`.
 
 ## Keys for every folder
 
-`~/.continue/.env` loads in every folder, trusted or not. Put provider keys there rather than in each repository:
+`~/.continue/.env` loads in every folder, trusted or not, with the same variables left out. Put provider keys there rather than in each repository. Started in your home folder, `cn` treats it as this file, not as the folder's `.continue/.env`, so it doesn't ask you to trust your whole home folder.
 
 ```bash
 # ~/.continue/.env
@@ -64,4 +67,4 @@ Variables already set in your environment take precedence over every file. A tru
 
 ## Other files that follow trust
 
-Secrets referenced as `${{ secrets.NAME }}` in your config come from the environment and `~/.continue/.env`. A folder's `.env` and `.continue/.env` supply them only if the folder is trusted, and never for the variables listed above. `AGENTS.md`, rules and skills in the repository are read in every folder: they are instructions for the model, not configuration for `cn`.
+Secrets referenced as `${{ secrets.NAME }}` in your config come from the environment, which `~/.continue/.env` and, in a trusted folder, the folder's `.env` and `.continue/.env` feed. The variables listed above can't come from any of these files. `AGENTS.md`, rules and skills in the repository are read in every folder: they are instructions for the model, not configuration for `cn`.

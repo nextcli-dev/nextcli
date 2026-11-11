@@ -122,6 +122,23 @@ describe.skipIf(process.platform === "win32")("E2E: workspace trust", () => {
     expect(trusted.stderr).not.toMatch(/isn't trusted/);
   }, 20000);
 
+  // An untrust that didn't save must not look like it worked
+  it("cn trust and cn untrust fail when the decision can't be saved", async () => {
+    await fs.mkdir(path.join(globalDir, "trusted-folders.json"), {
+      recursive: true,
+    });
+    for (const command of ["trust", "untrust"]) {
+      const result = await runCLI(context, {
+        args: [command],
+        env: { CONTINUE_GLOBAL_DIR: globalDir },
+      });
+      expect(result.exitCode, command).toBe(1);
+      expect(result.stderr, command).toContain(
+        "Couldn't save the trust decision",
+      );
+    }
+  }, 20000);
+
   // Help never reaches the preAction hook, so it never decides trust
   it("cn --help leaves trust alone", async () => {
     const result = await runCLI(context, {

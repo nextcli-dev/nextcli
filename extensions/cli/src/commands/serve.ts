@@ -92,8 +92,6 @@ export async function serve(prompt?: string, options: ServeOptions = {}) {
   const timeoutMs = timeoutSeconds * 1000;
   const port = parseInt(options.port || "8000", 10);
 
-  // Environment install script will be deferred until after server startup to avoid blocking
-
   // Initialize services with tool permission overrides
   const { permissionOverrides } = processCommandFlags(options);
 

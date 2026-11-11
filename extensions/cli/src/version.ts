@@ -65,16 +65,6 @@ export async function getLatestVersion(
   return latestVersionCache;
 }
 
-getLatestVersion()
-  .then((version) => {
-    if (version) {
-      logger?.info(`Latest version: ${version}`);
-    }
-  })
-  .catch((error) => {
-    logger?.debug(`Warning: Could not fetch latest version: ${error}`);
-  });
-
 export function compareVersions(
   current: string,
   latest: string,

@@ -51,6 +51,18 @@ describe("workspaceTrust", () => {
       expect(decide()).toBe("untrusted");
     });
 
+    // Started in the home folder, .continue/.env is the user's own
+    // ~/.continue/.env, which loads everywhere: a yes would trust all of home
+    it("doesn't count the user's ~/.continue/.env as the folder's", () => {
+      env.CONTINUE_GLOBAL_DIR = path.join(repo, ".continue");
+      fs.mkdirSync(path.join(repo, ".continue"));
+      fs.writeFileSync(path.join(repo, ".continue", ".env"), "KEY=k");
+      expect(decide()).toBe("untrusted");
+
+      fs.writeFileSync(path.join(repo, ".env"), "A=1");
+      expect(decide()).toBe("ask");
+    });
+
     it("is untrusted, without asking, when the run can't ask", () => {
       fs.writeFileSync(path.join(repo, ".env"), "A=1");
       expect(decide({ canAsk: false })).toBe("untrusted");
@@ -99,6 +111,15 @@ describe("workspaceTrust", () => {
         path.join(env.CONTINUE_GLOBAL_DIR!, "trusted-folders.json"),
       ).mode;
       if (process.platform !== "win32") expect(mode & 0o077).toBe(0);
+    });
+
+    it("replaces the store whole, leaving no temporary file", () => {
+      setStoredTrust(repo, true, env);
+      setStoredTrust(root, false, env);
+      expect(fs.readdirSync(env.CONTINUE_GLOBAL_DIR!)).toEqual([
+        "trusted-folders.json",
+      ]);
+      expect(listStoredTrust(env)).toEqual({ [repo]: true, [root]: false });
     });
 
     it("treats a broken store as no decisions", () => {

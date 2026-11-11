@@ -7,8 +7,7 @@ import dotenv from "dotenv";
 import { logger } from "./util/logger.js";
 import {
   continueHomeDir,
-  hasProjectEnvFiles,
-  PROJECT_ENV_FILES,
+  projectEnvFiles,
   setStoredTrust,
   trustDecision,
 } from "./workspaceTrust.js";
@@ -34,6 +33,11 @@ const NEVER_FROM_FILE = [
   /^NODE_PATH$/,
   /^NODE_EXTRA_CA_CERTS$/,
   /^NODE_TLS_REJECT_UNAUTHORIZED$/,
+  // The same certificate settings for OpenSSL, curl and Python's requests
+  /^SSL_CERT_FILE$/,
+  /^SSL_CERT_DIR$/,
+  /^CURL_CA_BUNDLE$/,
+  /^REQUESTS_CA_BUNDLE$/,
   // npm's settings, including the registry cn's self-update installs from
   /^NPM_CONFIG_/,
   /^LD_/,
@@ -41,8 +45,19 @@ const NEVER_FROM_FILE = [
   /^PATH$/,
   /^HOME$/,
   /^SHELL$/,
+  // Shell startup: files to source, options and prompts that run code
   /^BASH_ENV$/,
   /^ENV$/,
+  /^ZDOTDIR$/,
+  /^SHELLOPTS$/,
+  /^BASHOPTS$/,
+  /^PS4$/,
+  /^PROMPT_COMMAND$/,
+  // Where home and per-user config live (git reads XDG_CONFIG_HOME/git/config)
+  /^USERPROFILE$/,
+  /^HOMEDRIVE$/,
+  /^HOMEPATH$/,
+  /^XDG_CONFIG_HOME$/,
   /^GIT_/,
   /^(HTTP|HTTPS|ALL|NO)_PROXY$/,
   /^CONTINUE_GLOBAL_DIR$/,
@@ -51,6 +66,7 @@ const NEVER_FROM_FILE = [
   /^NEXTCLI_API_BASE$/,
   /^OTEL_/,
   /^CONTINUE_CLI_ENABLE_TELEMETRY$/,
+  /^CONTINUE_METRICS_ENABLED$/,
 ];
 
 export function isNeverFromFile(name: string): boolean {
@@ -94,11 +110,14 @@ function askToTrust(folder: string): Promise<boolean | undefined> {
     output: process.stdout,
   });
   return new Promise((resolve) => {
-    // Closing without an answer drops the question's callback; settle anyway
-    // so cn still starts
+    // Closing without an answer (Ctrl+D) drops the question's callback;
+    // settle anyway so cn still starts
     rl.once("close", () => resolve(undefined));
+    // Ctrl+C stops cn, as it does everywhere else: readline would otherwise
+    // close and let cn start. The process handler exits with 130.
+    rl.on("SIGINT", () => process.kill(process.pid, "SIGINT"));
     rl.question(
-      `Trust ${folder}? Its .env and .continue/.env can set environment variables for cn. [y/N] `,
+      `Trust ${folder}? Its .env and .continue/.env, and those of folders inside it, can set cn's environment, including its model endpoint and keys. [y/N] `,
       (answer) => {
         resolve(/^y(es)?$/i.test(answer.trim()));
         rl.close();
@@ -168,12 +187,12 @@ export async function loadProjectEnvironment(options: {
 
   const loaded: string[] = [];
   const skipped = new Set<string>();
+  const projectFiles = projectEnvFiles(folder, env);
   if (trusted) {
-    for (const file of PROJECT_ENV_FILES) {
-      const full = path.join(folder, file);
-      if (loadEnvFile(full, env, skipped)) loaded.push(full);
+    for (const file of projectFiles) {
+      if (loadEnvFile(file, env, skipped)) loaded.push(file);
     }
-  } else if (!options.quietNotice && hasProjectEnvFiles(folder)) {
+  } else if (!options.quietNotice && projectFiles.length > 0) {
     notice(
       "Skipped this folder's .env: the folder isn't trusted (run `cn trust`, or pass --trust-workspace for one run).\n",
     );

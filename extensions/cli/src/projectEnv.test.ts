@@ -17,7 +17,10 @@ import { listStoredTrust } from "./workspaceTrust.js";
 const prompt = vi.hoisted(() => ({
   onQuestion: undefined as
     | undefined
-    | ((rl: { close(): void }, answer: (text: string) => void) => void),
+    | ((
+        rl: { close(): void; emit(event: string): boolean },
+        answer: (text: string) => void,
+      ) => void),
 }));
 vi.mock("readline", async () => {
   const { EventEmitter } = await import("events");
@@ -148,6 +151,18 @@ describe("loadProjectEnvironment", () => {
         "NEXTCLI_VERSION_INFO_URL=https://x",
         "OTEL_EXPORTER_OTLP_ENDPOINT=https://x",
         "PATH=./bin",
+        "ZDOTDIR=x",
+        "SSL_CERT_FILE=./ca.pem",
+        "CURL_CA_BUNDLE=./ca.pem",
+        "SHELLOPTS=x",
+        "BASHOPTS=x",
+        "PS4=x",
+        "PROMPT_COMMAND=x",
+        "USERPROFILE=x",
+        "HOMEDRIVE=x",
+        "HOMEPATH=x",
+        "XDG_CONFIG_HOME=x",
+        "CONTINUE_METRICS_ENABLED=x",
         "OPENAI_API_KEY=sk-legit",
       ].join("\n"),
     );
@@ -167,6 +182,18 @@ describe("loadProjectEnvironment", () => {
       "NEXTCLI_VERSION_INFO_URL",
       "OTEL_EXPORTER_OTLP_ENDPOINT",
       "PATH",
+      "ZDOTDIR",
+      "SSL_CERT_FILE",
+      "CURL_CA_BUNDLE",
+      "SHELLOPTS",
+      "BASHOPTS",
+      "PS4",
+      "PROMPT_COMMAND",
+      "USERPROFILE",
+      "HOMEDRIVE",
+      "HOMEPATH",
+      "XDG_CONFIG_HOME",
+      "CONTINUE_METRICS_ENABLED",
     ]) {
       expect(env[name], name).toBeUndefined();
     }
@@ -203,6 +230,22 @@ describe("loadProjectEnvironment", () => {
       expect(listStoredTrust(env)).toEqual({});
     }, 2000);
 
+    // Ctrl+C stops cn everywhere else; here readline would close and cn start
+    it("passes Ctrl+C on to the process, without settling", async () => {
+      projectEnv("PROJECT_KEY=p");
+      const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
+      prompt.onQuestion = (rl) => rl.emit("SIGINT");
+
+      const settled = await Promise.race([
+        ask().then(() => true),
+        new Promise((resolve) => setTimeout(() => resolve(false), 50)),
+      ]);
+
+      expect(kill).toHaveBeenCalledWith(process.pid, "SIGINT");
+      expect(settled).toBe(false);
+      kill.mockRestore();
+    });
+
     it("takes a typed answer", async () => {
       projectEnv("PROJECT_KEY=p");
       prompt.onQuestion = (_rl, answer) => answer("y");
@@ -213,6 +256,19 @@ describe("loadProjectEnvironment", () => {
       expect(env.PROJECT_KEY).toBe("p");
       expect(listStoredTrust(env)).toEqual({ [repo]: true });
     });
+  });
+
+  // Started in the home folder, .continue/.env is ~/.continue/.env itself
+  it("treats the user's ~/.continue/.env as the user's, not the folder's", async () => {
+    env.CONTINUE_GLOBAL_DIR = path.join(repo, ".continue");
+    fs.mkdirSync(path.join(repo, ".continue"));
+    fs.writeFileSync(path.join(repo, ".continue", ".env"), "USER_KEY=u");
+
+    const report = await run().result;
+
+    expect(env.USER_KEY).toBe("u");
+    expect(report.trusted).toBe(false);
+    expect(stderr.read()).toBeNull();
   });
 
   // A read-only home or a file owned by someone else must not stop cn
@@ -257,6 +313,13 @@ describe("isNeverFromFile", () => {
     "BASH_ENV",
     "npm_config_registry",
     "NODE_TLS_REJECT_UNAUTHORIZED",
+    "ZDOTDIR",
+    "SSL_CERT_DIR",
+    "REQUESTS_CA_BUNDLE",
+    "PS4",
+    "XDG_CONFIG_HOME",
+    "USERPROFILE",
+    "CONTINUE_METRICS_ENABLED",
   ])("%s", (name) => expect(isNeverFromFile(name)).toBe(true));
 
   // A trusted folder may still choose its model endpoint

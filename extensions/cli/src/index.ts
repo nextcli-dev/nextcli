@@ -380,6 +380,20 @@ program
 
 // Folder trust: whether a folder's .env and .continue/.env may set cn's
 // environment (src/workspaceTrust.ts)
+// Saves a trust decision; a store cn can't write fails the command loudly, so
+// an untrust that didn't save never looks like it worked
+function saveTrust(folder: string | undefined, trusted: boolean) {
+  try {
+    return setStoredTrust(folder ?? process.cwd(), trusted);
+  } catch (error) {
+    console.error(
+      `Couldn't save the trust decision: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    process.exitCode = 1;
+    return undefined;
+  }
+}
+
 program
   .command("trust [folder]")
   .description(
@@ -395,8 +409,9 @@ program
       }
       return;
     }
-    const dir = setStoredTrust(folder ?? process.cwd(), true);
-    console.log(`Trusted ${dir}. Its .env files load from the next run.`);
+    const dir = saveTrust(folder, true);
+    if (dir)
+      console.log(`Trusted ${dir}. Its .env files load from the next run.`);
   });
 
 program
@@ -405,10 +420,12 @@ program
     "Stop trusting a folder (default: this one), even if a parent folder is trusted",
   )
   .action((folder: string | undefined) => {
-    const dir = setStoredTrust(folder ?? process.cwd(), false);
-    console.log(
-      `${dir} is no longer trusted. Run \`cn trust\` to trust it again.`,
-    );
+    const dir = saveTrust(folder, false);
+    if (dir) {
+      console.log(
+        `${dir} is no longer trusted. Run \`cn trust\` to trust it again.`,
+      );
+    }
   });
 
 // Serve subcommand
