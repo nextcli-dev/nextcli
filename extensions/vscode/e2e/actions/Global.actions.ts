@@ -86,67 +86,36 @@ export class GlobalActions {
 
   static async setNextEditEnabled(enabled: boolean) {
     const workbench = new Workbench();
-
-    await workbench.openCommandPrompt();
     process.env.CONTINUE_E2E_NON_NEXT_EDIT_TEST = "true";
 
-    // Initial wait and clear
-    await TestUtils.waitForTimeout(1000);
     await GlobalActions.clearAllNotifications();
-
     const statusBar = await workbench.getStatusBar();
 
-    // Robust element finding with text validation
-    const continueItem = await TestUtils.waitForSuccess(async () => {
-      // Clear any new notifications
-      try {
-        await GlobalActions.clearAllNotifications();
-      } catch (e) {
-        // Ignore
-      }
-
-      const element = await statusBar.findElement(
+    // The status bar item shows "(NE)" while Next Edit is on. Keep reading it
+    // until it matches, toggling once if it doesn't: a single early read can
+    // miss the extension turning Next Edit on after it loads its config.
+    let toggled = false;
+    await TestUtils.waitForSuccess(async () => {
+      const item = await statusBar.findElement(
         By.xpath("//*[contains(text(), 'NextCLI')]"),
       );
+      const text =
+        (await item.getText()) ||
+        (await item.getAttribute("textContent")) ||
+        "";
+      const hasNE = text.includes("(NE)");
+      console.log("Status bar text:", text, "hasNE:", hasNE);
 
-      // Validate we can get text
-      const text = await element.getText();
-      if (!text || text.trim() === "") {
-        // Try alternative methods
-        const textContent = await element.getAttribute("textContent");
-        if (!textContent || textContent.trim() === "") {
-          throw new Error("Text not yet available");
-        }
+      if (hasNE === enabled) {
+        return;
       }
-
-      return element;
-    }, DEFAULT_TIMEOUT.MD);
-
-    // Get text with retry
-    const text = await TestUtils.waitForSuccess(async () => {
-      const itemText = await continueItem.getText();
-      if (!itemText || itemText.trim() === "") {
-        // Fallback to textContent
-        const textContent = await continueItem.getAttribute("textContent");
-        if (textContent && textContent.trim() !== "") {
-          return textContent;
-        }
-        throw new Error("Text content not yet available");
+      if (!toggled) {
+        toggled = true;
+        await workbench.executeCommand("NextCLI: Toggle Next Edit");
+        await GlobalActions.clearAllNotifications();
       }
-      return itemText;
+      throw new Error(`Next Edit is ${hasNE ? "on" : "off"}`);
     }, DEFAULT_TIMEOUT.MD);
-
-    console.log("Final text:", text);
-
-    const hasNE = text.includes("(NE)");
-    console.log("hasNE:", hasNE);
-
-    if (hasNE !== enabled) {
-      await workbench.executeCommand("Continue: Toggle Next Edit");
-      // Clear any resulting notifications
-      await TestUtils.waitForTimeout(500);
-      await GlobalActions.clearAllNotifications();
-    }
   }
 
   static async disableNextEdit() {
