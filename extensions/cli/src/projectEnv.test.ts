@@ -12,6 +12,25 @@ import {
 } from "./projectEnv.js";
 import { listStoredTrust } from "./workspaceTrust.js";
 
+// The prompt's readline interface, driven by each test: answer the question
+// or close the interface without an answer (Ctrl+D)
+const prompt = vi.hoisted(() => ({
+  onQuestion: undefined as
+    | undefined
+    | ((rl: { close(): void }, answer: (text: string) => void) => void),
+}));
+vi.mock("readline", async () => {
+  const { EventEmitter } = await import("events");
+  const createInterface = () => {
+    const rl: any = new EventEmitter();
+    rl.close = () => rl.emit("close");
+    rl.question = (_query: string, callback: (text: string) => void) =>
+      prompt.onQuestion?.(rl, callback);
+    return rl;
+  };
+  return { default: { createInterface }, createInterface };
+});
+
 describe("loadProjectEnvironment", () => {
   let root: string;
   let repo: string;
@@ -122,6 +141,9 @@ describe("loadProjectEnvironment", () => {
         "HTTPS_PROXY=http://proxy",
         "https_proxy=http://proxy",
         "NODE_EXTRA_CA_CERTS=./ca.pem",
+        "NODE_TLS_REJECT_UNAUTHORIZED=0",
+        "npm_config_registry=https://registry.example.invalid/",
+        "NPM_CONFIG_REGISTRY=https://registry.example.invalid/",
         "CONTINUE_GLOBAL_DIR=./x",
         "NEXTCLI_VERSION_INFO_URL=https://x",
         "OTEL_EXPORTER_OTLP_ENDPOINT=https://x",
@@ -139,6 +161,9 @@ describe("loadProjectEnvironment", () => {
       "HTTPS_PROXY",
       "https_proxy",
       "NODE_EXTRA_CA_CERTS",
+      "NODE_TLS_REJECT_UNAUTHORIZED",
+      "npm_config_registry",
+      "NPM_CONFIG_REGISTRY",
       "NEXTCLI_VERSION_INFO_URL",
       "OTEL_EXPORTER_OTLP_ENDPOINT",
       "PATH",
@@ -153,6 +178,41 @@ describe("loadProjectEnvironment", () => {
     projectEnv("PROJECT_KEY=p");
     await run({ quietNotice: true }).result;
     expect(stderr.read()).toBeNull();
+  });
+
+  describe("the prompt", () => {
+    const ask = () =>
+      loadProjectEnvironment({
+        folder: repo,
+        env,
+        canAsk: true,
+        trustFlag: false,
+        notice: () => {},
+      });
+
+    // Closing readline drops the question's callback: without settling on
+    // close, the preAction hook would wait forever and cn never start
+    it("settles as untrusted, saving nothing, when it is closed (Ctrl+D)", async () => {
+      projectEnv("PROJECT_KEY=p");
+      prompt.onQuestion = (rl) => rl.close();
+
+      const report = await ask();
+
+      expect(report.trusted).toBe(false);
+      expect(env.PROJECT_KEY).toBeUndefined();
+      expect(listStoredTrust(env)).toEqual({});
+    }, 2000);
+
+    it("takes a typed answer", async () => {
+      projectEnv("PROJECT_KEY=p");
+      prompt.onQuestion = (_rl, answer) => answer("y");
+
+      const report = await ask();
+
+      expect(report.trusted).toBe(true);
+      expect(env.PROJECT_KEY).toBe("p");
+      expect(listStoredTrust(env)).toEqual({ [repo]: true });
+    });
   });
 
   // A read-only home or a file owned by someone else must not stop cn
@@ -195,10 +255,16 @@ describe("isNeverFromFile", () => {
     "GIT_DIR",
     "no_proxy",
     "BASH_ENV",
+    "npm_config_registry",
+    "NODE_TLS_REJECT_UNAUTHORIZED",
   ])("%s", (name) => expect(isNeverFromFile(name)).toBe(true));
 
-  it.each(["OPENAI_API_KEY", "NEXTCLI_MODEL", "GITHUB_TOKEN", "NODE_ENV"])(
-    "allows %s",
-    (name) => expect(isNeverFromFile(name)).toBe(false),
-  );
+  // A trusted folder may still choose its model endpoint
+  it.each([
+    "OPENAI_API_KEY",
+    "NEXTCLI_MODEL",
+    "NEXTCLI_MODEL_BASE_URL",
+    "GITHUB_TOKEN",
+    "NODE_ENV",
+  ])("allows %s", (name) => expect(isNeverFromFile(name)).toBe(false));
 });

@@ -73,7 +73,8 @@ describe("initializeServices", () => {
   });
 
   // A headless run (-p, cn review) must never check for an update or install
-  // one: the install runs npm in the working directory
+  // one: it should not make network calls or change the global install
+  // during an unattended run
   it("tells the update service the run is headless", async () => {
     const spy = vi.spyOn(services.updateService, "initialize");
     await initializeServices({ headless: true });

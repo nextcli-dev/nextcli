@@ -41,7 +41,8 @@ These variables are never taken from a `.env` file, even in a trusted folder, be
 
 | Variables | What they control |
 | --- | --- |
-| `NODE_OPTIONS`, `NODE_PATH`, `NODE_EXTRA_CA_CERTS` | Node code and certificates for `cn` and its child processes |
+| `NODE_OPTIONS`, `NODE_PATH`, `NODE_EXTRA_CA_CERTS`, `NODE_TLS_REJECT_UNAUTHORIZED` | Node code and certificate checks for `cn` and its child processes |
+| `npm_config_*` (any case) | npm settings, including the registry `cn` updates itself from |
 | `LD_*`, `DYLD_*`, `PATH`, `HOME`, `SHELL`, `BASH_ENV`, `ENV` | Which programs and startup files run |
 | `GIT_*` | git configuration for the `git` commands `cn` runs |
 | `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY` (any case) | Where model requests, which carry your API key, are sent |

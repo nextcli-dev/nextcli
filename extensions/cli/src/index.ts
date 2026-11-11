@@ -220,23 +220,17 @@ function logEnvironmentReport(report: EnvironmentReport): void {
 // --help and --version exit before this, so they never ask.
 program.hook("preAction", async (_program, actionCommand) => {
   const opts = actionCommand.optsWithGlobals();
-  let report: EnvironmentReport | undefined;
-  try {
-    report = await loadProjectEnvironment({
-      canAsk: canAskForTrust({
-        interactiveChat: actionCommand === program && !opts.print,
-        stdinIsTTY: !!process.stdin.isTTY,
-        stdoutIsTTY: !!process.stdout.isTTY,
-        env: process.env,
-      }),
-      trustFlag: !!opts.trustWorkspace,
-      quietNotice: ["trust", "untrust"].includes(actionCommand.name()),
-      notice: safeStderr,
-    });
-  } catch (error) {
-    // Loading .env files must never stop cn
-    logger.debug("Failed to load .env files", error);
-  }
+  const report = await loadProjectEnvironment({
+    canAsk: canAskForTrust({
+      interactiveChat: actionCommand === program && !opts.print,
+      stdinIsTTY: !!process.stdin.isTTY,
+      stdoutIsTTY: !!process.stdout.isTTY,
+      env: process.env,
+    }),
+    trustFlag: !!opts.trustWorkspace,
+    quietNotice: ["trust", "untrust"].includes(actionCommand.name()),
+    notice: safeStderr,
+  });
 
   // --log-level wins over --verbose, which wins over NEXTCLI_LOG_LEVEL (which
   // a trusted folder's .env may set)
@@ -247,7 +241,7 @@ program.hook("preAction", async (_program, actionCommand) => {
   if (level) {
     logger.setLevel(level);
   }
-  if (report) logEnvironmentReport(report);
+  logEnvironmentReport(report);
 });
 
 // Root command - chat functionality (default)

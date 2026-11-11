@@ -19,11 +19,11 @@ import {
  * an interactive chat, and loads .env files: the trusted folder's
  * .continue/.env and .env, then ~/.continue/.env. Variables already set win.
  *
- * Loading here rather than before any import is enough: the only variables
- * read when a module loads are ones a .env may never set (CONTINUE_GLOBAL_DIR,
- * NEXTCLI_API_BASE). NEXTCLI_LOG_LEVEL is read at module load, so the hook
- * must call logger.setLevel after this to apply a .env value. NEXTCLI_TRACE
- * is read at the first trace event.
+ * Loading here rather than before any import is enough: the variables read at
+ * module load are ones a .env may never set (CONTINUE_GLOBAL_DIR,
+ * NEXTCLI_API_BASE) plus NEXTCLI_LOG_LEVEL, which the preAction hook
+ * re-applies with logger.setLevel. NEXTCLI_TRACE is read at the first trace
+ * event.
  */
 
 // Never taken from a .env file, trusted or not: they change how processes
@@ -33,6 +33,9 @@ const NEVER_FROM_FILE = [
   /^NODE_OPTIONS$/,
   /^NODE_PATH$/,
   /^NODE_EXTRA_CA_CERTS$/,
+  /^NODE_TLS_REJECT_UNAUTHORIZED$/,
+  // npm's settings, including the registry cn's self-update installs from
+  /^NPM_CONFIG_/,
   /^LD_/,
   /^DYLD_/,
   /^PATH$/,
@@ -84,18 +87,21 @@ function loadEnvFile(
   return true;
 }
 
-function askToTrust(
-  folder: string,
-  input: NodeJS.ReadableStream,
-  output: NodeJS.WritableStream,
-): Promise<boolean> {
-  const rl = readline.createInterface({ input, output });
+/** The person's answer, or undefined when they closed the prompt (Ctrl+D) */
+function askToTrust(folder: string): Promise<boolean | undefined> {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
   return new Promise((resolve) => {
+    // Closing without an answer drops the question's callback; settle anyway
+    // so cn still starts
+    rl.once("close", () => resolve(undefined));
     rl.question(
       `Trust ${folder}? Its .env and .continue/.env can set environment variables for cn. [y/N] `,
       (answer) => {
-        rl.close();
         resolve(/^y(es)?$/i.test(answer.trim()));
+        rl.close();
       },
     );
   });
@@ -130,7 +136,7 @@ export async function loadProjectEnvironment(options: {
   env?: NodeJS.ProcessEnv;
   /** Where the "skipped" notice goes; headless runs block process.stderr */
   notice?: (message: string) => void;
-  ask?: (folder: string) => Promise<boolean>;
+  ask?: (folder: string) => Promise<boolean | undefined>;
 }): Promise<EnvironmentReport> {
   const folder = options.folder ?? process.cwd();
   const env = options.env ?? process.env;
@@ -147,15 +153,16 @@ export async function loadProjectEnvironment(options: {
   });
   let trusted = decision === "trusted";
   if (decision === "ask") {
-    const ask =
-      options.ask ??
-      ((dir: string) => askToTrust(dir, process.stdin, process.stdout));
-    trusted = await ask(folder);
-    try {
-      setStoredTrust(folder, trusted, env);
-    } catch (error) {
-      // This run still follows the answer; cn asks again next time
-      logger.debug("Couldn't save the trust decision", error);
+    const answer = await (options.ask ?? askToTrust)(folder);
+    trusted = answer === true;
+    // No answer: untrusted for this run, and cn asks again next time
+    if (answer !== undefined) {
+      try {
+        setStoredTrust(folder, answer, env);
+      } catch (error) {
+        // This run still follows the answer; cn asks again next time
+        logger.debug("Couldn't save the trust decision", error);
+      }
     }
   }
 
