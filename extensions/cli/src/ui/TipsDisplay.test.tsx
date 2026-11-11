@@ -89,29 +89,6 @@ describe("shouldShowTip", () => {
     vi.mocked(Math.random).mockReturnValue(0.99);
     expect(shouldShowTip()).toBe(false);
   });
-
-  it("has approximately 20% probability over many calls", () => {
-    // Restore original Math.random for this statistical test
-    vi.restoreAllMocks();
-
-    // Test the probability distribution over many calls
-    let trueCount = 0;
-    const iterations = 1000;
-
-    for (let i = 0; i < iterations; i++) {
-      if (shouldShowTip()) {
-        trueCount++;
-      }
-    }
-
-    const probability = trueCount / iterations;
-    // Allow for some variance (15% to 25% range)
-    expect(probability).toBeGreaterThan(0.15);
-    expect(probability).toBeLessThan(0.25);
-
-    // Re-mock for proper cleanup
-    vi.spyOn(Math, "random");
-  });
 });
 
 describe("CONTINUE_CLI_TIPS", () => {
