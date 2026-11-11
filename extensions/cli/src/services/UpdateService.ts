@@ -1,4 +1,5 @@
 import { exec, spawn } from "child_process";
+import os from "os";
 import { promisify } from "util";
 
 import { GlobalContext } from "core/util/GlobalContext.js";
@@ -163,7 +164,11 @@ export class UpdateService extends BaseService<UpdateServiceState> {
       });
 
       // Install the update
-      const { stdout, stderr } = await execAsync("npm i -g @nextcli/cli");
+      // From the home directory: npm reads the .npmrc of the directory it runs
+      // in, and cn's working directory may be a repository cn doesn't trust
+      const { stdout, stderr } = await execAsync("npm i -g @nextcli/cli", {
+        cwd: os.homedir(),
+      });
       logger.debug("Update output:", { stdout, stderr });
 
       if (stderr) {

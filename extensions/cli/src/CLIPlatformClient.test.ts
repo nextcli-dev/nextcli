@@ -4,6 +4,7 @@ import { FQSN, SecretResult, SecretType } from "@nextcli/config-yaml";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CLIPlatformClient } from "./CLIPlatformClient.js";
+import { isWorkspaceTrusted } from "./workspaceTrust.js";
 
 // Mock fs module
 vi.mock("node:fs", () => ({
@@ -17,6 +18,8 @@ vi.mock("./env.js", () => ({
     continueHome: "/home/user/.continue",
   },
 }));
+
+vi.mock("./workspaceTrust.js", () => ({ isWorkspaceTrusted: vi.fn() }));
 
 describe("CLIPlatformClient", () => {
   let mockApiClient: {
@@ -372,6 +375,46 @@ describe("CLIPlatformClient", () => {
 
       expect(results).toHaveLength(1);
       expect(results[0]).toEqual(apiResult);
+    });
+  });
+
+  // A repository's .env must not fill in a secret the config asks for unless
+  // the person trusted the folder
+  describe("workspace .env files", () => {
+    const fqsn: FQSN = {
+      packageSlugs: [{ ownerSlug: "o", packageSlug: "p" }],
+      secretName: "WORKSPACE_SECRET",
+    };
+    const workspaceEnv = (file: unknown) =>
+      String(file).startsWith(process.cwd())
+        ? "WORKSPACE_SECRET=from-repo"
+        : "";
+
+    beforeEach(() => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readFileSync).mockImplementation(workspaceEnv as any);
+      mockApiClient.syncSecrets.mockResolvedValue([]);
+    });
+
+    it("are read in a trusted folder", async () => {
+      vi.mocked(isWorkspaceTrusted).mockReturnValue(true);
+      const [result] = await new CLIPlatformClient(
+        null,
+        mockApiClient as any,
+      ).resolveFQSNs([fqsn]);
+      expect(result).toMatchObject({ found: true, value: "from-repo" });
+    });
+
+    it("are ignored in an untrusted folder", async () => {
+      vi.mocked(isWorkspaceTrusted).mockReturnValue(false);
+      const [result] = await new CLIPlatformClient(
+        null,
+        mockApiClient as any,
+      ).resolveFQSNs([fqsn]);
+      expect(result?.found ?? false).toBe(false);
+      for (const [file] of vi.mocked(fs.readFileSync).mock.calls) {
+        expect(String(file).startsWith(process.cwd())).toBe(false);
+      }
     });
   });
 });

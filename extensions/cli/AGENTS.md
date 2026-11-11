@@ -4,6 +4,7 @@ The `cn` CLI. Read the [root AGENTS.md](../../AGENTS.md) first for goals, rules 
 
 ## Where things are
 
+- `src/bootstrap.ts` and `src/workspaceTrust.ts`: run before everything else (`dist/cn.js`). They decide whether the working directory is trusted and load `.env` files only from a trusted folder.
 - `src/index.ts`: entry point and commands. `-p/--print` runs headless. With no flag it starts the Ink TUI (`src/ui/`).
 - `src/commands/`: `chat`, `review` (and `review/`), `checks`, `ls`, `cleanup`. Shared flags are in `BaseCommandOptions.ts` and `src/shared-options.ts`.
 - `src/stream/`: the agent loop (`streamChatResponse.ts`, `handleToolCalls.ts`) and the turn, token and cost limits (`agentLoopLimits.ts`).

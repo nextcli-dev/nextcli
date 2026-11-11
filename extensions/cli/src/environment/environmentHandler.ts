@@ -9,6 +9,7 @@ const execAsync = promisify(exec);
 
 import { formatError } from "../util/formatError.js";
 import { logger } from "../util/logger.js";
+import { isWorkspaceTrusted } from "../workspaceTrust.js";
 
 interface EnvironmentConfig {
   install?: string;
@@ -52,6 +53,12 @@ function findEnvironmentFile(): EnvironmentConfig | null {
  * Now runs asynchronously to avoid blocking server startup
  */
 export async function runEnvironmentInstall(): Promise<void> {
+  // The install script comes from the repository: run it only in a folder the
+  // person trusted
+  if (!isWorkspaceTrusted()) {
+    logger.debug("Folder isn't trusted, skipping environment.json install");
+    return;
+  }
   const environmentConfig = findEnvironmentFile();
 
   if (!environmentConfig || !environmentConfig.install) {

@@ -1,4 +1,3 @@
-import dotenv from "dotenv";
 import { z } from "zod";
 import { AiSdkApi } from "./apis/AiSdk.js";
 import { AnthropicApi } from "./apis/Anthropic.js";
@@ -26,8 +25,6 @@ import { BaseLlmApi } from "./apis/base.js";
 import { OneProviderApi } from "./apis/OneProvider.js";
 import { LLMConfig, OpenAIConfigSchema } from "./types.js";
 import { appendPathToUrlIfNotPresent } from "./util/appendPathToUrl.js";
-
-dotenv.config();
 
 function openAICompatible(
   apiBase: string,

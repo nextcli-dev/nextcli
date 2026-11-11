@@ -11,6 +11,7 @@ import {
 import * as dotenv from "dotenv";
 
 import { env } from "./env.js";
+import { isWorkspaceTrusted } from "./workspaceTrust.js";
 
 export class CLIPlatformClient implements PlatformClient {
   constructor(
@@ -61,12 +62,18 @@ export class CLIPlatformClient implements PlatformClient {
       return processEnvSecret;
     }
 
-    // Then check in priority order: ~/.continue/.env, <workspace>/.continue/.env, <workspace>/.env
+    // Then check in priority order: ~/.continue/.env, then, only in a trusted
+    // folder, <workspace>/.continue/.env and <workspace>/.env. An untrusted
+    // repository must not fill in a secret the config asks for.
     const workspaceDir = process.cwd();
     const envPaths = [
       path.join(env.continueHome, ".env"),
-      path.join(workspaceDir, ".continue", ".env"),
-      path.join(workspaceDir, ".env"),
+      ...(isWorkspaceTrusted(workspaceDir)
+        ? [
+            path.join(workspaceDir, ".continue", ".env"),
+            path.join(workspaceDir, ".env"),
+          ]
+        : []),
     ];
 
     for (const envPath of envPaths) {

@@ -71,4 +71,12 @@ describe("initializeServices", () => {
       });
     });
   });
+
+  // A headless run (-p, cn review) must never check for an update or install
+  // one: the install runs npm in the working directory
+  it("tells the update service the run is headless", async () => {
+    const spy = vi.spyOn(services.updateService, "initialize");
+    await initializeServices({ headless: true });
+    expect(spy).toHaveBeenCalledWith(true);
+  });
 });

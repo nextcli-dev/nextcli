@@ -12,8 +12,6 @@ import { IdeType, SerializedContinueConfig } from "../";
 import { defaultConfig } from "../config/default";
 import Types from "../config/types";
 
-dotenv.config();
-
 export function setConfigFilePermissions(filePath: string): void {
   try {
     if (os.platform() !== "win32") {

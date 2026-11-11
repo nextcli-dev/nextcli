@@ -130,6 +130,10 @@ export function addCommonOptions(command: Command): Command {
       "Let the Fetch tool reach localhost and private network addresses (cloud metadata addresses stay blocked)",
     )
     .option(
+      "--trust-workspace",
+      "Trust this folder for this run, so its .env and .continue/.env load. Never use it on code you haven't read, such as a pull request in CI",
+    )
+    .option(
       "--agent <slug>",
       "Load agent file from the hub (slug in format 'owner/package')",
     )

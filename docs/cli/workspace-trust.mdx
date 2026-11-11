@@ -1,0 +1,66 @@
+---
+title: "Workspace Trust"
+---
+
+`cn` loads environment variables from a folder's `.env` and `.continue/.env` only if you trust that folder. The first time you start `cn` in a folder that has one of these files, it asks:
+
+```text
+Trust /Users/you/code/api? Its .env and .continue/.env can set environment variables for cn. [y/N]
+```
+
+The answer is saved in `~/.continue/trusted-folders.json` and applies to that folder and everything under it. `cn` doesn't ask again. Trusting `~/code` trusts every repository in it.
+
+A repository you didn't write, such as a pull request's checkout or a project you just cloned, can contain a `.env`. Without trust, that file could set variables like `NODE_OPTIONS` or `GIT_CONFIG_*`, which make `cn` or the `git` commands it runs execute code before any tool is called.
+
+## Trust or untrust a folder
+
+```bash
+cn trust              # this folder
+cn trust ~/code/api   # another folder
+cn trust --list       # every saved decision
+cn untrust            # forget this folder's decision; cn asks again next time
+```
+
+## Headless runs
+
+`cn -p`, `cn review` and `cn serve` never ask. In a folder without a saved decision they don't load the project's `.env`, and `cn` prints one line on stderr saying so. A folder you trusted earlier loads as usual.
+
+To trust the folder for a single run, pass `--trust-workspace` or set `NEXTCLI_TRUST_WORKSPACE=1`:
+
+```bash
+cn -p --trust-workspace "Run the integration tests and summarize the failures"
+```
+
+<Warning>
+Don't pass `--trust-workspace` when `cn` runs on code you haven't read, such as a pull request in CI. The pull request's `.env` would then set `cn`'s environment.
+</Warning>
+
+## What a `.env` file can't set
+
+These variables are never taken from a `.env` file, even in a trusted folder, because they change how processes start, where network traffic goes or where `cn` keeps its configuration. Set them in your shell or CI environment instead.
+
+| Variables | What they control |
+| --- | --- |
+| `NODE_OPTIONS`, `NODE_PATH`, `NODE_EXTRA_CA_CERTS` | Node code and certificates for `cn` and its child processes |
+| `LD_*`, `DYLD_*`, `PATH`, `HOME`, `SHELL`, `BASH_ENV`, `ENV` | Which programs and startup files run |
+| `GIT_*` | git configuration for the `git` commands `cn` runs |
+| `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY` (any case) | Where model requests, which carry your API key, are sent |
+| `CONTINUE_GLOBAL_DIR` | Where `cn` reads its config, permissions and trust decisions |
+| `NEXTCLI_TRUST_WORKSPACE`, `NEXTCLI_VERSION_INFO_URL`, `NEXTCLI_API_BASE`, `OTEL_*`, `CONTINUE_CLI_ENABLE_TELEMETRY` | Trust, update checks, the API endpoint and telemetry |
+
+Run with `--verbose` to see which names were skipped, in `~/.continue/logs/cn.log`.
+
+## Keys for every folder
+
+`~/.continue/.env` loads in every folder, trusted or not. Put provider keys there rather than in each repository:
+
+```bash
+# ~/.continue/.env
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Variables already set in your environment take precedence over every file. A trusted folder's `.continue/.env` comes next, then its `.env`, then `~/.continue/.env`.
+
+## Other files that follow trust
+
+Secrets referenced as `${{ secrets.NAME }}` in your config are looked up in a folder's `.env` and `.continue/.env` only if the folder is trusted. The `install` script in `.continue/environment.json` runs only in a trusted folder. `AGENTS.md`, rules and skills in the repository are read in every folder: they are instructions for the model, not configuration for `cn`.

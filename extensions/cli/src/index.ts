@@ -24,6 +24,7 @@ import { logger } from "./util/logger.js";
 import { signalForegroundProcessTrees } from "./util/processTree.js";
 import { readStdinSync } from "./util/stdin.js";
 import { getVersion } from "./version.js";
+import { listStoredTrust, setStoredTrust } from "./workspaceTrust.js";
 
 // TUI lifecycle and two-stage exit state management
 let tuiUnmount: (() => void) | null;
@@ -340,6 +341,37 @@ program
     await cleanupCommand({ yes: options.yes });
   });
 
+// Folder trust: whether a folder's .env and .continue/.env may set cn's
+// environment (src/workspaceTrust.ts)
+program
+  .command("trust [folder]")
+  .description(
+    "Trust a folder (default: this one), so its .env and .continue/.env load",
+  )
+  .option("--list", "List the folders you trusted or refused")
+  .action((folder: string | undefined, options: { list?: boolean }) => {
+    if (options.list) {
+      const folders = Object.entries(listStoredTrust());
+      if (folders.length === 0) console.log("No folders trusted or refused.");
+      for (const [dir, trusted] of folders) {
+        console.log(`${trusted ? "trusted" : "refused"}  ${dir}`);
+      }
+      return;
+    }
+    const dir = setStoredTrust(folder ?? process.cwd(), true);
+    console.log(`Trusted ${dir}. Its .env files load from the next run.`);
+  });
+
+program
+  .command("untrust [folder]")
+  .description(
+    "Forget the trust decision for a folder (default: this one); cn asks again",
+  )
+  .action((folder: string | undefined) => {
+    const dir = setStoredTrust(folder ?? process.cwd(), undefined);
+    console.log(`Forgot the trust decision for ${dir}.`);
+  });
+
 // Serve subcommand
 program
   .command("serve [prompt]", { hidden: true })
@@ -396,6 +428,20 @@ program.on("command:*", () => {
 });
 
 export async function runCli(): Promise<void> {
+  // The bootstrap loaded .env files before the logger existed
+  const report = globalThis.__nextcliEnvironmentReport;
+  if (report) {
+    logger.debug("Environment files", {
+      trusted: report.trusted,
+      loaded: report.loaded,
+    });
+    if (report.skippedNames.length > 0) {
+      logger.debug(
+        `Not taken from a .env file: ${report.skippedNames.join(", ")}. Set them in the environment instead.`,
+      );
+    }
+  }
+
   // Handle internal worker subprocess for cn review
   if (process.argv.includes("--internal-review-worker")) {
     const { runReviewWorker } = await import(
