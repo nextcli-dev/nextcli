@@ -23,6 +23,13 @@ const write: Defaults = {
   plan: "exclude",
   planHeadless: "exclude",
 };
+/** Needs a person to respond: excluded when nobody is watching */
+const interactive: Defaults = {
+  normal: "allow",
+  headless: "exclude",
+  plan: "allow",
+  planHeadless: "exclude",
+};
 /** Sends data off the machine: closed when nobody is watching */
 const network: Defaults = {
   normal: "allow",
@@ -44,7 +51,7 @@ const TOOL_DEFAULTS: Record<string, Defaults> = {
   Edit: write,
   MultiEdit: write,
   Write: write,
-  AskQuestion: allow,
+  AskQuestion: interactive,
   CheckBackgroundJob: allow,
   Checklist: allow,
   Diff: allow,

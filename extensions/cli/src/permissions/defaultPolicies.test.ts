@@ -27,6 +27,16 @@ describe("defaultPolicies", () => {
     }
   });
 
+  it("allows AskQuestion only in runs where someone can answer", () => {
+    const permissionOf = (policies: { tool: string; permission: string }[]) =>
+      policies.find((p) => p.tool === "AskQuestion")?.permission;
+
+    expect(permissionOf(getDefaultToolPolicies(false))).toBe("allow");
+    expect(permissionOf(getPlanModePolicies(false))).toBe("allow");
+    expect(permissionOf(getDefaultToolPolicies(true))).toBe("exclude");
+    expect(permissionOf(getPlanModePolicies(true))).toBe("exclude");
+  });
+
   it("should not have prefix wildcard policies in defaults", () => {
     const prefixWildcardPolicy = DEFAULT_TOOL_POLICIES.find(
       (p) => p.tool.endsWith("*") && p.tool !== "*",

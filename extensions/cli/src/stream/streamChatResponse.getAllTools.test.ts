@@ -5,6 +5,7 @@ import {
   initializeServices,
   SERVICE_NAMES,
   serviceContainer,
+  services,
 } from "../services/index.js";
 import type { ToolPermissionServiceState } from "../services/ToolPermissionService.js";
 
@@ -182,5 +183,52 @@ describe("getRequestTools - Tool Filtering", () => {
     expect(toolNames).not.toContain("Bash");
     expect(toolNames).not.toContain("Edit");
     expect(toolNames).not.toContain("Write");
+  });
+
+  test("offers AskQuestion only when someone can answer it", async () => {
+    await initializeServices({
+      headless: false,
+      toolPermissionOverrides: { mode: "normal" },
+    });
+    // The terminal UI listens for questions (useChat)
+    const answer = () => {};
+    services.quiz.on("questionRequested", answer);
+    try {
+      const interactive = (await getRequestTools(false)).map(
+        (t) => t.function.name,
+      );
+      expect(interactive).toContain("AskQuestion");
+      expect(interactive).not.toContain("Exit");
+    } finally {
+      services.quiz.off("questionRequested", answer);
+    }
+
+    await initializeServices({ headless: true });
+    const headless = (await getRequestTools(true)).map((t) => t.function.name);
+    expect(headless).not.toContain("AskQuestion");
+    expect(headless).toContain("Exit");
+    expect(headless).toContain("Read");
+  });
+
+  test("a headless run allowing every tool still gets no AskQuestion", async () => {
+    await initializeServices({
+      headless: true,
+      toolPermissionOverrides: { mode: "auto" },
+    });
+    const toolNames = (await getRequestTools(true)).map((t) => t.function.name);
+    expect(toolNames).toContain("Bash");
+    expect(toolNames).not.toContain("AskQuestion");
+  });
+
+  test("cn serve gets no AskQuestion: its client can approve tools but not answer questions", async () => {
+    await initializeServices({ headless: true, approvalsAvailable: true });
+    // Serve runs the loop as attended, so it asks for the attended tool list
+    expect(services.toolPermissions.isHeadless()).toBe(false);
+
+    const toolNames = (await getRequestTools(false)).map(
+      (t) => t.function.name,
+    );
+    expect(toolNames).toContain("Read");
+    expect(toolNames).not.toContain("AskQuestion");
   });
 });

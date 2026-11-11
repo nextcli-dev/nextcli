@@ -71,7 +71,6 @@ const BASE_BUILTIN_TOOLS: Tool[] = [
   fetchTool,
   writeChecklistTool,
   checkBackgroundJobTool,
-  askQuestionTool,
 ];
 
 const BUILTIN_SEARCH_TOOLS: Tool[] = [searchCodeTool];
@@ -127,6 +126,12 @@ export async function getAllAvailableTools(
 
   if (isHeadless) {
     tools.push(exitTool);
+  }
+
+  // Offer AskQuestion only when something can answer it (the terminal UI).
+  // cn -p and cn serve have nobody to ask.
+  if (services.quiz.canAskQuestions()) {
+    tools.push(askQuestionTool);
   }
 
   if (isBetaSubagentToolEnabled()) {
