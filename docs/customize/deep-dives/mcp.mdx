@@ -198,3 +198,12 @@ mcpServers:
       GITHUB_PERSONAL_ACCESS_TOKEN: ${{ secrets.GITHUB_PERSONAL_ACCESS_TOKEN }}
 # ...
 ```
+
+### How to Limit Which Tools a Server Offers
+
+A server sends NextCLI its full tool list, and every tool on it reaches the model unless you remove it on the NextCLI side. Naming the server, or telling the model in a prompt which tools to use, does not limit what it can call. This matters most for large remote servers that you only need a few tools from.
+
+- **IDE extensions.** In the tools menu of the input toolbar, set the tools you don't want to **Excluded**. An excluded tool is not sent to the model. See [tool policies](/ide-extensions/agent/how-to-customize#how-to-configure-tool-policies).
+- **CLI (`cn`).** MCP tools default to `ask` in the TUI and to `exclude` in `cn -p`. Remove a tool with `--exclude` or an `exclude:` entry in [`~/.continue/permissions.yaml`](/cli/tool-permissions/permissions-yaml), using the name the server gives it (check names with `/mcp`). To keep only some tools of a server, list them as `owner/package:tool_name` in an [agent file](/cli/tool-permissions/agent-files); the server's other tools are excluded. Excluded tools are not offered to the model. See [default tool permissions](/cli/tool-permissions/defaults) and [flags and patterns](/cli/tool-permissions/flags-and-patterns).
+
+These settings change only what NextCLI offers the model. The server itself still serves every tool to any client that connects. If a server publishes a narrower endpoint, such as a read-only or docs-only URL, connect to that one when you need the server itself to refuse the other tools.
