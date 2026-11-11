@@ -153,7 +153,8 @@
             "type": "string"
           },
           "default": [],
-          "markdownDescription": "Environment variables the agent's terminal commands keep even though they look like secrets (API keys, tokens, passwords), for example `NPM_TOKEN`. Every other secret-like variable is removed, including ones your shell profile exports."
+          "scope": "machine",
+          "markdownDescription": "Environment variables the agent's terminal commands keep even though they look like secrets (API keys, tokens, passwords), for example `NPM_TOKEN`. Every other secret-like variable is removed, including ones your shell profile exports. User settings only: a workspace's settings can't change it, so a repository can't choose which secrets its commands see."
         }
       }
     },
