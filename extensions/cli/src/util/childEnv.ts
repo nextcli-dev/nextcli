@@ -18,23 +18,8 @@ const SECRET_NAME_PARTS = [
 // Names that end like a secret (OPENAI_KEY, GITLAB_PAT)
 const SECRET_NAME_SUFFIX = /_(KEY|PAT)$/i;
 
-// Names that don't look like secrets but grant access: the GitHub Actions
-// OIDC and runtime endpoints, and the AWS key id that pairs with the secret
-const SECRET_NAMES = new Set([
-  "AWS_ACCESS_KEY_ID",
-  "ACTIONS_ID_TOKEN_REQUEST_URL",
-  "ACTIONS_RUNTIME_URL",
-  "ACTIONS_RESULTS_URL",
-  "ACTIONS_CACHE_URL",
-]);
-
-// Names that match a pattern above but hold no secret, and that common
-// workflows need (git push over SSH, signing, tokenizer libraries)
-const KEPT_NAMES = new Set([
-  "SSH_AUTH_SOCK",
-  "GPG_AGENT_INFO",
-  "TOKENIZERS_PARALLELISM",
-]);
+// Names that match a pattern above but hold no secret
+const KEPT_NAMES = new Set(["TOKENIZERS_PARALLELISM"]);
 
 // Values that are a credential whatever the variable is called
 const SECRET_VALUE_PATTERNS = [
@@ -61,7 +46,6 @@ export function isSecretEnvVar(
     return false;
   }
   if (
-    SECRET_NAMES.has(upper) ||
     SECRET_NAME_SUFFIX.test(upper) ||
     SECRET_NAME_PARTS.some((part) => upper.includes(part))
   ) {

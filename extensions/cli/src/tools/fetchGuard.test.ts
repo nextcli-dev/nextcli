@@ -1,11 +1,12 @@
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { Agent } from "undici";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
-  assertFetchableUrl,
   checkAddress,
+  createGuardedConnector,
   createGuardedFetch,
   createGuardedLookup,
   FetchRefusedError,
@@ -57,52 +58,6 @@ describe("checkAddress", () => {
   });
 });
 
-describe("assertFetchableUrl", () => {
-  it("lets public http and https URLs through", () => {
-    expect(() =>
-      assertFetchableUrl(new URL("https://example.com/docs"), false),
-    ).not.toThrow();
-    expect(() =>
-      assertFetchableUrl(new URL("http://93.184.215.14/"), false),
-    ).not.toThrow();
-  });
-
-  it.each([
-    "http://127.0.0.1:8080/",
-    "http://0x7f000001/",
-    "http://2130706433/",
-    "http://127.1/",
-    "http://[::1]/",
-    "http://[::ffff:169.254.169.254]/",
-    "http://169.254.169.254/latest/meta-data/",
-    "http://localhost:3000/",
-    "http://api.localhost/",
-    "http://LOCALHOST./",
-  ])("refuses %s", (url) => {
-    expect(() => assertFetchableUrl(new URL(url), false)).toThrow(
-      FetchRefusedError,
-    );
-  });
-
-  it.each(["file:///etc/passwd", "ftp://example.com/", "data:text/plain,hi"])(
-    "refuses the scheme of %s",
-    (url) => {
-      expect(() => assertFetchableUrl(new URL(url), true)).toThrow(
-        /only http and https/,
-      );
-    },
-  );
-
-  it("names the flag only when it would help", () => {
-    expect(() =>
-      assertFetchableUrl(new URL("http://127.0.0.1/"), false),
-    ).toThrow(/--allow-private-fetch/);
-    expect(() =>
-      assertFetchableUrl(new URL("http://169.254.169.254/"), true),
-    ).toThrow(/^Fetch refused: 169\.254\.169\.254 resolves to .*\)\.$/);
-  });
-});
-
 describe("createGuardedLookup", () => {
   const resolverFor =
     (addresses: { address: string; family: number }[]) =>
@@ -151,116 +106,115 @@ describe("createGuardedLookup", () => {
   });
 });
 
-describe("createGuardedFetch redirects", () => {
-  const redirect = (location: string, status = 302) =>
-    new Response(null, { status, headers: { location } });
+describe("createGuardedFetch against local servers", () => {
+  // Server A redirects to server B (another origin) or to metadata; B
+  // records the requests it receives
+  let serverA: http.Server;
+  let serverB: http.Server;
+  let a: string;
+  let b: string;
+  let requestsToB: http.IncomingHttpHeaders[];
 
-  it("follows public redirects and checks every hop", async () => {
-    const fetchImpl = vi
-      .fn()
-      .mockResolvedValueOnce(redirect("/moved"))
-      .mockResolvedValueOnce(redirect("https://docs.example.org/page", 301))
-      .mockResolvedValueOnce(new Response("final"));
-    const guarded = createGuardedFetch({ fetchImpl });
-
-    const response = await guarded("https://example.com/start");
-
-    expect(await response.text()).toBe("final");
-    expect(fetchImpl.mock.calls.map(([url]) => url)).toEqual([
-      "https://example.com/start",
-      "https://example.com/moved",
-      "https://docs.example.org/page",
-    ]);
-    for (const [, init] of fetchImpl.mock.calls) {
-      expect(init.redirect).toBe("manual");
-    }
-  });
-
-  it.each([
-    "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
-    "http://127.0.0.1:9000/admin",
-    "file:///etc/passwd",
-  ])("refuses a redirect to %s before connecting", async (location) => {
-    const fetchImpl = vi.fn().mockResolvedValueOnce(redirect(location));
-    const guarded = createGuardedFetch({ fetchImpl });
-
-    await expect(guarded("https://example.com/")).rejects.toThrow(
-      /Fetch refused/,
-    );
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-  });
-
-  it("stops after five redirects", async () => {
-    const fetchImpl = vi.fn(async () => redirect("https://example.com/loop"));
-    const guarded = createGuardedFetch({ fetchImpl });
-
-    await expect(guarded("https://example.com/")).rejects.toThrow(
-      /more than 5 redirects/,
-    );
-    expect(fetchImpl).toHaveBeenCalledTimes(6);
-  });
-});
-
-describe("createGuardedFetch against a local server", () => {
-  let server: http.Server;
-  let port: number;
-
-  beforeAll(async () => {
-    server = http.createServer((req, res) => {
-      if (req.url === "/to-metadata") {
-        res.writeHead(302, { location: "http://169.254.169.254/" });
-        res.end();
-        return;
-      }
-      res.end("local docs");
-    });
+  const listen = async (server: http.Server) => {
     await new Promise<void>((resolve) =>
       server.listen(0, "127.0.0.1", resolve),
     );
-    port = (server.address() as AddressInfo).port;
+    return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  };
+
+  beforeAll(async () => {
+    serverB = http.createServer((req, res) => {
+      requestsToB.push(req.headers);
+      res.end("docs from B");
+    });
+    b = await listen(serverB);
+    serverA = http.createServer((req, res) => {
+      const location =
+        req.url === "/to-b"
+          ? `${b}/page`
+          : req.url === "/to-metadata"
+            ? "http://169.254.169.254/latest/meta-data/"
+            : req.url === "/to-file"
+              ? "file:///etc/passwd"
+              : undefined;
+      if (location) {
+        res.writeHead(302, { location });
+        res.end();
+        return;
+      }
+      res.end("docs from A");
+    });
+    a = await listen(serverA);
   });
 
   afterAll(async () => {
-    await new Promise((resolve) => server.close(resolve));
+    await new Promise((resolve) => serverA.close(resolve));
+    await new Promise((resolve) => serverB.close(resolve));
   });
 
-  it("refuses loopback by default", async () => {
-    await expect(
-      createGuardedFetch()(`http://127.0.0.1:${port}/`),
-    ).rejects.toThrow(FetchRefusedError);
-  });
-
-  it("serves loopback with allowPrivate", async () => {
-    const response = await createGuardedFetch({ allowPrivate: true })(
-      `http://127.0.0.1:${port}/`,
+  it.each([
+    (port: string) => `http://127.0.0.1:${port}/`,
+    (port: string) => `http://0x7f000001:${port}/`,
+    (port: string) => `http://[::1]:${port}/`,
+    () => "http://169.254.169.254/latest/meta-data/",
+  ])("refuses an IP-literal host before connecting (%#)", async (url) => {
+    requestsToB = [];
+    const port = new URL(b).port;
+    await expect(createGuardedFetch()(url(port))).rejects.toThrow(
+      FetchRefusedError,
     );
-    expect(await response.text()).toBe("local docs");
+    expect(requestsToB).toHaveLength(0);
   });
 
-  it("keeps metadata blocked when a private server redirects there", async () => {
+  it("serves a private address with allowPrivate", async () => {
+    const response = await createGuardedFetch({ allowPrivate: true })(`${a}/`);
+    expect(await response.text()).toBe("docs from A");
+  });
+
+  it("follows a redirect to another origin and drops its credentials", async () => {
+    requestsToB = [];
+    const response = await createGuardedFetch({ allowPrivate: true })(
+      `${a}/to-b`,
+      { headers: { authorization: "Bearer secret" } },
+    );
+
+    expect(await response.text()).toBe("docs from B");
+    expect(requestsToB).toHaveLength(1);
+    expect(requestsToB[0].authorization).toBeUndefined();
+  });
+
+  it("refuses a redirect to metadata even with allowPrivate", async () => {
     await expect(
-      createGuardedFetch({ allowPrivate: true })(
-        `http://127.0.0.1:${port}/to-metadata`,
-      ),
+      createGuardedFetch({ allowPrivate: true })(`${a}/to-metadata`),
     ).rejects.toThrow(/169\.254\.169\.254/);
   });
 
+  it("refuses a redirect to a non-http scheme", async () => {
+    await expect(
+      createGuardedFetch({ allowPrivate: true })(`${a}/to-file`),
+    ).rejects.toThrow();
+  });
+
   // A hostname is checked when the socket connects, so a name that resolves
-  // to a private address is refused whatever it looked like before.
+  // to a private address is refused whatever it looked like before
   it("checks a hostname's address at connect time", async () => {
     const toLoopback = (_host: string, _options: unknown, callback: any) =>
       callback(null, [{ address: "127.0.0.1", family: 4 }]);
+    const url = `http://rebind.example:${new URL(a).port}/`;
 
     await expect(
-      createGuardedFetch({ resolve: toLoopback })(
-        `http://rebind.example:${port}/`,
-      ),
+      createGuardedFetch({
+        dispatcher: new Agent({
+          connect: createGuardedConnector(false, toLoopback),
+        }),
+      })(url),
     ).rejects.toThrow(FetchRefusedError);
 
     const response = await createGuardedFetch({
-      allowPrivate: true,
-      resolve: toLoopback,
-    })(`http://rebind.example:${port}/`);
-    expect(await response.text()).toBe("local docs");
+      dispatcher: new Agent({
+        connect: createGuardedConnector(true, toLoopback),
+      }),
+    })(url);
+    expect(await response.text()).toBe("docs from A");
   });
 });

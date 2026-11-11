@@ -10,15 +10,18 @@ export interface RunSafetyOptions {
   allowPrivateFetch: boolean;
 }
 
-const DEFAULTS: RunSafetyOptions = { passEnv: [], allowPrivateFetch: false };
+// Defaults also apply to a value passed as undefined (an absent flag)
+function withDefaults({
+  passEnv = [],
+  allowPrivateFetch = false,
+}: Partial<RunSafetyOptions> = {}): RunSafetyOptions {
+  return { passEnv, allowPrivateFetch };
+}
 
-let current: RunSafetyOptions = DEFAULTS;
+let current = withDefaults();
 
 export function setRunSafetyOptions(options: Partial<RunSafetyOptions>): void {
-  current = {
-    passEnv: options.passEnv ?? [],
-    allowPrivateFetch: options.allowPrivateFetch ?? false,
-  };
+  current = withDefaults(options);
 }
 
 export function getRunSafetyOptions(): RunSafetyOptions {

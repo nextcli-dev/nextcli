@@ -18,7 +18,6 @@ describe("isSecretEnvVar", () => {
     ["DB_PASSWORD", "x"],
     ["GOOGLE_APPLICATION_CREDENTIALS", "/path/key.json"],
     ["ACTIONS_ID_TOKEN_REQUEST_URL", "https://example"],
-    ["ACTIONS_RUNTIME_URL", "https://example"],
     ["npm_config__authToken", "x"],
     // By value, under a harmless name
     ["LLM", "sk-proj-abcdefghijklmnop"],
@@ -46,6 +45,7 @@ describe("isSecretEnvVar", () => {
     ["DATABASE_URL", "postgres://localhost:5432/app"],
     ["HTTPS_PROXY", "http://proxy:3128"],
     ["TERM", "xterm-256color"],
+    ["ACTIONS_RUNTIME_URL", "https://example"], // useless without its token
   ])("keeps %s", (name, value) => {
     expect(isSecretEnvVar(name, value)).toBe(false);
   });

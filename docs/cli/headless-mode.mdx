@@ -76,7 +76,7 @@ See [tool permissions](/cli/tool-permissions) for the full precedence, [flags & 
 
 These two guards apply in every run, interactive or headless. They stop a prompt injection, for example text in a pull request, from making the agent read your provider key or CI token.
 
-**Shell commands run without secret-like environment variables.** `Bash` and background jobs don't get a variable whose name contains `API_KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `PRIVATE_KEY`, `CREDENTIAL` or `ACCESS_KEY`, or ends in `_KEY` or `_PAT`. They also don't get the GitHub Actions OIDC and runtime URLs (`ACTIONS_ID_TOKEN_REQUEST_URL` and others). A variable is dropped whatever its name if its value looks like a key (`sk-…`, `ghp_…`, `AKIA…`, a private key) or like a URL with a password in it. `SSH_AUTH_SOCK` is kept, so `git push` over SSH works. Hooks and MCP servers come from your own config and still get the full environment.
+**Shell commands run without secret-like environment variables.** `Bash` and background jobs don't get a variable whose name contains `API_KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `PRIVATE_KEY`, `CREDENTIAL` or `ACCESS_KEY`, or ends in `_KEY` or `_PAT`. That includes the GitHub Actions OIDC variables (`ACTIONS_ID_TOKEN_REQUEST_TOKEN` and `_URL`). A variable is dropped whatever its name if its value looks like a key (`sk-…`, `ghp_…`, `AKIA…`, a private key) or like a URL with a password in it, such as `HTTPS_PROXY=http://user:pass@proxy:3128`. `SSH_AUTH_SOCK` is kept, so `git push` over SSH works. Hooks and MCP servers come from your own config and still get the full environment.
 
 If a command needs one of these variables, pass it back by name:
 
@@ -84,7 +84,7 @@ If a command needs one of these variables, pass it back by name:
 cn -p "Publish the package" --allow "Bash(npm publish*)" --pass-env NPM_TOKEN
 ```
 
-**`Fetch` reaches only public addresses.** It refuses `localhost` and loopback, private networks (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7` and others), and cloud metadata addresses (`169.254.169.254`, `fd00:ec2::254`, `100.100.100.200`). It checks the address when it connects and checks every redirect again, so neither a DNS name that points inside nor a redirect gets around the block. To read docs from a local server, pass `--allow-private-fetch`. Cloud metadata stays blocked even then.
+**`Fetch` reaches only public addresses.** It refuses `localhost` and loopback, private networks (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7` and others), and cloud metadata addresses (`169.254.169.254`, `fd00:ec2::254`, `100.100.100.200`). It checks the address of every connection it opens, including each of up to 20 redirects, so neither a DNS name that points inside nor a redirect gets around the block. To read docs from a local server, pass `--allow-private-fetch`. Cloud metadata stays blocked even then.
 
 ```bash
 cn -p "Summarize http://localhost:3000/docs" --allow Fetch --allow-private-fetch

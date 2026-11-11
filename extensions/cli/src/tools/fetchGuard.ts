@@ -1,19 +1,18 @@
 import dns from "node:dns";
 import net from "node:net";
 
-import { Agent, fetch as undiciFetch } from "undici";
+import { Agent, buildConnector, fetch as undiciFetch } from "undici";
 
 /**
  * Keeps the Fetch tool on the public internet. A prompt injection must not be
  * able to make it read a cloud-metadata endpoint (instance credentials) or a
- * service on the runner's private network. The address is checked when the
- * socket connects, so a DNS answer that changes after a first check
- * (rebinding) is caught too, and every redirect hop is checked again.
+ * service on the runner's private network. Every connection is checked when
+ * it opens: the first request, each redirect undici follows, and the favicon
+ * requests. A DNS answer that changes after an earlier check (rebinding) is
+ * caught too.
  */
 
 export type BlockedKind = "metadata" | "private";
-
-const MAX_REDIRECTS = 5;
 
 // Blocked even with --allow-private-fetch: these serve instance credentials
 const metadata = new net.BlockList();
@@ -173,117 +172,75 @@ export function createGuardedLookup(
 }
 
 /**
- * Refuses a URL before any connection: anything but http(s), localhost names,
- * and IP-literal hosts (net.connect skips `lookup` for those).
+ * A connector for undici that refuses blocked addresses. An IP-literal host
+ * is checked here, because net.connect skips `lookup` for it; a name goes
+ * through the guarded lookup.
  */
-export function assertFetchableUrl(url: URL, allowPrivate: boolean): void {
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error(
-      `Fetch refused: only http and https URLs are allowed, not ${url.protocol}`,
-    );
-  }
-  const host = url.hostname.replace(/^\[|\]$/g, "").replace(/\.$/, "");
-  if (net.isIP(host)) {
-    const kind = checkAddress(host, { allowPrivate });
-    if (kind) throw new FetchRefusedError(url.hostname, host, kind);
-    return;
-  }
-  const lower = host.toLowerCase();
-  if (
-    !allowPrivate &&
-    (lower === "localhost" || lower.endsWith(".localhost"))
-  ) {
-    throw new FetchRefusedError(url.hostname, "127.0.0.1", "private");
-  }
+export function createGuardedConnector(
+  allowPrivate: boolean,
+  resolve?: Resolver,
+): buildConnector.connector {
+  const connect = buildConnector({
+    lookup: createGuardedLookup(allowPrivate, resolve),
+  });
+  return (options, callback) => {
+    if (net.isIP(options.hostname)) {
+      const kind = checkAddress(options.hostname, { allowPrivate });
+      if (kind) {
+        callback(
+          new FetchRefusedError(options.hostname, options.hostname, kind),
+          null,
+        );
+        return;
+      }
+    }
+    connect(options, callback);
+  };
 }
-
-const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
 // One connection pool per setting, shared by every Fetch call in the run
 const dispatchers = new Map<boolean, Agent>();
 function sharedDispatcher(allowPrivate: boolean): Agent {
   let agent = dispatchers.get(allowPrivate);
   if (!agent) {
-    agent = new Agent({
-      connect: { lookup: createGuardedLookup(allowPrivate) },
-    });
+    agent = new Agent({ connect: createGuardedConnector(allowPrivate) });
     dispatchers.set(allowPrivate, agent);
   }
   return agent;
 }
 
-type FetchImpl = (
-  url: string,
-  init: Record<string, unknown>,
-) => Promise<Response>;
-
 export interface GuardedFetchOptions {
   allowPrivate?: boolean;
   signal?: AbortSignal;
-  /** For tests: the fetch that makes each single request */
-  fetchImpl?: FetchImpl;
-  /** For tests: the resolver behind the connect-time check */
-  resolve?: Resolver;
+  /** Replaces the shared pool, so tests can use a fake resolver */
+  dispatcher?: Agent;
 }
 
 /**
- * A fetch function for the Fetch tool. Each request, redirects included,
- * reaches only public addresses (or private ones with allowPrivate; never
- * cloud metadata).
+ * A fetch function for the Fetch tool. undici follows redirects (at most 20,
+ * http and https only, credentials dropped on a cross-origin hop) through the
+ * same guarded connector, so every hop reaches only public addresses, or
+ * private ones with allowPrivate; never cloud metadata.
  */
 export function createGuardedFetch({
   allowPrivate = false,
   signal,
-  fetchImpl,
-  resolve,
+  dispatcher,
 }: GuardedFetchOptions = {}): (
-  input: string | URL | Request,
+  input: string | URL,
   init?: RequestInit,
 ) => Promise<Response> {
-  const dispatcher = resolve
-    ? new Agent({
-        connect: { lookup: createGuardedLookup(allowPrivate, resolve) },
-      })
-    : sharedDispatcher(allowPrivate);
-  const send: FetchImpl =
-    fetchImpl ??
-    ((url, init) => undiciFetch(url, init) as unknown as Promise<Response>);
-
   return async (input, init = {}) => {
-    let url = new URL(input instanceof Request ? input.url : String(input));
-    let method = (init.method ?? "GET").toUpperCase();
-    let body = init.body;
-
-    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-      assertFetchableUrl(url, allowPrivate);
-      let response: Response;
-      try {
-        response = await send(url.toString(), {
-          ...init,
-          method,
-          body,
-          redirect: "manual",
-          dispatcher,
-          ...(signal ? { signal } : {}),
-        });
-      } catch (error) {
-        // undici reports a refused connect as "fetch failed" with the cause
-        const cause = (error as { cause?: unknown })?.cause;
-        throw cause instanceof FetchRefusedError ? cause : error;
-      }
-
-      const location = response.headers.get("location");
-      if (!REDIRECT_STATUSES.has(response.status) || !location) {
-        return response;
-      }
-      await response.body?.cancel();
-      url = new URL(location, url);
-      // 307 and 308 keep the method and body; the others become a GET
-      if (response.status !== 307 && response.status !== 308) {
-        method = "GET";
-        body = undefined;
-      }
+    try {
+      return (await undiciFetch(input, {
+        ...(init as Record<string, unknown>),
+        dispatcher: dispatcher ?? sharedDispatcher(allowPrivate),
+        ...(signal ? { signal } : {}),
+      })) as unknown as Response;
+    } catch (error) {
+      // undici reports a refused connect as "fetch failed" with the cause
+      const cause = (error as { cause?: unknown })?.cause;
+      throw cause instanceof FetchRefusedError ? cause : error;
     }
-    throw new Error(`Fetch refused: more than ${MAX_REDIRECTS} redirects`);
   };
 }

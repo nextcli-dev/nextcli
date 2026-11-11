@@ -61,8 +61,9 @@ export const fetchTool: Tool = {
       console.error = () => {};
 
       // Use the core fetchUrlContent implementation. Every request it makes,
-      // redirects and the favicon included, reaches only public addresses,
-      // and stops when the turn is interrupted.
+      // redirects and the favicon included, goes through the guard: public
+      // addresses only unless --allow-private-fetch, never cloud metadata.
+      // It stops when the turn is interrupted.
       const contextItems = await fetchUrlContentImpl(
         { url },
         {
