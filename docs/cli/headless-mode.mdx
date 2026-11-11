@@ -72,6 +72,33 @@ When the model calls a tool the rules refuse, the call gets the result `Blocked 
 
 See [tool permissions](/cli/tool-permissions) for the full precedence, [flags & patterns](/cli/tool-permissions/flags-and-patterns) for the rule syntax, [read-only commands](/cli/tool-permissions/read-only-commands) for the list of commands a headless run allows, and [agent files](/cli/tool-permissions/agent-files).
 
+## Secrets and private addresses
+
+These two guards apply in every run, interactive or headless. They stop a prompt injection, for example text in a pull request, from making the agent read your provider key or CI token.
+
+**Shell commands run without secret-like environment variables.** `Bash` and background jobs don't get a variable whose name contains `API_KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `PRIVATE_KEY`, `CREDENTIAL` or `ACCESS_KEY`, or ends in `_KEY` or `_PAT`. They also don't get the GitHub Actions OIDC and runtime URLs (`ACTIONS_ID_TOKEN_REQUEST_URL` and others). A variable is dropped whatever its name if its value looks like a key (`sk-…`, `ghp_…`, `AKIA…`, a private key) or like a URL with a password in it. `SSH_AUTH_SOCK` is kept, so `git push` over SSH works. Hooks and MCP servers come from your own config and still get the full environment.
+
+If a command needs one of these variables, pass it back by name:
+
+```bash
+cn -p "Publish the package" --allow "Bash(npm publish*)" --pass-env NPM_TOKEN
+```
+
+**`Fetch` reaches only public addresses.** It refuses `localhost` and loopback, private networks (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7` and others), and cloud metadata addresses (`169.254.169.254`, `fd00:ec2::254`, `100.100.100.200`). It checks the address when it connects and checks every redirect again, so neither a DNS name that points inside nor a redirect gets around the block. To read docs from a local server, pass `--allow-private-fetch`. Cloud metadata stays blocked even then.
+
+```bash
+cn -p "Summarize http://localhost:3000/docs" --allow Fetch --allow-private-fetch
+```
+
+<Warning>
+These guards close the easy paths, not every path. A shell that runs as your user can still read files your user can read. If you give an unattended run `--allow Bash` on untrusted input:
+
+- On Linux, `/proc/<pid>/environ` shows the environment `cn` started with, and the shell can read `~/.continue/config.yaml` too. Wherever the provider key comes from, only a container or a separate user keeps it out of the shell's reach.
+- `actions/checkout` keeps the job token in `.git/config` unless you set `persist-credentials: false`.
+- A login shell runs your shell profile, which can export keys again.
+- Give the job a token with the fewest permissions it needs.
+</Warning>
+
 ## Resume in headless mode
 
 Resume a previous session without interactive input:

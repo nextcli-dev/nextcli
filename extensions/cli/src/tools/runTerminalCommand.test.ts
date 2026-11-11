@@ -1,5 +1,6 @@
 import { signalAllProcessTrees } from "../util/processTree.js";
 
+import { setRunSafetyOptions } from "./runSafetyOptions.js";
 import {
   isRunningInWsl,
   runTerminalCommandTool,
@@ -291,5 +292,38 @@ describe.runIf(process.platform === "win32")(
       signalAllProcessTrees("SIGKILL");
       expect(await waitUntilDead(childPid)).toBe(true);
     }, 60000);
+  },
+);
+
+// A prompt injection must not read the provider key or a CI token with `env`
+describe.skipIf(process.platform === "win32")(
+  "runTerminalCommandTool environment",
+  () => {
+    beforeEach(() => {
+      process.env.TEST_PLAIN = "plain-value";
+      process.env.TEST_SECRET_TOKEN = "secret-value";
+    });
+
+    afterEach(() => {
+      delete process.env.TEST_PLAIN;
+      delete process.env.TEST_SECRET_TOKEN;
+      setRunSafetyOptions({});
+    });
+
+    it("keeps ordinary variables and drops secret-like ones", async () => {
+      const result = await runTerminalCommandTool.run({
+        command:
+          'echo "plain=$TEST_PLAIN secret=${TEST_SECRET_TOKEN:-unset} home=${HOME:+set}"',
+      });
+      expect(result.trim()).toBe("plain=plain-value secret=unset home=set");
+    });
+
+    it("keeps a variable named with --pass-env", async () => {
+      setRunSafetyOptions({ passEnv: ["TEST_SECRET_TOKEN"] });
+      const result = await runTerminalCommandTool.run({
+        command: 'echo "secret=$TEST_SECRET_TOKEN"',
+      });
+      expect(result.trim()).toBe("secret=secret-value");
+    });
   },
 );

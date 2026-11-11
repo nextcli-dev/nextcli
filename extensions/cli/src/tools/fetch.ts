@@ -7,6 +7,8 @@ import {
   truncateOutputFromEnd,
 } from "../util/truncateOutput.js";
 
+import { createGuardedFetch } from "./fetchGuard.js";
+import { getRunSafetyOptions } from "./runSafetyOptions.js";
 import { Tool, ToolRunContext } from "./types.js";
 
 // Output truncation defaults
@@ -58,16 +60,16 @@ export const fetchTool: Tool = {
       const originalConsoleError = console.error;
       console.error = () => {};
 
-      // Use the core fetchUrlContent implementation
-      // Stop the request when the turn is interrupted
-      const signal = context?.signal;
+      // Use the core fetchUrlContent implementation. Every request it makes,
+      // redirects and the favicon included, reaches only public addresses,
+      // and stops when the turn is interrupted.
       const contextItems = await fetchUrlContentImpl(
         { url },
         {
-          fetch: signal
-            ? (input: RequestInfo | URL, init?: RequestInit) =>
-                fetch(input, { ...init, signal })
-            : fetch,
+          fetch: createGuardedFetch({
+            allowPrivate: getRunSafetyOptions().allowPrivateFetch,
+            signal: context?.signal,
+          }),
         },
       );
 

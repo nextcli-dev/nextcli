@@ -35,6 +35,7 @@ What flags do:
 - **Inside the flags, excludes come first, then asks, then allows,** whatever order you write them in. `--exclude Bash --allow "Bash(git log*)"` denies `git log`: the exclude for the whole tool matches first. To narrow a tool, exclude the pattern you don't want and let the default or a broader allow handle the rest: `--allow Bash --exclude "Bash(npm install*)"`.
 - **An `--allow` is the operator's opt-in and is taken as given.** `cn -p --allow Bash` runs `curl` or `npm install`; only the commands that [never run](/cli/tool-permissions/read-only-commands#never-run) are still blocked. The exception is `--readonly`, which clamps every allow (see [Plan mode](/cli/modes/plan-mode)).
 - **`--ask` in a headless run means refused,** and the tool isn't offered.
+- **Two flags loosen guards that no pattern can open.** `--pass-env NAME` (repeatable) gives shell commands a secret-like environment variable they don't get by default. `--allow-private-fetch` lets `Fetch` reach `localhost` and private networks, but never cloud metadata. See [secrets and private addresses](/cli/headless-mode#secrets-and-private-addresses).
 - **A pattern that can't work stops `cn` at startup** with a message that names the pattern: a pattern on a tool that has no argument to match (`--allow "github_create_issue(x)"`), an unclosed one (`--allow "Write(src"`), or an empty value.
 
 ## Tool matching patterns
@@ -84,7 +85,9 @@ A `Fetch(...)` pattern is a plain glob over the URL as the model wrote it. `*` m
 cn -p "What changed in v2?" --allow "Fetch(https://docs.example.com/*)"
 ```
 
-`http://` and `https://` are different strings, and a redirect to another host isn't checked again. Prefer `Fetch(https://docs.example.com/*)` over a pattern with a bare host.
+`http://` and `https://` are different strings, and a redirect to another host isn't checked against the pattern again. Prefer `Fetch(https://docs.example.com/*)` over a pattern with a bare host.
+
+Whatever the pattern, `Fetch` refuses private and cloud metadata addresses, redirects included. `--allow "Fetch(http://localhost*)"` alone isn't enough to reach a local server; add `--allow-private-fetch`. See [secrets and private addresses](/cli/headless-mode#secrets-and-private-addresses).
 
 ### Bash commands
 

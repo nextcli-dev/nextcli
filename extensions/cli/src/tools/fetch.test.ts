@@ -3,6 +3,8 @@ import { fetchUrlContentImpl } from "core/tools/implementations/fetchUrlContent.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { fetchTool } from "./fetch.js";
+import { createGuardedFetch } from "./fetchGuard.js";
+import { setRunSafetyOptions } from "./runSafetyOptions.js";
 
 // Mock the core fetchUrlContent implementation
 vi.mock("core/tools/implementations/fetchUrlContent.js", () => ({
@@ -11,6 +13,11 @@ vi.mock("core/tools/implementations/fetchUrlContent.js", () => ({
 
 const mockFetchUrlContentImpl = vi.mocked(fetchUrlContentImpl);
 
+// The guard itself is tested in fetchGuard.test.ts
+vi.mock("./fetchGuard.js", () => ({ createGuardedFetch: vi.fn() }));
+const mockCreateGuardedFetch = vi.mocked(createGuardedFetch);
+const guardedFetch = vi.fn();
+
 describe("fetchTool", () => {
   let originalConsoleError: typeof console.error;
 
@@ -18,20 +25,24 @@ describe("fetchTool", () => {
     originalConsoleError = console.error;
     console.error = vi.fn();
     mockFetchUrlContentImpl.mockReset();
+    mockCreateGuardedFetch.mockReset();
+    mockCreateGuardedFetch.mockReturnValue(guardedFetch);
+    setRunSafetyOptions({});
   });
 
   afterEach(() => {
     console.error = originalConsoleError;
   });
 
-  // #12701: an interrupted turn must stop the request
-  it("passes the turn's abort signal to fetch", async () => {
+  // #12701: an interrupted turn must stop the request. The guarded fetch
+  // gets the turn's signal and the run's private-address setting.
+  it("fetches through the guard with the turn's signal", async () => {
     const controller = new AbortController();
-    const realFetch = vi.fn().mockResolvedValue(new Response("ok"));
-    vi.stubGlobal("fetch", realFetch);
+    const guarded = vi.fn().mockResolvedValue(new Response("ok"));
+    mockCreateGuardedFetch.mockReturnValue(guarded);
     mockFetchUrlContentImpl.mockImplementation(
       async (_args: unknown, extras: any) => {
-        await extras.fetch("https://example.com", { method: "GET" });
+        await extras.fetch("https://example.com");
         return [
           {
             name: "Example",
@@ -52,11 +63,30 @@ describe("fetchTool", () => {
       },
     );
 
-    expect(realFetch).toHaveBeenCalledWith("https://example.com", {
-      method: "GET",
+    expect(mockCreateGuardedFetch).toHaveBeenCalledWith({
+      allowPrivate: false,
       signal: controller.signal,
     });
-    vi.unstubAllGlobals();
+    expect(guarded).toHaveBeenCalledWith("https://example.com");
+  });
+
+  it("passes --allow-private-fetch to the guard", async () => {
+    setRunSafetyOptions({ allowPrivateFetch: true });
+    mockFetchUrlContentImpl.mockResolvedValue([
+      {
+        name: "Local",
+        description: "http://localhost:3000",
+        content: "ok",
+        uri: { type: "url", value: "http://localhost:3000" },
+      },
+    ]);
+
+    await fetchTool.run({ url: "http://localhost:3000" });
+
+    expect(mockCreateGuardedFetch).toHaveBeenCalledWith({
+      allowPrivate: true,
+      signal: undefined,
+    });
   });
 
   it("should return clean content from successful fetch", async () => {
@@ -79,7 +109,7 @@ describe("fetchTool", () => {
     );
     expect(mockFetchUrlContentImpl).toHaveBeenCalledWith(
       { url: "https://example.com" },
-      { fetch },
+      { fetch: guardedFetch },
     );
   });
 
@@ -163,7 +193,7 @@ describe("fetchTool", () => {
 
     expect(mockFetchUrlContentImpl).toHaveBeenCalledWith(
       { url: "https://example.com" },
-      { fetch },
+      { fetch: guardedFetch },
     );
   });
 

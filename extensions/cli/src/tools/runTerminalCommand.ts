@@ -16,6 +16,7 @@ import {
   isPullRequestCommand,
 } from "../telemetry/utils.js";
 import { backgroundSignalManager } from "../util/backgroundSignalManager.js";
+import { childProcessEnv } from "../util/childEnv.js";
 import { emitBashToolEnded, emitBashToolStarted } from "../util/cli.js";
 import {
   killProcessTree,
@@ -149,6 +150,8 @@ export const runTerminalCommandTool: Tool = {
 Commands are automatically executed from the current working directory (${process.cwd()}), so there's no need to change directories with 'cd' commands.
 
 IMPORTANT: To edit files, use Edit/MultiEdit tools instead of bash commands (sed, awk, etc).
+
+Secret-like environment variables (API keys, tokens, passwords) are removed before the command runs. If a command needs one, tell the user to pass it with --pass-env <NAME>.
 `,
   parameters: {
     type: "object",
@@ -226,7 +229,10 @@ IMPORTANT: To edit files, use Edit/MultiEdit tools instead of bash commands (sed
     const outputPromise: Promise<string> = new Promise((resolve, reject) => {
       // Use same shell logic as core implementation
       const { shell, args } = getShellCommand(command);
-      const child = spawn(shell, args, processTreeSpawnOptions());
+      const child = spawn(shell, args, {
+        ...processTreeSpawnOptions(),
+        env: childProcessEnv(),
+      });
       trackProcessTree(child, { foreground: true });
       spawnedChild = child;
       let stdout = "";
