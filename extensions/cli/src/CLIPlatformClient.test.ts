@@ -1,4 +1,5 @@
 import * as fs from "node:fs";
+import * as path from "node:path";
 
 import { FQSN, SecretResult, SecretType } from "@nextcli/config-yaml";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -405,7 +406,7 @@ describe("CLIPlatformClient", () => {
 
     it("reads ~/.continue/.env", async () => {
       vi.mocked(fs.readFileSync).mockImplementation(((file: unknown) =>
-        String(file) === "/home/user/.continue/.env"
+        String(file) === path.join("/home/user/.continue", ".env")
           ? "LOCAL_SECRET=from-home"
           : "") as any);
 
