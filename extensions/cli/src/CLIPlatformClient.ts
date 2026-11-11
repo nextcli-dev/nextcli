@@ -11,7 +11,6 @@ import {
 import * as dotenv from "dotenv";
 
 import { env } from "./env.js";
-import { isWorkspaceTrusted } from "./workspaceTrust.js";
 
 export class CLIPlatformClient implements PlatformClient {
   constructor(
@@ -62,19 +61,11 @@ export class CLIPlatformClient implements PlatformClient {
       return processEnvSecret;
     }
 
-    // Then check in priority order: ~/.continue/.env, then, only in a trusted
-    // folder, <workspace>/.continue/.env and <workspace>/.env. An untrusted
-    // repository must not fill in a secret the config asks for.
-    const workspaceDir = process.cwd();
-    const envPaths = [
-      path.join(env.continueHome, ".env"),
-      ...(isWorkspaceTrusted()
-        ? [
-            path.join(workspaceDir, ".continue", ".env"),
-            path.join(workspaceDir, ".env"),
-          ]
-        : []),
-    ];
+    // Then ~/.continue/.env. A trusted folder's .continue/.env and .env are
+    // already in process.env: the preAction hook loaded them
+    // (src/projectEnv.ts), with the variables no file may set filtered out.
+    // An untrusted folder's files are never read.
+    const envPaths = [path.join(env.continueHome, ".env")];
 
     for (const envPath of envPaths) {
       const secretValue = this.findSecretInEnvFile(envPath, fqsn.secretName);

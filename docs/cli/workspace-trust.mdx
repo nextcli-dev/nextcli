@@ -63,4 +63,4 @@ Variables already set in your environment take precedence over every file. A tru
 
 ## Other files that follow trust
 
-Secrets referenced as `${{ secrets.NAME }}` in your config are looked up in a folder's `.env` and `.continue/.env` only if the folder is trusted. `AGENTS.md`, rules and skills in the repository are read in every folder: they are instructions for the model, not configuration for `cn`.
+Secrets referenced as `${{ secrets.NAME }}` in your config come from the environment and `~/.continue/.env`. A folder's `.env` and `.continue/.env` supply them only if the folder is trusted, and never for the variables listed above. `AGENTS.md`, rules and skills in the repository are read in every folder: they are instructions for the model, not configuration for `cn`.

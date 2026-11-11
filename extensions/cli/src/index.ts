@@ -29,11 +29,7 @@ import { logger, parseLogLevel } from "./util/logger.js";
 import { signalForegroundProcessTrees } from "./util/processTree.js";
 import { readStdinSync } from "./util/stdin.js";
 import { getVersion } from "./version.js";
-import {
-  listStoredTrust,
-  setStoredTrust,
-  setWorkspaceTrusted,
-} from "./workspaceTrust.js";
+import { listStoredTrust, setStoredTrust } from "./workspaceTrust.js";
 
 // TUI lifecycle and two-stage exit state management
 let tuiUnmount: (() => void) | null;
@@ -237,9 +233,8 @@ program.hook("preAction", async (_program, actionCommand) => {
       quietNotice: ["trust", "untrust"].includes(actionCommand.name()),
       notice: safeStderr,
     });
-    setWorkspaceTrusted(report.trusted);
   } catch (error) {
-    // Loading .env files must never stop cn; the folder stays untrusted
+    // Loading .env files must never stop cn
     logger.debug("Failed to load .env files", error);
   }
 

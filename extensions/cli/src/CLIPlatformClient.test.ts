@@ -4,7 +4,6 @@ import { FQSN, SecretResult, SecretType } from "@nextcli/config-yaml";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CLIPlatformClient } from "./CLIPlatformClient.js";
-import { isWorkspaceTrusted } from "./workspaceTrust.js";
 
 // Mock fs module
 vi.mock("node:fs", () => ({
@@ -18,8 +17,6 @@ vi.mock("./env.js", () => ({
     continueHome: "/home/user/.continue",
   },
 }));
-
-vi.mock("./workspaceTrust.js", () => ({ isWorkspaceTrusted: vi.fn() }));
 
 describe("CLIPlatformClient", () => {
   let mockApiClient: {
@@ -378,43 +375,43 @@ describe("CLIPlatformClient", () => {
     });
   });
 
-  // A repository's .env must not fill in a secret the config asks for unless
-  // the person trusted the folder
-  describe("workspace .env files", () => {
+  // A trusted folder's .env is already in process.env (the preAction hook
+  // loaded it, filtered); an untrusted one's must never fill in a secret
+  describe("local .env files", () => {
     const fqsn: FQSN = {
       packageSlugs: [{ ownerSlug: "o", packageSlug: "p" }],
-      secretName: "WORKSPACE_SECRET",
+      secretName: "LOCAL_SECRET",
     };
-    const workspaceEnv = (file: unknown) =>
-      String(file).startsWith(process.cwd())
-        ? "WORKSPACE_SECRET=from-repo"
-        : "";
+    const client = () => new CLIPlatformClient(null, mockApiClient as any);
 
     beforeEach(() => {
       vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFileSync).mockImplementation(workspaceEnv as any);
       mockApiClient.syncSecrets.mockResolvedValue([]);
     });
 
-    it("are read in a trusted folder", async () => {
-      vi.mocked(isWorkspaceTrusted).mockReturnValue(true);
-      const [result] = await new CLIPlatformClient(
-        null,
-        mockApiClient as any,
-      ).resolveFQSNs([fqsn]);
-      expect(result).toMatchObject({ found: true, value: "from-repo" });
-    });
+    it("never reads the working directory's .env files", async () => {
+      vi.mocked(fs.readFileSync).mockImplementation(((file: unknown) =>
+        String(file).startsWith(process.cwd())
+          ? "LOCAL_SECRET=from-repo"
+          : "") as any);
 
-    it("are ignored in an untrusted folder", async () => {
-      vi.mocked(isWorkspaceTrusted).mockReturnValue(false);
-      const [result] = await new CLIPlatformClient(
-        null,
-        mockApiClient as any,
-      ).resolveFQSNs([fqsn]);
+      const [result] = await client().resolveFQSNs([fqsn]);
+
       expect(result?.found ?? false).toBe(false);
       for (const [file] of vi.mocked(fs.readFileSync).mock.calls) {
         expect(String(file).startsWith(process.cwd())).toBe(false);
       }
+    });
+
+    it("reads ~/.continue/.env", async () => {
+      vi.mocked(fs.readFileSync).mockImplementation(((file: unknown) =>
+        String(file) === "/home/user/.continue/.env"
+          ? "LOCAL_SECRET=from-home"
+          : "") as any);
+
+      const [result] = await client().resolveFQSNs([fqsn]);
+
+      expect(result).toMatchObject({ found: true, value: "from-home" });
     });
   });
 });

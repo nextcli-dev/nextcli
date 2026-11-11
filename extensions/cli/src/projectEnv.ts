@@ -21,8 +21,9 @@ import {
  *
  * Loading here rather than before any import is enough: the only variables
  * read when a module loads are ones a .env may never set (CONTINUE_GLOBAL_DIR,
- * NEXTCLI_API_BASE), plus NEXTCLI_LOG_LEVEL, which the hook applies after
- * this runs. NEXTCLI_TRACE is read at the first trace event.
+ * NEXTCLI_API_BASE). NEXTCLI_LOG_LEVEL is read at module load, so the hook
+ * must call logger.setLevel after this to apply a .env value. NEXTCLI_TRACE
+ * is read at the first trace event.
  */
 
 // Never taken from a .env file, trusted or not: they change how processes
@@ -127,16 +128,12 @@ export async function loadProjectEnvironment(options: {
   quietNotice?: boolean;
   folder?: string;
   env?: NodeJS.ProcessEnv;
-  stdin?: NodeJS.ReadableStream;
-  stdout?: NodeJS.WritableStream;
   /** Where the "skipped" notice goes; headless runs block process.stderr */
   notice?: (message: string) => void;
   ask?: (folder: string) => Promise<boolean>;
 }): Promise<EnvironmentReport> {
   const folder = options.folder ?? process.cwd();
   const env = options.env ?? process.env;
-  const stdin = options.stdin ?? process.stdin;
-  const stdout = options.stdout ?? process.stdout;
   const notice =
     options.notice ?? ((message: string) => process.stderr.write(message));
   // Decided from the real environment, before any file is read
@@ -151,7 +148,8 @@ export async function loadProjectEnvironment(options: {
   let trusted = decision === "trusted";
   if (decision === "ask") {
     const ask =
-      options.ask ?? ((dir: string) => askToTrust(dir, stdin, stdout));
+      options.ask ??
+      ((dir: string) => askToTrust(dir, process.stdin, process.stdout));
     trusted = await ask(folder);
     try {
       setStoredTrust(folder, trusted, env);

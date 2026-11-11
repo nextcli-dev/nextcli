@@ -5,10 +5,8 @@ import path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
-  isWorkspaceTrusted,
   listStoredTrust,
   setStoredTrust,
-  setWorkspaceTrusted,
   storedTrust,
   trustDecision,
 } from "./workspaceTrust.js";
@@ -111,12 +109,5 @@ describe("workspaceTrust", () => {
       );
       expect(storedTrust(repo, env)).toBeUndefined();
     });
-  });
-
-  it("isWorkspaceTrusted is false until the run sets it", () => {
-    expect(isWorkspaceTrusted()).toBe(false);
-    setWorkspaceTrusted(true);
-    expect(isWorkspaceTrusted()).toBe(true);
-    setWorkspaceTrusted(false);
   });
 });

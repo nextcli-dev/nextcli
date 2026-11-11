@@ -104,14 +104,6 @@ export function hasProjectEnvFiles(folder: string): boolean {
   );
 }
 
-/** Whether NEXTCLI_TRUST_WORKSPACE trusts the folder for this run */
-export function trustedByEnv(env: NodeJS.ProcessEnv): boolean {
-  return (
-    env.NEXTCLI_TRUST_WORKSPACE === "1" ||
-    env.NEXTCLI_TRUST_WORKSPACE === "true"
-  );
-}
-
 /**
  * Whether files in `folder` may configure cn:
  * 1. --trust-workspace or NEXTCLI_TRUST_WORKSPACE=1: trusted, this run only;
@@ -126,21 +118,14 @@ export function trustDecision(options: {
   canAsk: boolean;
 }): TrustDecision {
   const { folder, env, trustFlag, canAsk } = options;
-  if (trustFlag || trustedByEnv(env)) return "trusted";
+  if (
+    trustFlag ||
+    env.NEXTCLI_TRUST_WORKSPACE === "1" ||
+    env.NEXTCLI_TRUST_WORKSPACE === "true"
+  ) {
+    return "trusted";
+  }
   const stored = storedTrust(folder, env);
   if (stored !== undefined) return stored ? "trusted" : "untrusted";
   return canAsk && hasProjectEnvFiles(folder) ? "ask" : "untrusted";
-}
-
-// Set once per run, by the preAction hook in index.ts, after the person
-// answered. Untrusted until then: the cn review worker never sets it.
-let workspaceTrusted = false;
-
-export function setWorkspaceTrusted(trusted: boolean): void {
-  workspaceTrusted = trusted;
-}
-
-/** Whether the working directory is trusted in this run */
-export function isWorkspaceTrusted(): boolean {
-  return workspaceTrusted;
 }

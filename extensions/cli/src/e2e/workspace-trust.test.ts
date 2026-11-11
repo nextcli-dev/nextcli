@@ -107,6 +107,21 @@ describe.skipIf(process.platform === "win32")("E2E: workspace trust", () => {
     expect(await log()).not.toContain("[debug]");
   }, 30000);
 
+  // The preAction hook reads the flag with the root's options, so it works
+  // after a subcommand too
+  it("subcommands take --trust-workspace", async () => {
+    const ls = (flags: string[]) =>
+      runCLI(context, {
+        args: ["ls", ...flags],
+        env: { CONTINUE_GLOBAL_DIR: globalDir },
+      });
+
+    expect((await ls([])).stderr).toMatch(/isn't trusted/);
+    const trusted = await ls(["--trust-workspace"]);
+    expect(trusted.exitCode).toBe(0);
+    expect(trusted.stderr).not.toMatch(/isn't trusted/);
+  }, 20000);
+
   // Help never reaches the preAction hook, so it never decides trust
   it("cn --help leaves trust alone", async () => {
     const result = await runCLI(context, {
