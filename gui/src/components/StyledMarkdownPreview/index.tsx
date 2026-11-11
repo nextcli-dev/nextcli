@@ -13,6 +13,7 @@ import {
   vscForeground,
 } from "..";
 import useUpdatingRef from "../../hooks/useUpdatingRef";
+import { varWithFallback } from "../../styles/theme";
 import { useAppSelector } from "../../redux/hooks";
 import { selectUIConfig } from "../../redux/slices/configSlice";
 import { getContextItemsFromHistory } from "../../redux/thunks/updateFileSymbols";
@@ -36,6 +37,7 @@ const StyledMarkdown = styled.div<{
   fontSize?: number;
   whiteSpace: string;
   bgColor: string;
+  $muted?: boolean;
 }>`
   h1 {
     font-size: 1.25em;
@@ -125,7 +127,8 @@ const StyledMarkdown = styled.div<{
   font-size: ${(props) => props.fontSize || getFontSize()}px;
   padding-left: 8px;
   padding-right: 8px;
-  color: ${vscForeground};
+  color: ${(props) =>
+    props.$muted ? varWithFallback("description") : vscForeground};
 
   p,
   li,
@@ -155,6 +158,8 @@ interface StyledMarkdownPreviewProps {
   toolCallId?: string;
   expandCodeblocks?: boolean;
   collapsible?: boolean;
+  /** Secondary text, such as reasoning, in the description color */
+  muted?: boolean;
 }
 
 const HLJS_LANGUAGE_CLASSNAME_PREFIX = "language-";
@@ -386,6 +391,8 @@ const StyledMarkdownPreview = memo(function StyledMarkdownPreview(
       fontSize={getFontSize()}
       whiteSpace={codeWrapState}
       bgColor={props.useParentBackgroundColor ? "" : vscBackground}
+      $muted={props.muted}
+      data-muted={props.muted ? "true" : undefined}
     >
       {reactContent}
     </StyledMarkdown>

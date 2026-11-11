@@ -663,7 +663,10 @@ export const sessionSlice = createSlice({
             if (lastMessage.role === "thinking") {
               lastMessage.signature = message.signature;
             }
-          } else if (
+          }
+
+          // Not an else: a chunk can carry text and tool calls together
+          if (
             message.role === "assistant" &&
             message.toolCalls?.length &&
             lastMessage.role === "assistant"

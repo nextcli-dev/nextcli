@@ -1,61 +1,75 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { ChatHistoryItemWithMessageId } from "../../redux/slices/sessionSlice";
 
-/**
- * Only reset scroll state when a new user message is added to the chat.
- * We don't want to auto-scroll on new tool response messages.
- */
+/** How close to the end still counts as "at the bottom", in pixels */
+export const STICK_THRESHOLD_PX = 16;
+
 function getNumUserMsgs(history: ChatHistoryItemWithMessageId[]) {
   return history.filter((msg) => msg.message.role === "user").length;
 }
 
+/**
+ * Keeps the chat at the end while new content grows (streamed answers,
+ * inline reasoning, tool output), but only while the user is there.
+ * Scrolling up switches to manual; scrolling back to the end switches to
+ * auto again. A new user message always returns to the end.
+ */
 export const useAutoScroll = (
   ref: React.RefObject<HTMLDivElement>,
   history: ChatHistoryItemWithMessageId[],
 ) => {
-  const [userHasScrolled, setUserHasScrolled] = useState(false);
-  const numUserMsgs = useMemo(() => getNumUserMsgs(history), [history.length]);
+  // A ref, not state: scrolling must not re-create the observers
+  const stickRef = useRef(true);
+  const numUserMsgs = useMemo(() => getNumUserMsgs(history), [history]);
+  const hasHistory = history.length > 0;
 
   useEffect(() => {
-    setUserHasScrolled(false);
+    stickRef.current = true;
+    const elem = ref.current;
+    if (elem) {
+      elem.scrollTop = elem.scrollHeight;
+    }
   }, [numUserMsgs]);
 
   useEffect(() => {
-    if (!ref.current || history.length === 0) return;
+    const elem = ref.current;
+    if (!elem || !hasHistory) return;
 
-    const handleScroll = () => {
-      const elem = ref.current;
-      if (!elem) return;
-
-      const isAtBottom =
-        Math.abs(elem.scrollHeight - elem.scrollTop - elem.clientHeight) < 1;
-
-      /**
-       * We stop auto scrolling if a user manually scrolled up.
-       * We resume auto scrolling if a user manually scrolled to the bottom.
-       */
-      setUserHasScrolled(!isAtBottom);
+    const scrollToEnd = () => {
+      if (stickRef.current) {
+        elem.scrollTop = elem.scrollHeight;
+      }
     };
 
-    const resizeObserver = new ResizeObserver(() => {
-      const elem = ref.current;
-      if (!elem || userHasScrolled) return;
-      elem.scrollTop = elem.scrollHeight;
+    // Our own scrollToEnd lands at distance 0, so it keeps auto on
+    const handleScroll = () => {
+      const distance = elem.scrollHeight - elem.scrollTop - elem.clientHeight;
+      stickRef.current = distance <= STICK_THRESHOLD_PX;
+    };
+
+    const resizeObserver = new ResizeObserver(scrollToEnd);
+    resizeObserver.observe(elem);
+    Array.from(elem.children).forEach((child) => resizeObserver.observe(child));
+
+    // Watch items as they are added, not only when the effect re-runs
+    const mutationObserver = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        mutation.addedNodes.forEach((node) => {
+          if (node instanceof Element) {
+            resizeObserver.observe(node);
+          }
+        });
+      }
+      scrollToEnd();
     });
+    mutationObserver.observe(elem, { childList: true });
 
-    ref.current.addEventListener("scroll", handleScroll);
-
-    // Observe the container
-    resizeObserver.observe(ref.current);
-
-    // Observe all immediate children
-    Array.from(ref.current.children).forEach((child) => {
-      resizeObserver.observe(child);
-    });
+    elem.addEventListener("scroll", handleScroll);
 
     return () => {
       resizeObserver.disconnect();
-      ref.current?.removeEventListener("scroll", handleScroll);
+      mutationObserver.disconnect();
+      elem.removeEventListener("scroll", handleScroll);
     };
-  }, [ref, history.length, userHasScrolled]);
+  }, [ref, hasHistory]);
 };

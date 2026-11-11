@@ -72,6 +72,7 @@ import {
   toCompleteBody,
   toFimBody,
 } from "./openaiTypeConverters.js";
+import { readStreamEnd, StreamEnd } from "./streamEnd.js";
 import { applyToolOverrides } from "../tools/applyToolOverrides.js";
 
 export class LLMError extends Error {
@@ -453,6 +454,7 @@ export abstract class BaseLLM implements ILLM {
     interaction: ILLMInteractionLog | undefined,
     usage: Usage | undefined,
     error?: any,
+    streamEnd?: StreamEnd,
   ): InteractionStatus {
     let promptTokens = this.countTokens(prompt);
     let generatedTokens = this.countTokens(completion);
@@ -482,6 +484,9 @@ export abstract class BaseLLM implements ILLM {
         generatedTokens,
         thinkingTokens,
         usage,
+        ...(streamEnd && {
+          finishReason: streamEnd.finishReason ?? "none (stream closed early)",
+        }),
       });
       return "success";
     } else {
@@ -1133,6 +1138,7 @@ export abstract class BaseLLM implements ILLM {
     body: ChatCompletionCreateParams,
     signal: AbortSignal,
     onCitations: (c: string[]) => void,
+    streamEnd: StreamEnd,
   ): AsyncGenerator<ChatMessage> {
     const stream = this.openaiAdapter!.chatCompletionStream(
       { ...body, stream: true },
@@ -1142,6 +1148,8 @@ export abstract class BaseLLM implements ILLM {
       if (!this.lastRequestId && typeof (chunk as any).id === "string") {
         this.lastRequestId = (chunk as any).id;
       }
+      // Read before converting: usage-only chunks convert to nothing
+      readStreamEnd(streamEnd, chunk as any);
       const chatChunk = fromChatCompletionChunk(chunk as any);
       if (chatChunk) {
         yield chatChunk;
@@ -1282,6 +1290,8 @@ export abstract class BaseLLM implements ILLM {
     const completion: string[] = [];
     let usage: Usage | undefined = undefined;
     let citations: null | string[] = null;
+    // Set only on the OpenAI adapter's streaming path, which can read it
+    let streamEnd: StreamEnd | undefined = undefined;
 
     try {
       // Each path logs startChat once: the adapter path adds the request body.
@@ -1335,14 +1345,20 @@ export abstract class BaseLLM implements ILLM {
             iterable = useStream
               ? this.responsesStream(messages, signal, completionOptions)
               : this.responsesNonStream(messages, signal, completionOptions);
+          } else if (useStream) {
+            streamEnd = {};
+            iterable = this.openAIAdapterStream(
+              body,
+              signal,
+              (c) => {
+                if (!citations) {
+                  citations = c;
+                }
+              },
+              streamEnd,
+            );
           } else {
-            iterable = useStream
-              ? this.openAIAdapterStream(body, signal, (c) => {
-                  if (!citations) {
-                    citations = c;
-                  }
-                })
-              : this.openAIAdapterNonStream(body, signal);
+            iterable = this.openAIAdapterNonStream(body, signal);
           }
 
           for await (const chunk of iterable) {
@@ -1393,6 +1409,8 @@ export abstract class BaseLLM implements ILLM {
         thinking.join(""),
         interaction,
         usage,
+        undefined,
+        streamEnd,
       );
     } catch (e) {
       Logger.error(e as Error, {
@@ -1442,6 +1460,11 @@ export abstract class BaseLLM implements ILLM {
       modelProvider: this.underlyingProviderName,
       prompt,
       completion: completion.join(""),
+      ...(streamEnd && {
+        finishReason: streamEnd.finishReason,
+        streamEndedWithoutFinish: !streamEnd.finishReason,
+        outputTokens: streamEnd.outputTokens,
+      }),
     };
   }
 

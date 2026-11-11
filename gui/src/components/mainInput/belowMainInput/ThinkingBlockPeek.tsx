@@ -1,17 +1,21 @@
 // src/components/ThinkingBlockPeek.tsx
-import { ChevronDownIcon } from "@heroicons/react/24/outline";
-import { ChevronUpIcon } from "@heroicons/react/24/solid";
+import { ChevronDownIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
 import { ChatHistoryItem } from "core";
 import { useEffect, useState } from "react";
 import styled from "styled-components";
 
 import { AnimatedEllipsis } from "../../AnimatedEllipsis";
 import StyledMarkdownPreview from "../../StyledMarkdownPreview";
-import { Button } from "../../ui";
+import { getFontSize } from "../../../util";
 
 const MarkdownWrapper = styled.div`
   & > div > *:first-child {
     margin-top: 0 !important;
+  }
+  /* A little looser than answers, as reasoning is read as running prose */
+  & p,
+  & li {
+    line-height: 1.6;
   }
 `;
 
@@ -27,6 +31,12 @@ interface ThinkingBlockPeekProps {
   hidden?: boolean;
 }
 
+/**
+ * Reasoning shown as a quiet text row ("Thinking...", then "Thought 17s")
+ * with the reasoning below it in the muted color, so it reads apart from the
+ * answer. It is open while the model thinks and collapses when thinking
+ * ends, unless the user opened or closed it.
+ */
 function ThinkingBlockPeek({
   content,
   redactedThinking,
@@ -36,10 +46,13 @@ function ThinkingBlockPeek({
   tokens,
   hidden,
 }: ThinkingBlockPeekProps) {
-  const [open, setOpen] = useState(false);
+  // undefined until the user toggles, so the block follows inProgress;
+  // after a toggle it keeps the user's choice
+  const [userOpen, setUserOpen] = useState<boolean | undefined>(undefined);
   // Thinking was Hidden when this streamed: show that the model thought,
   // not what. Judged per block, so changing models doesn't change it
   const hideContent = !!hidden;
+  const open = !hideContent && (userOpen ?? !!inProgress);
   const [startTime, setStartTime] = useState<number | null>(null);
   const [elapsedTime, setElapsedTime] = useState<string>("");
 
@@ -54,20 +67,25 @@ function ThinkingBlockPeek({
       setStartTime(Date.now());
       setElapsedTime("");
     } else if (startTime) {
-      const endTime = Date.now();
-      const diff = endTime - startTime;
-      const diffString = `${(diff / 1000).toFixed(1)}s`;
-      setElapsedTime(diffString);
+      const seconds = Math.max(1, Math.round((Date.now() - startTime) / 1000));
+      setElapsedTime(`${seconds}s`);
     }
   }, [inProgress]);
+
+  const Chevron = open ? ChevronDownIcon : ChevronRightIcon;
 
   return duplicateRedactedThinkingBlock ? null : (
     <div className="thread-message">
       <div className="mt-1 flex flex-col px-4">
         <div>
-          <Button
-            variant="outline"
-            className="text-description flex-0 border-border m-0 mb-2 flex min-w-0 cursor-pointer flex-row items-center gap-1.5 rounded-full border-[0.5px] border-solid px-3 text-xs transition-colors duration-200 ease-in-out hover:brightness-125"
+          <button
+            type="button"
+            className={`text-description m-0 mb-1.5 flex min-w-0 flex-row items-center gap-1 border-none bg-transparent py-0 pl-2 pr-0 transition-colors duration-200 ease-in-out ${
+              hideContent
+                ? "cursor-default"
+                : "cursor-pointer hover:brightness-150"
+            }`}
+            style={{ fontSize: getFontSize() }}
             data-testid="thinking-block-peek"
             aria-expanded={hideContent ? undefined : open}
             aria-controls={
@@ -78,7 +96,7 @@ function ThinkingBlockPeek({
                 ? "Thinking is hidden. Change it in the model menu."
                 : undefined
             }
-            onClick={() => !hideContent && setOpen(!open)}
+            onClick={() => !hideContent && setUserOpen(!open)}
           >
             {inProgress ? (
               <span>
@@ -89,25 +107,20 @@ function ThinkingBlockPeek({
               "Redacted Thinking"
             ) : (
               "Thought" +
-              (elapsedTime ? ` for ${elapsedTime}` : "") +
+              (elapsedTime ? ` ${elapsedTime}` : "") +
               (tokens ? ` (${tokens} tokens)` : "")
             )}
-            {hideContent ? null : open ? (
-              <ChevronUpIcon className="h-3 w-3" />
-            ) : (
-              <ChevronDownIcon className="h-3 w-3" />
-            )}
-          </Button>
+            {hideContent ? null : <Chevron className="h-3.5 w-3.5" />}
+          </button>
         </div>
-        {!hideContent && (
+        {open && (
           <div
             id={`thinking-block-content-${index}`}
-            className={`overflow-y-auto transition-all duration-300 ease-in-out ${
-              open ? "max-h-[50vh] opacity-100" : "max-h-0 opacity-0"
-            }`}
+            data-testid="thinking-block-content"
+            className="mb-2"
           >
             {redactedThinking ? (
-              <div className="text-description pl-5 text-xs italic">
+              <div className="text-description pl-2 italic">
                 Thinking content redacted due to safety reasons.
               </div>
             ) : (
@@ -116,6 +129,7 @@ function ThinkingBlockPeek({
                   isRenderingInStepContainer
                   source={content}
                   itemIndex={index}
+                  muted
                 />
               </MarkdownWrapper>
             )}

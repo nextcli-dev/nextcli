@@ -405,7 +405,12 @@ export class LLMLogFormatter {
         this.logTokens(item);
         break;
       case "success":
-        this.logLines(item, "Success");
+        this.logLines(
+          item,
+          item.finishReason
+            ? `Success (finish reason: ${item.finishReason})`
+            : "Success",
+        );
         this.logTokens(item);
         break;
     }
