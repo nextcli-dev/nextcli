@@ -13,14 +13,6 @@ The `cn` CLI. Read the [root AGENTS.md](../../AGENTS.md) first for goals, rules 
 - `src/services/`: config, models, MCP, permissions and the rest, wired through `ServiceContainer.ts`.
 - `src/systemMessage.ts`: builds the system prompt. It loads the first of `AGENTS.md`, `AGENT.md`, `CLAUDE.md` or `CODEX.md` from the working directory.
 
-## Hooks (`src/hooks/`)
-
-Claude Code-compatible.
-
-- Config, lowest to highest precedence: `~/.claude/settings.json`, `~/.continue/settings.json`, `.claude/settings.json`, `.continue/settings.json`, `.claude/settings.local.json`, `.continue/settings.local.json`.
-- Exit codes: 0 proceeds, 2 blocks (stderr goes back to the model), anything else is a non-blocking error.
-- `command` and `http` handlers run. `prompt` and `agent` handlers are skipped.
-
 ## Build and test
 
 Build core first (`cd ../../core && npm run build`). Then, here:
