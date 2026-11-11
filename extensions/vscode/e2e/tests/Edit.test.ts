@@ -51,10 +51,10 @@ describe("Edit Test", () => {
 
     await view.switchBack();
 
+    // Wait for the diff to stream into the editor before the test acts on it.
     await TestUtils.waitForSuccess(async () => {
-      const editorText = await editor.getText();
-      return editorText.includes(llmResponse);
-    });
+      expect(await editor.getText()).to.include(llmResponse);
+    }, DEFAULT_TIMEOUT.MD);
   });
 
   afterEach(async function () {
@@ -90,10 +90,8 @@ describe("Edit Test", () => {
     await TestUtils.waitForSuccess(async () => {
       const editorText = await editor.getText();
 
-      expect(
-        !editorText.includes(originalEditorText) &&
-          editorText.includes(llmResponse),
-      ).to.be.true;
+      expect(editorText).to.not.include(originalEditorText);
+      expect(editorText).to.include(llmResponse);
     }, DEFAULT_TIMEOUT.SM);
   }).timeout(DEFAULT_TIMEOUT.XL);
 
@@ -107,10 +105,8 @@ describe("Edit Test", () => {
     await TestUtils.waitForSuccess(async () => {
       const editorText = await editor.getText();
 
-      expect(
-        editorText.includes(originalEditorText) &&
-          !editorText.includes(llmResponse),
-      ).to.be.true;
+      expect(editorText).to.include(originalEditorText);
+      expect(editorText).to.not.include(llmResponse);
     }, DEFAULT_TIMEOUT.SM);
   }).timeout(DEFAULT_TIMEOUT.XL);
 
@@ -121,10 +117,8 @@ describe("Edit Test", () => {
     await TestUtils.waitForSuccess(async () => {
       const editorText = await editor.getText();
 
-      expect(
-        !editorText.includes(originalEditorText) &&
-          editorText.includes(llmResponse),
-      ).to.be.true;
+      expect(editorText).to.not.include(originalEditorText);
+      expect(editorText).to.include(llmResponse);
     }, DEFAULT_TIMEOUT.SM);
   }).timeout(DEFAULT_TIMEOUT.XL);
 
@@ -135,10 +129,8 @@ describe("Edit Test", () => {
     await TestUtils.waitForSuccess(async () => {
       const editorText = await editor.getText();
 
-      expect(
-        editorText.includes(originalEditorText) &&
-          !editorText.includes(llmResponse),
-      ).to.be.true;
+      expect(editorText).to.include(originalEditorText);
+      expect(editorText).to.not.include(llmResponse);
     }, DEFAULT_TIMEOUT.SM);
   }).timeout(DEFAULT_TIMEOUT.XL);
 });

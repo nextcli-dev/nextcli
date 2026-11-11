@@ -5,7 +5,7 @@ import { TestUtils } from "../TestUtils";
 
 export class EditActions {
   static async invokeEditShortcut(editor: TextEditor) {
-    editor
+    await editor
       .getDriver()
       .actions()
       .keyDown(TestUtils.osControlKey)
