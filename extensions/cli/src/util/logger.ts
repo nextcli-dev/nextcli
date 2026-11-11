@@ -7,7 +7,7 @@ import winston from "winston";
 
 import { env } from "../env.js";
 
-import { SyncFileTransport } from "./syncFileTransport.js";
+import { BufferedFileTransport } from "./bufferedFileTransport.js";
 
 const { combine, timestamp, printf, errors } = winston.format;
 
@@ -136,9 +136,9 @@ const winstonLogger = winston.createLogger({
     logFormat,
   ),
   transports: [
-    // File transport for all logs, written synchronously so process.exit()
-    // can't drop the end of a run
-    new SyncFileTransport({
+    // File transport for all logs, flushed on exit so process.exit() can't
+    // drop the end of a run
+    new BufferedFileTransport({
       filename: getLogFilePath(),
       maxsize: 10 * 1024 * 1024, // 10MB
       maxFiles: 5,
