@@ -73,7 +73,7 @@ describe("runTerminalCommand timeout functionality", () => {
     const mockIde = {
       getIdeInfo: mockGetIdeInfo,
       getWorkspaceDirs: mockGetWorkspaceDirs,
-      getIdeSettings: vi.fn(),
+      getIdeSettings: vi.fn().mockResolvedValue({}),
       getDiff: vi.fn(),
       readFile: vi.fn(),
       readRangeInFile: vi.fn(),

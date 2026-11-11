@@ -1,5 +1,6 @@
 import { HookService } from "../hooks/HookService.js";
 import { initializeWithOnboarding } from "../onboarding.js";
+import { setRunSafetyOptions } from "../tools/runSafetyOptions.js";
 import {
   setBetaSubagentToolEnabled,
   setBetaUploadArtifactToolEnabled,
@@ -71,6 +72,12 @@ export async function initializeServices(initOptions: ServiceInitOptions = {}) {
   if (commandOptions.betaSubagentTool) {
     setBetaSubagentToolEnabled(true);
   }
+  // What Bash and Fetch may reach in this run. Set on every initialization,
+  // so a run without the flags (the cn review worker) gets the defaults.
+  setRunSafetyOptions({
+    passEnv: commandOptions.passEnv,
+    allowPrivateFetch: commandOptions.allowPrivateFetch,
+  });
   // Handle onboarding for TUI mode (headless: false) unless explicitly skipped
   if (!initOptions.headless && !initOptions.skipOnboarding) {
     await initializeWithOnboarding(null, commandOptions.config);

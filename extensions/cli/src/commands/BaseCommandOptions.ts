@@ -21,6 +21,10 @@ export interface BaseCommandOptions {
   ask?: string[];
   /** Array of tools to exclude from use (--exclude) */
   exclude?: string[];
+  /** Secret-like environment variables to keep for shell commands (--pass-env) */
+  passEnv?: string[];
+  /** Let Fetch reach loopback and private addresses (--allow-private-fetch) */
+  allowPrivateFetch?: boolean;
   /** Agent file slug from the hub (--agent) */
   agent?: string;
   /** Enable beta UploadArtifact tool */

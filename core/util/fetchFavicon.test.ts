@@ -271,4 +271,40 @@ describe("fetchFavicon", () => {
     expect(global.fetch).toHaveBeenCalledTimes(1);
     expect(global.fetch).toHaveBeenCalledWith("https://example.com");
   });
+
+  // The CLI's Fetch tool passes a fetch that only reaches public addresses;
+  // the favicon requests must go through it too
+  it("makes every request with the fetch it is given", async () => {
+    const globalFetch = jest.fn();
+    global.fetch = globalFetch;
+    global.btoa = jest
+      .fn()
+      .mockImplementation((str) =>
+        Buffer.from(str, "binary").toString("base64"),
+      );
+    const fetchFn = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        text: jest
+          .fn()
+          .mockResolvedValue('<link rel="icon" href="/favicon.ico">'),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        arrayBuffer: jest
+          .fn()
+          .mockResolvedValue(new TextEncoder().encode("icon").buffer),
+        headers: { get: jest.fn().mockReturnValue("image/png") },
+      });
+
+    const result = await fetchFavicon(new URL("https://example.com"), fetchFn);
+
+    expect(result).toMatch(/^data:image\/png;base64,/);
+    expect(fetchFn.mock.calls.map(([url]) => url)).toEqual([
+      "https://example.com",
+      "https://example.com/favicon.ico",
+    ]);
+    expect(globalFetch).not.toHaveBeenCalled();
+  });
 });

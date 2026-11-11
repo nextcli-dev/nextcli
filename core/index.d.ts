@@ -837,6 +837,8 @@ export interface IdeSettings {
   userToken: string;
   continueTestEnvironment: "none" | "production" | "staging" | "local";
   pauseCodebaseIndexOnStart: boolean;
+  /** Secret-like environment variables the terminal tool keeps for commands, from the user's settings only; a workspace can't set it */
+  terminalPassEnv?: string[];
 }
 
 export interface FileStats {

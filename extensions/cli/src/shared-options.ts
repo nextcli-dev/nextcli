@@ -116,6 +116,20 @@ export function addCommonOptions(command: Command): Command {
       [] as string[],
     )
     .option(
+      "--pass-env <name>",
+      "Keep a secret-like environment variable (API key, token, password) for shell commands, which run without them by default. Can be specified multiple times.",
+      (value: string, previous: string[] | undefined) => {
+        const array = Array.isArray(previous) ? previous : [];
+        array.push(value);
+        return array;
+      },
+      [] as string[],
+    )
+    .option(
+      "--allow-private-fetch",
+      "Let the Fetch tool reach localhost and private network addresses (cloud metadata addresses stay blocked)",
+    )
+    .option(
       "--agent <slug>",
       "Load agent file from the hub (slug in format 'owner/package')",
     )
@@ -158,6 +172,8 @@ export function mergeParentOptions(parentCommand: Command, options: any): any {
     "allow",
     "ask",
     "exclude",
+    "passEnv",
+    "allowPrivateFetch",
     "agent",
     "maxTurns",
     "maxSessionTokens",

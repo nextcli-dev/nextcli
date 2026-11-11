@@ -1,5 +1,6 @@
 import { ChildProcess, spawn } from "child_process";
 
+import { childProcessEnv } from "../util/childEnv.js";
 import { logger } from "../util/logger.js";
 import {
   killProcessTree,
@@ -75,6 +76,7 @@ export class BackgroundJobService {
     const child = spawn(shell, args, {
       stdio: "pipe",
       ...processTreeSpawnOptions(),
+      env: childProcessEnv(),
     });
     trackProcessTree(child);
     this.processes.set(jobId, child);

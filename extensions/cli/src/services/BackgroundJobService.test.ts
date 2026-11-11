@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { BackgroundJobService } from "./BackgroundJobService.js";
 
@@ -63,5 +63,38 @@ describe.skipIf(process.platform === "win32")(
         expect(await waitFor(() => !isAlive(grandchildPid))).toBe(true);
       },
     );
+  },
+);
+
+describe.skipIf(process.platform === "win32")(
+  "BackgroundJobService environment",
+  () => {
+    afterEach(() => {
+      delete process.env.TEST_PLAIN;
+      delete process.env.TEST_SECRET_TOKEN;
+    });
+
+    it("starts jobs without secret-like variables", async () => {
+      process.env.TEST_PLAIN = "plain-value";
+      process.env.TEST_SECRET_TOKEN = "secret-value";
+      const service = new BackgroundJobService();
+      const job = service.createJob("env")!;
+
+      service.startJob(job.id, "/bin/sh", [
+        "-c",
+        'echo "plain=$TEST_PLAIN secret=${TEST_SECRET_TOKEN:-unset}"',
+      ]);
+      for (
+        let i = 0;
+        i < 50 && service.getJob(job.id)!.status === "running";
+        i++
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+
+      expect(service.getJob(job.id)!.output.trim()).toBe(
+        "plain=plain-value secret=unset",
+      );
+    });
   },
 );

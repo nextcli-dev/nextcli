@@ -21,6 +21,8 @@ The `--readonly` columns are [plan mode](/cli/modes/plan-mode).
 
 The headless `Bash` allow is not an ordinary allow. It runs only commands `cn` can tell are read-only; every other command asks, and so is refused. This keeps a run that reads untrusted code, such as a pull request in CI, from running arbitrary commands or sending data out while it holds a provider key. Opt in to more with `--allow`.
 
+In every kind of run, `Bash` runs without secret-like environment variables (`--pass-env NAME` keeps one), and `Fetch` refuses private and cloud metadata addresses (`--allow-private-fetch` lifts the block for private ones). See [secrets and private addresses](/cli/headless-mode#secrets-and-private-addresses).
+
 ## Kinds of run
 
 | Run | Who approves an `ask` | Rules |
@@ -28,5 +30,5 @@ The headless `Bash` allow is not an ordinary allow. It runs only commands `cn` c
 | `cn` | you, at the prompt | flags, `permissions.yaml`, defaults; or the agent file |
 | `cn -p` | nobody, so `ask` is refused | flags, the excludes from `permissions.yaml`, the closed defaults; or the agent file over the closed defaults |
 | `cn -p --readonly` | nobody | flags over the plan defaults; writes never, `Bash` read-only. What `nextcli-checks` runs on a pull request |
-| `cn review` | nobody | the closed headless defaults plus `Edit`, `MultiEdit` and `Write`, so the worker can fix the files in its worktree. `--allow` flags are not passed to the worker |
+| `cn review` | nobody | the closed headless defaults plus `Edit`, `MultiEdit` and `Write`, so the worker can fix the files in its worktree. `--allow`, `--pass-env` and `--allow-private-fetch` are not passed to the worker |
 | `Subagent` (`--beta-subagent-tool`) | nobody | the session's rules, minus `Subagent`. A subagent can't prompt you, so a call that would ask is refused |

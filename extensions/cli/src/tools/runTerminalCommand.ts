@@ -1,10 +1,10 @@
 import { ChildProcess, spawn } from "child_process";
-import fs from "fs";
 import type { Socket } from "net";
 
 import {
   evaluateTerminalCommandSecurity,
   isDestructiveTerminalCommand,
+  secureShellCommand,
   type ToolPolicy,
 } from "@continuedev/terminal-security";
 
@@ -16,6 +16,7 @@ import {
   isPullRequestCommand,
 } from "../telemetry/utils.js";
 import { backgroundSignalManager } from "../util/backgroundSignalManager.js";
+import { childProcessEnv } from "../util/childEnv.js";
 import { emitBashToolEnded, emitBashToolStarted } from "../util/cli.js";
 import {
   killProcessTree,
@@ -28,6 +29,7 @@ import {
   truncateOutputFromStart,
 } from "../util/truncateOutput.js";
 
+import { getRunSafetyOptions } from "./runSafetyOptions.js";
 import { Tool, ToolRunContext } from "./types.js";
 
 // Output truncation defaults
@@ -52,28 +54,6 @@ function appendToTail(
     : combined;
 }
 
-/**
- * When running on Windows, but inside WSL, shell commands need to run using the WSL environment.
- */
-export function isRunningInWsl(): boolean {
-  // WSL only applies when platform reports as Linux
-  if (process.platform !== "linux") {
-    return false;
-  }
-
-  if (process.env.WSL_DISTRO_NAME) {
-    return true;
-  }
-
-  // Check /proc/version for Microsoft/WSL indicators
-  try {
-    const procVersion = fs.readFileSync("/proc/version", "utf8").toLowerCase();
-    return procVersion.includes("microsoft") || procVersion.includes("wsl");
-  } catch {
-    return false;
-  }
-}
-
 function getBashMaxChars(): number {
   return parseEnvNumber(
     process.env.CONTINUE_CLI_BASH_MAX_OUTPUT_CHARS,
@@ -88,28 +68,9 @@ function getBashMaxLines(): number {
   );
 }
 
-// Helper function to use login shell on Unix/macOS and PowerShell on Windows and available shell in WSL
+/** A login shell (PowerShell on Windows) that removes secrets the profile sets */
 function getShellCommand(command: string): { shell: string; args: string[] } {
-  if (process.platform === "win32") {
-    // Windows: Use PowerShell
-    return {
-      shell: "powershell.exe",
-      args: ["-NoLogo", "-ExecutionPolicy", "Bypass", "-Command", command],
-    };
-  }
-
-  if (isRunningInWsl()) {
-    // in WSL, bash is always available
-    const wslShell = process.env.SHELL || "/bin/bash";
-    return {
-      shell: wslShell,
-      args: ["-l", "-c", command],
-    };
-  }
-
-  // Unix/macOS: Use login shell to source .bashrc/.zshrc etc.
-  const userShell = process.env.SHELL || "/bin/bash";
-  return { shell: userShell, args: ["-l", "-c", command] };
+  return secureShellCommand(command, getRunSafetyOptions().passEnv);
 }
 
 export function runCommandInBackground(command: string): {
@@ -149,6 +110,8 @@ export const runTerminalCommandTool: Tool = {
 Commands are automatically executed from the current working directory (${process.cwd()}), so there's no need to change directories with 'cd' commands.
 
 IMPORTANT: To edit files, use Edit/MultiEdit tools instead of bash commands (sed, awk, etc).
+
+Secret-like environment variables (API keys, tokens, passwords) are removed before the command runs, including ones the shell profile sets. Variables that hold a path to a credential file, such as GOOGLE_APPLICATION_CREDENTIALS, are kept. If a command needs a removed variable, tell the user to pass it with --pass-env <NAME>.
 `,
   parameters: {
     type: "object",
@@ -226,7 +189,10 @@ IMPORTANT: To edit files, use Edit/MultiEdit tools instead of bash commands (sed
     const outputPromise: Promise<string> = new Promise((resolve, reject) => {
       // Use same shell logic as core implementation
       const { shell, args } = getShellCommand(command);
-      const child = spawn(shell, args, processTreeSpawnOptions());
+      const child = spawn(shell, args, {
+        ...processTreeSpawnOptions(),
+        env: childProcessEnv(),
+      });
       trackProcessTree(child, { foreground: true });
       spawnedChild = child;
       let stdout = "";

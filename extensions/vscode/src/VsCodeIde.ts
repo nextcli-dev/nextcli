@@ -15,6 +15,7 @@ import {
 import { Repository } from "./otherExtensions/git";
 import { SecretStorage } from "./stubs/SecretStorage";
 import { VsCodeIdeUtils } from "./util/ideUtils";
+import { readTerminalPassEnv } from "./util/terminalPassEnv";
 import { getExtensionVersion, isExtensionPrerelease } from "./util/util";
 import { getExtensionUri, openEditorAndRevealRange } from "./util/vscode";
 import { VsCodeWebviewProtocol } from "./webviewProtocol";
@@ -702,6 +703,7 @@ class VsCodeIde implements IDE {
         "pauseCodebaseIndexOnStart",
         false,
       ),
+      terminalPassEnv: readTerminalPassEnv(settings),
     };
     return ideSettings;
   }
