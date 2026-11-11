@@ -5,6 +5,7 @@ import {
   initializeServices,
   SERVICE_NAMES,
   serviceContainer,
+  services,
 } from "../services/index.js";
 import type { ToolPermissionServiceState } from "../services/ToolPermissionService.js";
 
@@ -189,11 +190,18 @@ describe("getRequestTools - Tool Filtering", () => {
       headless: false,
       toolPermissionOverrides: { mode: "normal" },
     });
-    const interactive = (await getRequestTools(false)).map(
-      (t) => t.function.name,
-    );
-    expect(interactive).toContain("AskQuestion");
-    expect(interactive).not.toContain("Exit");
+    // The terminal UI listens for questions (useChat)
+    const answer = () => {};
+    services.quiz.on("questionRequested", answer);
+    try {
+      const interactive = (await getRequestTools(false)).map(
+        (t) => t.function.name,
+      );
+      expect(interactive).toContain("AskQuestion");
+      expect(interactive).not.toContain("Exit");
+    } finally {
+      services.quiz.off("questionRequested", answer);
+    }
 
     await initializeServices({ headless: true });
     const headless = (await getRequestTools(true)).map((t) => t.function.name);
@@ -209,6 +217,18 @@ describe("getRequestTools - Tool Filtering", () => {
     });
     const toolNames = (await getRequestTools(true)).map((t) => t.function.name);
     expect(toolNames).toContain("Bash");
+    expect(toolNames).not.toContain("AskQuestion");
+  });
+
+  test("cn serve gets no AskQuestion: its client can approve tools but not answer questions", async () => {
+    await initializeServices({ headless: true, approvalsAvailable: true });
+    // Serve runs the loop as attended, so it asks for the attended tool list
+    expect(services.toolPermissions.isHeadless()).toBe(false);
+
+    const toolNames = (await getRequestTools(false)).map(
+      (t) => t.function.name,
+    );
+    expect(toolNames).toContain("Read");
     expect(toolNames).not.toContain("AskQuestion");
   });
 });

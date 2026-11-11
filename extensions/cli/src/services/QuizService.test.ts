@@ -16,6 +16,18 @@ describe("QuizService", () => {
     ).resolves.toBe("Option B");
   });
 
+  it("can ask questions only while something listens for them", () => {
+    const quiz = new QuizService();
+    expect(quiz.canAskQuestions()).toBe(false);
+
+    const listener = () => {};
+    quiz.on("questionRequested", listener);
+    expect(quiz.canAskQuestions()).toBe(true);
+
+    quiz.off("questionRequested", listener);
+    expect(quiz.canAskQuestions()).toBe(false);
+  });
+
   it("fails at once when nothing can answer, instead of waiting forever", async () => {
     const quiz = new QuizService();
 

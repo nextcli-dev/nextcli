@@ -47,11 +47,19 @@ export class QuizService extends EventEmitter {
     pendingQuestion: null,
   };
 
+  /**
+   * Whether anything can answer a question. Only the terminal UI listens;
+   * cn -p and cn serve have nobody to ask.
+   */
+  canAskQuestions(): boolean {
+    return this.listenerCount("questionRequested") > 0;
+  }
+
   /**set a pending question to be answered and return a promise that resolves when the question is answered */
   async askQuestion(question: QuizQuestion): Promise<string> {
-    // Only the terminal UI answers questions. Without it the promise below
-    // would never settle, and Node would exit with no output.
-    if (this.listenerCount("questionRequested") === 0) {
+    // Without a listener the promise below would never settle: cn -p would
+    // exit with no output, and a cn serve turn would hang.
+    if (!this.canAskQuestions()) {
       throw new Error(
         "Nobody can answer questions in this run. Continue without asking, and state the assumptions you make.",
       );

@@ -126,9 +126,11 @@ export async function getAllAvailableTools(
 
   if (isHeadless) {
     tools.push(exitTool);
-  } else {
-    // Nobody is there to answer a question in a headless run. A model that
-    // asked one would wait forever, and the process would exit silently.
+  }
+
+  // Offer AskQuestion only when something can answer it (the terminal UI).
+  // cn -p and cn serve have nobody to ask.
+  if (services.quiz.canAskQuestions()) {
     tools.push(askQuestionTool);
   }
 
