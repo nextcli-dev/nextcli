@@ -5,10 +5,14 @@ import { PassThrough } from "stream";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { isNeverFromFile, prepareEnvironment } from "./bootstrap.js";
+import {
+  canAskForTrust,
+  isNeverFromFile,
+  loadProjectEnvironment,
+} from "./projectEnv.js";
 import { listStoredTrust } from "./workspaceTrust.js";
 
-describe("prepareEnvironment", () => {
+describe("loadProjectEnvironment", () => {
   let root: string;
   let repo: string;
   let home: string;
@@ -29,18 +33,22 @@ describe("prepareEnvironment", () => {
     fs.rmSync(root, { recursive: true, force: true });
   });
 
-  const tty = (isTTY: boolean) => ({ isTTY }) as any;
   const run = (
-    options: { argv?: string[]; interactive?: boolean; answer?: boolean } = {},
+    options: {
+      canAsk?: boolean;
+      trustFlag?: boolean;
+      quietNotice?: boolean;
+      answer?: boolean;
+    } = {},
   ) => {
     const ask = vi.fn(async () => options.answer ?? false);
-    const result = prepareEnvironment({
+    const result = loadProjectEnvironment({
       folder: repo,
-      argv: options.argv ?? ["node", "cn"],
       env,
-      stdin: tty(options.interactive ?? false),
-      stdout: tty(options.interactive ?? false),
-      stderr,
+      canAsk: options.canAsk ?? false,
+      trustFlag: options.trustFlag ?? false,
+      quietNotice: options.quietNotice,
+      notice: (message) => stderr.write(message),
       ask,
     });
     return { result, ask };
@@ -58,7 +66,9 @@ describe("prepareEnvironment", () => {
 
   it("skips an untrusted folder's .env and says so", async () => {
     projectEnv("PROJECT_KEY=p");
-    const report = await run({ argv: ["node", "cn", "-p", "hi"] }).result;
+    const { result, ask } = run();
+    const report = await result;
+    expect(ask).not.toHaveBeenCalled();
     expect(env.PROJECT_KEY).toBeUndefined();
     expect(report.trusted).toBe(false);
     expect(stderr.read()?.toString()).toMatch(/isn't trusted/);
@@ -70,23 +80,23 @@ describe("prepareEnvironment", () => {
     fs.writeFileSync(path.join(repo, ".continue", ".env"), "PROJECT_KEY=c");
     fs.writeFileSync(path.join(home, ".env"), "PROJECT_KEY=u");
 
-    await run({ argv: ["node", "cn", "--trust-workspace"] }).result;
+    await run({ trustFlag: true }).result;
 
     // .continue/.env, then .env, then ~/.continue/.env; the shell wins
     expect(env.PROJECT_KEY).toBe("c");
     expect(env.ALREADY_SET).toBe("from-shell");
   });
 
-  it("asks once in an interactive run and saves the answer", async () => {
+  it("asks once when the run can ask, and saves the answer", async () => {
     projectEnv("PROJECT_KEY=p");
-    const first = run({ interactive: true, answer: true });
+    const first = run({ canAsk: true, answer: true });
     await first.result;
     expect(first.ask).toHaveBeenCalledWith(repo);
     expect(env.PROJECT_KEY).toBe("p");
     expect(listStoredTrust(env)).toEqual({ [repo]: true });
 
     delete env.PROJECT_KEY;
-    const second = run({ interactive: true });
+    const second = run({ canAsk: true });
     await second.result;
     expect(second.ask).not.toHaveBeenCalled();
     expect(env.PROJECT_KEY).toBe("p");
@@ -94,9 +104,9 @@ describe("prepareEnvironment", () => {
 
   it("remembers a refusal too", async () => {
     projectEnv("PROJECT_KEY=p");
-    await run({ interactive: true, answer: false }).result;
+    await run({ canAsk: true, answer: false }).result;
     expect(env.PROJECT_KEY).toBeUndefined();
-    const again = run({ interactive: true });
+    const again = run({ canAsk: true });
     await again.result;
     expect(again.ask).not.toHaveBeenCalled();
   });
@@ -120,8 +130,7 @@ describe("prepareEnvironment", () => {
       ].join("\n"),
     );
 
-    const report = await run({ argv: ["node", "cn", "--trust-workspace"] })
-      .result;
+    const report = await run({ trustFlag: true }).result;
 
     expect(env.OPENAI_API_KEY).toBe("sk-legit");
     for (const name of [
@@ -140,10 +149,42 @@ describe("prepareEnvironment", () => {
     expect(report.skippedNames).toContain("NODE_OPTIONS");
   });
 
-  it("doesn't tell the review worker about the .env", async () => {
+  it("says nothing about the .env when asked to be quiet", async () => {
     projectEnv("PROJECT_KEY=p");
-    await run({ argv: ["node", "cn", "--internal-review-worker"] }).result;
+    await run({ quietNotice: true }).result;
     expect(stderr.read()).toBeNull();
+  });
+
+  // A read-only home or a file owned by someone else must not stop cn
+  it("follows the answer for this run when it can't be saved", async () => {
+    projectEnv("PROJECT_KEY=p");
+    const blocked = path.join(root, "blocked");
+    fs.writeFileSync(blocked, "");
+    env.CONTINUE_GLOBAL_DIR = blocked;
+
+    const report = await run({ canAsk: true, answer: true }).result;
+
+    expect(report.trusted).toBe(true);
+    expect(env.PROJECT_KEY).toBe("p");
+  });
+});
+
+describe("canAskForTrust", () => {
+  const base = {
+    interactiveChat: true,
+    stdinIsTTY: true,
+    stdoutIsTTY: true,
+    env: {},
+  };
+
+  it("asks only in an interactive chat with a terminal", () => {
+    expect(canAskForTrust(base)).toBe(true);
+    expect(canAskForTrust({ ...base, interactiveChat: false })).toBe(false);
+    expect(canAskForTrust({ ...base, stdinIsTTY: false })).toBe(false);
+    expect(canAskForTrust({ ...base, stdoutIsTTY: false })).toBe(false);
+    expect(canAskForTrust({ ...base, env: { FORCE_NO_TTY: "true" } })).toBe(
+      false,
+    );
   });
 });
 

@@ -68,7 +68,7 @@ export class CLIPlatformClient implements PlatformClient {
     const workspaceDir = process.cwd();
     const envPaths = [
       path.join(env.continueHome, ".env"),
-      ...(isWorkspaceTrusted(workspaceDir)
+      ...(isWorkspaceTrusted()
         ? [
             path.join(workspaceDir, ".continue", ".env"),
             path.join(workspaceDir, ".env"),

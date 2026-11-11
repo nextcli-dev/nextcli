@@ -97,32 +97,11 @@ const require = __createRequire(import.meta.url);`,
   // Write metafile for analysis
   writeFileSync("dist/meta.json", JSON.stringify(result.metafile, null, 2));
 
-  // The bootstrap runs before index.js is imported, so it decides folder trust
-  // and loads .env files before any module reads process.env. It holds only
-  // Node built-ins, dotenv and src/workspaceTrust.ts.
-  await esbuild.build({
-    entryPoints: ["src/bootstrap.ts"],
-    bundle: true,
-    platform: "node",
-    target: "node18",
-    format: "esm",
-    outfile: "dist/bootstrap.js",
-    sourcemap: true,
-    minify: !noMinify,
-    resolveExtensions: [".ts", ".js"],
-    banner: {
-      js: `import { createRequire as __createRequire } from 'module';
-const require = __createRequire(import.meta.url);`,
-    },
-  });
-
-  // Create wrapper script with shebang that explicitly runs the CLI. index.js
-  // is imported only after the bootstrap, which must finish first (src/cn.ts
-  // does the same for `npm run dev`). We must call runCli(); importing
-  // index.js does not run the CLI.
+  // Create wrapper script with shebang that explicitly runs the CLI
+  // Note: We must call runCli(); a plain dynamic import will not execute the CLI.
   writeFileSync(
     "dist/cn.js",
-    "#!/usr/bin/env node\nimport { prepareEnvironment } from './bootstrap.js';\nawait prepareEnvironment();\nconst { runCli } = await import('./index.js');\nawait runCli();\n",
+    "#!/usr/bin/env node\nimport { runCli } from './index.js';\nawait runCli();\n",
   );
   // Stub for jsdom's synchronous-XHR worker (scripts/esbuild-plugins/jsdom.cjs)
   writeXhrSyncWorkerStub(resolve(__dirname, "dist/xhr-sync-worker.js"));

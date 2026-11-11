@@ -71,4 +71,53 @@ describe.skipIf(process.platform === "win32")("E2E: workspace trust", () => {
     // The .env loaded: its NEXTCLI_LOG_LEVEL=debug applied
     expect(await log()).toContain("[debug]");
   }, 20000);
+
+  it("--verbose logs the names a .env couldn't set", async () => {
+    await fs.writeFile(
+      path.join(context.testDir, ".env"),
+      "GIT_CONFIG_COUNT=1\nPROJECT_KEY=p\n",
+    );
+
+    const result = await run(["--trust-workspace", "--verbose"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(await log()).toContain(
+      "Not taken from a .env file: GIT_CONFIG_COUNT",
+    );
+  }, 20000);
+
+  it("cn untrust refuses a folder inside a trusted one", async () => {
+    const cn = (args: string[]) =>
+      runCLI(context, {
+        args,
+        env: { CONTINUE_GLOBAL_DIR: globalDir },
+        timeout: 15000,
+      });
+    await cn(["trust", path.dirname(context.testDir)]);
+    // Trusted through the parent: the .env's NEXTCLI_LOG_LEVEL=debug applies
+    await run([]);
+    expect(await log()).toContain("[debug]");
+
+    const untrust = await cn(["untrust"]);
+    expect(untrust.stdout).toContain("is no longer trusted");
+    await fs.writeFile(path.join(globalDir, "logs", "cn.log"), "");
+    const result = await run([]);
+
+    expect(result.stderr).toMatch(/isn't trusted/);
+    expect(await log()).not.toContain("[debug]");
+  }, 30000);
+
+  // Help never reaches the preAction hook, so it never decides trust
+  it("cn --help leaves trust alone", async () => {
+    const result = await runCLI(context, {
+      args: ["--help"],
+      env: { CONTINUE_GLOBAL_DIR: globalDir },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).not.toMatch(/isn't trusted/);
+    expect(existsSync(path.join(globalDir, "trusted-folders.json"))).toBe(
+      false,
+    );
+  }, 20000);
 });

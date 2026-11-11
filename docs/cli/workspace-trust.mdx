@@ -2,7 +2,7 @@
 title: "Workspace Trust"
 ---
 
-`cn` loads environment variables from a folder's `.env` and `.continue/.env` only if you trust that folder. The first time you start `cn` in a folder that has one of these files, it asks:
+`cn` loads environment variables from a folder's `.env` and `.continue/.env` only if you trust that folder. The first time you start an interactive `cn` session in a folder that has one of these files, it asks:
 
 ```text
 Trust /Users/you/code/api? Its .env and .continue/.env can set environment variables for cn. [y/N]
@@ -18,12 +18,12 @@ A repository you didn't write, such as a pull request's checkout or a project yo
 cn trust              # this folder
 cn trust ~/code/api   # another folder
 cn trust --list       # every saved decision
-cn untrust            # forget this folder's decision; cn asks again next time
+cn untrust            # stop trusting this folder, even if a parent folder is trusted
 ```
 
 ## Headless runs
 
-`cn -p`, `cn review` and `cn serve` never ask. In a folder without a saved decision they don't load the project's `.env`, and `cn` prints one line on stderr saying so. A folder you trusted earlier loads as usual.
+`cn -p`, `cn review`, `cn serve` and every other subcommand never ask. In a folder without a saved decision they don't load the project's `.env`, and `cn` prints one line on stderr saying so. A folder you trusted earlier loads as usual.
 
 To trust the folder for a single run, pass `--trust-workspace` or set `NEXTCLI_TRUST_WORKSPACE=1`:
 
@@ -63,4 +63,4 @@ Variables already set in your environment take precedence over every file. A tru
 
 ## Other files that follow trust
 
-Secrets referenced as `${{ secrets.NAME }}` in your config are looked up in a folder's `.env` and `.continue/.env` only if the folder is trusted. The `install` script in `.continue/environment.json` runs only in a trusted folder. `AGENTS.md`, rules and skills in the repository are read in every folder: they are instructions for the model, not configuration for `cn`.
+Secrets referenced as `${{ secrets.NAME }}` in your config are looked up in a folder's `.env` and `.continue/.env` only if the folder is trusted. `AGENTS.md`, rules and skills in the repository are read in every folder: they are instructions for the model, not configuration for `cn`.

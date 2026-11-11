@@ -4,21 +4,25 @@ import readline from "readline";
 
 import dotenv from "dotenv";
 
+import { logger } from "./util/logger.js";
 import {
   continueHomeDir,
   hasProjectEnvFiles,
-  isInteractiveRun,
   PROJECT_ENV_FILES,
   setStoredTrust,
   trustDecision,
 } from "./workspaceTrust.js";
 
 /**
- * Runs before the rest of cn is imported (dist/cn.js), because many modules
- * read process.env when they load. It decides whether the working directory
- * is trusted, asks once in an interactive run, and loads .env files:
- * the trusted folder's .continue/.env and .env, then ~/.continue/.env.
- * Variables already set win, as before.
+ * Called from the preAction hook in index.ts, once commander knows the
+ * command. It decides whether the working directory is trusted, asks once in
+ * an interactive chat, and loads .env files: the trusted folder's
+ * .continue/.env and .env, then ~/.continue/.env. Variables already set win.
+ *
+ * Loading here rather than before any import is enough: the only variables
+ * read when a module loads are ones a .env may never set (CONTINUE_GLOBAL_DIR,
+ * NEXTCLI_API_BASE), plus NEXTCLI_LOG_LEVEL, which the hook applies after
+ * this runs. NEXTCLI_TRACE is read at the first trace event.
  */
 
 // Never taken from a .env file, trusted or not: they change how processes
@@ -50,16 +54,11 @@ export function isNeverFromFile(name: string): boolean {
   return NEVER_FROM_FILE.some((pattern) => pattern.test(upper));
 }
 
-/** What the bootstrap did, for the CLI to log once its logger exists */
+/** What loadProjectEnvironment did, logged once the log level is set */
 export interface EnvironmentReport {
   trusted: boolean;
   loaded: string[];
   skippedNames: string[];
-}
-
-declare global {
-  // eslint-disable-next-line no-var
-  var __nextcliEnvironmentReport: EnvironmentReport | undefined;
 }
 
 /** Sets variables from a .env file that aren't set yet */
@@ -101,42 +100,65 @@ function askToTrust(
   });
 }
 
-export async function prepareEnvironment(
-  options: {
-    folder?: string;
-    argv?: readonly string[];
-    env?: NodeJS.ProcessEnv;
-    stdin?: NodeJS.ReadStream;
-    stdout?: NodeJS.WriteStream;
-    stderr?: NodeJS.WritableStream;
-    ask?: (folder: string) => Promise<boolean>;
-  } = {},
-): Promise<EnvironmentReport> {
+/**
+ * Whether this run may ask: only the interactive chat (`cn` without -p or a
+ * subcommand) with a terminal to answer in. Every other run, cn review and
+ * CI included, never asks.
+ */
+export function canAskForTrust(options: {
+  interactiveChat: boolean;
+  stdinIsTTY: boolean;
+  stdoutIsTTY: boolean;
+  env: NodeJS.ProcessEnv;
+}): boolean {
+  return (
+    options.interactiveChat &&
+    options.stdinIsTTY &&
+    options.stdoutIsTTY &&
+    options.env.FORCE_NO_TTY !== "true"
+  );
+}
+
+export async function loadProjectEnvironment(options: {
+  canAsk: boolean;
+  /** --trust-workspace */
+  trustFlag: boolean;
+  /** No "skipped" notice: cn trust and cn untrust manage trust themselves */
+  quietNotice?: boolean;
+  folder?: string;
+  env?: NodeJS.ProcessEnv;
+  stdin?: NodeJS.ReadableStream;
+  stdout?: NodeJS.WritableStream;
+  /** Where the "skipped" notice goes; headless runs block process.stderr */
+  notice?: (message: string) => void;
+  ask?: (folder: string) => Promise<boolean>;
+}): Promise<EnvironmentReport> {
   const folder = options.folder ?? process.cwd();
-  const argv = options.argv ?? process.argv;
   const env = options.env ?? process.env;
   const stdin = options.stdin ?? process.stdin;
   const stdout = options.stdout ?? process.stdout;
-  const stderr = options.stderr ?? process.stderr;
+  const notice =
+    options.notice ?? ((message: string) => process.stderr.write(message));
   // Decided from the real environment, before any file is read
   const userEnvFile = path.join(continueHomeDir(env), ".env");
 
   const decision = trustDecision({
     folder,
-    argv,
     env,
-    interactive: isInteractiveRun(
-      argv,
-      !!stdin.isTTY && env.FORCE_NO_TTY !== "true",
-      !!stdout.isTTY,
-    ),
+    trustFlag: options.trustFlag,
+    canAsk: options.canAsk,
   });
   let trusted = decision === "trusted";
   if (decision === "ask") {
     const ask =
       options.ask ?? ((dir: string) => askToTrust(dir, stdin, stdout));
     trusted = await ask(folder);
-    setStoredTrust(folder, trusted, env);
+    try {
+      setStoredTrust(folder, trusted, env);
+    } catch (error) {
+      // This run still follows the answer; cn asks again next time
+      logger.debug("Couldn't save the trust decision", error);
+    }
   }
 
   const loaded: string[] = [];
@@ -146,17 +168,12 @@ export async function prepareEnvironment(
       const full = path.join(folder, file);
       if (loadEnvFile(full, env, skipped)) loaded.push(full);
     }
-  } else if (
-    hasProjectEnvFiles(folder) &&
-    !argv.includes("--internal-review-worker")
-  ) {
-    stderr.write(
+  } else if (!options.quietNotice && hasProjectEnvFiles(folder)) {
+    notice(
       "Skipped this folder's .env: the folder isn't trusted (run `cn trust`, or pass --trust-workspace for one run).\n",
     );
   }
   if (loadEnvFile(userEnvFile, env, skipped)) loaded.push(userEnvFile);
 
-  const report = { trusted, loaded, skippedNames: [...skipped].sort() };
-  globalThis.__nextcliEnvironmentReport = report;
-  return report;
+  return { trusted, loaded, skippedNames: [...skipped].sort() };
 }

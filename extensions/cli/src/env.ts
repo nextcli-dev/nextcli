@@ -1,8 +1,9 @@
 import * as os from "os";
 import * as path from "path";
 
-// .env files are loaded by the bootstrap (src/bootstrap.ts), before this
-// module is imported, and only from a trusted folder
+// .env files load in the preAction hook (src/projectEnv.ts). A project's
+// .continue/.env and .env load only in a trusted folder; ~/.continue/.env
+// loads in every folder. Neither may set the variables read here.
 
 export const env = {
   // Empty unless opted in. NextCLI does not call api.nextcli.dev.

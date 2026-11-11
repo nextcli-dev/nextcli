@@ -16,15 +16,24 @@ import {
   validateFlags,
 } from "./flags/flagValidator.js";
 import { configureConsoleForHeadless, safeStderr } from "./init.js";
+import {
+  canAskForTrust,
+  loadProjectEnvironment,
+  type EnvironmentReport,
+} from "./projectEnv.js";
 import { addCommonOptions, mergeParentOptions } from "./shared-options.js";
 import { post } from "./util/apiClient.js";
 import { markUnhandledError } from "./util/errorState.js";
 import { gracefulExit } from "./util/exit.js";
-import { logger } from "./util/logger.js";
+import { logger, parseLogLevel } from "./util/logger.js";
 import { signalForegroundProcessTrees } from "./util/processTree.js";
 import { readStdinSync } from "./util/stdin.js";
 import { getVersion } from "./version.js";
-import { listStoredTrust, setStoredTrust } from "./workspaceTrust.js";
+import {
+  listStoredTrust,
+  setStoredTrust,
+  setWorkspaceTrusted,
+} from "./workspaceTrust.js";
 
 // TUI lifecycle and two-stage exit state management
 let tuiUnmount: (() => void) | null;
@@ -198,13 +207,52 @@ program
   )
   .version(getVersion(), "-v, --version", "Display version number");
 
-// --log-level wins over --verbose, which wins over NEXTCLI_LOG_LEVEL
-program.hook("preAction", (_program, actionCommand) => {
-  const { logLevel, verbose } = actionCommand.optsWithGlobals();
-  const level = logLevel ?? (verbose ? "debug" : undefined);
+function logEnvironmentReport(report: EnvironmentReport): void {
+  logger.debug("Environment files", {
+    trusted: report.trusted,
+    loaded: report.loaded,
+  });
+  if (report.skippedNames.length > 0) {
+    logger.debug(
+      `Not taken from a .env file: ${report.skippedNames.join(", ")}. Set them in the environment instead.`,
+    );
+  }
+}
+
+// Runs once commander knows the command, before its action: decides folder
+// trust, loads .env files (src/projectEnv.ts), then sets the log level.
+// --help and --version exit before this, so they never ask.
+program.hook("preAction", async (_program, actionCommand) => {
+  const opts = actionCommand.optsWithGlobals();
+  let report: EnvironmentReport | undefined;
+  try {
+    report = await loadProjectEnvironment({
+      canAsk: canAskForTrust({
+        interactiveChat: actionCommand === program && !opts.print,
+        stdinIsTTY: !!process.stdin.isTTY,
+        stdoutIsTTY: !!process.stdout.isTTY,
+        env: process.env,
+      }),
+      trustFlag: !!opts.trustWorkspace,
+      quietNotice: ["trust", "untrust"].includes(actionCommand.name()),
+      notice: safeStderr,
+    });
+    setWorkspaceTrusted(report.trusted);
+  } catch (error) {
+    // Loading .env files must never stop cn; the folder stays untrusted
+    logger.debug("Failed to load .env files", error);
+  }
+
+  // --log-level wins over --verbose, which wins over NEXTCLI_LOG_LEVEL (which
+  // a trusted folder's .env may set)
+  const level =
+    opts.logLevel ??
+    (opts.verbose ? "debug" : undefined) ??
+    parseLogLevel(process.env.NEXTCLI_LOG_LEVEL);
   if (level) {
     logger.setLevel(level);
   }
+  if (report) logEnvironmentReport(report);
 });
 
 // Root command - chat functionality (default)
@@ -365,11 +413,13 @@ program
 program
   .command("untrust [folder]")
   .description(
-    "Forget the trust decision for a folder (default: this one); cn asks again",
+    "Stop trusting a folder (default: this one), even if a parent folder is trusted",
   )
   .action((folder: string | undefined) => {
-    const dir = setStoredTrust(folder ?? process.cwd(), undefined);
-    console.log(`Forgot the trust decision for ${dir}.`);
+    const dir = setStoredTrust(folder ?? process.cwd(), false);
+    console.log(
+      `${dir} is no longer trusted. Run \`cn trust\` to trust it again.`,
+    );
   });
 
 // Serve subcommand
@@ -428,20 +478,6 @@ program.on("command:*", () => {
 });
 
 export async function runCli(): Promise<void> {
-  // The bootstrap loaded .env files before the logger existed
-  const report = globalThis.__nextcliEnvironmentReport;
-  if (report) {
-    logger.debug("Environment files", {
-      trusted: report.trusted,
-      loaded: report.loaded,
-    });
-    if (report.skippedNames.length > 0) {
-      logger.debug(
-        `Not taken from a .env file: ${report.skippedNames.join(", ")}. Set them in the environment instead.`,
-      );
-    }
-  }
-
   // Handle internal worker subprocess for cn review
   if (process.argv.includes("--internal-review-worker")) {
     const { runReviewWorker } = await import(

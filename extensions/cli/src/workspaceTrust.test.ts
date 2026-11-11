@@ -5,10 +5,10 @@ import path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
-  isInteractiveRun,
   isWorkspaceTrusted,
   listStoredTrust,
   setStoredTrust,
+  setWorkspaceTrusted,
   storedTrust,
   trustDecision,
 } from "./workspaceTrust.js";
@@ -29,16 +29,16 @@ describe("workspaceTrust", () => {
     fs.rmSync(root, { recursive: true, force: true });
   });
 
-  const decide = (overrides: { argv?: string[]; interactive?: boolean } = {}) =>
+  const decide = (overrides: { trustFlag?: boolean; canAsk?: boolean } = {}) =>
     trustDecision({
       folder: repo,
-      argv: overrides.argv ?? ["node", "cn"],
       env,
-      interactive: overrides.interactive ?? true,
+      trustFlag: overrides.trustFlag ?? false,
+      canAsk: overrides.canAsk ?? true,
     });
 
   describe("trustDecision", () => {
-    it("asks in an interactive run when the folder has a .env", () => {
+    it("asks, when the run can, if the folder has a .env", () => {
       fs.writeFileSync(path.join(repo, ".env"), "A=1");
       expect(decide()).toBe("ask");
     });
@@ -55,27 +55,27 @@ describe("workspaceTrust", () => {
 
     it("is untrusted, without asking, when the run can't ask", () => {
       fs.writeFileSync(path.join(repo, ".env"), "A=1");
-      expect(decide({ interactive: false })).toBe("untrusted");
+      expect(decide({ canAsk: false })).toBe("untrusted");
     });
 
     it("uses a stored decision, for the folder or a parent", () => {
       fs.writeFileSync(path.join(repo, ".env"), "A=1");
       setStoredTrust(path.join(root, "projects"), true, env);
-      expect(decide({ interactive: false })).toBe("trusted");
+      expect(decide({ canAsk: false })).toBe("trusted");
+    });
 
+    // cn untrust on a folder inside a trusted one
+    it("lets a refused folder win over a trusted parent", () => {
+      setStoredTrust(path.join(root, "projects"), true, env);
       setStoredTrust(repo, false, env);
       expect(decide()).toBe("untrusted");
+      expect(storedTrust(path.join(root, "projects"), env)).toBe(true);
     });
 
     it("trusts for one run with --trust-workspace or NEXTCLI_TRUST_WORKSPACE", () => {
-      expect(
-        decide({
-          argv: ["node", "cn", "-p", "--trust-workspace"],
-          interactive: false,
-        }),
-      ).toBe("trusted");
+      expect(decide({ trustFlag: true, canAsk: false })).toBe("trusted");
       env.NEXTCLI_TRUST_WORKSPACE = "1";
-      expect(decide({ interactive: false })).toBe("trusted");
+      expect(decide({ canAsk: false })).toBe("trusted");
       expect(listStoredTrust(env)).toEqual({});
     });
 
@@ -87,32 +87,12 @@ describe("workspaceTrust", () => {
     });
   });
 
-  describe("isInteractiveRun", () => {
-    it.each([
-      [["node", "cn"], true],
-      [["node", "cn", "--config", "x.yaml"], true],
-      [["node", "cn", "-p", "hi"], false],
-      [["node", "cn", "--print", "hi"], false],
-      [["node", "cn", "review"], false],
-      [["node", "cn", "serve"], false],
-      [["node", "cn", "--internal-review-worker"], false],
-      [["node", "cn", "trust"], false],
-    ])("%j → %s", (argv, expected) => {
-      expect(isInteractiveRun(argv, true, true)).toBe(expected);
-    });
-
-    it("never asks without a terminal", () => {
-      expect(isInteractiveRun(["node", "cn"], false, true)).toBe(false);
-      expect(isInteractiveRun(["node", "cn"], true, false)).toBe(false);
-    });
-  });
-
   describe("the store", () => {
-    it("forgets a decision and keeps the others", () => {
+    it("replaces a decision and keeps the others", () => {
       setStoredTrust(repo, true, env);
       setStoredTrust(root, false, env);
-      setStoredTrust(repo, undefined, env);
-      expect(listStoredTrust(env)).toEqual({ [root]: false });
+      setStoredTrust(repo, false, env);
+      expect(listStoredTrust(env)).toEqual({ [repo]: false, [root]: false });
     });
 
     it("is readable only by the person", () => {
@@ -133,10 +113,10 @@ describe("workspaceTrust", () => {
     });
   });
 
-  it("isWorkspaceTrusted never asks", () => {
-    fs.writeFileSync(path.join(repo, ".env"), "A=1");
-    expect(isWorkspaceTrusted(repo, ["node", "cn"], env)).toBe(false);
-    setStoredTrust(repo, true, env);
-    expect(isWorkspaceTrusted(repo, ["node", "cn"], env)).toBe(true);
+  it("isWorkspaceTrusted is false until the run sets it", () => {
+    expect(isWorkspaceTrusted()).toBe(false);
+    setWorkspaceTrusted(true);
+    expect(isWorkspaceTrusted()).toBe(true);
+    setWorkspaceTrusted(false);
   });
 });

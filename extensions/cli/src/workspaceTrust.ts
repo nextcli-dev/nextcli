@@ -7,9 +7,6 @@ import path from "path";
  * A repository cn reviews, a pull request's checkout in CI for example, is
  * written by someone else, so its .env must not set cn's environment. The
  * person decides once per folder; the decision is stored outside the folder.
- *
- * This file is bundled into the bootstrap (dist/bootstrap.js) as well as the
- * CLI, so it imports only Node built-ins and keeps no state.
  */
 
 export type TrustDecision = "trusted" | "untrusted" | "ask";
@@ -21,21 +18,6 @@ interface TrustStore {
 
 /** Files a trusted folder may load environment variables from */
 export const PROJECT_ENV_FILES = [path.join(".continue", ".env"), ".env"];
-
-// Commands that never ask: nobody may be there to answer, or the command
-// manages trust itself
-const NON_INTERACTIVE_ARGS = new Set([
-  "-p",
-  "--print",
-  "--internal-review-worker",
-  "review",
-  "serve",
-  "checks",
-  "ls",
-  "cleanup",
-  "trust",
-  "untrust",
-]);
 
 /**
  * The real environment's config directory. Called before any .env is loaded,
@@ -89,20 +71,19 @@ export function storedTrust(
   }
 }
 
-/** Saves a decision for a folder; undefined forgets it */
+/**
+ * Saves a decision for a folder. It wins over a parent's decision, so
+ * refusing a folder inside a trusted one works.
+ */
 export function setStoredTrust(
   folder: string,
-  trusted: boolean | undefined,
+  trusted: boolean,
   env: NodeJS.ProcessEnv = process.env,
 ): string {
   const storePath = trustStorePath(env);
   const store = readStore(storePath);
   const key = realFolder(folder);
-  if (trusted === undefined) {
-    delete store.folders[key];
-  } else {
-    store.folders[key] = trusted;
-  }
+  store.folders[key] = trusted;
   fs.mkdirSync(path.dirname(storePath), { recursive: true });
   fs.writeFileSync(storePath, `${JSON.stringify(store, null, 2)}\n`, {
     mode: 0o600,
@@ -123,23 +104,9 @@ export function hasProjectEnvFiles(folder: string): boolean {
   );
 }
 
-/** Whether this run can ask the person a question */
-export function isInteractiveRun(
-  argv: readonly string[],
-  stdinIsTTY: boolean,
-  stdoutIsTTY: boolean,
-): boolean {
-  if (!stdinIsTTY || !stdoutIsTTY) return false;
-  return !argv.slice(2).some((arg) => NON_INTERACTIVE_ARGS.has(arg));
-}
-
-/** Whether the person passed trust for this run only */
-export function trustedForThisRun(
-  argv: readonly string[],
-  env: NodeJS.ProcessEnv,
-): boolean {
+/** Whether NEXTCLI_TRUST_WORKSPACE trusts the folder for this run */
+export function trustedByEnv(env: NodeJS.ProcessEnv): boolean {
   return (
-    argv.includes("--trust-workspace") ||
     env.NEXTCLI_TRUST_WORKSPACE === "1" ||
     env.NEXTCLI_TRUST_WORKSPACE === "true"
   );
@@ -148,32 +115,32 @@ export function trustedForThisRun(
 /**
  * Whether files in `folder` may configure cn:
  * 1. --trust-workspace or NEXTCLI_TRUST_WORKSPACE=1: trusted, this run only;
- * 2. a stored decision for the folder or a parent;
- * 3. a run that can't ask (headless, cn review, no terminal): untrusted;
- * 4. "ask" if the folder has a file trust would load, else untrusted.
+ * 2. a stored decision for the folder or its nearest parent that has one;
+ * 3. "ask" if the run can ask and the folder has a file trust would load;
+ * 4. otherwise untrusted.
  */
 export function trustDecision(options: {
   folder: string;
-  argv: readonly string[];
   env: NodeJS.ProcessEnv;
-  interactive: boolean;
+  trustFlag: boolean;
+  canAsk: boolean;
 }): TrustDecision {
-  const { folder, argv, env, interactive } = options;
-  if (trustedForThisRun(argv, env)) return "trusted";
+  const { folder, env, trustFlag, canAsk } = options;
+  if (trustFlag || trustedByEnv(env)) return "trusted";
   const stored = storedTrust(folder, env);
   if (stored !== undefined) return stored ? "trusted" : "untrusted";
-  if (!interactive) return "untrusted";
-  return hasProjectEnvFiles(folder) ? "ask" : "untrusted";
+  return canAsk && hasProjectEnvFiles(folder) ? "ask" : "untrusted";
 }
 
-/**
- * Whether the working directory is trusted in this run. The bootstrap has
- * already saved the person's answer, so "ask" can't come back here.
- */
-export function isWorkspaceTrusted(
-  folder: string = process.cwd(),
-  argv: readonly string[] = process.argv,
-  env: NodeJS.ProcessEnv = process.env,
-): boolean {
-  return trustDecision({ folder, argv, env, interactive: false }) === "trusted";
+// Set once per run, by the preAction hook in index.ts, after the person
+// answered. Untrusted until then: the cn review worker never sets it.
+let workspaceTrusted = false;
+
+export function setWorkspaceTrusted(trusted: boolean): void {
+  workspaceTrusted = trusted;
+}
+
+/** Whether the working directory is trusted in this run */
+export function isWorkspaceTrusted(): boolean {
+  return workspaceTrusted;
 }

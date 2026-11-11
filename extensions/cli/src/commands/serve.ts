@@ -5,7 +5,6 @@ import express, { Request, Response } from "express";
 import { ToolPermissionServiceState } from "src/services/ToolPermissionService.js";
 import { prependPrompt } from "src/util/promptProcessor.js";
 
-import { runEnvironmentInstallSafe } from "../environment/environmentHandler.js";
 import { processCommandFlags } from "../flags/flagProcessor.js";
 import { setAgentId } from "../index.js";
 import { toolPermissionManager } from "../permissions/permissionManager.js";
@@ -417,9 +416,6 @@ export async function serve(prompt?: string, options: ServeOptions = {}) {
         `\nServer will shut down after ${timeoutSeconds} seconds of inactivity`,
       ),
     );
-
-    // Run environment install script after server startup
-    runEnvironmentInstallSafe();
 
     // If initial prompt provided, queue it for processing
     const initialPrompt = prependPrompt(
