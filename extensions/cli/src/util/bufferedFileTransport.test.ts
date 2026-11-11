@@ -31,8 +31,6 @@ describe("BufferedFileTransport", () => {
     });
   };
   const read = (name: string) => fs.readFileSync(path.join(dir, name), "utf-8");
-  const readOrEmpty = (name: string) =>
-    fs.existsSync(path.join(dir, name)) ? read(name) : "";
 
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), "cn-log-"));
@@ -52,7 +50,7 @@ describe("BufferedFileTransport", () => {
 
     logger.info("first");
     logger.info("second");
-    expect(readOrEmpty("cn.log")).toBe("");
+    expect(fs.existsSync(file)).toBe(false);
 
     vi.advanceTimersByTime(100);
     expect(read("cn.log")).toBe("first\nsecond\n");
@@ -97,6 +95,16 @@ describe("BufferedFileTransport", () => {
     expect(read("cn1.log")).toBe("line 5...\nline 6...\n");
     expect(read("cn2.log")).toBe("line 3...\nline 4...\n");
     expect(fs.existsSync(path.join(dir, "cn3.log"))).toBe(false);
+  });
+
+  it("starts the file over at the size limit when maxFiles is 1", () => {
+    const logger = loggerWith({ maxsize: 20, maxFiles: 1 });
+
+    for (const n of [1, 2, 3, 4, 5]) logger.info(`line ${n}...`);
+    transport?.close();
+
+    expect(read("cn.log")).toBe("line 5...\n");
+    expect(fs.existsSync(path.join(dir, "cn1.log"))).toBe(false);
   });
 
   it("doesn't throw when the file can't be written", () => {

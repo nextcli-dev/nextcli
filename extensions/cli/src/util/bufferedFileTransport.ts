@@ -8,32 +8,31 @@ import Transport from "winston-transport";
 const MESSAGE = Symbol.for("message");
 const LEVEL = Symbol.for("level");
 
+const FLUSH_INTERVAL_MS = 100;
+const MAX_BUFFER_BYTES = 64 * 1024;
+
 export interface BufferedFileTransportOptions {
   filename: string;
   /** Rotate when the file would grow past this many bytes */
   maxsize: number;
   /** Files kept, the current one included: cn.log, cn1.log, ... */
   maxFiles: number;
-  /** Write buffered lines after this many milliseconds. Default 100. */
-  flushIntervalMs?: number;
-  /** Write at once when this many bytes are buffered. Default 64 KiB. */
-  maxBufferBytes?: number;
 }
 
 /**
- * A winston transport that buffers lines in memory and writes them with one
- * synchronous write: after flushIntervalMs, when maxBufferBytes are buffered,
- * on an error line, and on process exit.
+ * A winston transport that buffers lines in memory and writes them
+ * synchronously, one write per file (a flush that crosses maxsize writes once
+ * per rotated file): after FLUSH_INTERVAL_MS, when MAX_BUFFER_BYTES are
+ * buffered, on an error line, and on process exit.
  *
  * winston's File transport buffers in streams that process.exit(), which
  * every cn exit path ends with, drops. Node runs "exit" listeners
  * synchronously inside process.exit() and after an uncaught exception, so the
  * flush here covers every exit path. Only a hard kill (SIGKILL, an OOM abort)
- * can lose the last flushIntervalMs of lines. Batching keeps trace level, a
+ * can lose the last FLUSH_INTERVAL_MS of lines. Batching keeps trace level, a
  * line per stream chunk, from making a syscall per line.
  */
 export class BufferedFileTransport extends Transport {
-  private readonly options: Required<BufferedFileTransportOptions>;
   private fd: number | undefined;
   private size = 0;
   private pending: string[] = [];
@@ -41,13 +40,8 @@ export class BufferedFileTransport extends Transport {
   private timer: NodeJS.Timeout | undefined;
   private readonly flushNow = () => this.flush();
 
-  constructor(options: BufferedFileTransportOptions) {
+  constructor(private readonly options: BufferedFileTransportOptions) {
     super();
-    this.options = {
-      flushIntervalMs: 100,
-      maxBufferBytes: 64 * 1024,
-      ...options,
-    };
     process.on("exit", this.flushNow);
   }
 
@@ -56,13 +50,10 @@ export class BufferedFileTransport extends Transport {
     this.pending.push(line);
     this.pendingBytes += Buffer.byteLength(line);
 
-    if (
-      this.pendingBytes >= this.options.maxBufferBytes ||
-      info[LEVEL] === "error"
-    ) {
+    if (this.pendingBytes >= MAX_BUFFER_BYTES || info[LEVEL] === "error") {
       this.flush();
     } else if (this.timer === undefined) {
-      this.timer = setTimeout(this.flushNow, this.options.flushIntervalMs);
+      this.timer = setTimeout(this.flushNow, FLUSH_INTERVAL_MS);
       // A pending flush must not keep the process alive; exit flushes anyway
       this.timer.unref();
     }
@@ -124,6 +115,11 @@ export class BufferedFileTransport extends Transport {
   private rotate(): void {
     if (this.fd !== undefined) fs.closeSync(this.fd);
     this.fd = undefined;
+    // With no older files kept, start the current file over
+    if (this.options.maxFiles <= 1) {
+      fs.rmSync(this.options.filename, { force: true });
+      return;
+    }
     for (let index = this.options.maxFiles - 1; index >= 1; index--) {
       const from =
         index === 1 ? this.options.filename : this.rotatedPath(index - 1);
