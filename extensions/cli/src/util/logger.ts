@@ -7,6 +7,8 @@ import winston from "winston";
 
 import { env } from "../env.js";
 
+import { BufferedFileTransport } from "./bufferedFileTransport.js";
+
 const { combine, timestamp, printf, errors } = winston.format;
 
 // One id per process, on every cn.log line and in the trace file name
@@ -134,8 +136,9 @@ const winstonLogger = winston.createLogger({
     logFormat,
   ),
   transports: [
-    // File transport for all logs
-    new winston.transports.File({
+    // File transport for all logs, flushed on exit so process.exit() can't
+    // drop the end of a run
+    new BufferedFileTransport({
       filename: getLogFilePath(),
       maxsize: 10 * 1024 * 1024, // 10MB
       maxFiles: 5,
