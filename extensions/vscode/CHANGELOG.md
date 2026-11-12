@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.6.14](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.13...vscode-v1.6.14) (2026-11-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** in a folder you haven't trusted, the project's .env no longer loads. Proxy and CA variables must come from the environment.
+
+### Features
+
+* **cli:** load a folder's .env only if the folder is trusted ([#126](https://github.com/nextcli-dev/nextcli/issues/126)) ([ac43c9e](https://github.com/nextcli-dev/nextcli/commit/ac43c9ee2db5e53ea08ce33b04e234aa987c682e))
+* **cli:** strip secrets from the shell's environment and block private addresses in Fetch ([#123](https://github.com/nextcli-dev/nextcli/issues/123)) ([58db692](https://github.com/nextcli-dev/nextcli/commit/58db692eaa1ce21af14d61429a11fff6ebe14610))
+
+
+### Bug Fixes
+
+* **core:** name colocated rules.md by workspace-relative path ([#133](https://github.com/nextcli-dev/nextcli/issues/133)) ([1ee49bb](https://github.com/nextcli-dev/nextcli/commit/1ee49bb3884e5dacd98c06b0f1fd514f716da288))
+* keep CRLF line endings when editing files ([#131](https://github.com/nextcli-dev/nextcli/issues/131)) ([bb4343d](https://github.com/nextcli-dev/nextcli/commit/bb4343d4838c738f0fc34d99138778dc6f0e3139))
+* **vscode:** edit files by absolute and Windows paths ([#130](https://github.com/nextcli-dev/nextcli/issues/130)) ([0c781f3](https://github.com/nextcli-dev/nextcli/commit/0c781f30c3300fac94d67c2c79760affed977a29))
+
 ## [1.6.13](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.12...vscode-v1.6.13) (2026-11-11)
 
 
