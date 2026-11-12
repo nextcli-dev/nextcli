@@ -46,6 +46,37 @@ models:
     capabilities:
       - tool_use
 
+  - name: EDIT TOOLS MOCK LLM
+    provider: mock
+    model: this field is not used
+    requestOptions:
+      extraBodyProperties:
+        chatStream:
+          - - role: assistant
+              content: Editing the fixtures
+            - role: assistant
+              content: ""
+              toolCalls:
+                - id: edit_1
+                  type: function
+                  function:
+                    name: single_find_and_replace
+                    arguments: '{"filepath": "edit-fixtures/crlf.js", "old_string": "function sub(a, b) {\n  return a - b;\n}", "new_string": "function sub(a, b) {\n  // subtract\n  return a - b;\n}"}'
+          - - role: assistant
+              content: ""
+              toolCalls:
+                - id: edit_2
+                  type: function
+                  function:
+                    name: edit_existing_file
+                    arguments: '{"filepath": "edit-fixtures/crlf-rewrite.js", "changes": "function mul(a, b) {\n  // multiply\n  return a * b;\n}\n\nmodule.exports = { mul };\n"}'
+          - - role: assistant
+              content: EDITS DONE
+    roles:
+      - chat
+    capabilities:
+      - tool_use
+
   - name: SYSTEM MESSAGE MOCK LLM
     provider: mock
     model: claude-3-5-sonnet-latest

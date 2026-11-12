@@ -40,6 +40,7 @@ export function TabGroup({
       {tabs.map((tab) => (
         <TabButton
           key={tab.id}
+          tabId={tab.id}
           label={tab.label}
           icon={tab.icon}
           isActive={activeTab === tab.id}

@@ -64,6 +64,8 @@ export function ToolPoliciesGroup({
       <div
         className="flex cursor-pointer items-center justify-between gap-3 rounded px-2 py-2 hover:bg-gray-50 hover:bg-opacity-5"
         onClick={() => setIsExpanded(!isExpanded)}
+        data-testid={`tool-group-${groupName}`}
+        aria-expanded={isExpanded}
       >
         <div className="flex items-center gap-3">
           <ChevronDownIcon

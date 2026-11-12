@@ -7,6 +7,7 @@ import {
   WebDriver,
   WebElement,
   WebView,
+  Workbench,
   until,
 } from "vscode-extension-tester";
 
@@ -16,7 +17,7 @@ import { DEFAULT_TIMEOUT } from "../constants";
 import { GUISelectors } from "../selectors/GUI.selectors";
 import { TestUtils } from "../TestUtils";
 
-describe.skip("GUI Test", () => {
+describe("GUI Test", () => {
   let view: WebView;
   let driver: WebDriver;
 
@@ -42,10 +43,8 @@ describe.skip("GUI Test", () => {
     this.timeout(DEFAULT_TIMEOUT.XL);
 
     await view.switchBack();
-    await TestUtils.waitForSuccess(
-      async () => (await GUISelectors.getContinueExtensionBadge(view)).click(),
-      DEFAULT_TIMEOUT.XS,
-    );
+    // Close the GUI; beforeEach opens it again with toggleGui
+    await new Workbench().executeCommand("View: Close Secondary Side Bar");
     await new EditorView().closeAllEditors();
   });
 
@@ -284,7 +283,8 @@ describe.skip("GUI Test", () => {
       const ruleItemText = await ruleItem.getText();
       expect(ruleItemText).to.include("Agent rule");
       expect(ruleItemText).to.include("Always applied");
-      expect(ruleItemText).to.include("TEST_SYS_MSG");
+      // The item shows where the rule comes from, not its text
+      expect(ruleItemText).to.include("Source:");
     }).timeout(DEFAULT_TIMEOUT.MD);
 
     it("should render tool call", async () => {
@@ -298,12 +298,12 @@ describe.skip("GUI Test", () => {
       );
 
       expect(await statusMessage.getText()).contain(
-        "Continue viewed the git diff",
+        "NextCLI viewed the git diff",
       );
     }).timeout(DEFAULT_TIMEOUT.MD * 100);
 
     it("should call tool after approval", async () => {
-      await GUIActions.toggleToolPolicy(view, "view_diff", 2);
+      view = await GUIActions.toggleToolPolicy(view, "view_diff", 2);
 
       const [messageInput] = await GUISelectors.getMessageInputFields(view);
       await messageInput.sendKeys("Hello");
@@ -324,7 +324,7 @@ describe.skip("GUI Test", () => {
     }).timeout(DEFAULT_TIMEOUT.XL);
 
     it("should cancel tool", async () => {
-      await GUIActions.toggleToolPolicy(view, "view_diff", 2);
+      view = await GUIActions.toggleToolPolicy(view, "view_diff", 2);
 
       const [messageInput] = await GUISelectors.getMessageInputFields(view);
       await messageInput.sendKeys("Hello");
@@ -341,7 +341,7 @@ describe.skip("GUI Test", () => {
       );
 
       const text = await statusMessage.getText();
-      expect(text).contain("Continue tried to view the git diff");
+      expect(text).contain("NextCLI tried to view the git diff");
     }).timeout(DEFAULT_TIMEOUT.XL);
   });
 
@@ -411,10 +411,10 @@ describe.skip("GUI Test", () => {
         expect(isInViewport).to.eq(true);
       }
 
-      await view.switchBack();
-
-      await (await GUISelectors.getHistoryNavButton(view)).click();
-      await GUIActions.switchToReactIframe();
+      ({ view, driver } = await GUIActions.runCommandFromGui(
+        view,
+        "NextCLI: View History",
+      ));
       TestUtils.waitForSuccess(async () => {
         await (await GUISelectors.getNthHistoryTableRow(view, 0)).click();
       });
@@ -443,6 +443,10 @@ describe.skip("GUI Test", () => {
     }).timeout(DEFAULT_TIMEOUT.XL * 1000);
 
     it("Open chat and send message → press arrow up and arrow down to cycle through messages → submit another message → press arrow up and arrow down to cycle through messages", async () => {
+      // Loading a history entry refocuses the editor in a setTimeout, which
+      // moves the caret; a key sent before that lands in the wrong place
+      const waitForRefocus = () => TestUtils.waitForTimeout(300);
+
       await GUIActions.sendMessage({
         view,
         message: "MESSAGE 1",
@@ -459,6 +463,7 @@ describe.skip("GUI Test", () => {
         until.elementTextIs(input1, "MESSAGE 1"),
         DEFAULT_TIMEOUT.SM,
       );
+      await waitForRefocus();
 
       await input1.sendKeys(Key.ARROW_DOWN); // First press - bring caret to the end of the message
       await input1.sendKeys(Key.ARROW_DOWN); // Second press - trigger message change
@@ -480,12 +485,14 @@ describe.skip("GUI Test", () => {
         until.elementTextIs(input2, "MESSAGE 2"),
         DEFAULT_TIMEOUT.SM,
       );
+      await waitForRefocus();
 
       await input2.sendKeys(Key.ARROW_UP);
       await driver.wait(
         until.elementTextIs(input2, "MESSAGE 1"),
         DEFAULT_TIMEOUT.SM,
       );
+      await waitForRefocus();
 
       await input2.sendKeys(Key.ARROW_DOWN); // First press - bring caret to the end of the message
       await input2.sendKeys(Key.ARROW_DOWN); // Second press - trigger message change
@@ -493,6 +500,7 @@ describe.skip("GUI Test", () => {
         until.elementTextIs(input2, "MESSAGE 2"),
         DEFAULT_TIMEOUT.SM,
       );
+      await waitForRefocus();
 
       await input2.sendKeys(Key.ARROW_DOWN);
       await driver.wait(until.elementTextIs(input2, ""), DEFAULT_TIMEOUT.SM);
@@ -507,14 +515,15 @@ describe.skip("GUI Test", () => {
       await originalTextInput.sendKeys("Hello");
       expect(await originalTextInput.getText()).to.equal("Hello");
 
-      await view.switchBack();
+      ({ view, driver } = await GUIActions.runCommandFromGui(
+        view,
+        "NextCLI: View History",
+      ));
 
-      await (await GUISelectors.getHistoryNavButton(view)).click();
-      await GUIActions.switchToReactIframe();
-
-      await view.switchBack();
-      await (await GUISelectors.getNewSessionNavButton(view)).click();
-      await GUIActions.switchToReactIframe();
+      ({ view, driver } = await GUIActions.runCommandFromGui(
+        view,
+        "NextCLI: New Session",
+      ));
 
       const newTextInput = await TestUtils.waitForSuccess(() =>
         GUISelectors.getMessageInputFieldAtIndex(view, 0),
@@ -555,19 +564,21 @@ describe.skip("GUI Test", () => {
        * It only updates once a another chat is opened, so we need to open a
        * different chat first.
        */
-      await view.switchBack();
-      await (await GUISelectors.getHistoryNavButton(view)).click();
-      await GUIActions.switchToReactIframe();
+      ({ view, driver } = await GUIActions.runCommandFromGui(
+        view,
+        "NextCLI: View History",
+      ));
 
       await (await GUISelectors.getNthHistoryTableRow(view, 0)).click();
 
-      await view.switchBack();
-      await (await GUISelectors.getHistoryNavButton(view)).click();
+      ({ view, driver } = await GUIActions.runCommandFromGui(
+        view,
+        "NextCLI: View History",
+      ));
       /**
        * END OF SWITCHING BACK AND FORTH
        */
 
-      await GUIActions.switchToReactIframe();
       await (await GUISelectors.getNthHistoryTableRow(view, 0)).click();
 
       await GUISelectors.getThreadMessageByText(view, messagePair1.llmResponse);
