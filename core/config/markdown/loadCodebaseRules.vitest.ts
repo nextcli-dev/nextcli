@@ -1,17 +1,22 @@
+import * as configYaml from "@nextcli/config-yaml";
 import { markdownToRule } from "@nextcli/config-yaml";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { IDE } from "../..";
 import { walkDirs } from "../../indexing/walkDir";
-import { loadCodebaseRules } from "./loadCodebaseRules";
+import { CodebaseRulesCache, loadCodebaseRules } from "./loadCodebaseRules";
 
 // Mock dependencies
 vi.mock("../../indexing/walkDir", () => ({
   walkDirs: vi.fn(),
 }));
 
-vi.mock("@nextcli/config-yaml", () => ({
-  markdownToRule: vi.fn(),
-}));
+vi.mock("@nextcli/config-yaml", async (importOriginal) => {
+  const actual = await importOriginal<typeof configYaml>();
+  return {
+    markdownToRule: vi.fn(),
+    parseMarkdownRule: actual.parseMarkdownRule,
+  };
+});
 
 describe("loadCodebaseRules", () => {
   // Mock IDE with properly typed mock functions
@@ -40,27 +45,27 @@ describe("loadCodebaseRules", () => {
   // Mock converted rules
   const mockConvertedRules: Record<string, any> = {
     "file:///workspace/src/rules.md": {
-      name: "General Rules",
+      name: "src/rules.md",
       rule: "Follow coding standards",
       source: "colocated-markdown",
       sourceFile: "file:///workspace/src/rules.md",
     },
     "file:///workspace/src/redux/rules.md": {
-      name: "Redux Rules",
+      name: "src/redux/rules.md",
       rule: "Use Redux Toolkit",
       globs: "**/*.{ts,tsx}",
       source: "colocated-markdown",
       sourceFile: "file:///workspace/src/redux/rules.md",
     },
     "file:///workspace/src/components/rules.md": {
-      name: "Component Rules",
+      name: "src/components/rules.md",
       rule: "Use functional components",
       globs: ["**/*.tsx", "**/*.jsx"],
       source: "colocated-markdown",
       sourceFile: "file:///workspace/src/components/rules.md",
     },
     "file:///workspace/.continue/rules.md": {
-      name: "Global Rules",
+      name: ".continue/rules.md",
       rule: "Follow project guidelines",
       source: "colocated-markdown",
       sourceFile: "file:///workspace/.continue/rules.md",
@@ -182,5 +187,92 @@ describe("loadCodebaseRules", () => {
     // Should have one error
     expect(errors).toHaveLength(1);
     expect(errors[0].message).toContain("Error loading colocated rule files");
+  });
+  describe("rule names", () => {
+    beforeEach(async () => {
+      const actual = await vi.importActual<typeof configYaml>(
+        "@nextcli/config-yaml",
+      );
+      (markdownToRule as any).mockImplementation(actual.markdownToRule);
+    });
+
+    function setFiles(files: Record<string, string>, dirs: string[]) {
+      (walkDirs as any).mockResolvedValue(Object.keys(files));
+      (mockIde.getWorkspaceDirs as any).mockResolvedValue(dirs);
+      (mockIde.readFile as any).mockImplementation((path: string) =>
+        Promise.resolve(files[path] ?? ""),
+      );
+    }
+
+    it("names rules by workspace-relative path so same-named dirs don't collide", async () => {
+      setFiles(
+        {
+          "file:///root/repo/gui/rules.md": "Repo gui rule",
+          "file:///root/repo-worktree/gui/rules.md": "Worktree gui rule",
+          "file:///root/repo/packages/a/src/rules.md": "a",
+          "file:///root/repo/packages/b/src/rules.md": "b",
+        },
+        ["file:///root"],
+      );
+
+      const { rules, errors } = await loadCodebaseRules(mockIde);
+
+      expect(errors).toHaveLength(0);
+      expect(rules.map((r) => r.name).sort()).toEqual([
+        "repo-worktree/gui/rules.md",
+        "repo/gui/rules.md",
+        "repo/packages/a/src/rules.md",
+        "repo/packages/b/src/rules.md",
+      ]);
+      expect(
+        rules.find((r) => r.name === "repo/packages/a/src/rules.md")?.globs,
+      ).toBe("repo/packages/a/src/**/*");
+    });
+
+    it("prefixes the root folder name in a multi-root workspace", async () => {
+      setFiles(
+        {
+          "file:///root/repo/gui/rules.md": "Repo gui rule",
+          "file:///root/repo-worktree/gui/rules.md": "Worktree gui rule",
+        },
+        ["file:///root/repo", "file:///root/repo-worktree"],
+      );
+
+      const { rules } = await loadCodebaseRules(mockIde);
+
+      expect(rules.map((r) => r.name).sort()).toEqual([
+        "repo-worktree/gui/rules.md",
+        "repo/gui/rules.md",
+      ]);
+    });
+
+    it("keeps a name set in frontmatter", async () => {
+      setFiles(
+        {
+          "file:///root/gui/rules.md":
+            "---\nname: GUI conventions\n---\nUse openUrl",
+        },
+        ["file:///root"],
+      );
+
+      const { rules } = await loadCodebaseRules(mockIde);
+
+      expect(rules.map((r) => r.name)).toEqual(["GUI conventions"]);
+    });
+
+    it("scopes globs to the rule's directory when a single file is updated", async () => {
+      setFiles(
+        { "file:///root/gui/rules.md": '---\nglobs: "**/*.tsx"\n---\nRule' },
+        ["file:///root"],
+      );
+      const cache = CodebaseRulesCache.getInstance();
+      cache.rules = [];
+
+      await cache.update(mockIde, "file:///root/gui/rules.md");
+
+      expect(cache.rules).toHaveLength(1);
+      expect(cache.rules[0].name).toBe("gui/rules.md");
+      expect(cache.rules[0].globs).toBe("gui/**/*.tsx");
+    });
   });
 });

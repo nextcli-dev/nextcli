@@ -1,8 +1,57 @@
-import { ConfigValidationError, markdownToRule } from "@nextcli/config-yaml";
+import {
+  ConfigValidationError,
+  markdownToRule,
+  parseMarkdownRule,
+} from "@nextcli/config-yaml";
 import { IDE, RuleWithSource } from "../..";
 import { walkDirs } from "../../indexing/walkDir";
 import { RULES_MARKDOWN_FILENAME } from "../../llm/rules/constants";
 import { findUriInDirs, getUriPathBasename } from "../../util/uri";
+
+/**
+ * Builds a rule from a colocated rules.md file. Without a frontmatter `name`,
+ * the rule is named by its workspace-relative path: the default name (last two
+ * path segments) collides for e.g. packages/a/src/rules.md and
+ * packages/b/src/rules.md, or for the same file in two checkouts of a repo.
+ */
+function codebaseRuleFromFile(
+  content: string,
+  fileUri: string,
+  workspaceDirs: string[],
+): RuleWithSource | undefined {
+  const { relativePathOrBasename, foundInDir, uri } = findUriInDirs(
+    fileUri,
+    workspaceDirs,
+  );
+  if (!foundInDir) {
+    return undefined;
+  }
+  const parentDir = relativePathOrBasename.substring(
+    0,
+    relativePathOrBasename.lastIndexOf("/"),
+  );
+  const rule = markdownToRule(
+    content,
+    { uriType: "file", fileUri: uri },
+    parentDir,
+  );
+  const hasFrontmatterName = Boolean(
+    parseMarkdownRule(content).frontmatter.name,
+  );
+  // In a multi-root workspace, roots can share relative paths, so prefix the
+  // root folder name.
+  const name = hasFrontmatterName
+    ? rule.name
+    : workspaceDirs.length > 1
+      ? `${getUriPathBasename(foundInDir)}/${relativePathOrBasename}`
+      : relativePathOrBasename;
+  return {
+    ...rule,
+    name,
+    source: "colocated-markdown",
+    sourceFile: fileUri,
+  };
+}
 
 export class CodebaseRulesCache {
   private static instance: CodebaseRulesCache | null = null;
@@ -23,29 +72,17 @@ export class CodebaseRulesCache {
   }
   async update(ide: IDE, uri: string) {
     const content = await ide.readFile(uri);
-    const workspaceDirs = await ide.getWorkspaceDirs();
-    const { relativePathOrBasename, foundInDir } = findUriInDirs(
+    const ruleWithSource = codebaseRuleFromFile(
+      content,
       uri,
-      workspaceDirs,
+      await ide.getWorkspaceDirs(),
     );
-    if (!foundInDir) {
+    if (!ruleWithSource) {
       console.warn(
         `Failed to load codebase rule ${uri}: URI not found in workspace`,
       );
+      return;
     }
-    const rule = markdownToRule(
-      content,
-      {
-        uriType: "file",
-        fileUri: uri,
-      },
-      relativePathOrBasename,
-    );
-    const ruleWithSource: RuleWithSource = {
-      ...rule,
-      source: "colocated-markdown",
-      sourceFile: uri,
-    };
     const matchIdx = this.rules.findIndex((r) => r.sourceFile === uri);
     if (matchIdx === -1) {
       this.rules.push(ruleWithSource);
@@ -78,34 +115,18 @@ export async function loadCodebaseRules(ide: IDE): Promise<{
       return filename === RULES_MARKDOWN_FILENAME;
     });
 
+    const workspaceDirs = await ide.getWorkspaceDirs();
+
     // Process each rules.md file
     for (const filePath of rulesMdFiles) {
       try {
         const content = await ide.readFile(filePath);
-        const { relativePathOrBasename, foundInDir, uri } = findUriInDirs(
-          filePath,
-          await ide.getWorkspaceDirs(),
-        );
-        if (foundInDir) {
-          const lastSlashIndex = relativePathOrBasename.lastIndexOf("/");
-          const parentDir = relativePathOrBasename.substring(0, lastSlashIndex);
-          const rule = markdownToRule(
-            content,
-            {
-              uriType: "file",
-              fileUri: uri,
-            },
-            parentDir,
-          );
-
-          rules.push({
-            ...rule,
-            source: "colocated-markdown",
-            sourceFile: filePath,
-          });
+        const rule = codebaseRuleFromFile(content, filePath, workspaceDirs);
+        if (rule) {
+          rules.push(rule);
         } else {
           console.warn(
-            `Failed to load codebase rule ${uri}: URI not found in workspace dirs`,
+            `Failed to load codebase rule ${filePath}: URI not found in workspace dirs`,
           );
         }
       } catch (e) {
