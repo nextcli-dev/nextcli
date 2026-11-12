@@ -9,7 +9,7 @@ vi.mock("uuid", () => ({
 }));
 
 vi.mock("core/util/ideUtils", () => ({
-  resolveRelativePathInDir: vi.fn(),
+  resolveEditableFileUri: vi.fn(),
 }));
 
 vi.mock("../../redux/thunks/handleApplyStateUpdate", () => ({
@@ -18,13 +18,13 @@ vi.mock("../../redux/thunks/handleApplyStateUpdate", () => ({
 
 describe("singleFindAndReplaceImpl", () => {
   let mockExtras: ClientToolExtras;
-  let mockResolveRelativePathInDir: Mock;
+  let mockResolveEditableFileUri: Mock;
   let mockApplyForEditTool: Mock;
 
   beforeEach(() => {
     vi.clearAllMocks();
 
-    mockResolveRelativePathInDir = vi.mocked(ideUtils.resolveRelativePathInDir);
+    mockResolveEditableFileUri = vi.mocked(ideUtils.resolveEditableFileUri);
     mockApplyForEditTool = vi.mocked(applyForEditTool);
 
     mockExtras = {
@@ -48,7 +48,7 @@ describe("singleFindAndReplaceImpl", () => {
   describe("argument validation", () => {
     beforeEach(() => {
       // For validation tests, make the file exist so we can test validation errors
-      mockResolveRelativePathInDir.mockResolvedValue("/test/file.txt");
+      mockResolveEditableFileUri.mockResolvedValue("/test/file.txt");
       mockExtras.ideMessenger.ide.readFile = vi
         .fn()
         .mockResolvedValue("content");
@@ -118,7 +118,7 @@ describe("singleFindAndReplaceImpl", () => {
 
   describe("file resolution", () => {
     it("should throw error if file does not exist", async () => {
-      mockResolveRelativePathInDir.mockResolvedValue(null);
+      mockResolveEditableFileUri.mockResolvedValue(null);
 
       const args = {
         filepath: "nonexistent.txt",
@@ -136,7 +136,7 @@ describe("singleFindAndReplaceImpl", () => {
     });
 
     it("should resolve relative file paths", async () => {
-      mockResolveRelativePathInDir.mockResolvedValue("/absolute/path/test.txt");
+      mockResolveEditableFileUri.mockResolvedValue("/absolute/path/test.txt");
       mockExtras.ideMessenger.ide.readFile = vi
         .fn()
         .mockResolvedValue("test content");
@@ -149,7 +149,7 @@ describe("singleFindAndReplaceImpl", () => {
 
       await singleFindAndReplaceImpl(args, "tool-call-id", mockExtras);
 
-      expect(mockResolveRelativePathInDir).toHaveBeenCalledWith(
+      expect(mockResolveEditableFileUri).toHaveBeenCalledWith(
         "test.txt",
         mockExtras.ideMessenger.ide,
       );
@@ -161,7 +161,7 @@ describe("singleFindAndReplaceImpl", () => {
 
   describe("string replacement", () => {
     beforeEach(() => {
-      mockResolveRelativePathInDir.mockResolvedValue("/test/file.txt");
+      mockResolveEditableFileUri.mockResolvedValue("/test/file.txt");
     });
 
     it("should throw error if old_string is not found in file", async () => {
@@ -324,7 +324,7 @@ describe("singleFindAndReplaceImpl", () => {
 
   describe("return value", () => {
     it("should return correct response structure", async () => {
-      mockResolveRelativePathInDir.mockResolvedValue("/test/file.txt");
+      mockResolveEditableFileUri.mockResolvedValue("/test/file.txt");
       mockExtras.ideMessenger.ide.readFile = vi
         .fn()
         .mockResolvedValue("test content");
@@ -350,7 +350,7 @@ describe("singleFindAndReplaceImpl", () => {
 
   describe("error handling", () => {
     it("should wrap and rethrow errors from readFile", async () => {
-      mockResolveRelativePathInDir.mockResolvedValue("/test/file.txt");
+      mockResolveEditableFileUri.mockResolvedValue("/test/file.txt");
       mockExtras.ideMessenger.ide.readFile = vi
         .fn()
         .mockRejectedValue(new Error("Permission denied"));

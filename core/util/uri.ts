@@ -102,6 +102,219 @@ export function findUriInDirs(
   };
 }
 
+/** A URI scheme has at least two characters, so `C:\a` is not a URI */
+export function hasUriScheme(pathOrUri: string): boolean {
+  return /^[a-zA-Z][a-zA-Z0-9+.-]+:/.test(pathOrUri);
+}
+
+/** A Windows drive-letter path, a UNC path or a POSIX absolute path */
+export function isAbsoluteLocalPath(path: string): boolean {
+  return (
+    /^[a-zA-Z]:([\\/]|$)/.test(path) ||
+    path.startsWith("\\\\") ||
+    path.startsWith("/")
+  );
+}
+
+/** Decodes a run of %XX escapes, keeping an escape that isn't valid UTF-8,
+  as vscode.Uri does, so a check sees the path VS Code opens */
+function decodeEscapes(escapes: string): string {
+  try {
+    return decodeURIComponent(escapes);
+  } catch {
+    return escapes.length > 3
+      ? escapes.slice(0, 3) + decodeEscapes(escapes.slice(3))
+      : escapes;
+  }
+}
+
+/** Splits a "/"-separated path, resolving "." and ".." parts.
+  ".." never goes above a drive letter, a UNC share or "/"; a relative
+  path keeps its leading ".." parts. */
+function normalizePathParts(path: string): { prefix: string; parts: string[] } {
+  const prefix = path.startsWith("//") ? "//" : path.startsWith("/") ? "/" : "";
+  const parts: string[] = [];
+  const isDrivePath = /^[a-zA-Z]:/.test(path);
+  // Parts that make up the root: "c:", or "server/share" for UNC
+  const rootLength = isDrivePath ? 1 : prefix === "//" ? 2 : 0;
+  for (const part of path.slice(prefix.length).split("/")) {
+    if (part === "" || part === ".") {
+      continue;
+    }
+    if (part === "..") {
+      if (parts.length > rootLength && parts[parts.length - 1] !== "..") {
+        parts.pop();
+      } else if (prefix === "" && !isDrivePath) {
+        parts.push(part);
+      }
+      continue;
+    }
+    parts.push(part);
+  }
+  return { prefix, parts };
+}
+
+/**
+  A decoded, "/"-separated form of a URI's path or of an OS path, so that
+  paths written in different forms can be compared:
+    file:///c%3A/My%20Projects/a.ts and C:\My Projects\a.ts -> c:/My Projects/a.ts
+    file://server/share/a.ts and \\server\share\a.ts -> //server/share/a.ts
+  The scheme and a remote authority (vscode-remote://wsl+x) are dropped; use
+  findLocalPathInDirs to match a URI against directories of the same root.
+  A "\" is a separator in a URI too (file:///c%3A/proj/..%5Ca.ts), because
+  Windows reads the decoded path that way.
+**/
+export function localPathKey(pathOrUri: string): string {
+  let path: string;
+  if (hasUriScheme(pathOrUri)) {
+    const comps = URI.parse(pathOrUri);
+    path = (comps.path ?? "").replace(/(%[0-9A-Fa-f]{2})+/g, decodeEscapes);
+    const host = (comps.host ?? "").toLowerCase();
+    if (comps.scheme === "file" && host && host !== "localhost") {
+      path = `//${host}${path}`;
+    }
+  } else {
+    path = pathOrUri;
+  }
+  path = path.replace(/\\/g, "/").replace(/^\/([a-zA-Z]:)/, "$1");
+  if (/^[a-zA-Z]:/.test(path)) {
+    path = path[0].toLowerCase() + path.slice(1);
+  }
+  const { prefix, parts } = normalizePathParts(path);
+  return prefix + parts.join("/");
+}
+
+/** Windows paths (drive letters and UNC shares) ignore case */
+function isCaseInsensitiveKey(key: string): boolean {
+  return /^[a-z]:/.test(key) || key.startsWith("//");
+}
+
+function foldKey(key: string, caseInsensitive: boolean): string {
+  return caseInsensitive ? key.toLowerCase() : key;
+}
+
+/** Whether two URIs or OS paths name the same file */
+export function isSameLocalPath(a: string, b: string): boolean {
+  const keyA = localPathKey(a);
+  const keyB = localPathKey(b);
+  const caseInsensitive = isCaseInsensitiveKey(keyA);
+  return foldKey(keyA, caseInsensitive) === foldKey(keyB, caseInsensitive);
+}
+
+/** Whether a URI or OS path ends with a relative path, whole part by part:
+  file:///c%3A/My%20Projects/src/a.ts ends with src\a.ts, not with c\a.ts */
+export function localPathEndsWith(
+  uriOrPath: string,
+  relativePath: string,
+): boolean {
+  const suffix = localPathKey(relativePath);
+  if (
+    suffix === "" ||
+    isAbsoluteLocalPath(suffix) ||
+    suffix === ".." ||
+    suffix.startsWith("../")
+  ) {
+    return false;
+  }
+  const key = localPathKey(uriOrPath);
+  const caseInsensitive = isCaseInsensitiveKey(key);
+  const foldedKey = foldKey(key, caseInsensitive);
+  const foldedSuffix = foldKey(suffix, caseInsensitive);
+  return foldedKey === foldedSuffix || foldedKey.endsWith(`/${foldedSuffix}`);
+}
+
+/**
+  Finds the directory that contains an absolute OS path or a URI, comparing
+  decoded paths, so C:\proj\a.ts is found in file:///c%3A/proj. A URI only
+  matches directories with the same scheme and authority; an OS path matches
+  a directory with the same path under any scheme, so /home/me/a.ts is found
+  in vscode-remote://wsl+ubuntu/home/me.
+  Returns the decoded path relative to that directory.
+**/
+export function findLocalPathInDirs(
+  pathOrUri: string,
+  dirUriCandidates: string[],
+): { dirUri: string; relativePath: string } | undefined {
+  const inputComps = hasUriScheme(pathOrUri) ? URI.parse(pathOrUri) : undefined;
+  if (!inputComps && !isAbsoluteLocalPath(pathOrUri)) {
+    return undefined;
+  }
+  const { prefix, parts } = normalizePathParts(localPathKey(pathOrUri));
+
+  for (const dirUri of dirUriCandidates) {
+    if (inputComps) {
+      const dirComps = URI.parse(dirUri);
+      if (
+        inputComps.scheme !== dirComps.scheme ||
+        getUriAuthority(inputComps) !== getUriAuthority(dirComps)
+      ) {
+        continue;
+      }
+    }
+    const dirKey = localPathKey(dirUri);
+    const dir = normalizePathParts(dirKey);
+    const caseInsensitive = isCaseInsensitiveKey(dirKey);
+    if (
+      dir.prefix !== prefix ||
+      dir.parts.length > parts.length ||
+      dir.parts.some(
+        (part, i) =>
+          foldKey(part, caseInsensitive) !== foldKey(parts[i], caseInsensitive),
+      )
+    ) {
+      continue;
+    }
+    return {
+      dirUri,
+      relativePath: parts.slice(dir.parts.length).join("/"),
+    };
+  }
+  return undefined;
+}
+
+/**
+  The URI of an absolute OS path or of a URI, rebuilt from its localPathKey so
+  that no ".", ".." or "\" is left in it: the URI a check sees is the URI that
+  gets opened. An OS path takes the scheme and authority of the first workspace
+  folder, so /tmp/a.ts is vscode-remote://wsl%2Bubuntu/tmp/a.ts in a WSL window;
+  a UNC path keeps its server. A URI must use the file scheme or the scheme and
+  authority of a workspace folder. Returns undefined for any other URI
+  (vscode-userdata:, untitled:) and for a relative path.
+**/
+export function localPathToUri(
+  pathOrUri: string,
+  workspaceDirs: string[],
+): string | undefined {
+  const inputComps = hasUriScheme(pathOrUri) ? URI.parse(pathOrUri) : undefined;
+  let rootUri = workspaceDirs[0] ?? "file:///";
+  if (inputComps) {
+    const isWorkspaceRoot = workspaceDirs.some((dir) => {
+      const dirComps = URI.parse(dir);
+      return (
+        dirComps.scheme === inputComps.scheme &&
+        getUriAuthority(dirComps) === getUriAuthority(inputComps)
+      );
+    });
+    if (inputComps.scheme !== "file" && !isWorkspaceRoot) {
+      return undefined;
+    }
+    rootUri = pathOrUri;
+  } else if (!isAbsoluteLocalPath(pathOrUri)) {
+    return undefined;
+  }
+
+  const key = localPathKey(pathOrUri);
+  if (key.startsWith("//")) {
+    // A UNC path: \\server\share\a.ts or file://server/share/a.ts
+    if (inputComps && inputComps.scheme !== "file") {
+      return undefined;
+    }
+    const [server, ...parts] = key.slice(2).split("/");
+    return joinPathsToUri(`file://${server}/`, parts.join("/"));
+  }
+  return joinPathsToUri(URI.resolve(rootUri, "/"), key);
+}
+
 /*
   Returns just the file or folder name of a URI
 */

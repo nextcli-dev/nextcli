@@ -1,6 +1,6 @@
 import { IDE } from "../..";
 import { ContinueError, ContinueErrorReason } from "../../util/errors";
-import { resolveRelativePathInDir } from "../../util/ideUtils";
+import { resolveEditableFileUri } from "../../util/ideUtils";
 
 export async function validateSearchAndReplaceFilepath(
   filepath: unknown,
@@ -12,7 +12,7 @@ export async function validateSearchAndReplaceFilepath(
       "filepath (string) is required",
     );
   }
-  const resolvedFilepath = await resolveRelativePathInDir(filepath, ide);
+  const resolvedFilepath = await resolveEditableFileUri(filepath, ide);
   if (!resolvedFilepath) {
     throw new ContinueError(
       ContinueErrorReason.FileNotFound,

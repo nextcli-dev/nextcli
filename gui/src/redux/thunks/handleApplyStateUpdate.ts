@@ -1,6 +1,7 @@
 import { createAsyncThunk } from "@reduxjs/toolkit";
 import { ApplyState, ApplyToFilePayload } from "core";
 import { EDIT_MODE_STREAM_ID } from "core/edit/constants";
+import { findLocalPathInDirs } from "core/util/uri";
 import { logAgentModeEditOutcome } from "../../util/editOutcomeLogger";
 import {
   selectApplyStateByToolCallId,
@@ -50,14 +51,19 @@ export const handleApplyStateUpdate = createAsyncThunk<
         );
 
         // Never auto-accept an apply result that looks like it destroyed the
-        // file (e.g. the apply model answered in prose); leave the diff for
-        // the user to review.
+        // file (e.g. the apply model answered in prose), or an edit to a file
+        // outside the workspace folders; leave the diff for the user to review.
         if (
           applyState.status === "done" &&
           !applyState.destructiveWarning &&
           toolCallState?.toolCall.function.name &&
           getState().ui.toolSettings[toolCallState.toolCall.function.name] ===
-            "allowedWithoutPermission"
+            "allowedWithoutPermission" &&
+          applyState.filepath &&
+          findLocalPathInDirs(
+            applyState.filepath,
+            await extra.ideMessenger.ide.getWorkspaceDirs(),
+          )?.relativePath
         ) {
           extra.ideMessenger.post("acceptDiff", {
             streamId: applyState.streamId,
@@ -175,14 +181,16 @@ export const handleApplyStateUpdate = createAsyncThunk<
                     }),
                   );
                 }
-              } else {
+              } else if (!toolCallState.output?.length) {
+                // Keep the output of whatever errored the call (such as the
+                // "Apply Error" from applyForEditTool): it says what went wrong
                 dispatch(
                   updateToolCallOutput({
                     toolCallId: applyState.toolCallId,
                     contextItems: [
                       {
                         name: "Edit Failed",
-                        content: `Failed to edit ${applyState.filepath}. To continue working with the file, read it again to see the most up-to-date contents`,
+                        content: `Failed to edit ${applyState.filepath ?? newApplyState?.filepath ?? "the file"}. To continue working with the file, read it again to see the most up-to-date contents`,
                         description: "",
                         hidden: true,
                       },
@@ -219,13 +227,16 @@ export const applyForEditTool = createAsyncThunk<
   );
 
   let didError = false;
+  let errorMessage: string | undefined;
   try {
     const response = await extra.ideMessenger.request("applyToFile", payload);
     if (response.status === "error") {
       didError = true;
+      errorMessage = response.error;
     }
   } catch (e) {
     didError = true;
+    errorMessage = e instanceof Error ? e.message : String(e);
   }
   if (didError) {
     const state = getState();
@@ -251,7 +262,7 @@ export const applyForEditTool = createAsyncThunk<
               icon: "problems",
               name: "Apply Error",
               description: "Failed to apply changes",
-              content: `Error editing file: failed to apply changes to file.\n\nPlease try again with correct args or notify the user and request further instructions.`,
+              content: `Error editing ${payload.filepath ?? "file"}: ${errorMessage || "failed to apply changes to file."}\n\nPlease try again with correct args or notify the user and request further instructions.`,
               hidden: false,
             },
           ],
@@ -262,6 +273,7 @@ export const applyForEditTool = createAsyncThunk<
           status: "closed",
           streamId: applyState.streamId,
           toolCallId,
+          filepath: payload.filepath,
         }),
       );
     }

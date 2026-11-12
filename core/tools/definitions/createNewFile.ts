@@ -1,7 +1,8 @@
 import { ToolPolicy } from "@continuedev/terminal-security";
 import { Tool } from "../..";
-import { ResolvedPath, resolveInputPath } from "../../util/pathResolver";
+import { ResolvedPath, resolveNewFilePath } from "../../util/pathResolver";
 import { BUILT_IN_GROUP_NAME, BuiltInToolNames } from "../builtIn";
+import { getStringArg } from "../parseArgs";
 import { evaluateFileAccessPolicy } from "../policies/fileAccess";
 
 export const createNewFileTool: Tool = {
@@ -42,10 +43,12 @@ export const createNewFileTool: Tool = {
     ],
   },
   preprocessArgs: async (args, { ide }) => {
-    const filepath = args.filepath as string;
-    const resolvedPath = await resolveInputPath(ide, filepath);
-
-    // Store the resolved path info in args for policy evaluation
+    // The same resolution createNewFileImpl writes to, so the policy below
+    // judges the file that gets written
+    const resolvedPath = await resolveNewFilePath(
+      ide,
+      getStringArg(args, "filepath"),
+    );
     return {
       resolvedPath,
     };
@@ -57,10 +60,11 @@ export const createNewFileTool: Tool = {
   ): ToolPolicy => {
     const resolvedPath = processedArgs?.resolvedPath as
       | ResolvedPath
-      | null
       | undefined;
-    if (!resolvedPath) return basePolicy;
-
-    return evaluateFileAccessPolicy(basePolicy, resolvedPath.isWithinWorkspace);
+    // Without a resolved path, treat the file as outside the workspace
+    return evaluateFileAccessPolicy(
+      basePolicy,
+      resolvedPath?.isWithinWorkspace ?? false,
+    );
   },
 };
