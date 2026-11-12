@@ -116,12 +116,8 @@ export function isAbsoluteLocalPath(path: string): boolean {
   );
 }
 
-/** Decodes each run of %XX escapes on its own and keeps an escape that isn't
-  valid UTF-8, as vscode.Uri does, so a check sees the path VS Code opens */
-function percentDecode(value: string): string {
-  return value.replace(/(%[0-9A-Fa-f]{2})+/g, decodeEscapes);
-}
-
+/** Decodes a run of %XX escapes, keeping an escape that isn't valid UTF-8,
+  as vscode.Uri does, so a check sees the path VS Code opens */
 function decodeEscapes(escapes: string): string {
   try {
     return decodeURIComponent(escapes);
@@ -172,7 +168,7 @@ export function localPathKey(pathOrUri: string): string {
   let path: string;
   if (hasUriScheme(pathOrUri)) {
     const comps = URI.parse(pathOrUri);
-    path = percentDecode(comps.path ?? "");
+    path = (comps.path ?? "").replace(/(%[0-9A-Fa-f]{2})+/g, decodeEscapes);
     const host = (comps.host ?? "").toLowerCase();
     if (comps.scheme === "file" && host && host !== "localhost") {
       path = `//${host}${path}`;

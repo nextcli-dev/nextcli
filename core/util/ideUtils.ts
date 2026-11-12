@@ -26,8 +26,6 @@ export async function resolveEditableFileUri(
 ): Promise<string | undefined> {
   const path = filepath.trim();
   const workspaceDirs = await ide.getWorkspaceDirs();
-  let openFiles: string[] | undefined;
-  const getOpenFiles = async () => (openFiles ??= await ide.getOpenFiles());
   const isWorkspaceFolder = (uri: string) =>
     findLocalPathInDirs(uri, workspaceDirs)?.relativePath === "";
 
@@ -39,7 +37,7 @@ export async function resolveEditableFileUri(
         return uri;
       }
     }
-    const openFile = (await getOpenFiles()).find((uri) =>
+    const openFile = (await ide.getOpenFiles()).find((uri) =>
       isSameLocalPath(uri, path),
     );
     if (openFile) {
@@ -70,7 +68,7 @@ export async function resolveEditableFileUri(
   }
 
   // The model sometimes gives only the last parts of an open file's path
-  return (await getOpenFiles()).find((uri) => localPathEndsWith(uri, path));
+  return (await ide.getOpenFiles()).find((uri) => localPathEndsWith(uri, path));
 }
 
 /*

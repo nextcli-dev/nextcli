@@ -30,14 +30,10 @@ async function isUriWithinWorkspace(ide: IDE, uri: string): Promise<boolean> {
   const workspaceDirs = await ide.getWorkspaceDirs();
   // Compare decoded paths: pathToFileURL gives file:///C:/proj/a.ts, while
   // VS Code's workspace folders look like file:///c%3A/proj
-  const match = findLocalPathInDirs(uri, workspaceDirs);
-
   // Check both: within workspace path AND file exists
-  if (match) {
-    return await ide.fileExists(uri);
-  }
-
-  return false;
+  return findLocalPathInDirs(uri, workspaceDirs)
+    ? await ide.fileExists(uri)
+    : false;
 }
 
 export async function resolveInputPath(
@@ -119,13 +115,12 @@ export async function resolveNewFilePath(
 ): Promise<ResolvedPath> {
   const trimmedPath = inputPath.trim();
   const workspaceDirs = await ide.getWorkspaceDirs();
-  const expandedPath = hasUriScheme(trimmedPath)
-    ? trimmedPath
-    : untildify(trimmedPath);
+  const isUri = hasUriScheme(trimmedPath);
+  const expandedPath = isUri ? trimmedPath : untildify(trimmedPath);
 
   let uri: string | undefined;
   let isAbsolute = false;
-  if (hasUriScheme(expandedPath) || isAbsoluteLocalPath(expandedPath)) {
+  if (isUri || isAbsoluteLocalPath(expandedPath)) {
     const match = findLocalPathInDirs(expandedPath, workspaceDirs);
     if (match && !match.relativePath) {
       throw new ContinueError(
