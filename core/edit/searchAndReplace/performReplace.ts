@@ -1,5 +1,6 @@
 import { EditOperation } from "../../tools/definitions/multiEdit";
 import { ContinueError, ContinueErrorReason } from "../../util/errors";
+import { toLf, usesCrlf } from "../../util/lineEndings";
 import { SearchMatchResult, findSearchMatches } from "./findSearchMatch";
 
 /**
@@ -82,12 +83,43 @@ function adjustReplacementIndentation(
   return adjusted.join("\n");
 }
 
+/**
+ * Replaces oldString with newString in fileContent. A CRLF file (common on
+ * Windows) is matched and edited with LF line endings and given back with
+ * CRLF, since models write old_string and new_string with "\n": otherwise an
+ * exact match fails and the new text brings LF lines into a CRLF file.
+ */
 export function executeFindAndReplace(
   fileContent: string,
   oldString: string,
   newString: string,
   replaceAll: boolean,
   editIndex = 0,
+): string {
+  if (usesCrlf(fileContent)) {
+    return replaceInContent(
+      toLf(fileContent),
+      toLf(oldString),
+      toLf(newString),
+      replaceAll,
+      editIndex,
+    ).replace(/\n/g, "\r\n");
+  }
+  return replaceInContent(
+    fileContent,
+    oldString,
+    newString,
+    replaceAll,
+    editIndex,
+  );
+}
+
+function replaceInContent(
+  fileContent: string,
+  oldString: string,
+  newString: string,
+  replaceAll: boolean,
+  editIndex: number,
 ): string {
   const matches = findSearchMatches(fileContent, oldString);
 

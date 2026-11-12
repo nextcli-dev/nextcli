@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { ContinueErrorReason } from "../../util/errors";
-import { executeFindAndReplace } from "./performReplace";
+import {
+  executeFindAndReplace,
+  executeMultiFindAndReplace,
+} from "./performReplace";
 
 describe("executeFindAndReplace", () => {
   describe("normal cases", () => {
@@ -326,5 +329,59 @@ describe("executeFindAndReplace", () => {
 
       expect(result).toBe("new content");
     });
+  });
+});
+
+describe("executeFindAndReplace with CRLF files", () => {
+  const CRLF_FILE =
+    "function a() {\r\n  return 1;\r\n}\r\n\r\nfunction b() {\r\n  return 2;\r\n}\r\n";
+
+  it("matches an LF old_string and keeps CRLF in the new text", () => {
+    const result = executeFindAndReplace(
+      CRLF_FILE,
+      "function b() {\n  return 2;\n}",
+      "function b() {\n  // two\n  return 2;\n}",
+      false,
+    );
+
+    expect(result).toBe(
+      "function a() {\r\n  return 1;\r\n}\r\n\r\nfunction b() {\r\n  // two\r\n  return 2;\r\n}\r\n",
+    );
+  });
+
+  it("matches a CRLF old_string the same way", () => {
+    const result = executeFindAndReplace(
+      CRLF_FILE,
+      "  return 1;\r\n}",
+      "  return 10;\r\n}",
+      false,
+    );
+
+    expect(result).toBe(CRLF_FILE.replace("return 1;", "return 10;"));
+  });
+
+  it("keeps CRLF across a multi-edit", () => {
+    const result = executeMultiFindAndReplace(CRLF_FILE, [
+      { old_string: "return 1;", new_string: "return 1;\n  // one" },
+      { old_string: "return 2;", new_string: "return 2;\n  // two" },
+    ]);
+
+    expect(result).not.toMatch(/[^\r]\n/);
+    expect(result).toContain("return 1;\r\n  // one\r\n}");
+    expect(result).toContain("return 2;\r\n  // two\r\n}");
+  });
+
+  it("leaves a file with mixed line endings as it is", () => {
+    const mixed = "a\r\nb\nc\r\n";
+
+    expect(executeFindAndReplace(mixed, "b", "x\ny", false)).toBe(
+      "a\r\nx\ny\nc\r\n",
+    );
+  });
+
+  it("leaves LF files unchanged", () => {
+    expect(executeFindAndReplace("a\nb\n", "b", "x\ny", false)).toBe(
+      "a\nx\ny\n",
+    );
   });
 });

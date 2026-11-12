@@ -207,6 +207,26 @@ describe("singleFindAndReplaceImpl", () => {
       });
     });
 
+    it("keeps CRLF line endings when the edit is written with LF", async () => {
+      mockExtras.ideMessenger.ide.readFile = vi
+        .fn()
+        .mockResolvedValue("Hello world\r\nThis is a test file\r\nGoodbye\r\n");
+
+      const args = {
+        filepath: "file.txt",
+        old_string: "Hello world\nThis is a test file",
+        new_string: "Hello world\nA new line\nThis is a test file",
+      };
+
+      await singleFindAndReplaceImpl(args, "tool-call-id", mockExtras);
+
+      expect(mockApplyForEditTool).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: "Hello world\r\nA new line\r\nThis is a test file\r\nGoodbye\r\n",
+        }),
+      );
+    });
+
     it("should throw error if old_string appears multiple times and replace_all is false", async () => {
       mockExtras.ideMessenger.ide.readFile = vi
         .fn()

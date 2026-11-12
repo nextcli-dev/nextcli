@@ -43,7 +43,7 @@ vi.mock("vscode", () => {
   const window = {
     activeTextEditor: undefined as any,
     visibleTextEditors: [] as any[],
-    createTextEditorDecorationType: () => ({ dispose() {} }),
+    createTextEditorDecorationType: vi.fn(() => ({ dispose() {} })),
     showWarningMessage: vi.fn(),
     showTextDocument: vi.fn(),
     onDidChangeActiveTextEditor: () => ({ dispose() {} }),
@@ -71,21 +71,26 @@ vi.mock("vscode", () => {
 import * as vscode from "vscode";
 import { streamDiff } from "core/diff/streamDiff";
 import { filterLeadingAndTrailingNewLineInsertion } from "core/autocomplete/filtering/streamTransforms/lineStream";
+import { myersDiff } from "core/diff/myers";
+import { generateLines } from "core/diff/util";
+import { executeFindAndReplace } from "core/edit/searchAndReplace/performReplace";
 import { VerticalDiffHandler } from "./handler";
 
-/** An editor backed by a string, applying edits like VS Code does */
-function createEditor(initial: string) {
+/** An editor backed by a string, applying edits like VS Code does. Like a
+  VS Code document, it has one line ending: line text excludes it, and
+  inserted text is converted to it. */
+function createEditor(initial: string, eol: "\n" | "\r\n" = "\n") {
   let text = initial;
-  const lines = () => text.split("\n");
+  const lines = () => text.split(eol);
   const offsetAt = (pos: vscode.Position) => {
     const ls = lines();
     if (pos.line >= ls.length) return text.length;
     let offset = 0;
-    for (let i = 0; i < pos.line; i++) offset += ls[i].length + 1;
+    for (let i = 0; i < pos.line; i++) offset += ls[i].length + eol.length;
     return offset + Math.min(pos.character, ls[pos.line].length);
   };
   const positionAt = (offset: number) => {
-    const before = text.slice(0, offset).split("\n");
+    const before = text.slice(0, offset).split(eol);
     return new vscode.Position(
       before.length - 1,
       before[before.length - 1].length,
@@ -100,7 +105,8 @@ function createEditor(initial: string) {
         range: new vscode.Range(positionAt(op.start), positionAt(op.end)),
         text: op.text,
       });
-      text = text.slice(0, op.start) + op.text + text.slice(op.end);
+      const inserted = op.text.replace(/\r\n|\r|\n/g, eol);
+      text = text.slice(0, op.start) + inserted + text.slice(op.end);
     }
     if (contentChanges.length) {
       (vscode.workspace as any).fireDocumentChange({
@@ -469,5 +475,114 @@ describe("VerticalDiffHandler user typing during the final Myers pass", () => {
     expect(statusUpdates.some((u) => u[0] === "done")).toBe(false);
     const closed = statusUpdates.find((u) => u[0] === "closed");
     expect(closed?.[4]).toBe(true);
+  });
+});
+
+describe("VerticalDiffHandler instant apply on a CRLF file", () => {
+  const CRLF_ORIGINAL = ORIGINAL.replace(/\n/g, "\r\n");
+
+  async function instantApply(newContent: string) {
+    const { editor, getText } = createEditor(CRLF_ORIGINAL, "\r\n");
+    (vscode.window as any).activeTextEditor = editor;
+    (vscode.window as any).visibleTextEditors = [editor];
+    const handler = new VerticalDiffHandler(
+      0,
+      editor.document.lineCount - 1,
+      editor,
+      new Map(),
+      () => {},
+      () => {},
+      { instant: true, onStatusUpdate: () => {} },
+    );
+    // What ApplyManager.applyToFile does for single_find_and_replace
+    await handler.reapplyWithMyersDiff(
+      myersDiff(editor.document.getText(), newContent),
+    );
+    return { handler, getText };
+  }
+
+  // The edited file that executeFindAndReplace gives for an LF old_string
+  const edited = executeFindAndReplace(
+    CRLF_ORIGINAL,
+    "    roles:\n      - chat\n  - name: Gemini 3.8 Flash",
+    "    roles:\n      - chat\n      - edit\n  - name: Gemini 3.8 Flash",
+    false,
+  );
+
+  it("accepting gives the edited file with CRLF line endings only", async () => {
+    const { handler, getText } = await instantApply(edited);
+    await handler.clear(true);
+
+    expect(getText()).toBe(edited);
+    expect(getText()).not.toMatch(/[^\r]\n|\r(?!\n)/);
+  });
+
+  it("shows removed lines without their CR", async () => {
+    const createDecoration = vi.mocked(
+      vscode.window.createTextEditorDecorationType,
+    );
+    createDecoration.mockClear();
+    const { handler } = await instantApply(
+      executeFindAndReplace(
+        CRLF_ORIGINAL,
+        "      - chat",
+        "      - edit",
+        true,
+      ),
+    );
+
+    const ghostTexts = createDecoration.mock.calls
+      .map(([options]) => options.after?.contentText)
+      .filter((text) => text !== undefined);
+    expect(ghostTexts).toEqual(["      - chat", "      - chat"]);
+    await handler.clear(false);
+  });
+
+  it("rejecting restores the CRLF file exactly", async () => {
+    const { handler, getText } = await instantApply(edited);
+    await handler.clear(false);
+
+    expect(getText()).toBe(CRLF_ORIGINAL);
+  });
+});
+
+describe("VerticalDiffHandler instant lazy apply on a CRLF file", () => {
+  // applyCodeBlock diffs on LF text, so the diff lines have no "\r"; the
+  // document is CRLF (what ApplyManager.handleExistingDocument streams)
+  const CRLF_ORIGINAL = ORIGINAL.replace(/\n/g, "\r\n");
+  const EDITED = ORIGINAL.replace(
+    "      - chat\n  - name: Gemini 3.8 Flash",
+    "      - chat\n      - edit\n  - name: Gemini 3.8 Flash",
+  );
+
+  async function streamInstant() {
+    const { editor, getText } = createEditor(CRLF_ORIGINAL, "\r\n");
+    (vscode.window as any).activeTextEditor = editor;
+    (vscode.window as any).visibleTextEditors = [editor];
+    const handler = new VerticalDiffHandler(
+      0,
+      editor.document.lineCount - 1,
+      editor,
+      new Map(),
+      () => {},
+      () => {},
+      { instant: true, onStatusUpdate: () => {} },
+    );
+    await handler.run(generateLines(myersDiff(ORIGINAL, EDITED)));
+    return { handler, getText };
+  }
+
+  it("accepting gives the edited file with CRLF line endings only", async () => {
+    const { handler, getText } = await streamInstant();
+    await handler.clear(true);
+
+    expect(getText()).toBe(EDITED.replace(/\n/g, "\r\n"));
+  });
+
+  it("rejecting restores the CRLF file exactly", async () => {
+    const { handler, getText } = await streamInstant();
+    await handler.clear(false);
+
+    expect(getText()).toBe(CRLF_ORIGINAL);
   });
 });
