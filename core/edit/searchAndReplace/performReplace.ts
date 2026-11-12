@@ -1,5 +1,6 @@
 import { EditOperation } from "../../tools/definitions/multiEdit";
 import { ContinueError, ContinueErrorReason } from "../../util/errors";
+import { toLf, usesCrlf } from "../../util/lineEndings";
 import { SearchMatchResult, findSearchMatches } from "./findSearchMatch";
 
 /**
@@ -81,14 +82,6 @@ function adjustReplacementIndentation(
   });
   return adjusted.join("\n");
 }
-
-/** Whether every line break is CRLF (a file with mixed line endings is not) */
-function usesCrlf(content: string): boolean {
-  const lineBreaks = content.match(/\r?\n/g);
-  return !!lineBreaks && lineBreaks.every((lineBreak) => lineBreak === "\r\n");
-}
-
-const toLf = (text: string) => text.replace(/\r\n/g, "\n");
 
 /**
  * Replaces oldString with newString in fileContent. A CRLF file (common on

@@ -72,6 +72,7 @@ import * as vscode from "vscode";
 import { streamDiff } from "core/diff/streamDiff";
 import { filterLeadingAndTrailingNewLineInsertion } from "core/autocomplete/filtering/streamTransforms/lineStream";
 import { myersDiff } from "core/diff/myers";
+import { generateLines } from "core/diff/util";
 import { executeFindAndReplace } from "core/edit/searchAndReplace/performReplace";
 import { VerticalDiffHandler } from "./handler";
 
@@ -518,6 +519,47 @@ describe("VerticalDiffHandler instant apply on a CRLF file", () => {
 
   it("rejecting restores the CRLF file exactly", async () => {
     const { handler, getText } = await instantApply(edited);
+    await handler.clear(false);
+
+    expect(getText()).toBe(CRLF_ORIGINAL);
+  });
+});
+
+describe("VerticalDiffHandler instant lazy apply on a CRLF file", () => {
+  // applyCodeBlock diffs on LF text, so the diff lines have no "\r"; the
+  // document is CRLF (what ApplyManager.handleExistingDocument streams)
+  const CRLF_ORIGINAL = ORIGINAL.replace(/\n/g, "\r\n");
+  const EDITED = ORIGINAL.replace(
+    "      - chat\n  - name: Gemini 3.8 Flash",
+    "      - chat\n      - edit\n  - name: Gemini 3.8 Flash",
+  );
+
+  async function streamInstant() {
+    const { editor, getText } = createEditor(CRLF_ORIGINAL, "\r\n");
+    (vscode.window as any).activeTextEditor = editor;
+    (vscode.window as any).visibleTextEditors = [editor];
+    const handler = new VerticalDiffHandler(
+      0,
+      editor.document.lineCount - 1,
+      editor,
+      new Map(),
+      () => {},
+      () => {},
+      { instant: true, onStatusUpdate: () => {} },
+    );
+    await handler.run(generateLines(myersDiff(ORIGINAL, EDITED)));
+    return { handler, getText };
+  }
+
+  it("accepting gives the edited file with CRLF line endings only", async () => {
+    const { handler, getText } = await streamInstant();
+    await handler.clear(true);
+
+    expect(getText()).toBe(EDITED.replace(/\n/g, "\r\n"));
+  });
+
+  it("rejecting restores the CRLF file exactly", async () => {
+    const { handler, getText } = await streamInstant();
     await handler.clear(false);
 
     expect(getText()).toBe(CRLF_ORIGINAL);
