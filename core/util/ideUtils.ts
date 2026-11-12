@@ -8,54 +8,69 @@ import {
   joinEncodedUriPathSegmentToUri,
   joinPathsToUri,
   localPathEndsWith,
+  localPathToUri,
   pathToUriPathSegment,
 } from "./uri";
 
 /*
-  Resolves the path an edit tool was given to the URI of an existing file.
-  Accepts the forms the read tools accept: a workspace-relative path (with
-  "/" or "\"), an absolute path (C:\..., \\server\share\..., /...) or a
-  file:// URI. An absolute path must be inside a workspace folder or name an
-  open file, so the edit tools reach the same files as before, by any path form.
+  Resolves the path an edit tool was given to the URI of an existing file:
+  a workspace-relative path (with "/" or "\"), an absolute path (C:\...,
+  \\server\share\..., /...) or a URI, the forms the read tools accept.
+  A file outside the workspace folders resolves too, by an absolute path or
+  by "..": handleApplyStateUpdate never auto-accepts an edit to it.
+  Never returns a workspace folder itself (fileExists is true for folders).
 */
 export async function resolveEditableFileUri(
   filepath: string,
   ide: IDE,
 ): Promise<string | undefined> {
-  let path = filepath.trim();
-  if (path.startsWith("./") || path.startsWith(".\\")) {
-    path = path.slice(2);
-  }
+  const path = filepath.trim();
+  const workspaceDirs = await ide.getWorkspaceDirs();
+  let openFiles: string[] | undefined;
+  const getOpenFiles = async () => (openFiles ??= await ide.getOpenFiles());
+  const isWorkspaceFolder = (uri: string) =>
+    findLocalPathInDirs(uri, workspaceDirs)?.relativePath === "";
 
-  const isAbsolute = hasUriScheme(path) || isAbsoluteLocalPath(path);
-  if (isAbsolute) {
-    const match = findLocalPathInDirs(path, await ide.getWorkspaceDirs());
-    if (match) {
+  if (hasUriScheme(path) || isAbsoluteLocalPath(path)) {
+    const match = findLocalPathInDirs(path, workspaceDirs);
+    if (match?.relativePath) {
       const uri = joinPathsToUri(match.dirUri, match.relativePath);
       if (await ide.fileExists(uri)) {
         return uri;
       }
     }
-    const openFile = (await ide.getOpenFiles()).find((uri) =>
+    const openFile = (await getOpenFiles()).find((uri) =>
       isSameLocalPath(uri, path),
     );
     if (openFile) {
       return openFile;
     }
-    // A POSIX path such as /src/a.ts may still mean "relative to the
-    // workspace"; that was the only reading before absolute paths worked
-    if (!path.startsWith("/")) {
-      return undefined;
+    // A POSIX path such as /src/a.ts usually means "relative to the
+    // workspace", so that reading comes before the filesystem root
+    if (path.startsWith("/") && !path.startsWith("//")) {
+      const workspaceUri = await resolveRelativePathInDir(
+        path,
+        ide,
+        workspaceDirs,
+      );
+      if (workspaceUri && !isWorkspaceFolder(workspaceUri)) {
+        return workspaceUri;
+      }
     }
+    const uri = localPathToUri(path, workspaceDirs);
+    if (uri && !isWorkspaceFolder(uri) && (await ide.fileExists(uri))) {
+      return uri;
+    }
+    return undefined;
   }
 
-  const relativeMatch = await resolveRelativePathInDir(path, ide);
-  if (relativeMatch) {
-    return relativeMatch;
+  const relativeUri = await resolveRelativePathInDir(path, ide, workspaceDirs);
+  if (relativeUri && !isWorkspaceFolder(relativeUri)) {
+    return relativeUri;
   }
 
   // The model sometimes gives only the last parts of an open file's path
-  return (await ide.getOpenFiles()).find((uri) => localPathEndsWith(uri, path));
+  return (await getOpenFiles()).find((uri) => localPathEndsWith(uri, path));
 }
 
 /*
@@ -134,7 +149,7 @@ export async function inferResolvedUriFromRelativePath(
   // Sometimes the model will decide to only output the base name or small number of path parts
   // in which case we shouldn't create a new file if it matches the current file
   const activeFile = await ide.getCurrentFile();
-  if (activeFile && activeFile.path.endsWith(relativePath)) {
+  if (activeFile && localPathEndsWith(activeFile.path, relativePath)) {
     return activeFile.path;
   }
 

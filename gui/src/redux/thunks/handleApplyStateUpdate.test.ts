@@ -84,6 +84,9 @@ describe("handleApplyStateUpdate", () => {
       ideMessenger: {
         post: vi.fn(),
         request: vi.fn(),
+        ide: {
+          getWorkspaceDirs: vi.fn().mockResolvedValue(["file:///proj"]),
+        },
       },
     };
   });
@@ -183,13 +186,38 @@ describe("handleApplyStateUpdate", () => {
       });
     }
 
-    it("auto-accepts a normal result", async () => {
+    it.each(["file:///proj/config.yaml", "file:///proj/src/a%20b.ts"])(
+      "auto-accepts a normal result for %s, inside the workspace",
+      async (filepath) => {
+        setup();
+        const applyState: ApplyState = {
+          streamId: "chat-stream",
+          toolCallId: "test-tool-call",
+          status: "done",
+          filepath,
+        };
+
+        await handleApplyStateUpdate(applyState)(
+          mockDispatch,
+          mockGetState,
+          mockExtra,
+        );
+
+        expect(mockExtra.ideMessenger.post).toHaveBeenCalledWith("acceptDiff", {
+          streamId: "chat-stream",
+          filepath,
+        });
+      },
+    );
+
+    it("does not auto-accept a result flagged as destructive", async () => {
       setup();
       const applyState: ApplyState = {
         streamId: "chat-stream",
         toolCallId: "test-tool-call",
         status: "done",
-        filepath: "config.yaml",
+        filepath: "file:///proj/config.yaml",
+        destructiveWarning: "looks destructive",
       };
 
       await handleApplyStateUpdate(applyState)(
@@ -198,20 +226,25 @@ describe("handleApplyStateUpdate", () => {
         mockExtra,
       );
 
-      expect(mockExtra.ideMessenger.post).toHaveBeenCalledWith("acceptDiff", {
-        streamId: "chat-stream",
-        filepath: "config.yaml",
-      });
+      expect(mockExtra.ideMessenger.post).not.toHaveBeenCalledWith(
+        "acceptDiff",
+        expect.anything(),
+      );
     });
 
-    it("does not auto-accept a result flagged as destructive", async () => {
+    it.each([
+      ["a file outside the workspace", "file:///etc/passwd"],
+      ["a path that climbs out", "file:///proj/..%5C..%5Cetc%5Cpasswd"],
+      ["a file on another server", "file://etc/passwd"],
+      ["the workspace folder itself", "file:///proj"],
+      ["no file", undefined],
+    ])("leaves the diff for review for %s", async (_, filepath) => {
       setup();
       const applyState: ApplyState = {
         streamId: "chat-stream",
         toolCallId: "test-tool-call",
         status: "done",
-        filepath: "config.yaml",
-        destructiveWarning: "looks destructive",
+        filepath,
       };
 
       await handleApplyStateUpdate(applyState)(

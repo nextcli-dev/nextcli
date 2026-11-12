@@ -18,9 +18,7 @@ export const editToolImpl: ClientToolImpl = async (
     extras.ideMessenger.ide,
   );
   if (!firstUriMatch) {
-    throw new Error(
-      `${args.filepath} does not exist in the workspace or the open editors`,
-    );
+    throw new Error(`${args.filepath} does not exist`);
   }
   const streamId = uuid();
   void extras.dispatch(

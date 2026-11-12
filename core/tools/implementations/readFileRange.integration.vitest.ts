@@ -9,6 +9,11 @@ vi.mock("../../util/ideUtils", () => ({
 
 vi.mock("../../util/uri", () => ({
   getUriPathBasename: vi.fn(),
+  // resolveInputPath checks that the resolved file is inside the workspace
+  findLocalPathInDirs: vi.fn(() => ({
+    dirUri: "file:///",
+    relativePath: "test.txt",
+  })),
 }));
 
 vi.mock("./readFileLimit", () => ({
@@ -27,6 +32,7 @@ test("readFileRangeImpl handles out-of-bounds ranges gracefully", async () => {
 
   // Test case 1: Start line beyond end of file
   const mockIdeOutOfBounds = {
+    getWorkspaceDirs: vi.fn().mockResolvedValue(["file:///"]),
     readRangeInFile: vi.fn().mockResolvedValue(""), // IDE returns empty string
   };
 
@@ -50,6 +56,7 @@ test("readFileRangeImpl handles out-of-bounds ranges gracefully", async () => {
 
   // Test case 2: End line beyond end of file
   const mockIdePartialRange = {
+    getWorkspaceDirs: vi.fn().mockResolvedValue(["file:///"]),
     readRangeInFile: vi.fn().mockResolvedValue("line5\nline6"), // IDE returns available content
   };
 
@@ -91,7 +98,11 @@ test("readFileRangeImpl handles out-of-bounds ranges gracefully", async () => {
 
 test("readFileRangeImpl validates line number constraints", async () => {
   const mockExtras = {
-    ide: { readRangeInFile: vi.fn(), readFile: vi.fn() },
+    ide: {
+      getWorkspaceDirs: vi.fn().mockResolvedValue(["file:///"]),
+      readRangeInFile: vi.fn(),
+      readFile: vi.fn(),
+    },
     config: { selectedModelByRole: { chat: { contextLength: 8192 } } },
   } as unknown as ToolExtras;
 
@@ -168,6 +179,7 @@ test("readFileRangeImpl handles normal ranges correctly", async () => {
   vi.mocked(throwIfFileExceedsHalfOfContext).mockResolvedValue(undefined);
 
   const mockIde = {
+    getWorkspaceDirs: vi.fn().mockResolvedValue(["file:///"]),
     readRangeInFile: vi.fn().mockResolvedValue("line2\nline3\nline4"),
   };
 

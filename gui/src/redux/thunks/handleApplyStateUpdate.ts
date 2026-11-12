@@ -1,6 +1,7 @@
 import { createAsyncThunk } from "@reduxjs/toolkit";
 import { ApplyState, ApplyToFilePayload } from "core";
 import { EDIT_MODE_STREAM_ID } from "core/edit/constants";
+import { findLocalPathInDirs } from "core/util/uri";
 import { logAgentModeEditOutcome } from "../../util/editOutcomeLogger";
 import {
   selectApplyStateByToolCallId,
@@ -50,14 +51,19 @@ export const handleApplyStateUpdate = createAsyncThunk<
         );
 
         // Never auto-accept an apply result that looks like it destroyed the
-        // file (e.g. the apply model answered in prose); leave the diff for
-        // the user to review.
+        // file (e.g. the apply model answered in prose), or an edit to a file
+        // outside the workspace folders; leave the diff for the user to review.
         if (
           applyState.status === "done" &&
           !applyState.destructiveWarning &&
           toolCallState?.toolCall.function.name &&
           getState().ui.toolSettings[toolCallState.toolCall.function.name] ===
-            "allowedWithoutPermission"
+            "allowedWithoutPermission" &&
+          applyState.filepath &&
+          findLocalPathInDirs(
+            applyState.filepath,
+            await extra.ideMessenger.ide.getWorkspaceDirs(),
+          )?.relativePath
         ) {
           extra.ideMessenger.post("acceptDiff", {
             streamId: applyState.streamId,
@@ -178,14 +184,13 @@ export const handleApplyStateUpdate = createAsyncThunk<
               } else if (!toolCallState.output?.length) {
                 // Keep the output of whatever errored the call (such as the
                 // "Apply Error" from applyForEditTool): it says what went wrong
-                const filepath = applyState.filepath ?? newApplyState?.filepath;
                 dispatch(
                   updateToolCallOutput({
                     toolCallId: applyState.toolCallId,
                     contextItems: [
                       {
                         name: "Edit Failed",
-                        content: `Failed to edit ${filepath ?? "the file"}. To continue working with the file, read it again to see the most up-to-date contents`,
+                        content: `Failed to edit ${applyState.filepath ?? newApplyState?.filepath ?? "the file"}. To continue working with the file, read it again to see the most up-to-date contents`,
                         description: "",
                         hidden: true,
                       },

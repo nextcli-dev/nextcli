@@ -55,16 +55,32 @@ describe("editToolImpl", () => {
     });
   });
 
-  it("rejects a file outside the workspace that is not open", async () => {
+  // handleApplyStateUpdate never auto-accepts the diff for it
+  it("applies the edit to an existing file outside the workspace", async () => {
+    const outside = "file:///c%3A/other/index.js";
+    vi.mocked(mockExtras.ideMessenger.ide.fileExists).mockImplementation(
+      async (uri: string) => uri === FILE || uri === outside,
+    );
+
+    await editToolImpl(
+      { filepath: "C:\\other\\index.js", changes: "// new" },
+      "tool-call-id",
+      mockExtras,
+    );
+
+    expect(mockApplyForEditTool).toHaveBeenCalledWith(
+      expect.objectContaining({ filepath: outside }),
+    );
+  });
+
+  it("rejects a file that does not exist", async () => {
     await expect(
       editToolImpl(
         { filepath: "C:\\other\\index.js", changes: "// new" },
         "tool-call-id",
         mockExtras,
       ),
-    ).rejects.toThrow(
-      "C:\\other\\index.js does not exist in the workspace or the open editors",
-    );
+    ).rejects.toThrow("C:\\other\\index.js does not exist");
     expect(mockApplyForEditTool).not.toHaveBeenCalled();
   });
 });

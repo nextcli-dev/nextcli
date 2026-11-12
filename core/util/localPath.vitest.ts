@@ -5,6 +5,7 @@ import {
   isSameLocalPath,
   localPathEndsWith,
   localPathKey,
+  localPathToUri,
 } from "./uri";
 
 // VS Code gives Windows workspace folders as file:///c%3A/... (lowercase
@@ -42,12 +43,60 @@ describe("localPathKey", () => {
     ["C:\\..\\..\\a.ts", "c:/a.ts"],
     ["/a/../../b", "/b"],
     ["../a.ts", "../a.ts"],
+    // Windows reads a decoded "\" in a URI as a separator
+    ["file:///c%3A/proj/src%5Ca.ts", "c:/proj/src/a.ts"],
+    ["file:///home/me/proj/..%5C..%5Cetc%5Cpasswd", "/home/etc/passwd"],
+    ["file:///c%3A/Users/me/proj/..\\..\\x", "c:/Users/x"],
   ])("%s -> %s", (input, expected) => {
     expect(localPathKey(input)).toBe(expected);
   });
 
   it("keeps a malformed escape instead of throwing", () => {
     expect(localPathKey("file:///proj/100%.ts")).toBe("/proj/100%.ts");
+  });
+
+  it("decodes the valid escapes next to a malformed one, as vscode.Uri does", () => {
+    expect(localPathKey("file:///proj/100%/..%5C..%5Cx")).toBe("/x");
+  });
+});
+
+describe("localPathToUri", () => {
+  it.each([
+    ["C:\\other\\a b.ts", [WIN_WORKSPACE], "file:///c%3A/other/a%20b.ts"],
+    ["c:/other/../x.ts", [WIN_WORKSPACE], "file:///c%3A/x.ts"],
+    ["\\\\server\\share\\a.ts", [WIN_WORKSPACE], "file://server/share/a.ts"],
+    ["file://server/share/a.ts", [WIN_WORKSPACE], "file://server/share/a.ts"],
+    ["/tmp/a.ts", ["file:///home/me/proj"], "file:///tmp/a.ts"],
+    ["/tmp/a.ts", [], "file:///tmp/a.ts"],
+    // An OS path is on the workspace's filesystem, even a remote one
+    [
+      "/tmp/a.ts",
+      ["vscode-remote://wsl%2Bubuntu/home/me/proj"],
+      "vscode-remote://wsl%2Bubuntu/tmp/a.ts",
+    ],
+    // A URI comes back without "..", "." or "\"
+    [
+      "file:///home/me/proj/../other/./a.ts",
+      ["file:///home/me/proj"],
+      "file:///home/me/other/a.ts",
+    ],
+    ["file:///c%3A/proj/..%5C..%5Ca.ts", [WIN_WORKSPACE], "file:///c%3A/a.ts"],
+  ])("%s in %j -> %s", (input, dirs, expected) => {
+    expect(localPathToUri(input, dirs)).toBe(expected);
+  });
+
+  it("returns undefined for a relative path or a URI on another filesystem", () => {
+    const dirs = ["vscode-remote://wsl%2Bubuntu/home/me/proj"];
+    expect(localPathToUri("src/a.ts", dirs)).toBeUndefined();
+    expect(
+      localPathToUri("vscode-userdata:/User/settings.json", dirs),
+    ).toBeUndefined();
+    expect(
+      localPathToUri("vscode-remote://ssh-remote%2Bother/a.ts", dirs),
+    ).toBeUndefined();
+    expect(localPathToUri("vscode-remote://wsl%2Bubuntu/tmp/a.ts", dirs)).toBe(
+      "vscode-remote://wsl%2Bubuntu/tmp/a.ts",
+    );
   });
 });
 
@@ -66,6 +115,16 @@ describe("isSameLocalPath", () => {
       true,
     );
     expect(isSameLocalPath("/proj/A.ts", "file:///proj/a.ts")).toBe(false);
+  });
+
+  it.each([
+    ["/proj/A.ts", "C:\\proj\\a.ts", false],
+    ["C:\\PROJ\\A.ts", "file:///c%3A/proj/a.ts", true],
+    ["\\\\Srv\\Share\\A.ts", "file://srv/share/a.ts", true],
+    ["/proj/a.ts", "file:///proj/a.ts", true],
+  ])("gives the same answer both ways for %s and %s", (a, b, expected) => {
+    expect(isSameLocalPath(a, b)).toBe(expected);
+    expect(isSameLocalPath(b, a)).toBe(expected);
   });
 });
 
@@ -151,6 +210,25 @@ describe("findLocalPathInDirs", () => {
     expect(
       findLocalPathInDirs("C:\\proj\\src\\..\\a.ts", ["file:///c%3A/proj"]),
     ).toEqual({ dirUri: "file:///c%3A/proj", relativePath: "a.ts" });
+  });
+
+  it("reads a \\ in a URI as a separator, so it can't climb out either", () => {
+    expect(
+      findLocalPathInDirs("file:///c%3A/proj/src%5Ca.ts", [
+        "file:///c%3A/proj",
+      ]),
+    ).toEqual({ dirUri: "file:///c%3A/proj", relativePath: "src/a.ts" });
+    expect(
+      findLocalPathInDirs("file:///home/me/proj/..%5C..%5Cetc%5Cpasswd", [
+        "file:///home/me/proj",
+      ]),
+    ).toBeUndefined();
+  });
+
+  it("counts the folder itself as inside it", () => {
+    expect(
+      findLocalPathInDirs("/home/me/proj", ["file:///home/me/proj"]),
+    ).toEqual({ dirUri: "file:///home/me/proj", relativePath: "" });
   });
 
   it("ignores relative paths and paths on another drive", () => {

@@ -27,4 +27,19 @@ describe("validateSearchAndReplaceFilepath", () => {
       validateSearchAndReplaceFilepath("C:\\other\\index.js", ide),
     ).rejects.toThrow(ContinueError);
   });
+
+  // The diff for it is never auto-accepted (handleApplyStateUpdate)
+  it("accepts an existing file outside the workspace", async () => {
+    const outside = "file:///c%3A/other/index.js";
+    const withOutside = {
+      ...ide,
+      fileExists: async (uri: string) => uri === FILE || uri === outside,
+    } as unknown as IDE;
+    expect(
+      await validateSearchAndReplaceFilepath(
+        "C:\\other\\index.js",
+        withOutside,
+      ),
+    ).toBe(outside);
+  });
 });
