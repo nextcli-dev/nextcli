@@ -62,6 +62,52 @@ describe("tokenizer", () => {
 
       expect(getModelContextLimit(model)).toBe(DEFAULT_CONTEXT_LENGTH);
     });
+
+    it("uses llm-info's window for a model the config gives none", () => {
+      const model: ModelConfig = {
+        name: "checks",
+        model: "deepseek-v4.1-flash",
+        provider: "openai",
+        defaultCompletionOptions: { maxTokens: 32_000 },
+      };
+
+      expect(getModelContextLimit(model)).toBe(1_000_000);
+    });
+
+    it("prefers the config's window over llm-info's", () => {
+      const model: ModelConfig = {
+        name: "checks",
+        model: "deepseek-v4.1-flash",
+        provider: "openai",
+        defaultCompletionOptions: { contextLength: 128_000 },
+      };
+
+      expect(getModelContextLimit(model)).toBe(128_000);
+    });
+
+    it("does not compact a DeepSeek V4 run at 160K tokens", () => {
+      // AI review run 43308492603 compacted here under the 200K default
+      const model: ModelConfig = {
+        name: "checks",
+        model: "deepseek-v4.1-flash",
+        provider: "openai",
+        defaultCompletionOptions: { maxTokens: 32_000 },
+      };
+      const chatHistory: ChatHistoryItem[] = [
+        {
+          message: { role: "user", content: "x".repeat(160_000 * 4) },
+          contextItems: [],
+        },
+      ];
+
+      expect(shouldAutoCompact({ chatHistory, model })).toBe(false);
+      expect(
+        shouldAutoCompact({
+          chatHistory,
+          model: { ...model, model: "unknown-model" },
+        }),
+      ).toBe(true);
+    });
   });
 
   describe("countChatHistoryItemTokens", () => {

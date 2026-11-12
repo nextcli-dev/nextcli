@@ -33,5 +33,13 @@ export const DeepSeek: ModelProvider = {
       displayName: "DeepSeek V4 Flash Vision (experimental)",
       ...V4_LIMITS,
     },
+    // Any other V4 id, such as deepseek-v4.1-flash or a provider-prefixed
+    // deepseek/deepseek-v4-pro. Last, so the exact names above win.
+    {
+      model: "deepseek-v4",
+      displayName: "DeepSeek V4",
+      regex: /deepseek-v4/i,
+      ...V4_LIMITS,
+    },
   ],
 };

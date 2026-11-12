@@ -1,4 +1,5 @@
 import { ModelConfig } from "@nextcli/config-yaml";
+import { findLlmInfo } from "@nextcli/llm-info";
 import type { ChatHistoryItem, Reasoning } from "core/index.js";
 import { getAdjustedTokenCountFromModel } from "core/llm/getAdjustedTokenCount.js";
 import { encode } from "gpt-tokenizer";
@@ -9,8 +10,20 @@ import { getModelSettings } from "./modelSettings.js";
 
 const DEFAULT_MAX_TOKENS_RATIO = 0.35;
 const MAX_MAX_TOKENS = 64_000;
-// Default context length when model config doesn't specify one
+// Context length for a model that neither the config nor llm-info knows
 export const DEFAULT_CONTEXT_LENGTH = 200_000;
+
+/**
+ * The context window the config gives a model, else the one llm-info knows
+ * for its id, else DEFAULT_CONTEXT_LENGTH. Ignores the model menu.
+ */
+export function getConfiguredContextLength(model: ModelConfig): number {
+  return (
+    model.defaultCompletionOptions?.contextLength ??
+    findLlmInfo(model.model ?? "", model.provider)?.contextLength ??
+    DEFAULT_CONTEXT_LENGTH
+  );
+}
 
 /**
  * Get the context length limit for a model
@@ -20,9 +33,7 @@ export const DEFAULT_CONTEXT_LENGTH = 200_000;
 export function getModelContextLimit(model: ModelConfig): number {
   // A window chosen in the model menu takes precedence over the config
   return (
-    getModelSettings(model).contextLength ??
-    model.defaultCompletionOptions?.contextLength ??
-    DEFAULT_CONTEXT_LENGTH
+    getModelSettings(model).contextLength ?? getConfiguredContextLength(model)
   );
 }
 
