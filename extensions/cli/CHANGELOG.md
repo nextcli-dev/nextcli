@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.12.0](https://github.com/nextcli-dev/nextcli/compare/cli-v0.11.0...cli-v0.12.0) (2026-11-11)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** in a folder you haven't trusted, the project's .env no longer loads. Proxy and CA variables must come from the environment.
+
+### Features
+
+* **cli:** load a folder's .env only if the folder is trusted ([#126](https://github.com/nextcli-dev/nextcli/issues/126)) ([ac43c9e](https://github.com/nextcli-dev/nextcli/commit/ac43c9ee2db5e53ea08ce33b04e234aa987c682e))
+* **cli:** strip secrets from the shell's environment and block private addresses in Fetch ([#123](https://github.com/nextcli-dev/nextcli/issues/123)) ([58db692](https://github.com/nextcli-dev/nextcli/commit/58db692eaa1ce21af14d61429a11fff6ebe14610))
+
+
+### Bug Fixes
+
+* **cli:** buffer log lines and flush them on process exit ([#125](https://github.com/nextcli-dev/nextcli/issues/125)) ([527366b](https://github.com/nextcli-dev/nextcli/commit/527366bfb5564c2726aa9312db191f1bce0b0f3c))
+* **cli:** don't offer AskQuestion when nobody can answer it ([#129](https://github.com/nextcli-dev/nextcli/issues/129)) ([c76f114](https://github.com/nextcli-dev/nextcli/commit/c76f114419a01a866cb5d9259ab7bf347999ba64))
+* **vscode:** explain turns that end on thinking alone and restyle reasoning ([#120](https://github.com/nextcli-dev/nextcli/issues/120)) ([caf7763](https://github.com/nextcli-dev/nextcli/commit/caf77632a06c7f88173a7f74315ba71439598dbf))
+
 ## [0.11.0](https://github.com/nextcli-dev/nextcli/compare/cli-v0.10.0...cli-v0.11.0) (2026-11-10)
 
 
