@@ -52,6 +52,7 @@ describe("loadCodebaseRules", () => {
     },
     "file:///workspace/src/redux/rules.md": {
       name: "src/redux/rules.md",
+      legacyName: "redux/rules.md",
       rule: "Use Redux Toolkit",
       globs: "**/*.{ts,tsx}",
       source: "colocated-markdown",
@@ -59,6 +60,7 @@ describe("loadCodebaseRules", () => {
     },
     "file:///workspace/src/components/rules.md": {
       name: "src/components/rules.md",
+      legacyName: "components/rules.md",
       rule: "Use functional components",
       globs: ["**/*.tsx", "**/*.jsx"],
       source: "colocated-markdown",
@@ -243,6 +245,93 @@ describe("loadCodebaseRules", () => {
       expect(rules.map((r) => r.name).sort()).toEqual([
         "repo-worktree/gui/rules.md",
         "repo/gui/rules.md",
+      ]);
+    });
+
+    it("adds parent folders to the prefix until roots with the same folder name differ", async () => {
+      setFiles(
+        {
+          "file:///Users/a/nextcli/gui/rules.md": "a",
+          "file:///Users/b/nextcli/gui/rules.md": "b",
+          "file:///Users/b/other/gui/rules.md": "other",
+        },
+        [
+          "file:///Users/a/nextcli",
+          "file:///Users/b/nextcli",
+          "file:///Users/b/other",
+        ],
+      );
+
+      const { rules } = await loadCodebaseRules(mockIde);
+
+      expect(rules.map((r) => r.name).sort()).toEqual([
+        "a/nextcli/gui/rules.md",
+        "b/nextcli/gui/rules.md",
+        "other/gui/rules.md",
+      ]);
+    });
+
+    it.each([
+      ["parent first", ["file:///work", "file:///work/repo"]],
+      ["nested first", ["file:///work/repo", "file:///work"]],
+    ])(
+      "uses the deepest root for nested roots, %s, and loads the file once",
+      async (_, dirs) => {
+        setFiles({ "file:///work/repo/gui/rules.md": "Rule" }, dirs);
+        // Each root's walk lists the file
+        (walkDirs as any).mockResolvedValue([
+          "file:///work/repo/gui/rules.md",
+          "file:///work/repo/gui/rules.md",
+        ]);
+
+        const { rules } = await loadCodebaseRules(mockIde);
+
+        expect(rules).toHaveLength(1);
+        expect(rules[0].name).toBe("repo/gui/rules.md");
+        expect(rules[0].globs).toBe("gui/**/*");
+      },
+    );
+
+    it("leaves globs of a rules.md at the workspace root unprefixed", async () => {
+      setFiles(
+        {
+          "file:///root/rules.md": "No globs",
+          "file:///root/sub/rules.md": '---\nglobs: "**/*.tsx"\n---\nTSX',
+        },
+        ["file:///root"],
+      );
+      (walkDirs as any).mockResolvedValue(["file:///root/rules.md"]);
+
+      const { rules } = await loadCodebaseRules(mockIde);
+      expect(rules[0].name).toBe("rules.md");
+      expect(rules[0].globs).toBeUndefined();
+
+      setFiles(
+        { "file:///root/rules.md": '---\nglobs: "**/*.tsx"\n---\nTSX' },
+        ["file:///root"],
+      );
+      const cache = CodebaseRulesCache.getInstance();
+      cache.rules = [];
+      await cache.update(mockIde, "file:///root/rules.md");
+      expect(cache.rules[0].globs).toBe("**/*.tsx");
+    });
+
+    it("records the old name when the rule was renamed", async () => {
+      setFiles(
+        {
+          "file:///root/gui/rules.md": "Unchanged",
+          "file:///root/extensions/vscode/rules.md": "Renamed",
+        },
+        ["file:///root"],
+      );
+
+      const { rules } = await loadCodebaseRules(mockIde);
+
+      expect(
+        rules.map(({ name, legacyName }) => ({ name, legacyName })),
+      ).toEqual([
+        { name: "gui/rules.md", legacyName: undefined },
+        { name: "extensions/vscode/rules.md", legacyName: "vscode/rules.md" },
       ]);
     });
 

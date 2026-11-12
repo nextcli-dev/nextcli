@@ -20,7 +20,10 @@ import {
   setIsSessionMetadataLoading,
   setMode,
 } from "../redux/slices/sessionSlice";
-import { setTTSActive } from "../redux/slices/uiSlice";
+import {
+  carryOverLegacyRuleSettings,
+  setTTSActive,
+} from "../redux/slices/uiSlice";
 
 import { cancelStream } from "../redux/thunks/cancelStream";
 import { handleApplyStateUpdate } from "../redux/thunks/handleApplyStateUpdate";
@@ -61,6 +64,9 @@ function ParallelListeners() {
       dispatch(setProfiles(profiles));
       dispatch(setSelectedProfile(profileId));
       dispatch(setConfigResult(configResult));
+      if (configResult.config) {
+        dispatch(carryOverLegacyRuleSettings(configResult.config.rules));
+      }
 
       const isNewProfileId = profileId && profileId !== selectedProfileId;
 

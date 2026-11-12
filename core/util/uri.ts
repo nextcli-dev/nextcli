@@ -23,7 +23,7 @@ export function getCleanUriPath(uri: string) {
 }
 
 /** The URI's path split into encoded parts; an empty path has no parts */
-function getUriPathParts(uri: string): string[] {
+export function getUriPathParts(uri: string): string[] {
   const clean = getCleanUriPath(uri);
   return clean === "" ? [] : clean.split("/");
 }

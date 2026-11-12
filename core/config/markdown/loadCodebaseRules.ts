@@ -6,50 +6,101 @@ import {
 import { IDE, RuleWithSource } from "../..";
 import { walkDirs } from "../../indexing/walkDir";
 import { RULES_MARKDOWN_FILENAME } from "../../llm/rules/constants";
-import { findUriInDirs, getUriPathBasename } from "../../util/uri";
+import {
+  findUriInDirs,
+  getLastNPathParts,
+  getUriPathBasename,
+  getUriPathParts,
+} from "../../util/uri";
+
+/**
+ * Labels each workspace root by the shortest trailing part of its path that no
+ * other root ends with: /a/nextcli and /b/nextcli become "a/nextcli" and
+ * "b/nextcli", while /work/gui alone stays "gui".
+ */
+function getWorkspaceRootLabels(workspaceDirs: string[]): Map<string, string> {
+  const roots = [...new Set(workspaceDirs)].map((dir) => ({
+    dir,
+    parts: getUriPathParts(dir).map(decodeURIComponent),
+  }));
+  const suffix = (parts: string[], n: number) => parts.slice(-n).join("/");
+  const labels = new Map<string, string>();
+  for (const root of roots) {
+    let n = Math.min(1, root.parts.length);
+    while (
+      n < root.parts.length &&
+      roots.some(
+        (other) =>
+          other !== root && suffix(other.parts, n) === suffix(root.parts, n),
+      )
+    ) {
+      n++;
+    }
+    labels.set(root.dir, suffix(root.parts, n));
+  }
+  return labels;
+}
 
 /**
  * Builds a rule from a colocated rules.md file. Without a frontmatter `name`,
- * the rule is named by its workspace-relative path: the default name (last two
+ * the rule is named by its path from the workspace root: the old name (last two
  * path segments) collides for e.g. packages/a/src/rules.md and
  * packages/b/src/rules.md, or for the same file in two checkouts of a repo.
+ * In a multi-root workspace the name starts with the root's label, as roots
+ * can share relative paths.
+ *
+ * Rule on/off settings are keyed by name, so a renamed rule carries its old
+ * name in `legacyName` for the GUI to move the setting over.
  */
 function codebaseRuleFromFile(
   content: string,
   fileUri: string,
   workspaceDirs: string[],
 ): RuleWithSource | undefined {
+  // The deepest root that holds the file, whatever the order of the roots, so
+  // the name and glob base don't depend on it when roots are nested.
+  const rootsDeepestFirst = [...workspaceDirs].sort(
+    (a, b) => getUriPathParts(b).length - getUriPathParts(a).length,
+  );
   const { relativePathOrBasename, foundInDir, uri } = findUriInDirs(
     fileUri,
-    workspaceDirs,
+    rootsDeepestFirst,
   );
   if (!foundInDir) {
     return undefined;
   }
-  const parentDir = relativePathOrBasename.substring(
-    0,
-    relativePathOrBasename.lastIndexOf("/"),
-  );
+  const lastSlash = relativePathOrBasename.lastIndexOf("/");
+  // A rules.md at the root gets no glob base: "" would turn its globs into
+  // "/**/*", which only matches from the filesystem root.
+  const parentDir =
+    lastSlash === -1
+      ? undefined
+      : relativePathOrBasename.substring(0, lastSlash);
   const rule = markdownToRule(
     content,
     { uriType: "file", fileUri: uri },
     parentDir,
   );
-  const hasFrontmatterName = Boolean(
-    parseMarkdownRule(content).frontmatter.name,
-  );
-  // In a multi-root workspace, roots can share relative paths, so prefix the
-  // root folder name.
-  const name = hasFrontmatterName
-    ? rule.name
-    : workspaceDirs.length > 1
-      ? `${getUriPathBasename(foundInDir)}/${relativePathOrBasename}`
-      : relativePathOrBasename;
-  return {
+  const ruleWithSource: RuleWithSource = {
     ...rule,
-    name,
     source: "colocated-markdown",
     sourceFile: fileUri,
+  };
+  if (parseMarkdownRule(content).frontmatter.name) {
+    return ruleWithSource;
+  }
+  const rootLabel =
+    workspaceDirs.length > 1
+      ? getWorkspaceRootLabels(workspaceDirs).get(foundInDir)
+      : undefined;
+  const name = rootLabel
+    ? `${rootLabel}/${relativePathOrBasename}`
+    : relativePathOrBasename;
+  const legacyName = getLastNPathParts(fileUri, 2);
+  return {
+    ...ruleWithSource,
+    name,
+    ...(legacyName !== name && { legacyName }),
   };
 }
 
@@ -110,10 +161,14 @@ export async function loadCodebaseRules(ide: IDE): Promise<{
     const allFiles = await walkDirs(ide);
 
     // Filter to just rules.md files
-    const rulesMdFiles = allFiles.filter((file) => {
-      const filename = getUriPathBasename(file);
-      return filename === RULES_MARKDOWN_FILENAME;
-    });
+    // Nested workspace roots list the same file once per root
+    const rulesMdFiles = [
+      ...new Set(
+        allFiles.filter(
+          (file) => getUriPathBasename(file) === RULES_MARKDOWN_FILENAME,
+        ),
+      ),
+    ];
 
     const workspaceDirs = await ide.getWorkspaceDirs();
 
