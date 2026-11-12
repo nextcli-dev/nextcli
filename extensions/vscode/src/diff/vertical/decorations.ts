@@ -9,7 +9,8 @@ const removedLineDecorationType = (line: string) =>
     outlineColor: { id: "diffEditor.removedTextBorder" },
     rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
     after: {
-      contentText: line,
+      // Diff lines of a CRLF file keep their "\r"; the overlay is one line
+      contentText: line.replace(/\r$/, ""),
       color: "#808080",
       textDecoration: "none; white-space: pre",
     },

@@ -43,7 +43,7 @@ vi.mock("vscode", () => {
   const window = {
     activeTextEditor: undefined as any,
     visibleTextEditors: [] as any[],
-    createTextEditorDecorationType: () => ({ dispose() {} }),
+    createTextEditorDecorationType: vi.fn(() => ({ dispose() {} })),
     showWarningMessage: vi.fn(),
     showTextDocument: vi.fn(),
     onDidChangeActiveTextEditor: () => ({ dispose() {} }),
@@ -515,6 +515,27 @@ describe("VerticalDiffHandler instant apply on a CRLF file", () => {
 
     expect(getText()).toBe(edited);
     expect(getText()).not.toMatch(/[^\r]\n|\r(?!\n)/);
+  });
+
+  it("shows removed lines without their CR", async () => {
+    const createDecoration = vi.mocked(
+      vscode.window.createTextEditorDecorationType,
+    );
+    createDecoration.mockClear();
+    const { handler } = await instantApply(
+      executeFindAndReplace(
+        CRLF_ORIGINAL,
+        "      - chat",
+        "      - edit",
+        true,
+      ),
+    );
+
+    const ghostTexts = createDecoration.mock.calls
+      .map(([options]) => options.after?.contentText)
+      .filter((text) => text !== undefined);
+    expect(ghostTexts).toEqual(["      - chat", "      - chat"]);
+    await handler.clear(false);
   });
 
   it("rejecting restores the CRLF file exactly", async () => {
