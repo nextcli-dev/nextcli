@@ -456,6 +456,71 @@ describe("handleApplyStateUpdate", () => {
       });
     });
 
+    it("keeps the output of a tool call that already errored", async () => {
+      const toolCallState: ToolCallState = {
+        toolCallId: "test-tool-call",
+        status: "errored",
+        output: [
+          {
+            name: "Apply Error",
+            description: "Failed to apply changes",
+            content: "Error editing test.txt: No apply model configured",
+          },
+        ],
+        ...UNUSED_TOOL_CALL_PARAMS,
+      };
+      vi.mocked(findToolCallById).mockReturnValue(toolCallState);
+      mockGetState.mockReturnValue({
+        session: {
+          history: [],
+          codeBlockApplyStates: { states: [{ streamId: "chat-stream" }] },
+        },
+        config: { config: {} },
+      });
+
+      const thunk = handleApplyStateUpdate({
+        streamId: "chat-stream",
+        toolCallId: "test-tool-call",
+        status: "closed",
+      });
+      await thunk(mockDispatch, mockGetState, mockExtra);
+
+      expect(updateToolCallOutput).not.toHaveBeenCalled();
+      expect(streamResponseAfterToolCall).toHaveBeenCalledWith({
+        toolCallId: "test-tool-call",
+      });
+    });
+
+    it("names the file from the stored apply state when the update has none", async () => {
+      const toolCallState: ToolCallState = {
+        toolCallId: "test-tool-call",
+        status: "errored",
+        ...UNUSED_TOOL_CALL_PARAMS,
+      };
+      vi.mocked(findToolCallById).mockReturnValue(toolCallState);
+      mockGetState.mockReturnValue({
+        session: {
+          history: [],
+          codeBlockApplyStates: {
+            states: [{ streamId: "chat-stream", filepath: "src/a.ts" }],
+          },
+        },
+        config: { config: {} },
+      });
+
+      const thunk = handleApplyStateUpdate({
+        streamId: "chat-stream",
+        toolCallId: "test-tool-call",
+        status: "closed",
+      });
+      await thunk(mockDispatch, mockGetState, mockExtra);
+
+      const contextItems =
+        vi.mocked(updateToolCallOutput).mock.calls[0][0].contextItems;
+      expect(contextItems[0].content).toContain("Failed to edit src/a.ts.");
+      expect(contextItems[0].content).not.toContain("undefined");
+    });
+
     it("should handle closure when no tool call found", async () => {
       vi.mocked(findToolCallById).mockReturnValue(undefined);
       mockGetState.mockReturnValue({
@@ -651,7 +716,7 @@ describe("applyForEditTool", () => {
             icon: "problems",
             name: "Apply Error",
             description: "Failed to apply changes",
-            content: `Error editing file: failed to apply changes to file.\n\nPlease try again with correct args or notify the user and request further instructions.`,
+            content: `Error editing test.txt: Request failed\n\nPlease try again with correct args or notify the user and request further instructions.`,
             hidden: false,
           },
         ],
@@ -696,9 +761,50 @@ describe("applyForEditTool", () => {
             icon: "problems",
             name: "Apply Error",
             description: "Failed to apply changes",
-            content: `Error editing file: failed to apply changes to file.\n\nPlease try again with correct args or notify the user and request further instructions.`,
+            content: `Error editing test.txt: failed to apply changes to file.\n\nPlease try again with correct args or notify the user and request further instructions.`,
             hidden: false,
           },
+        ],
+      });
+    });
+
+    it("shows the error message the IDE sent back", async () => {
+      const payload: ApplyToFilePayload & { toolCallId: string } = {
+        toolCallId: "test-tool-call",
+        streamId: "test-stream",
+        filepath: "file:///c%3A/proj/test.txt",
+        text: "new content",
+        isSearchAndReplace: true,
+      };
+      vi.mocked(selectToolCallById).mockReturnValue({
+        toolCallId: "test-tool-call",
+        status: "calling",
+        ...UNUSED_TOOL_CALL_PARAMS,
+      });
+      vi.mocked(selectApplyStateByToolCallId).mockReturnValue({
+        status: "streaming",
+        streamId: "test-stream",
+      });
+      mockGetState.mockReturnValue({});
+      mockExtra.ideMessenger.request.mockResolvedValue({
+        status: "error",
+        error: "No apply model configured",
+        done: true,
+      });
+
+      const thunk = applyForEditTool(payload);
+      await thunk(mockDispatch, mockGetState, mockExtra);
+
+      expect(updateToolCallOutput).toHaveBeenCalledWith({
+        toolCallId: "test-tool-call",
+        contextItems: [
+          expect.objectContaining({
+            name: "Apply Error",
+            content: expect.stringContaining(
+              "Error editing file:///c%3A/proj/test.txt: No apply model configured",
+            ),
+            hidden: false,
+          }),
         ],
       });
     });

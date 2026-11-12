@@ -3,7 +3,7 @@ import * as path from "path";
 import untildify from "untildify";
 import { IDE } from "..";
 import { resolveRelativePathInDir } from "./ideUtils";
-import { findUriInDirs } from "./uri";
+import { findLocalPathInDirs } from "./uri";
 
 export interface ResolvedPath {
   uri: string;
@@ -18,10 +18,12 @@ export interface ResolvedPath {
  */
 async function isUriWithinWorkspace(ide: IDE, uri: string): Promise<boolean> {
   const workspaceDirs = await ide.getWorkspaceDirs();
-  const { foundInDir } = findUriInDirs(uri, workspaceDirs);
+  // Compare decoded paths: pathToFileURL gives file:///C:/proj/a.ts, while
+  // VS Code's workspace folders look like file:///c%3A/proj
+  const match = findLocalPathInDirs(uri, workspaceDirs);
 
   // Check both: within workspace path AND file exists
-  if (foundInDir !== null) {
+  if (match) {
     return await ide.fileExists(uri);
   }
 

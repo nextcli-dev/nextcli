@@ -2,7 +2,12 @@ import { inferResolvedUriFromRelativePath } from "../../util/ideUtils";
 
 import { ToolImpl } from ".";
 import { throwIfFileIsSecurityConcern } from "../../indexing/ignore";
-import { getCleanUriPath, getUriPathBasename } from "../../util/uri";
+import {
+  findLocalPathInDirs,
+  getCleanUriPath,
+  getUriPathBasename,
+  joinPathsToUri,
+} from "../../util/uri";
 import { getStringArg } from "../parseArgs";
 import { ContinueError, ContinueErrorReason } from "../../util/errors";
 
@@ -10,10 +15,15 @@ export const createNewFileImpl: ToolImpl = async (args, extras) => {
   const filepath = getStringArg(args, "filepath");
   const contents = getStringArg(args, "contents", true);
 
-  const resolvedFileUri = await inferResolvedUriFromRelativePath(
-    filepath,
-    extras.ide,
+  // An absolute path inside a workspace folder (C:\proj\a.ts) is created
+  // there, not under the workspace as <workspace>/C%3A/proj/a.ts
+  const workspaceMatch = findLocalPathInDirs(
+    filepath.trim(),
+    await extras.ide.getWorkspaceDirs(),
   );
+  const resolvedFileUri = workspaceMatch
+    ? joinPathsToUri(workspaceMatch.dirUri, workspaceMatch.relativePath)
+    : await inferResolvedUriFromRelativePath(filepath, extras.ide);
   if (resolvedFileUri) {
     throwIfFileIsSecurityConcern(getCleanUriPath(resolvedFileUri));
     const exists = await extras.ide.fileExists(resolvedFileUri);

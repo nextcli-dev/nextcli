@@ -1,10 +1,62 @@
 import { IDE } from "..";
 
 import {
+  findLocalPathInDirs,
+  hasUriScheme,
+  isAbsoluteLocalPath,
+  isSameLocalPath,
   joinEncodedUriPathSegmentToUri,
   joinPathsToUri,
+  localPathEndsWith,
   pathToUriPathSegment,
 } from "./uri";
+
+/*
+  Resolves the path an edit tool was given to the URI of an existing file.
+  Accepts the forms the read tools accept: a workspace-relative path (with
+  "/" or "\"), an absolute path (C:\..., \\server\share\..., /...) or a
+  file:// URI. An absolute path must be inside a workspace folder or name an
+  open file, so the edit tools reach the same files as before, by any path form.
+*/
+export async function resolveEditableFileUri(
+  filepath: string,
+  ide: IDE,
+): Promise<string | undefined> {
+  let path = filepath.trim();
+  if (path.startsWith("./") || path.startsWith(".\\")) {
+    path = path.slice(2);
+  }
+
+  const isAbsolute = hasUriScheme(path) || isAbsoluteLocalPath(path);
+  if (isAbsolute) {
+    const match = findLocalPathInDirs(path, await ide.getWorkspaceDirs());
+    if (match) {
+      const uri = joinPathsToUri(match.dirUri, match.relativePath);
+      if (await ide.fileExists(uri)) {
+        return uri;
+      }
+    }
+    const openFile = (await ide.getOpenFiles()).find((uri) =>
+      isSameLocalPath(uri, path),
+    );
+    if (openFile) {
+      return openFile;
+    }
+    // A POSIX path such as /src/a.ts may still mean "relative to the
+    // workspace"; that was the only reading before absolute paths worked
+    if (!path.startsWith("/")) {
+      return undefined;
+    }
+  }
+
+  const relativeMatch = await resolveRelativePathInDir(path, ide);
+  if (relativeMatch) {
+    return relativeMatch;
+  }
+
+  // The model sometimes gives only the last parts of an open file's path
+  return (await ide.getOpenFiles()).find((uri) => localPathEndsWith(uri, path));
+}
 
 /*
   This function takes a relative (to workspace) filepath

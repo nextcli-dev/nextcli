@@ -175,14 +175,17 @@ export const handleApplyStateUpdate = createAsyncThunk<
                     }),
                   );
                 }
-              } else {
+              } else if (!toolCallState.output?.length) {
+                // Keep the output of whatever errored the call (such as the
+                // "Apply Error" from applyForEditTool): it says what went wrong
+                const filepath = applyState.filepath ?? newApplyState?.filepath;
                 dispatch(
                   updateToolCallOutput({
                     toolCallId: applyState.toolCallId,
                     contextItems: [
                       {
                         name: "Edit Failed",
-                        content: `Failed to edit ${applyState.filepath}. To continue working with the file, read it again to see the most up-to-date contents`,
+                        content: `Failed to edit ${filepath ?? "the file"}. To continue working with the file, read it again to see the most up-to-date contents`,
                         description: "",
                         hidden: true,
                       },
@@ -219,13 +222,16 @@ export const applyForEditTool = createAsyncThunk<
   );
 
   let didError = false;
+  let errorMessage: string | undefined;
   try {
     const response = await extra.ideMessenger.request("applyToFile", payload);
     if (response.status === "error") {
       didError = true;
+      errorMessage = response.error;
     }
   } catch (e) {
     didError = true;
+    errorMessage = e instanceof Error ? e.message : String(e);
   }
   if (didError) {
     const state = getState();
@@ -251,7 +257,7 @@ export const applyForEditTool = createAsyncThunk<
               icon: "problems",
               name: "Apply Error",
               description: "Failed to apply changes",
-              content: `Error editing file: failed to apply changes to file.\n\nPlease try again with correct args or notify the user and request further instructions.`,
+              content: `Error editing ${payload.filepath ?? "file"}: ${errorMessage || "failed to apply changes to file."}\n\nPlease try again with correct args or notify the user and request further instructions.`,
               hidden: false,
             },
           ],
@@ -262,6 +268,7 @@ export const applyForEditTool = createAsyncThunk<
           status: "closed",
           streamId: applyState.streamId,
           toolCallId,
+          filepath: payload.filepath,
         }),
       );
     }

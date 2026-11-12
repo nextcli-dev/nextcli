@@ -10,7 +10,7 @@ vi.mock("uuid", () => ({
 }));
 
 vi.mock("core/util/ideUtils", () => ({
-  resolveRelativePathInDir: vi.fn(),
+  resolveEditableFileUri: vi.fn(),
 }));
 
 vi.mock("../../redux/thunks/handleApplyStateUpdate", () => ({
@@ -19,13 +19,13 @@ vi.mock("../../redux/thunks/handleApplyStateUpdate", () => ({
 
 describe("multiEditImpl GUI specific", () => {
   let mockExtras: ClientToolExtras;
-  let mockResolveRelativePathInDir: Mock;
+  let mockResolveEditableFileUri: Mock;
   let mockApplyForEditTool: Mock;
 
   beforeEach(() => {
     vi.clearAllMocks();
 
-    mockResolveRelativePathInDir = vi.mocked(ideUtils.resolveRelativePathInDir);
+    mockResolveEditableFileUri = vi.mocked(ideUtils.resolveEditableFileUri);
     mockApplyForEditTool = vi.mocked(applyForEditTool);
 
     mockExtras = {
@@ -59,7 +59,7 @@ describe("multiEditImpl GUI specific", () => {
     });
 
     it("should throw if file does not exist in workspace", async () => {
-      mockResolveRelativePathInDir.mockResolvedValue(null);
+      mockResolveEditableFileUri.mockResolvedValue(null);
 
       await expect(
         multiEditImpl(
@@ -80,9 +80,7 @@ describe("multiEditImpl GUI specific", () => {
 
   describe("GUI integration", () => {
     beforeEach(() => {
-      mockResolveRelativePathInDir.mockResolvedValue(
-        "file:///dir/test/file.txt",
-      );
+      mockResolveEditableFileUri.mockResolvedValue("file:///dir/test/file.txt");
     });
 
     it("should read file from IDE and dispatch edit", async () => {
@@ -131,9 +129,7 @@ describe("multiEditImpl GUI specific", () => {
 
   describe("return value", () => {
     it("should return structure for async completion", async () => {
-      mockResolveRelativePathInDir.mockResolvedValue(
-        "file:///dir/test/file.txt",
-      );
+      mockResolveEditableFileUri.mockResolvedValue("file:///dir/test/file.txt");
       mockExtras.ideMessenger.ide.readFile = vi.fn().mockResolvedValue("test");
 
       const result = await multiEditImpl(
