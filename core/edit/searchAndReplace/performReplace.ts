@@ -82,12 +82,51 @@ function adjustReplacementIndentation(
   return adjusted.join("\n");
 }
 
+/** Whether every line break is CRLF (a file with mixed line endings is not) */
+function usesCrlf(content: string): boolean {
+  const lineBreaks = content.match(/\r?\n/g);
+  return !!lineBreaks && lineBreaks.every((lineBreak) => lineBreak === "\r\n");
+}
+
+const toLf = (text: string) => text.replace(/\r\n/g, "\n");
+
+/**
+ * Replaces oldString with newString in fileContent. A CRLF file (common on
+ * Windows) is matched and edited with LF line endings and given back with
+ * CRLF, since models write old_string and new_string with "\n": otherwise an
+ * exact match fails and the new text brings LF lines into a CRLF file.
+ */
 export function executeFindAndReplace(
   fileContent: string,
   oldString: string,
   newString: string,
   replaceAll: boolean,
   editIndex = 0,
+): string {
+  if (usesCrlf(fileContent)) {
+    return replaceInContent(
+      toLf(fileContent),
+      toLf(oldString),
+      toLf(newString),
+      replaceAll,
+      editIndex,
+    ).replace(/\n/g, "\r\n");
+  }
+  return replaceInContent(
+    fileContent,
+    oldString,
+    newString,
+    replaceAll,
+    editIndex,
+  );
+}
+
+function replaceInContent(
+  fileContent: string,
+  oldString: string,
+  newString: string,
+  replaceAll: boolean,
+  editIndex: number,
 ): string {
   const matches = findSearchMatches(fileContent, oldString);
 
