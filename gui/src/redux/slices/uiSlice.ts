@@ -128,6 +128,25 @@ export const uiSlice = createSlice({
     addRule: (state, action: PayloadAction<RuleWithSource>) => {
       state.ruleSettings[action.payload.name!] = DEFAULT_RULE_SETTING;
     },
+    /**
+     * Gives a renamed rule the on/off setting saved under its old name, unless
+     * it already has its own. The old entry stays: another rule may still go
+     * by that name.
+     */
+    carryOverLegacyRuleSettings: (
+      state,
+      action: PayloadAction<RuleWithSource[]>,
+    ) => {
+      for (const { name, legacyName } of action.payload) {
+        if (!name || !legacyName || state.ruleSettings[name] !== undefined) {
+          continue;
+        }
+        const legacySetting = state.ruleSettings[legacyName];
+        if (legacySetting !== undefined) {
+          state.ruleSettings[name] = legacySetting;
+        }
+      }
+    },
     toggleRuleSetting: (state, action: PayloadAction<string>) => {
       const setting = state.ruleSettings[action.payload];
 
@@ -165,6 +184,7 @@ export const {
   toggleToolGroupSetting,
   addTool,
   addRule,
+  carryOverLegacyRuleSettings,
   toggleRuleSetting,
   setTTSActive,
   clearReasoningSettings,

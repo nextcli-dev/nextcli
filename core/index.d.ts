@@ -1966,6 +1966,11 @@ export interface RuleMetadata {
   sourceFile?: string;
   alwaysApply?: boolean;
   invokable?: boolean;
+  /**
+   * The name a colocated rules.md had before it was named by its path from the
+   * workspace root. Lets the GUI keep the rule's saved on/off setting.
+   */
+  legacyName?: string;
 }
 export interface RuleWithSource extends RuleMetadata {
   rule: string;
