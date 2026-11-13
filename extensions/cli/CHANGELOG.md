@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.12.1](https://github.com/nextcli-dev/nextcli/compare/cli-v0.12.0...cli-v0.12.1) (2026-11-12)
+
+
+### Bug Fixes
+
+* **core:** name colocated rules.md by workspace-relative path ([#133](https://github.com/nextcli-dev/nextcli/issues/133)) ([1ee49bb](https://github.com/nextcli-dev/nextcli/commit/1ee49bb3884e5dacd98c06b0f1fd514f716da288))
+* keep CRLF line endings when editing files ([#131](https://github.com/nextcli-dev/nextcli/issues/131)) ([bb4343d](https://github.com/nextcli-dev/nextcli/commit/bb4343d4838c738f0fc34d99138778dc6f0e3139))
+* **vscode:** edit files by absolute and Windows paths ([#130](https://github.com/nextcli-dev/nextcli/issues/130)) ([0c781f3](https://github.com/nextcli-dev/nextcli/commit/0c781f30c3300fac94d67c2c79760affed977a29))
+
 ## [0.12.0](https://github.com/nextcli-dev/nextcli/compare/cli-v0.11.0...cli-v0.12.0) (2026-11-11)
 
 
