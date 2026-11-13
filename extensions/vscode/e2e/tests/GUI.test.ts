@@ -42,6 +42,8 @@ describe("GUI Test", () => {
   afterEach(async function () {
     this.timeout(DEFAULT_TIMEOUT.XL);
 
+    // A turn left running makes the next toggleGui ask before stopping it
+    await GUIActions.stopRunningTurn(view);
     await view.switchBack();
     // Close the GUI; beforeEach opens it again with toggleGui
     await new Workbench().executeCommand("View: Close Secondary Side Bar");

@@ -48,6 +48,13 @@ export class GUISelectors {
     );
   }
 
+  /** Shown while a turn runs; empty when the GUI is idle */
+  public static getStopStreamingButtons(view: WebView) {
+    return view.findWebElements(
+      By.css("[data-testid='stop-streaming-button']"),
+    );
+  }
+
   public static getToolCallStatusMessage(view: WebView) {
     return SelectorUtils.getElementByDataTestId(view, "tool-call-title");
   }

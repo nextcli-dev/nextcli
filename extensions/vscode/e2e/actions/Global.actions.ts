@@ -1,3 +1,5 @@
+import * as path from "path";
+
 import {
   By,
   EditorView,
@@ -14,8 +16,29 @@ export class GlobalActions {
   static defaultFolder = "e2e/test-continue";
   public static defaultNewFilename = "test.py";
 
+  /**
+   * The e2e:test script opens the folder at launch (--open_resource). Opening
+   * it afterwards goes through VS Code's CLI, which can drop the request and
+   * leave no folder open; tests then fail on missing workspace files. Only
+   * fall back to that when the folder isn't open, and fail clearly if it
+   * still isn't.
+   */
   public static async openTestWorkspace() {
-    await VSBrowser.instance.openResources(GlobalActions.defaultFolder);
+    const folderName = path.basename(GlobalActions.defaultFolder);
+    const isOpen = async () =>
+      (await VSBrowser.instance.driver.getTitle()).includes(folderName);
+
+    if (!(await isOpen())) {
+      await VSBrowser.instance.openResources(GlobalActions.defaultFolder);
+      await TestUtils.waitForSuccess(async () => {
+        if (!(await isOpen())) {
+          throw new Error(
+            `Workspace ${GlobalActions.defaultFolder} did not open (window title: "${await VSBrowser.instance.driver.getTitle()}")`,
+          );
+        }
+      }, DEFAULT_TIMEOUT.MD);
+    }
+
     await new Workbench().executeCommand(
       "Notifications: Clear All Notifications",
     );

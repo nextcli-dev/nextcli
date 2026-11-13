@@ -138,6 +138,22 @@ export class GUIActions {
     await editor.sendKeys(Key.ENTER);
   }
 
+  /**
+   * Stops the running turn, if any, and waits until the GUI is idle.
+   * toggleGui starts a new session, and while a turn runs that asks
+   * "Stop the running turn?" in a dialog that covers the GUI.
+   */
+  public static async stopRunningTurn(view: WebView) {
+    const [stopButton] = await GUISelectors.getStopStreamingButtons(view);
+    if (!stopButton) return;
+    await stopButton.click();
+    await TestUtils.waitForSuccess(async () => {
+      if ((await GUISelectors.getStopStreamingButtons(view)).length > 0) {
+        throw new Error("The turn is still running");
+      }
+    }, DEFAULT_TIMEOUT.SM);
+  }
+
   public static async executeFocusContinueInputShortcut(driver: WebDriver) {
     return driver
       .actions()
@@ -187,11 +203,18 @@ export class GUIActions {
     if (!sash) {
       throw new Error("Could not find the secondary side bar's sash");
     }
+    // Stay inside the window: a drag past its left edge throws "move target
+    // out of bounds" on small screens. VS Code keeps its own minimum widths.
+    const sashRect = await sash.getRect();
+    const distance = Math.min(
+      by,
+      Math.floor(sashRect.x + sashRect.width / 2) - 50,
+    );
     await driver
       .actions()
       .move({ origin: sash })
       .press()
-      .move({ origin: sash, x: -by, y: 0 })
+      .move({ origin: sash, x: -distance, y: 0 })
       .release()
       .perform();
     await TestUtils.waitForTimeout(500);

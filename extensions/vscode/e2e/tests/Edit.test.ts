@@ -69,6 +69,9 @@ describe("Edit Test", () => {
       0,
     );
     await tipTapEditor.clear();
+
+    // Leave the webview, or the next beforeEach can't reach the workbench
+    await view.switchBack();
   });
 
   async function getCodeLensWithRetry(editor: TextEditor, text: string) {
