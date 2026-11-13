@@ -1,30 +1,57 @@
 import { ModelConfig } from "@nextcli/config-yaml";
 import { BaseLlmApi } from "@nextcli/openai-adapters";
+import type { ChatHistoryItem } from "core/index.js";
 import { convertToUnifiedHistory } from "core/util/messageConversion.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { compactChatHistory } from "../compaction.js";
 import { ToolCall } from "../tools/index.js";
-import { validateContextLength } from "../util/tokenizer.js";
 
-import { handleAutoCompaction } from "./streamChatResponse.autoCompaction.js";
 import {
   handleNormalAutoCompaction,
   handlePostToolValidation,
 } from "./streamChatResponse.compactionHelpers.js";
 
-vi.mock("./streamChatResponse.autoCompaction.js", () => ({
-  handleAutoCompaction: vi.fn((chatHistory) =>
-    Promise.resolve({ chatHistory, wasCompacted: true }),
+// A history is over the limit while it holds this message. The summary that
+// replaces it is under, so each check below decides from the history it gets.
+const LONG = "a long tool result";
+
+function isOverLimit(chatHistory: ChatHistoryItem[]): boolean {
+  return chatHistory.some((item) => item.message.content === LONG);
+}
+
+const summary = convertToUnifiedHistory([
+  { role: "assistant", content: "Summary" },
+]);
+
+vi.mock("../compaction.js", () => ({
+  shouldAutoCompact: vi.fn(({ chatHistory }) => isOverLimit(chatHistory)),
+  compactChatHistory: vi.fn(() =>
+    Promise.resolve({
+      compactedHistory: summary,
+      compactionIndex: 0,
+      compactionContent: "Summary",
+    }),
   ),
+  getAutoCompactMessage: vi.fn(() => "Compacting"),
 }));
 
-// Always over the limit, so only the isCompacting guard can stop a compaction
 vi.mock("../util/tokenizer.js", () => ({
-  validateContextLength: vi.fn(() => ({
-    isValid: false,
-    inputTokens: 200_000,
-    contextLimit: 100_000,
-  })),
+  validateContextLength: vi.fn(({ chatHistory }) =>
+    isOverLimit(chatHistory)
+      ? {
+          isValid: false,
+          inputTokens: 200_000,
+          contextLimit: 100_000,
+          error: "over the limit",
+        }
+      : { isValid: true, inputTokens: 10_000, contextLimit: 100_000 },
+  ),
+  countChatHistoryItemTokens: vi.fn(() => 10),
+}));
+
+vi.mock("../session.js", () => ({
+  updateSessionHistory: vi.fn(),
 }));
 
 vi.mock("../services/index.js", () => ({
@@ -44,9 +71,13 @@ vi.mock("../util/logger.js", () => ({
   },
 }));
 
-describe("compaction helpers inside a compaction", () => {
-  const chatHistory = convertToUnifiedHistory([
-    { role: "user", content: "Summarize" },
+describe("compaction helpers", () => {
+  const longHistory = convertToUnifiedHistory([
+    { role: "user", content: "Review the change" },
+    { role: "user", content: LONG },
+  ]);
+  const shortHistory = convertToUnifiedHistory([
+    { role: "user", content: "Review the change" },
   ]);
   const toolCalls = [
     { id: "1", name: "Read", arguments: {}, argumentsStr: "{}" },
@@ -59,59 +90,49 @@ describe("compaction helpers inside a compaction", () => {
     systemMessage: "System message",
   });
 
+  async function runBoth(
+    chatHistory: ChatHistoryItem[],
+    isCompacting: boolean,
+  ) {
+    return [
+      await handlePostToolValidation(
+        toolCalls,
+        chatHistory,
+        options(isCompacting),
+      ),
+      await handleNormalAutoCompaction(
+        chatHistory,
+        true,
+        options(isCompacting),
+      ),
+    ];
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("does not compact after tool calls", async () => {
-    const result = await handlePostToolValidation(
-      toolCalls,
-      chatHistory,
-      options(true),
-    );
-
-    expect(result.wasCompacted).toBe(false);
-    expect(handleAutoCompaction).not.toHaveBeenCalled();
+  it("do not compact inside a compaction, even over the limit", async () => {
+    for (const result of await runBoth(longHistory, true)) {
+      expect(result).toEqual({ chatHistory: longHistory, wasCompacted: false });
+    }
+    expect(compactChatHistory).not.toHaveBeenCalled();
   });
 
-  it("does not auto-compact", async () => {
-    const result = await handleNormalAutoCompaction(
-      chatHistory,
-      true,
-      options(true),
-    );
-
-    expect(result.wasCompacted).toBe(false);
-    expect(handleAutoCompaction).not.toHaveBeenCalled();
+  it("compact a normal turn over the limit into the summary", async () => {
+    for (const result of await runBoth(longHistory, false)) {
+      expect(result).toEqual({ chatHistory: summary, wasCompacted: true });
+    }
+    expect(compactChatHistory).toHaveBeenCalledTimes(2);
   });
 
-  it("still compacts a normal turn", async () => {
-    // Over the limit before the compaction, under it after
-    vi.mocked(validateContextLength)
-      .mockReturnValueOnce({
-        isValid: false,
-        inputTokens: 200_000,
-        contextLimit: 100_000,
-      })
-      .mockReturnValueOnce({
-        isValid: true,
-        inputTokens: 10_000,
-        contextLimit: 100_000,
+  it("leave a normal turn under the limit as it is", async () => {
+    for (const result of await runBoth(shortHistory, false)) {
+      expect(result).toEqual({
+        chatHistory: shortHistory,
+        wasCompacted: false,
       });
-
-    const afterTools = await handlePostToolValidation(
-      toolCalls,
-      chatHistory,
-      options(false),
-    );
-    const normal = await handleNormalAutoCompaction(
-      chatHistory,
-      true,
-      options(false),
-    );
-
-    expect(afterTools.wasCompacted).toBe(true);
-    expect(normal.wasCompacted).toBe(true);
-    expect(handleAutoCompaction).toHaveBeenCalledTimes(2);
+    }
+    expect(compactChatHistory).not.toHaveBeenCalled();
   });
 });
