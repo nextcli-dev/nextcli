@@ -14,6 +14,7 @@ import {
 } from "../slices/sessionSlice";
 import { ThunkApiType } from "../store";
 import { updateSelectedModelByRole } from "../thunks/updateSelectedModelByRole";
+import { cancelStream } from "./cancelStream";
 
 const MAX_TITLE_LENGTH = 100;
 
@@ -93,8 +94,15 @@ export const loadSession = createAsyncThunk<
   ThunkApiType
 >(
   "session/load",
-  async ({ sessionId, saveCurrentSession: save }, { extra, dispatch }) => {
+  async (
+    { sessionId, saveCurrentSession: save },
+    { extra, dispatch, getState },
+  ) => {
     if (save) {
+      if (getState().session.isStreaming) {
+        // Leaving a running turn stops it; save it as the Stop button would
+        await dispatch(cancelStream());
+      }
       // save the session in the background
       void dispatch(
         saveCurrentSession({
@@ -190,6 +198,10 @@ export const saveCurrentSession = createAsyncThunk<
 >(
   "session/saveCurrent",
   async ({ openNewSession, generateTitle }, { dispatch, extra, getState }) => {
+    if (openNewSession && getState().session.isStreaming) {
+      // A new session stops the running turn; save it as the Stop button would
+      await dispatch(cancelStream());
+    }
     const session = getState().session; // assign to a variable so that even when current session changes, we have the reference to the old session
     if (session.history.length === 0) {
       return;

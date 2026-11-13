@@ -230,6 +230,8 @@ const StyledMarkdownPreview = memo(function StyledMarkdownPreview(
   const codeblockStreamIds = useRef<string[]>([]);
 
   const [reactContent, setMarkdownSource] = useRemark({
+    // react-remark drops pipeline errors by default, leaving a blank message
+    onError: (error) => console.error("Failed to render markdown", error),
     remarkPlugins: [
       remarkTables,
       [
@@ -239,8 +241,9 @@ const StyledMarkdownPreview = memo(function StyledMarkdownPreview(
         },
       ],
       () => (tree: any) => {
-        const lastNode = tree.children[tree.children.length - 1];
-        const lastCodeNode = lastNode.type === "code" ? lastNode : null;
+        // An empty message (every turn starts as one) has no nodes
+        const lastNode = tree.children.at(-1);
+        const lastCodeNode = lastNode?.type === "code" ? lastNode : null;
 
         visit(tree, "code", (node: any) => {
           if (!node.lang) {

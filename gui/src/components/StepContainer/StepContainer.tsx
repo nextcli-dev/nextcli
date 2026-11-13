@@ -5,6 +5,7 @@ import { useDispatch } from "react-redux";
 import { useAppSelector } from "../../redux/hooks";
 import { selectUIConfig } from "../../redux/slices/configSlice";
 import { deleteMessage } from "../../redux/slices/sessionSlice";
+import { AnimatedEllipsis } from "../AnimatedEllipsis";
 import ThinkingBlockPeek from "../mainInput/belowMainInput/ThinkingBlockPeek";
 import StyledMarkdownPreview from "../StyledMarkdownPreview";
 import ConversationSummary from "./ConversationSummary";
@@ -36,6 +37,15 @@ export default function StepContainer(props: StepContainerProps) {
   const showResponseActions =
     (props.isLast || historyItemAfterThis?.message.role === "user") &&
     !(props.isLast && (isStreaming || props.item.toolCallStates));
+
+  // Until the first thinking or answer text arrives the turn is an empty
+  // block; reasoning models can take tens of seconds to get there
+  const isWaitingForModel =
+    props.isLast &&
+    isStreaming &&
+    !renderChatMessage(props.item.message).trim() &&
+    !props.item.reasoning?.text?.trim() &&
+    !props.item.toolCallStates?.length;
 
   useEffect(() => {
     if (!isStreaming) {
@@ -92,6 +102,16 @@ export default function StepContainer(props: StepContainerProps) {
                 inProgress={!props.item.reasoning?.endAt}
                 hidden={props.item.thinkingHidden}
               />
+            )}
+
+            {isWaitingForModel && (
+              <div
+                className="text-description px-2 py-1"
+                data-testid="waiting-for-model"
+              >
+                Waiting for the model
+                <AnimatedEllipsis />
+              </div>
             )}
 
             <StyledMarkdownPreview
