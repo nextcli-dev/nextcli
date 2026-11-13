@@ -16,6 +16,11 @@ export class GUISelectors {
     index: number,
   ) {
     const elements = await this.getMessageInputFields(view);
+    // Throw rather than return undefined, so waitForSuccess retries until
+    // the input has rendered
+    if (!elements[index]) {
+      throw new Error(`No message input at index ${index}`);
+    }
     return elements[index];
   }
 
@@ -53,6 +58,21 @@ export class GUISelectors {
 
   public static getBackButton(view: WebView) {
     return SelectorUtils.getElementByDataTestId(view, "tab-back");
+  }
+
+  /** The header that expands a tool group on the Tools settings page */
+  public static getToolGroupHeader(view: WebView, groupName: string) {
+    return SelectorUtils.getElementByDataTestId(
+      view,
+      `tool-group-${groupName}`,
+    );
+  }
+
+  /** An option of an open headless-ui Listbox, by its label */
+  public static getListboxOption(view: WebView, label: string) {
+    return view.findWebElement(
+      By.xpath(`//*[@role="option" and normalize-space()="${label}"]`),
+    );
   }
 
   public static getToolPolicyButton(view: WebView, toolName: string) {
@@ -156,18 +176,6 @@ export class GUISelectors {
     );
   }
 
-  public static getHistoryNavButton(view: WebView) {
-    return SelectorUtils.getElementByAriaLabel(view, "View History");
-  }
-
-  public static getSettingsNavButton(view: WebView) {
-    return SelectorUtils.getElementByAriaLabel(view, "Open Settings");
-  }
-
-  public static getNewSessionNavButton(view: WebView) {
-    return SelectorUtils.getElementByAriaLabel(view, "New Session");
-  }
-
   public static async getInputBoxCodeBlockAtIndex(
     view: WebView,
     index: number,
@@ -179,9 +187,5 @@ export class GUISelectors {
     );
 
     return codeBlockElement;
-  }
-
-  public static getContinueExtensionBadge(view: WebView) {
-    return SelectorUtils.getElementByAriaLabel(view, "Continue");
   }
 }
