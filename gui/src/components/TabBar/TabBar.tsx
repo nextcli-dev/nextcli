@@ -3,6 +3,7 @@ import React, { useCallback, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import styled from "styled-components";
 import { defaultBorderRadius } from "..";
+import { useStopRunGuard } from "../../hooks/useStopRunGuard";
 import { newSession } from "../../redux/slices/sessionSlice";
 import {
   addTab,
@@ -137,6 +138,7 @@ export const TabBar = React.forwardRef<HTMLDivElement>((_, ref) => {
     (state: RootState) => state.session.history.length > 0,
   );
   const tabs = useSelector((state: RootState) => state.tabs.tabs);
+  const guardRunningTurn = useStopRunGuard();
 
   // Simple UUID generator for our needs
   const generateId = useCallback(() => {
@@ -181,7 +183,7 @@ export const TabBar = React.forwardRef<HTMLDivElement>((_, ref) => {
     }
   }, [tabs.map((t) => t.id).join(",")]);
 
-  const handleTabClick = async (id: string) => {
+  const switchToTab = async (id: string) => {
     const targetTab = tabs.find((tab) => tab.id === id);
     if (!targetTab) return;
 
@@ -198,16 +200,20 @@ export const TabBar = React.forwardRef<HTMLDivElement>((_, ref) => {
     dispatch(setActiveTab(id));
   };
 
-  const handleTabClose = async (id: string) => {
-    //if (tabs.length <= 1) return;
+  const handleTabClick = (id: string) => {
+    const targetTab = tabs.find((tab) => tab.id === id);
+    if (!targetTab || targetTab.isActive) return;
+    guardRunningTurn(() => switchToTab(id));
+  };
 
+  const closeTab = async (id: string) => {
     const isClosingActive = tabs.find((t) => t.id === id)?.isActive;
     const filtered = tabs.filter((t) => t.id !== id);
 
     if (isClosingActive) {
       const lastTab = filtered[filtered.length - 1];
       if (filtered.length) {
-        await handleTabClick(lastTab.id);
+        await switchToTab(lastTab.id);
         dispatch(
           setTabs(
             filtered.map((tab, i) => ({
@@ -222,6 +228,15 @@ export const TabBar = React.forwardRef<HTMLDivElement>((_, ref) => {
       }
     } else {
       dispatch(removeTab(id));
+    }
+  };
+
+  const handleTabClose = (id: string) => {
+    // Closing the active tab leaves its session, which stops a running turn
+    if (tabs.find((t) => t.id === id)?.isActive) {
+      guardRunningTurn(() => closeTab(id));
+    } else {
+      void closeTab(id);
     }
   };
 
@@ -241,7 +256,7 @@ export const TabBar = React.forwardRef<HTMLDivElement>((_, ref) => {
             // Middle mouse button
             if (e.button === 1) {
               e.preventDefault();
-              void handleTabClose(tab.id);
+              handleTabClose(tab.id);
             }
           }}
         >
@@ -250,7 +265,7 @@ export const TabBar = React.forwardRef<HTMLDivElement>((_, ref) => {
             /* disabled={tabs.length === 1} */
             onClick={(e) => {
               e.stopPropagation();
-              void handleTabClose(tab.id);
+              handleTabClose(tab.id);
             }}
           >
             <XMarkIcon width={12} height={12} />

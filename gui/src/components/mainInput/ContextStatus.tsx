@@ -1,4 +1,5 @@
 import { useMemo, useRef } from "react";
+import { useStopRunGuard } from "../../hooks/useStopRunGuard";
 import { useAppDispatch, useAppSelector } from "../../redux/hooks";
 import { saveCurrentSession } from "../../redux/thunks/session";
 import { useCompactConversation } from "../../util/compactConversation";
@@ -6,6 +7,7 @@ import { ToolTip } from "../gui/Tooltip";
 
 const ContextStatus = () => {
   const dispatch = useAppDispatch();
+  const guardRunningTurn = useStopRunGuard();
   const contextPercentage = useAppSelector(
     (state) => state.session.contextPercentage,
   );
@@ -74,11 +76,13 @@ const ContextStatus = () => {
                   <span
                     className="hover:text-link inline-block cursor-pointer underline"
                     onClick={() => {
-                      void dispatch(
-                        saveCurrentSession({
-                          openNewSession: true,
-                          generateTitle: false,
-                        }),
+                      guardRunningTurn(() =>
+                        dispatch(
+                          saveCurrentSession({
+                            openNewSession: true,
+                            generateTitle: false,
+                          }),
+                        ),
                       );
                     }}
                   >

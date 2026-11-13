@@ -6,6 +6,7 @@ import { CustomScrollbarDiv } from ".";
 import { AuthProvider } from "../context/Auth";
 import { IdeMessengerContext } from "../context/IdeMessenger";
 import { LocalStorageProvider } from "../context/LocalStorage";
+import { useStopRunGuard } from "../hooks/useStopRunGuard";
 import { useWebviewListener } from "../hooks/useWebviewListener";
 import { useAppDispatch, useAppSelector } from "../redux/hooks";
 import { setCodeToEdit } from "../redux/slices/editState";
@@ -42,6 +43,7 @@ const Layout = () => {
   const dispatch = useAppDispatch();
   const onboardingCard = useOnboardingCard();
   const ideMessenger = useContext(IdeMessengerContext);
+  const guardRunningTurn = useStopRunGuard();
 
   const { mainEditor } = useMainEditor();
   const dialogMessage = useAppSelector((state) => state.ui.dialogMessage);
@@ -59,15 +61,17 @@ const Layout = () => {
       if (isInEdit) {
         await dispatch(exitEdit({}));
       } else {
-        await dispatch(
-          saveCurrentSession({
-            openNewSession: true,
-            generateTitle: true,
-          }),
+        guardRunningTurn(() =>
+          dispatch(
+            saveCurrentSession({
+              openNewSession: true,
+              generateTitle: true,
+            }),
+          ),
         );
       }
     },
-    [isInEdit],
+    [isInEdit, guardRunningTurn],
   );
 
   useWebviewListener(
@@ -90,15 +94,17 @@ const Layout = () => {
           }),
         );
       } else {
-        await dispatch(
-          saveCurrentSession({
-            openNewSession: true,
-            generateTitle: true,
-          }),
+        guardRunningTurn(() =>
+          dispatch(
+            saveCurrentSession({
+              openNewSession: true,
+              generateTitle: true,
+            }),
+          ),
         );
       }
     },
-    [isHome, isInEdit],
+    [isHome, isInEdit, guardRunningTurn],
     isHome,
   );
 

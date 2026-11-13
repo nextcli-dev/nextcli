@@ -9,6 +9,7 @@ import React, { useContext, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Input } from "..";
 import { IdeMessengerContext } from "../../context/IdeMessenger";
+import { useStopRunGuard } from "../../hooks/useStopRunGuard";
 import { useAppDispatch, useAppSelector } from "../../redux/hooks";
 import { exitEdit } from "../../redux/thunks/edit";
 import {
@@ -37,6 +38,7 @@ export function HistoryTableRow({
     sessionMetadata.title,
   );
   const currentSessionId = useAppSelector((state) => state.session.id);
+  const guardRunningTurn = useStopRunGuard();
 
   useEffect(() => {
     setSessionTitleEditValue(sessionMetadata.title);
@@ -78,16 +80,21 @@ export function HistoryTableRow({
       data-testid={`history-row-${index}`}
       className="hover:bg-input relative mb-2 box-border flex w-full cursor-pointer overflow-hidden rounded-lg p-3"
       onClick={async () => {
-        await dispatch(exitEdit({}));
-        if (sessionMetadata.sessionId !== currentSessionId) {
+        if (sessionMetadata.sessionId === currentSessionId) {
+          await dispatch(exitEdit({}));
+          navigate("/");
+          return;
+        }
+        guardRunningTurn(async () => {
+          await dispatch(exitEdit({}));
           await dispatch(
             loadSession({
               sessionId: sessionMetadata.sessionId,
               saveCurrentSession: true,
             }),
           );
-        }
-        navigate("/");
+          navigate("/");
+        });
       }}
     >
       <td className="flex-1 cursor-pointer space-y-1">
