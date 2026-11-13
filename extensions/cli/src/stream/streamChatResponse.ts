@@ -438,10 +438,15 @@ export async function streamChatResponse(
         services.toolPermissions.getState().currentMode,
       );
 
+      // A compaction is one call that only writes the summary. With tools,
+      // the summarizer went on reviewing in a nested loop that --max-turns
+      // and --max-cost never saw (AI review run 43308492603).
+      const onlyCall = !!wrapUp || isCompacting;
+
       // Recompute tools on each iteration to handle mode changes during
-      // streaming. A run's last call gets none.
+      // streaming. A run's last call and a compaction get none.
       const tools = applyChatCompletionToolOverrides(
-        wrapUp ? [] : await getRequestTools(isHeadless, getPermissions),
+        onlyCall ? [] : await getRequestTools(isHeadless, getPermissions),
         model.chatOptions?.toolOverrides,
       );
 
@@ -485,8 +490,9 @@ export async function streamChatResponse(
                   countTotalInputTokens({ chatHistory, systemMessage, model }),
                 )
               : undefined,
-            // The last call writes the answer: no tokens spent on thinking
-            thinkingOff: !!wrapUp,
+            // The last call writes the answer and a compaction a summary: no
+            // tokens spent on thinking
+            thinkingOff: onlyCall,
           }),
         );
 
@@ -494,7 +500,8 @@ export async function streamChatResponse(
         return finalResponse || content || fullResponse;
       }
 
-      if (wrapUp) {
+      // Tool calls in it are dropped, not run
+      if (onlyCall) {
         await saveFinalAnswer({
           chatHistory,
           content,
