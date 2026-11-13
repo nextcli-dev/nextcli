@@ -95,9 +95,10 @@ describe("model settings", () => {
   });
 
   it("uses the chosen context window for compaction limits", () => {
-    expect(getModelContextLimit(opus)).toBe(200_000);
-    updateModelSettings(opus, { contextLength: 1_000_000 });
+    // llm-info's window until one is chosen in the model menu
     expect(getModelContextLimit(opus)).toBe(1_000_000);
+    updateModelSettings(opus, { contextLength: 200_000 });
+    expect(getModelContextLimit(opus)).toBe(200_000);
   });
 
   it("labels the model with its effort and fast mode", () => {
