@@ -10,6 +10,7 @@ import { useNavigate } from "react-router-dom";
 import Shortcut from "../../../components/gui/Shortcut";
 import { Card } from "../../../components/ui";
 import { IdeMessengerContext } from "../../../context/IdeMessenger";
+import { useStopRunGuard } from "../../../hooks/useStopRunGuard";
 import { useAppDispatch, useAppSelector } from "../../../redux/hooks";
 import { setOnboardingCard } from "../../../redux/slices/uiSlice";
 import { saveCurrentSession } from "../../../redux/thunks/session";
@@ -104,6 +105,7 @@ export function HelpSection() {
   const ideMessenger = useContext(IdeMessengerContext);
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
+  const guardRunningTurn = useStopRunGuard();
 
   const currentSession = useAppSelector((state) => state.session);
 
@@ -169,23 +171,26 @@ export function HelpSection() {
                 title="Quickstart"
                 description="Reopen the quickstart and tutorial file"
                 icon={DocumentArrowUpIcon}
-                onClick={async () => {
-                  navigate("/");
-                  // Used to clear the chat panel before showing onboarding card
-                  await dispatch(
-                    saveCurrentSession({
-                      openNewSession: true,
-                      generateTitle: true,
-                    }),
-                  );
-                  dispatch(
-                    setOnboardingCard({
-                      show: true,
-                      activeTab: undefined,
-                    }),
-                  );
-                  ideMessenger.post("showTutorial", undefined);
-                }}
+                onClick={() =>
+                  // Opens a new session, which stops a running turn
+                  guardRunningTurn(async () => {
+                    navigate("/");
+                    // Used to clear the chat panel before showing onboarding card
+                    await dispatch(
+                      saveCurrentSession({
+                        openNewSession: true,
+                        generateTitle: true,
+                      }),
+                    );
+                    dispatch(
+                      setOnboardingCard({
+                        show: true,
+                        activeTab: undefined,
+                      }),
+                    );
+                    ideMessenger.post("showTutorial", undefined);
+                  })
+                }
               />
 
               {process.env.NODE_ENV === "development" && (

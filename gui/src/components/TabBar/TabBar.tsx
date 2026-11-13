@@ -11,6 +11,7 @@ import {
   removeTab,
   setActiveTab,
   setTabs,
+  type Tab as SessionTab,
 } from "../../redux/slices/tabsSlice";
 import { AppDispatch, RootState } from "../../redux/store";
 import { loadSession, saveCurrentSession } from "../../redux/thunks/session";
@@ -183,10 +184,7 @@ export const TabBar = React.forwardRef<HTMLDivElement>((_, ref) => {
     }
   }, [tabs.map((t) => t.id).join(",")]);
 
-  const switchToTab = async (id: string) => {
-    const targetTab = tabs.find((tab) => tab.id === id);
-    if (!targetTab) return;
-
+  const switchToTab = async (targetTab: SessionTab) => {
     if (targetTab.sessionId) {
       // Switch to existing session
       await dispatch(
@@ -197,13 +195,7 @@ export const TabBar = React.forwardRef<HTMLDivElement>((_, ref) => {
       );
     }
 
-    dispatch(setActiveTab(id));
-  };
-
-  const handleTabClick = (id: string) => {
-    const targetTab = tabs.find((tab) => tab.id === id);
-    if (!targetTab || targetTab.isActive) return;
-    guardRunningTurn(() => switchToTab(id));
+    dispatch(setActiveTab(targetTab.id));
   };
 
   const closeTab = async (id: string) => {
@@ -213,7 +205,7 @@ export const TabBar = React.forwardRef<HTMLDivElement>((_, ref) => {
     if (isClosingActive) {
       const lastTab = filtered[filtered.length - 1];
       if (filtered.length) {
-        await switchToTab(lastTab.id);
+        await switchToTab(lastTab);
         dispatch(
           setTabs(
             filtered.map((tab, i) => ({
@@ -251,7 +243,10 @@ export const TabBar = React.forwardRef<HTMLDivElement>((_, ref) => {
         <Tab
           key={tab.id}
           isActive={tab.isActive}
-          onClick={() => handleTabClick(tab.id)}
+          onClick={() => {
+            if (tab.isActive) return;
+            guardRunningTurn(() => switchToTab(tab));
+          }}
           onAuxClick={(e) => {
             // Middle mouse button
             if (e.button === 1) {

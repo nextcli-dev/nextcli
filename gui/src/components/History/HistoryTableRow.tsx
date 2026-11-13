@@ -172,9 +172,17 @@ export function HistoryTableRow({
               </HeaderButtonWithToolTip>
               <HeaderButtonWithToolTip
                 text="Delete"
-                onClick={async (e) => {
+                testId={`history-delete-${index}`}
+                onClick={(e) => {
                   e.stopPropagation();
-                  await dispatch(deleteSession(sessionMetadata.sessionId));
+                  const deleteThisSession = () =>
+                    dispatch(deleteSession(sessionMetadata.sessionId));
+                  // Deleting the open session leaves it, which stops its turn
+                  if (sessionMetadata.sessionId === currentSessionId) {
+                    guardRunningTurn(deleteThisSession);
+                  } else {
+                    void deleteThisSession();
+                  }
                 }}
               >
                 <TrashIcon width="1em" height="1em" />

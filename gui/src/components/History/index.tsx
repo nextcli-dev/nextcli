@@ -42,6 +42,7 @@ export function History() {
     }),
   ).current;
 
+  const isStreaming = useAppSelector((state) => state.session.isStreaming);
   const allSessionMetadata = useAppSelector(
     (state) => state.session.allSessionMetadata,
   );
@@ -124,7 +125,9 @@ export function History() {
       setDialogMessage(
         <ConfirmationDialog
           title={`Clear sessions`}
-          text={`Are you sure you want to permanently delete all chat sessions, including the current chat session?`}
+          text={`Are you sure you want to permanently delete all chat sessions, including the current chat session?${
+            isStreaming ? " This also stops the running turn." : ""
+          }`}
           onConfirm={async () => {
             // optimistic update
             dispatch(setAllSessionMetadata([]));
