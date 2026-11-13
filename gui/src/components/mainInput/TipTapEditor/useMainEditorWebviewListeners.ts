@@ -2,6 +2,7 @@ import { Editor } from "@tiptap/react";
 import { InputModifiers } from "core";
 import { rifWithContentsToContextItem } from "core/commands/util";
 import { MutableRefObject } from "react";
+import { useStopRunGuard } from "../../../hooks/useStopRunGuard";
 import { useWebviewListener } from "../../../hooks/useWebviewListener";
 import { useAppSelector } from "../../../redux/hooks";
 import { clearCodeToEdit } from "../../../redux/slices/editState";
@@ -29,6 +30,7 @@ export function useMainEditorWebviewListeners({
   inputId: string;
   editorFocusedRef: MutableRefObject<boolean | undefined>;
 }) {
+  const guardRunningTurn = useStopRunGuard();
   const activeContextProviders = useAppSelector(
     (state) => state.config.config.contextProviders,
   );
@@ -90,18 +92,20 @@ export function useMainEditorWebviewListeners({
   useWebviewListener(
     "focusContinueInputWithNewSession",
     async () => {
-      await dispatch(
-        saveCurrentSession({
-          openNewSession: true,
-          generateTitle: true,
-        }),
-      );
+      guardRunningTurn(async () => {
+        await dispatch(
+          saveCurrentSession({
+            openNewSession: true,
+            generateTitle: true,
+          }),
+        );
+      });
 
       setTimeout(() => {
         editor?.commands.focus("end");
       }, 20);
     },
-    [editor, dispatch],
+    [editor, dispatch, guardRunningTurn],
   );
 
   useWebviewListener(
@@ -173,16 +177,19 @@ export function useMainEditorWebviewListeners({
   useWebviewListener(
     "focusContinueSessionId",
     async (data) => {
-      if (!data.sessionId) return;
+      const sessionId = data.sessionId;
+      if (!sessionId) return;
 
-      await dispatch(
-        loadSession({
-          sessionId: data.sessionId,
-          saveCurrentSession: true,
-        }),
+      guardRunningTurn(() =>
+        dispatch(
+          loadSession({
+            sessionId,
+            saveCurrentSession: true,
+          }),
+        ),
       );
     },
-    [],
+    [guardRunningTurn],
   );
 
   useWebviewListener(

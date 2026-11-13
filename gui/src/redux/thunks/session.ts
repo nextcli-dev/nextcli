@@ -6,16 +6,34 @@ import { IIdeMessenger } from "../../context/IdeMessenger";
 import { selectSelectedChatModel } from "../slices/configSlice";
 import { selectSelectedProfile } from "../slices/profilesSlice";
 import {
+  abortStream,
+  closeTurnForLeaving,
   deleteSessionMetadata,
   newSession,
   setAllSessionMetadata,
+  setInactive,
   setIsSessionMetadataLoading,
   updateSessionMetadata,
 } from "../slices/sessionSlice";
-import { ThunkApiType } from "../store";
+import { AppDispatch, RootState, ThunkApiType } from "../store";
 import { updateSelectedModelByRole } from "../thunks/updateSelectedModelByRole";
 
 const MAX_TITLE_LENGTH = 100;
+
+/**
+ * Stops a running turn before its session is left, keeping what it has so
+ * far. The Stop button's cleanup (cancelStream) would instead move the
+ * prompt to the input box, which by then belongs to the next session.
+ */
+function stopTurnBeforeLeaving(
+  dispatch: AppDispatch,
+  getState: () => RootState,
+) {
+  if (!getState().session.isStreaming) return;
+  dispatch(setInactive());
+  dispatch(abortStream());
+  dispatch(closeTurnForLeaving());
+}
 
 // Async session functions live in thunks (because of IDE messaging mostly)
 // see sessionSlice for sync redux session functions
@@ -93,8 +111,12 @@ export const loadSession = createAsyncThunk<
   ThunkApiType
 >(
   "session/load",
-  async ({ sessionId, saveCurrentSession: save }, { extra, dispatch }) => {
+  async (
+    { sessionId, saveCurrentSession: save },
+    { extra, dispatch, getState },
+  ) => {
     if (save) {
+      stopTurnBeforeLeaving(dispatch, getState);
       // save the session in the background
       void dispatch(
         saveCurrentSession({
@@ -190,6 +212,9 @@ export const saveCurrentSession = createAsyncThunk<
 >(
   "session/saveCurrent",
   async ({ openNewSession, generateTitle }, { dispatch, extra, getState }) => {
+    if (openNewSession) {
+      stopTurnBeforeLeaving(dispatch, getState);
+    }
     const session = getState().session; // assign to a variable so that even when current session changes, we have the reference to the old session
     if (session.history.length === 0) {
       return;

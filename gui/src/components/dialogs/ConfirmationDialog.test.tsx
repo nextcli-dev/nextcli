@@ -76,4 +76,20 @@ describe("ConfirmationDialog", () => {
 
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
+
+  it("labels the cancel button with cancelText and still calls onCancel", () => {
+    const onConfirm = vi.fn();
+    const onCancel = vi.fn();
+    renderDialog({
+      text: "Stop it?",
+      onConfirm,
+      onCancel,
+      cancelText: "Keep running",
+    });
+
+    expect(screen.queryByText("Cancel")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("Keep running"));
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
 });

@@ -1,11 +1,12 @@
 import { OnboardingModes } from "core/protocol/core";
-import { useContext, useEffect } from "react";
+import { useCallback, useContext, useEffect } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { CustomScrollbarDiv } from ".";
 import { AuthProvider } from "../context/Auth";
 import { IdeMessengerContext } from "../context/IdeMessenger";
 import { LocalStorageProvider } from "../context/LocalStorage";
+import { useStopRunGuard } from "../hooks/useStopRunGuard";
 import { useWebviewListener } from "../hooks/useWebviewListener";
 import { useAppDispatch, useAppSelector } from "../redux/hooks";
 import { setCodeToEdit } from "../redux/slices/editState";
@@ -42,6 +43,7 @@ const Layout = () => {
   const dispatch = useAppDispatch();
   const onboardingCard = useOnboardingCard();
   const ideMessenger = useContext(IdeMessengerContext);
+  const guardRunningTurn = useStopRunGuard();
 
   const { mainEditor } = useMainEditor();
   const dialogMessage = useAppSelector((state) => state.ui.dialogMessage);
@@ -52,23 +54,28 @@ const Layout = () => {
     location.pathname === ROUTES.HOME ||
     location.pathname === ROUTES.HOME_INDEX;
 
-  useWebviewListener(
-    "newSession",
-    async () => {
+  // New Session leaves the current session, Edit mode included, so it asks
+  // first when a turn (or an edit) is running there
+  const startNewSession = useCallback(
+    (exitEditOptions: { openNewSession?: boolean }) => {
       navigate(ROUTES.HOME);
-      if (isInEdit) {
-        await dispatch(exitEdit({}));
-      } else {
-        await dispatch(
-          saveCurrentSession({
-            openNewSession: true,
-            generateTitle: true,
-          }),
-        );
-      }
+      guardRunningTurn(() =>
+        isInEdit
+          ? dispatch(exitEdit(exitEditOptions))
+          : dispatch(
+              saveCurrentSession({
+                openNewSession: true,
+                generateTitle: true,
+              }),
+            ),
+      );
     },
-    [isInEdit],
+    [navigate, guardRunningTurn, isInEdit, dispatch],
   );
+
+  useWebviewListener("newSession", async () => startNewSession({}), [
+    startNewSession,
+  ]);
 
   useWebviewListener(
     "isContinueInputFocused",
@@ -81,24 +88,8 @@ const Layout = () => {
 
   useWebviewListener(
     "focusContinueInputWithNewSession",
-    async () => {
-      navigate(ROUTES.HOME);
-      if (isInEdit) {
-        await dispatch(
-          exitEdit({
-            openNewSession: true,
-          }),
-        );
-      } else {
-        await dispatch(
-          saveCurrentSession({
-            openNewSession: true,
-            generateTitle: true,
-          }),
-        );
-      }
-    },
-    [isHome, isInEdit],
+    async () => startNewSession({ openNewSession: true }),
+    [isHome, startNewSession],
     isHome,
   );
 
@@ -141,11 +132,14 @@ const Layout = () => {
   useWebviewListener(
     "focusEdit",
     async () => {
-      await ideMessenger.request("edit/addCurrentSelection", undefined);
-      await dispatch(enterEdit({ editorContent: mainEditor?.getJSON() }));
-      mainEditor?.commands.focus();
+      // Edit mode opens its own session, which stops a running turn
+      guardRunningTurn(async () => {
+        await ideMessenger.request("edit/addCurrentSelection", undefined);
+        await dispatch(enterEdit({ editorContent: mainEditor?.getJSON() }));
+        mainEditor?.commands.focus();
+      });
     },
-    [ideMessenger, mainEditor],
+    [ideMessenger, mainEditor, guardRunningTurn],
   );
 
   useWebviewListener(

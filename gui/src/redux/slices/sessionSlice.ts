@@ -345,6 +345,59 @@ export const sessionSlice = createSlice({
         state.history = state.history.slice(0, validAssistantMessageIdx + 1);
       }
     },
+    /**
+     * Closes a running turn before its session is left. Unlike
+     * clearDanglingMessages (the Stop button), it keeps the prompt and any
+     * reasoning in history and never moves the prompt to the input box,
+     * which by then belongs to another session.
+     */
+    closeTurnForLeaving: (state) => {
+      const lastUserOrToolIdx = findLastIndex(
+        state.history,
+        (item) => item.message.role === "tool" || item.message.role === "user",
+      );
+
+      const turn = state.history.slice(lastUserOrToolIdx + 1).filter((item) => {
+        const isEmptyPlaceholder =
+          item.message.role === "assistant" &&
+          !renderChatMessage(item.message).trim() &&
+          !item.reasoning?.text?.trim() &&
+          !item.toolCallStates?.length;
+        return !isEmptyPlaceholder;
+      });
+
+      for (const item of turn) {
+        if (item.reasoning?.active) {
+          item.reasoning.active = false;
+          item.reasoning.endAt = Date.now();
+        }
+        for (const toolCallState of item.toolCallStates ?? []) {
+          if (
+            toolCallState.status === "generating" ||
+            toolCallState.status === "generated"
+          ) {
+            toolCallState.status = "canceled";
+          } else if (toolCallState.status === "calling") {
+            // The tool may still finish; its result goes nowhere now
+            toolCallState.status = "errored";
+            toolCallState.output = [
+              {
+                icon: "problems",
+                name: "Tool Call Stopped",
+                description: "Session switched",
+                content:
+                  "The session was switched while this tool was running. Its result was not recorded.",
+                hidden: false,
+              },
+            ];
+          }
+        }
+      }
+
+      state.history = state.history
+        .slice(0, lastUserOrToolIdx + 1)
+        .concat(turn);
+    },
     // Trigger value picked up by editor with isMainInput to set its content
     setMainEditorContentTrigger: (
       state,
@@ -1090,6 +1143,7 @@ export const {
   truncateHistoryToMessage,
   updateHistoryItemAtIndex,
   clearDanglingMessages,
+  closeTurnForLeaving,
   setMainEditorContentTrigger,
   deleteMessage,
   deleteCompaction,

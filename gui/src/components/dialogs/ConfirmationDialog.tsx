@@ -9,6 +9,7 @@ interface ConfirmationDialogProps {
   title?: string;
   hideCancelButton?: boolean;
   confirmText?: string;
+  cancelText?: string;
 }
 
 function ConfirmationDialog(props: ConfirmationDialogProps) {
@@ -33,7 +34,7 @@ function ConfirmationDialog(props: ConfirmationDialogProps) {
               props.onCancel?.();
             }}
           >
-            Cancel
+            {props.cancelText ?? "Cancel"}
           </Button>
         )}
         <Button

@@ -39,6 +39,7 @@ export const callToolById = createAsyncThunk<
     return;
   }
 
+  const sessionId = state.session.id;
   const selectedChatModel = selectSelectedChatModel(state);
 
   if (!selectedChatModel) {
@@ -107,6 +108,12 @@ export const callToolById = createAsyncThunk<
         : undefined;
     }
     streamResponse = true;
+  }
+
+  // The session was left while the tool ran: its turn is closed and saved,
+  // so don't record the result in, or stop, the session that is open now
+  if (getState().session.id !== sessionId) {
+    return;
   }
 
   if (error) {
