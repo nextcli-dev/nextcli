@@ -94,11 +94,32 @@ describe("model settings", () => {
     expect(getContextOptions(gpt, 200_000)).toEqual([64_000, 128_000, 200_000]);
   });
 
+  it("starts DeepSeek V4 at 200K and lets the config or menu extend it to 1M", () => {
+    const deepseek = model({
+      provider: "deepseek",
+      model: "deepseek-v4.1-flash",
+      defaultCompletionOptions: { maxTokens: 32_000 },
+    });
+    updateModelSettings(deepseek, { contextLength: undefined });
+
+    expect(getModelContextLimit(deepseek)).toBe(200_000);
+    expect(getContextOptions(deepseek, 200_000).at(-1)).toBe(1_000_000);
+    expect(
+      getModelContextLimit({
+        ...deepseek,
+        defaultCompletionOptions: { contextLength: 1_000_000 },
+      }),
+    ).toBe(1_000_000);
+
+    updateModelSettings(deepseek, { contextLength: 1_000_000 });
+    expect(getModelContextLimit(deepseek)).toBe(1_000_000);
+    updateModelSettings(deepseek, { contextLength: undefined });
+  });
+
   it("uses the chosen context window for compaction limits", () => {
-    // llm-info's window until one is chosen in the model menu
-    expect(getModelContextLimit(opus)).toBe(1_000_000);
-    updateModelSettings(opus, { contextLength: 200_000 });
     expect(getModelContextLimit(opus)).toBe(200_000);
+    updateModelSettings(opus, { contextLength: 1_000_000 });
+    expect(getModelContextLimit(opus)).toBe(1_000_000);
   });
 
   it("labels the model with its effort and fast mode", () => {

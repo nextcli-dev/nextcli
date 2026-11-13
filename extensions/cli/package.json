@@ -56,7 +56,6 @@
   },
   "devDependencies": {
     "@nextcli/config-yaml": "file:../../packages/config-yaml",
-    "@nextcli/llm-info": "file:../../packages/llm-info",
     "@nextcli/openai-adapters": "file:../../packages/openai-adapters",
     "@continuedev/sdk": "^0.0.13",
     "@continuedev/terminal-security": "file:../../packages/terminal-security",

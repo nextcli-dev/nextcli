@@ -14,7 +14,7 @@ import {
   thinkingLabel,
   updateModelSettings,
 } from "../util/modelSettings.js";
-import { getConfiguredContextLength } from "../util/tokenizer.js";
+import { DEFAULT_CONTEXT_LENGTH } from "../util/tokenizer.js";
 
 import { ModelSelector } from "./ModelSelector.js";
 import { Selector, SelectorOption } from "./Selector.js";
@@ -78,9 +78,10 @@ function buildRows(model: ModelConfig | null): MenuRow[] {
       opensSubmenu: false,
     });
   }
-  const configured = getConfiguredContextLength(model);
-  const contextOptions = getContextOptions(model, configured);
+  const contextOptions = getContextOptions(model, DEFAULT_CONTEXT_LENGTH);
   if (contextOptions.length > 1) {
+    const configured =
+      model.defaultCompletionOptions?.contextLength ?? DEFAULT_CONTEXT_LENGTH;
     rows.push({
       id: "context",
       name: "Context",
@@ -129,16 +130,16 @@ function missingThinkingModes(model: ModelConfig): string {
 }
 
 function contextOptions(model: ModelConfig): SelectorOption[] {
-  return getContextOptions(model, getConfiguredContextLength(model)).map(
-    (tokens) => ({
-      id: String(tokens),
-      name: formatContextLength(tokens),
-    }),
-  );
+  return getContextOptions(model, DEFAULT_CONTEXT_LENGTH).map((tokens) => ({
+    id: String(tokens),
+    name: formatContextLength(tokens),
+  }));
 }
 
 function configuredContext(model: ModelConfig): number {
-  return getConfiguredContextLength(model);
+  return (
+    model.defaultCompletionOptions?.contextLength ?? DEFAULT_CONTEXT_LENGTH
+  );
 }
 
 /**
