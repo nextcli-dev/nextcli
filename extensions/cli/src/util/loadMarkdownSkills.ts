@@ -3,7 +3,7 @@ import fsPromises from "fs/promises";
 import * as path from "path";
 
 import { parseMarkdownRule } from "@nextcli/config-yaml";
-import { WalkerSync } from "ignore-walk";
+import ignoreWalk from "ignore-walk";
 import { z } from "zod";
 
 import { env } from "../env.js";
@@ -44,7 +44,7 @@ function getFilePathsInSkillDirectory(
   const skillDir = path.dirname(skillFilePath);
   if (!fs.existsSync(skillDir)) return [];
 
-  const walker = new WalkerSync({
+  const walker = new ignoreWalk.WalkerSync({
     path: skillDir,
     includeEmpty: false,
     follow: false,
