@@ -144,13 +144,13 @@ export class GUIActions {
    * "Stop the running turn?" in a dialog that covers the GUI.
    */
   public static async stopRunningTurn(view: WebView) {
-    const [stopButton] = await GUISelectors.getStopStreamingButtons(view);
-    if (!stopButton) return;
-    await stopButton.click();
     await TestUtils.waitForSuccess(async () => {
-      if ((await GUISelectors.getStopStreamingButtons(view)).length > 0) {
-        throw new Error("The turn is still running");
-      }
+      const [stopButton] = await GUISelectors.getStopStreamingButtons(view);
+      if (!stopButton) return;
+      // The turn can end between finding the button and clicking it (a
+      // stale element); the next attempt then finds no button
+      await stopButton.click().catch(() => undefined);
+      throw new Error("The turn is still running");
     }, DEFAULT_TIMEOUT.SM);
   }
 

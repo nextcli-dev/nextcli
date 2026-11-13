@@ -37,7 +37,12 @@ describe("Edit Test", () => {
     await editor.click();
 
     await editor.typeTextAt(1, 1, originalEditorText);
-    await editor.selectText(originalEditorText);
+    // selectText gives the selection 2s to render, not always enough right
+    // after the GUI had focus. Selecting again is harmless.
+    await TestUtils.waitForSuccess(
+      () => editor.selectText(originalEditorText),
+      DEFAULT_TIMEOUT.SM,
+    );
 
     await EditActions.invokeEditShortcut(editor);
 
