@@ -300,6 +300,53 @@ describe("streamChatResponse - agent loop limits", () => {
     expect(vi.mocked(handleToolCalls).mock.calls[0][0].toolCalls).toEqual([]);
   });
 
+  describe("a compaction", () => {
+    const compact = (runModel: ModelConfig = model) =>
+      streamChatResponse(
+        convertToUnifiedHistory([{ role: "user", content: "Summarize" }]),
+        runModel,
+        llmApi,
+        { signal: { aborted: false }, abort: vi.fn() } as any,
+        undefined,
+        true,
+      );
+
+    it("is one call without tools, even when the model asks for one", async () => {
+      // AI review run 43308492603: the summarizer kept reading files
+      vi.mocked(llmApi.chatCompletionStream).mockImplementation(
+        async function* () {
+          modelCalls++;
+          yield contentChunk("Summary");
+          yield toolCallChunk();
+        } as any,
+      );
+
+      await expect(compact()).resolves.toBe("Summary");
+      expect(modelCalls).toBe(1);
+      expect(getRequestTools).not.toHaveBeenCalled();
+      const calls = vi.mocked(llmApi.chatCompletionStream).mock.calls;
+      expect(calls[0][0].tools).toBeUndefined();
+      expect(handleToolCalls).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(handleToolCalls).mock.calls[0][0].toolCalls).toEqual([]);
+      expect(getLimitReached()).toBeUndefined();
+    });
+
+    it("turns thinking off on a model that can", async () => {
+      const deepseek = {
+        provider: "openai",
+        name: "checks",
+        model: "deepseek-v4.1-flash",
+        apiBase: "https://api.oneprovider.dev/v1",
+        defaultCompletionOptions: { maxTokens: 2048 },
+      } as unknown as ModelConfig;
+
+      await expect(compact(deepseek)).resolves.toBe("Final answer");
+      const calls = vi.mocked(llmApi.chatCompletionStream).mock.calls;
+      expect(calls).toHaveLength(1);
+      expect(calls[0][0]).toMatchObject({ thinking: { type: "disabled" } });
+    });
+  });
+
   it("does not count usage from before the run (resumed sessions)", async () => {
     Object.assign(sessionUsage, {
       promptTokens: 1_000_000,

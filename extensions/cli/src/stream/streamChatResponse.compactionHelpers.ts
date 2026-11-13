@@ -77,10 +77,18 @@ export async function handlePostToolValidation(
   chatHistory: ChatHistoryItem[],
   options: CompactionHelperOptions,
 ): Promise<{ chatHistory: ChatHistoryItem[]; wasCompacted: boolean }> {
-  const { model, llmApi, isHeadless, callbacks, systemMessage, tools } =
-    options;
+  const {
+    model,
+    llmApi,
+    isCompacting,
+    isHeadless,
+    callbacks,
+    systemMessage,
+    tools,
+  } = options;
 
-  if (toolCalls.length === 0) {
+  // Never compact inside a compaction
+  if (isCompacting || toolCalls.length === 0) {
     return { chatHistory, wasCompacted: false };
   }
 
@@ -178,10 +186,18 @@ export async function handleNormalAutoCompaction(
   shouldContinue: boolean,
   options: CompactionHelperOptions,
 ): Promise<{ chatHistory: ChatHistoryItem[]; wasCompacted: boolean }> {
-  const { model, llmApi, isHeadless, callbacks, systemMessage, tools } =
-    options;
+  const {
+    model,
+    llmApi,
+    isCompacting,
+    isHeadless,
+    callbacks,
+    systemMessage,
+    tools,
+  } = options;
 
-  if (!shouldContinue) {
+  // Never compact inside a compaction
+  if (isCompacting || !shouldContinue) {
     return { chatHistory, wasCompacted: false };
   }
 
