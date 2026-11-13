@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.15](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.14...vscode-v1.6.15) (2026-11-13)
+
+
+### Bug Fixes
+
+* **llm-info:** match every DeepSeek V4 model id ([#136](https://github.com/nextcli-dev/nextcli/issues/136)) ([cf8b0ec](https://github.com/nextcli-dev/nextcli/commit/cf8b0ec9ad01b9ae94164238b2fbb3aacc2905b2))
+
 ## [1.6.14](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.13...vscode-v1.6.14) (2026-11-12)
 
 
