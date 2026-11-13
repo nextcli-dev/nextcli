@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.16](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.15...vscode-v1.6.16) (2026-11-13)
+
+
+### Bug Fixes
+
+* **vscode:** ask before a session switch stops a running turn ([#140](https://github.com/nextcli-dev/nextcli/issues/140)) ([b420b0d](https://github.com/nextcli-dev/nextcli/commit/b420b0d7c1a682ade053efceee687c56d7f1c9d7))
+
 ## [1.6.15](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.14...vscode-v1.6.15) (2026-11-13)
 
 
