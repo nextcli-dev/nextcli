@@ -139,17 +139,19 @@ export class GUIActions {
   }
 
   /**
-   * Stops the running turn, if any, and waits until the GUI is idle.
-   * toggleGui starts a new session, and while a turn runs that asks
-   * "Stop the running turn?" in a dialog that covers the GUI.
+   * Clicks the stop button until it's gone, so the GUI no longer streams.
+   * toggleGui starts a new session, and while the GUI streams that asks
+   * "Stop the running turn?" in a dialog that covers the GUI. Does nothing
+   * when the toolbar shows an apply, Edit mode or TTS instead of the stop
+   * button; the chat tests that use this don't reach those states.
    */
   public static async stopRunningTurn(view: WebView) {
     await TestUtils.waitForSuccess(async () => {
       const [stopButton] = await GUISelectors.getStopStreamingButtons(view);
       if (!stopButton) return;
-      // The turn can end between finding the button and clicking it (a
-      // stale element); the next attempt then finds no button
-      await stopButton.click().catch(() => undefined);
+      // A throw retries, including a click on a button that went stale
+      // because the turn ended on its own
+      await stopButton.click();
       throw new Error("The turn is still running");
     }, DEFAULT_TIMEOUT.SM);
   }

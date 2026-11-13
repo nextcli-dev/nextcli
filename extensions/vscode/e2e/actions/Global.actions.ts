@@ -30,23 +30,25 @@ export class GlobalActions {
 
     if (!(await isOpen())) {
       await VSBrowser.instance.openResources(GlobalActions.defaultFolder);
+      // waitForSuccess replaces errors with its own message; name the folder
+      // and the window title instead
       await TestUtils.waitForSuccess(async () => {
-        if (!(await isOpen())) {
-          throw new Error(
-            `Workspace ${GlobalActions.defaultFolder} did not open (window title: "${await VSBrowser.instance.driver.getTitle()}")`,
-          );
-        }
-      }, DEFAULT_TIMEOUT.MD);
+        if (!(await isOpen())) throw new Error("Not open yet");
+      }, DEFAULT_TIMEOUT.MD).catch(async () => {
+        throw new Error(
+          `Workspace ${GlobalActions.defaultFolder} did not open (window title: "${await VSBrowser.instance.driver.getTitle()}")`,
+        );
+      });
     }
 
-    await new Workbench().executeCommand(
-      "Notifications: Clear All Notifications",
-    );
+    await GlobalActions.clearAllNotifications();
   }
 
   public static async clearAllNotifications() {
-    await new Workbench().executeCommand(
-      "Notifications: Clear All Notifications",
+    // executeCommand waits only 5s for the command palette, which isn't
+    // always enough right after the GUI closes; retry like toggleGui does
+    await TestUtils.waitForSuccess(() =>
+      new Workbench().executeCommand("Notifications: Clear All Notifications"),
     );
   }
 
