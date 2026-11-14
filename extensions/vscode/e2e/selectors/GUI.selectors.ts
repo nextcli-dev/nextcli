@@ -53,54 +53,8 @@ export class GUISelectors {
     return driver.findElements(By.css("iframe"));
   }
 
-  public static getSubmitInputButton(view: WebView) {
-    return SelectorUtils.getElementByDataTestId(view, "submit-input-button");
-  }
-
-  public static getAcceptToolCallButton(view: WebView) {
-    return view.findWebElement(
-      By.css("[data-testid*='accept-tool-call-button']"),
-    );
-  }
-
-  public static getRejectToolCallButton(view: WebView) {
-    return view.findWebElement(
-      By.css("[data-testid*='reject-tool-call-button']"),
-    );
-  }
-
   public static getToolCallStatusMessage(view: WebView) {
     return SelectorUtils.getElementByDataTestId(view, "tool-call-title");
-  }
-
-  public static getToolsTab(view: WebView) {
-    return SelectorUtils.getElementByDataTestId(view, "tab-tools");
-  }
-
-  public static getBackButton(view: WebView) {
-    return SelectorUtils.getElementByDataTestId(view, "tab-back");
-  }
-
-  /** The header that expands a tool group on the Tools settings page */
-  public static getToolGroupHeader(view: WebView, groupName: string) {
-    return SelectorUtils.getElementByDataTestId(
-      view,
-      `tool-group-${groupName}`,
-    );
-  }
-
-  /** An option of an open headless-ui Listbox, by its label */
-  public static getListboxOption(view: WebView, label: string) {
-    return view.findWebElement(
-      By.xpath(`//*[@role="option" and normalize-space()="${label}"]`),
-    );
-  }
-
-  public static getToolPolicyButton(view: WebView, toolName: string) {
-    return SelectorUtils.getElementByDataTestId(
-      view,
-      `tool-policy-item-${toolName}`,
-    );
   }
 
   public static getModelDropdownButton(view: WebView) {
@@ -111,38 +65,8 @@ export class GUISelectors {
     return SelectorUtils.getElementByDataTestId(view, "mode-select-button");
   }
 
-  public static getFirstContextProviderDropdownItem(view: WebView) {
-    return SelectorUtils.getElementByDataTestId(
-      view,
-      "context-provider-dropdown-item",
-    );
-  }
-
-  public static getContextItemsPeek(view: WebView) {
-    return SelectorUtils.getElementByDataTestId(view, "context-items-peek");
-  }
-
-  public static getFirstContextItemsPeekItem(view: WebView) {
-    return SelectorUtils.getElementByDataTestId(
-      view,
-      "context-items-peek-item",
-    );
-  }
-
-  public static getRulesPeek(view: WebView) {
-    return SelectorUtils.getElementByDataTestId(view, "rules-peek");
-  }
-
-  public static getFirstRulesPeekItem(view: WebView) {
-    return SelectorUtils.getElementByDataTestId(view, "rules-peek-item");
-  }
-
   public static getNthHistoryTableRow(view: WebView, index: number) {
     return SelectorUtils.getElementByDataTestId(view, `history-row-${index}`);
-  }
-
-  public static getNthMessageDeleteButton(view: WebView, index: number) {
-    return SelectorUtils.getElementByDataTestId(view, `delete-button-${index}`);
   }
 
   public static getModelDropdownOption(view: WebView, option: string) {

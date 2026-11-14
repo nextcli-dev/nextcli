@@ -57,7 +57,7 @@ export class GUIActions {
 
   /**
    * Shows the GUI if it's hidden and switches into its iframe once the main
-   * input exists. Unlike toggleGui, it never hides the GUI or starts a new
+   * input exists. Unlike Cmd+L, it never hides the GUI or starts a new
    * session. The GUI may take focus a moment later; focus the code editor
    * with GlobalActions.focusEditor before typing into it.
    */
@@ -165,10 +165,6 @@ export class GUIActions {
     };
   };
 
-  public static toggleGui = async () => {
-    await GlobalActions.runCommand("continue.focusContinueInput");
-  };
-
   public static selectModelFromDropdown = async (
     view: WebView,
     option: string,
@@ -241,20 +237,6 @@ export class GUIActions {
     );
   }
 
-  /** Waits for a tool call's Accept button and clicks it once */
-  public static async approveToolCall(view: WebView, toolCallId: string) {
-    const accept = await TestUtils.waitForSuccess(
-      () =>
-        view.findWebElement(
-          By.css(`[data-testid='accept-tool-call-button-${toolCallId}']`),
-        ),
-      DEFAULT_TIMEOUT.MD,
-      250,
-      `the Accept button of tool call ${toolCallId}`,
-    );
-    await accept.click();
-  }
-
   public static selectModeFromDropdown = async (
     view: WebView,
     option: string,
@@ -317,106 +299,5 @@ export class GUIActions {
       .sendKeys("l")
       .keyUp(TestUtils.osControlKey)
       .perform();
-  }
-
-  /**
-   * Runs a command palette command (the history, new-session and settings
-   * buttons are VS Code view-title actions, outside the webview) and returns
-   * the GUI's iframe again, which callers must use from then on.
-   */
-  public static async runCommandFromGui(view: WebView, command: string) {
-    await view.switchBack();
-    await GlobalActions.runCommand(command);
-    return GUIActions.switchToReactIframe();
-  }
-
-  /**
-   * Drags the secondary side bar's left edge towards the editor. The default
-   * width is too narrow for the settings page ("Screen width too small"
-   * below Tailwind's sm breakpoint).
-   */
-  public static async widenSecondarySideBar(driver: WebDriver, by = 700) {
-    const auxiliaryBar = await driver.findElement(
-      By.id("workbench.parts.auxiliarybar"),
-    );
-    const leftEdge = (await auxiliaryBar.getRect()).x;
-    let sash: WebElement | undefined;
-    let closest = Infinity;
-    for (const candidate of await driver.findElements(
-      By.css(".monaco-sash.vertical"),
-    )) {
-      const rect = await candidate.getRect();
-      const distance = Math.abs(rect.x + rect.width / 2 - leftEdge);
-      if (rect.height > 100 && distance < closest) {
-        closest = distance;
-        sash = candidate;
-      }
-    }
-    if (!sash) {
-      throw new Error("Could not find the secondary side bar's sash");
-    }
-    await driver
-      .actions()
-      .move({ origin: sash })
-      .press()
-      .move({ origin: sash, x: -by, y: 0 })
-      .release()
-      .perform();
-    await TestUtils.waitForTimeout(500);
-  }
-
-  /**
-   * Sets a built-in tool's policy on the Tools settings page and returns to
-   * the chat. Returns the GUI's iframe, which callers must use from then on.
-   * desiredState: 0 = Automatic, 1 = Excluded, 2 = Ask First, or the label.
-   */
-  public static async toggleToolPolicy(
-    view: WebView,
-    toolName: string,
-    desiredState: number | string,
-  ): Promise<WebView> {
-    const label =
-      typeof desiredState === "number"
-        ? (["Automatic", "Excluded", "Ask First"][desiredState] ?? "Ask First")
-        : desiredState;
-
-    ({ view } = await GUIActions.runCommandFromGui(
-      view,
-      "NextCLI: Open Settings",
-    ));
-    await (
-      await TestUtils.waitForSuccess(() => GUISelectors.getToolsTab(view))
-    ).click();
-
-    // The group starts collapsed, and its tools aren't rendered until opened
-    const groupHeader = await TestUtils.waitForSuccess(() =>
-      GUISelectors.getToolGroupHeader(view, "Built-In"),
-    );
-    if ((await groupHeader.getAttribute("aria-expanded")) !== "true") {
-      await groupHeader.click();
-    }
-
-    const policyButton = await TestUtils.waitForSuccess(() =>
-      GUISelectors.getToolPolicyButton(view, toolName),
-    );
-    if (!(await policyButton.getText()).includes(label)) {
-      await policyButton.click();
-      await (
-        await TestUtils.waitForSuccess(() =>
-          GUISelectors.getListboxOption(view, label),
-        )
-      ).click();
-      await TestUtils.waitForSuccess(async () => {
-        if (!(await policyButton.getText()).includes(label)) {
-          throw new Error(`${toolName} policy is not ${label} yet`);
-        }
-      });
-    }
-
-    await (
-      await TestUtils.waitForSuccess(() => GUISelectors.getBackButton(view))
-    ).click();
-    await TestUtils.waitForTimeout(500);
-    return view;
   }
 }

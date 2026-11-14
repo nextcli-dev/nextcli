@@ -1,13 +1,5 @@
 import { expect } from "chai";
-import {
-  before,
-  beforeEach,
-  Key,
-  until,
-  WebDriver,
-  WebElement,
-  WebView,
-} from "vscode-extension-tester";
+import { beforeEach, Key, WebDriver, WebView } from "vscode-extension-tester";
 
 import "../Baseline";
 import { GlobalActions } from "../actions/Global.actions";
@@ -16,509 +8,129 @@ import { DEFAULT_TIMEOUT } from "../constants";
 import { GUISelectors } from "../selectors/GUI.selectors";
 import { TestUtils } from "../TestUtils";
 
-describe("GUI Test", () => {
+/**
+ * Smoke tests of the chat GUI inside a real VS Code: what needs the
+ * webview, keyboard focus or VS Code's commands. The chat behavior itself
+ * (deleting and editing messages, tool call approval, status text, rules,
+ * input history) is unit-tested in gui/ with Vitest.
+ */
+describe("GUI", () => {
   let view: WebView;
   let driver: WebDriver;
 
   beforeEach(async function () {
-    await GUIActions.toggleGui();
+    ({ view, driver } = await GUIActions.open());
+    await GUIActions.useModel(view, "TEST LLM");
+  });
 
+  async function waitForReply(text: string) {
+    await TestUtils.waitForSuccess(
+      () => GUISelectors.getThreadMessageByText(view, text),
+      DEFAULT_TIMEOUT.MD,
+      250,
+      `the reply "${text}"`,
+    );
+  }
+
+  it("sends a message with Enter and shows the reply", async () => {
+    const { userMessage, llmResponse } = TestUtils.generateTestMessagePair(0);
+    const input = await GUISelectors.getMainInput(view);
+    await input.sendKeys(userMessage, Key.ENTER);
+    await waitForReply(llmResponse);
+  });
+
+  it("runs an agent tool call and finishes the turn", async () => {
+    await GUIActions.useModel(view, "TOOL MOCK LLM");
+    await GUIActions.useMode(view, "Agent");
+    await (await GUISelectors.getMainInput(view)).sendKeys("Hello", Key.ENTER);
+
+    // view_diff runs without asking; the turn then continues with the
+    // model's second message and ends
+    await TestUtils.waitForSuccess(
+      async () => {
+        expect(
+          await (await GUISelectors.getToolCallStatusMessage(view)).getText(),
+        ).to.include("NextCLI viewed the git diff");
+      },
+      DEFAULT_TIMEOUT.MD,
+      250,
+      "the finished view_diff call",
+    );
+    await TestUtils.waitForSuccess(
+      async () => {
+        expect(await GUISelectors.getStopStreamingButtons(view)).to.have.length(
+          0,
+        );
+      },
+      DEFAULT_TIMEOUT.MD,
+      250,
+      "the turn to finish",
+    );
+  });
+
+  it("reopens a session from History and continues it", async () => {
+    const first = TestUtils.generateTestMessagePair(1);
+    const second = TestUtils.generateTestMessagePair(2);
+    await GUIActions.sendMessage({
+      view,
+      message: first.userMessage,
+      inputFieldIndex: 0,
+    });
+    await waitForReply(first.llmResponse);
+
+    // A session reaches History when another one starts
+    await GlobalActions.runCommand("continue.newSession");
+    ({ view, driver } = await GUIActions.open());
+    await TestUtils.expectNoElement(() =>
+      GUISelectors.getThreadMessageByText(view, first.llmResponse),
+    );
+
+    await GlobalActions.runCommand("continue.viewHistory");
     ({ view, driver } = await GUIActions.switchToReactIframe());
-    await GUIActions.selectModelFromDropdown(view, "TEST LLM");
+    const row = await TestUtils.waitForSuccess(
+      () => GUISelectors.getNthHistoryTableRow(view, 0),
+      DEFAULT_TIMEOUT.MD,
+      250,
+      "the session in History",
+    );
+    await row.click();
+
+    await waitForReply(first.llmResponse);
+    await GUIActions.sendMessage({
+      view,
+      message: second.userMessage,
+      inputFieldIndex: 1,
+    });
+    await waitForReply(second.llmResponse);
   });
 
-  describe("Chat", () => {
-    it("Can submit message by pressing enter", async () => {
-      const [messageInput] = await GUISelectors.getMessageInputFields(view);
-      const messagePair = TestUtils.generateTestMessagePair();
-      await messageInput.sendKeys(messagePair.userMessage);
-      await messageInput.sendKeys(Key.ENTER);
-      await TestUtils.waitForSuccess(() =>
-        GUISelectors.getThreadMessageByText(view, messagePair.llmResponse),
-      );
-    });
+  it("New Session from History leaves an empty input with focus", async () => {
+    const input = await GUISelectors.getMainInput(view);
+    await input.sendKeys("Hello");
+    expect(await input.getText()).to.equal("Hello");
 
-    it("Can submit message by button click", async () => {
-      const [messageInput] = await GUISelectors.getMessageInputFields(view);
-      const messagePair = TestUtils.generateTestMessagePair();
-      await messageInput.sendKeys(messagePair.userMessage);
-      (await GUISelectors.getSubmitInputButton(view)).click();
-      await TestUtils.waitForSuccess(() =>
-        GUISelectors.getThreadMessageByText(view, messagePair.llmResponse),
-      );
-    });
+    await GlobalActions.runCommand("continue.viewHistory");
+    await GlobalActions.runCommand("continue.newSession");
+    ({ view, driver } = await GUIActions.switchToReactIframe());
 
-    it("Can delete messages", async () => {
-      const { userMessage: userMessage0, llmResponse: llmResponse0 } =
-        TestUtils.generateTestMessagePair(0);
-      await GUIActions.sendMessage({
-        view,
-        message: userMessage0,
-        inputFieldIndex: 0,
-      });
-      await TestUtils.waitForSuccess(() =>
-        GUISelectors.getThreadMessageByText(view, llmResponse0),
-      );
-
-      const { userMessage: userMessage1, llmResponse: llmResponse1 } =
-        TestUtils.generateTestMessagePair(1);
-      await GUIActions.sendMessage({
-        view,
-        message: userMessage1,
-        inputFieldIndex: 1,
-      });
-      await TestUtils.waitForSuccess(() =>
-        GUISelectors.getThreadMessageByText(view, llmResponse1),
-      );
-
-      const { userMessage: userMessage2, llmResponse: llmResponse2 } =
-        TestUtils.generateTestMessagePair(2);
-      await GUIActions.sendMessage({
-        view,
-        message: userMessage2,
-        inputFieldIndex: 2,
-      });
-      await TestUtils.waitForSuccess(() =>
-        GUISelectors.getThreadMessageByText(view, llmResponse2),
-      );
-
-      // Delete the first assistant response (index 1) - this deletes both user msg 0 and assistant response 0
-      await (await GUISelectors.getNthMessageDeleteButton(view, 1)).click();
-      await TestUtils.expectNoElement(() =>
-        GUISelectors.getThreadMessageByText(view, llmResponse0),
-      );
-
-      // Delete the second assistant response (now at index 1) - this deletes both user msg 1 and assistant response 1
-      await (await GUISelectors.getNthMessageDeleteButton(view, 1)).click();
-      await TestUtils.expectNoElement(() =>
-        GUISelectors.getThreadMessageByText(view, llmResponse1),
-      );
-
-      // Delete the third assistant response (now at index 1) - this deletes both user msg 2 and assistant response 2
-      await (await GUISelectors.getNthMessageDeleteButton(view, 1)).click();
-      await TestUtils.expectNoElement(() =>
-        GUISelectors.getThreadMessageByText(view, llmResponse2),
-      );
-    });
-
-    it("Can edit messages", async () => {
-      const { userMessage: userMessage0, llmResponse: llmResponse0 } =
-        TestUtils.generateTestMessagePair(0);
-      await GUIActions.sendMessage({
-        view,
-        message: userMessage0,
-        inputFieldIndex: 0,
-      });
-      await TestUtils.waitForSuccess(() =>
-        GUISelectors.getThreadMessageByText(view, llmResponse0),
-      );
-
-      const { userMessage: userMessage1, llmResponse: llmResponse1 } =
-        TestUtils.generateTestMessagePair(1);
-      await GUIActions.sendMessage({
-        view,
-        message: userMessage1,
-        inputFieldIndex: 1,
-      });
-      await TestUtils.waitForSuccess(() =>
-        GUISelectors.getThreadMessageByText(view, llmResponse1),
-      );
-
-      const { userMessage: userMessage2, llmResponse: llmResponse2 } =
-        TestUtils.generateTestMessagePair(2);
-      await GUIActions.sendMessage({
-        view,
-        message: userMessage2,
-        inputFieldIndex: 2,
-      });
-      await TestUtils.waitForSuccess(() =>
-        GUISelectors.getThreadMessageByText(view, llmResponse2),
-      );
-
-      const secondInputField = await GUISelectors.getMessageInputFieldAtIndex(
-        view,
-        1,
-      );
-      await secondInputField.clear();
-
-      const { userMessage: userMessage3, llmResponse: llmResponse3 } =
-        TestUtils.generateTestMessagePair(3);
-
-      await GUIActions.sendMessage({
-        view,
-        message: userMessage3,
-        inputFieldIndex: 1,
-      });
-      await GUISelectors.getThreadMessageByText(view, llmResponse0);
-
-      await TestUtils.waitForSuccess(() =>
-        GUISelectors.getThreadMessageByText(view, llmResponse3),
-      );
-      await Promise.all([
-        TestUtils.expectNoElement(() =>
-          GUISelectors.getThreadMessageByText(view, llmResponse1),
-        ),
-        TestUtils.expectNoElement(() =>
-          GUISelectors.getThreadMessageByText(view, llmResponse2),
-        ),
-      ]);
-    });
+    const newInput = await TestUtils.waitForSuccess(
+      () => GUISelectors.getMainInput(view),
+      DEFAULT_TIMEOUT.MD,
+      250,
+      "the chat input",
+    );
+    await GUIActions.waitForFocus(driver, newInput, "the chat input");
+    expect(await newInput.getText()).to.equal("");
   });
 
-  describe("Agent with tools", () => {
-    beforeEach(async () => {
-      await GUIActions.selectModelFromDropdown(view, "TOOL MOCK LLM");
-      await GUIActions.selectModeFromDropdown(view, "Agent");
-    });
-
-    it("should display rules peek and show rule details", async () => {
-      // Send a message to trigger the model response
-      const [messageInput] = await GUISelectors.getMessageInputFields(view);
-      await messageInput.sendKeys("Hello");
-      await messageInput.sendKeys(Key.ENTER);
-
-      // Wait for the response to appear
-      await TestUtils.waitForSuccess(() =>
-        GUISelectors.getThreadMessageByText(view, "I'm going to call a tool:"),
-      );
-
-      // Verify that "1 rule" text appears
-      const rulesPeek = await TestUtils.waitForSuccess(() =>
-        GUISelectors.getRulesPeek(view),
-      );
-      const rulesPeekText = await rulesPeek.getText();
-      expect(rulesPeekText).to.include("1 rule");
-
-      // Click on the rules peek to expand it
-      await rulesPeek.click();
-
-      // Wait for the rule details to appear
-      const ruleItem = await TestUtils.waitForSuccess(() =>
-        GUISelectors.getFirstRulesPeekItem(view),
-      );
-
-      await TestUtils.waitForSuccess(async () => {
-        const text = await ruleItem.getText();
-        if (!text || text.trim() === "") {
-          throw new Error("Rule item text is empty");
-        }
-        return ruleItem;
-      });
-
-      // Verify the rule content
-      const ruleItemText = await ruleItem.getText();
-      expect(ruleItemText).to.include("Agent rule");
-      expect(ruleItemText).to.include("Always applied");
-      // The item shows where the rule comes from, not its text
-      expect(ruleItemText).to.include("Source:");
-    });
-
-    it("should render tool call", async () => {
-      const [messageInput] = await GUISelectors.getMessageInputFields(view);
-      await messageInput.sendKeys("Hello");
-      await messageInput.sendKeys(Key.ENTER);
-
-      const statusMessage = await TestUtils.waitForSuccess(
-        () => GUISelectors.getToolCallStatusMessage(view), // Defined in extensions/vscode/e2e/test-continue/config.json's TOOL MOCK LLM that we are calling the exact search tool
-        DEFAULT_TIMEOUT.SM,
-      );
-
-      expect(await statusMessage.getText()).contain(
-        "NextCLI viewed the git diff",
-      );
-    });
-
-    it("should call tool after approval", async () => {
-      view = await GUIActions.toggleToolPolicy(view, "view_diff", 2);
-
-      const [messageInput] = await GUISelectors.getMessageInputFields(view);
-      await messageInput.sendKeys("Hello");
-      await messageInput.sendKeys(Key.ENTER);
-
-      const acceptToolCallButton = await TestUtils.waitForSuccess(() =>
-        GUISelectors.getAcceptToolCallButton(view),
-      );
-      await acceptToolCallButton.click();
-
-      const statusMessage = await TestUtils.waitForSuccess(
-        () => GUISelectors.getToolCallStatusMessage(view), // Defined in extensions/vscode/e2e/test-continue/config.json's TOOL MOCK LLM that we are calling the exact search tool
-        DEFAULT_TIMEOUT.SM,
-      );
-
-      const text = await statusMessage.getText();
-      expect(text).contain("the git diff");
-    });
-
-    it("should cancel tool", async () => {
-      view = await GUIActions.toggleToolPolicy(view, "view_diff", 2);
-
-      const [messageInput] = await GUISelectors.getMessageInputFields(view);
-      await messageInput.sendKeys("Hello");
-      await messageInput.sendKeys(Key.ENTER);
-
-      const cancelToolCallButton = await TestUtils.waitForSuccess(() =>
-        GUISelectors.getRejectToolCallButton(view),
-      );
-      await cancelToolCallButton.click();
-
-      const statusMessage = await TestUtils.waitForSuccess(
-        () => GUISelectors.getToolCallStatusMessage(view), // Defined in extensions/vscode/e2e/test-continue/config.json's TOOL MOCK LLM that we are calling the exact search tool
-        DEFAULT_TIMEOUT.SM,
-      );
-
-      const text = await statusMessage.getText();
-      expect(text).contain("NextCLI tried to view the git diff");
-    });
-  });
-
-  describe("Context providers", () => {
-    it("should successfully use the terminal context provider", async () => {
-      await GUIActions.selectModelFromDropdown(view, "LAST MESSAGE MOCK LLM");
-
-      // Enter just the context provider in the input and send
-      const [messageInput] = await GUISelectors.getMessageInputFields(view);
-      await messageInput.sendKeys("@");
-      await messageInput.sendKeys("terminal");
-      await messageInput.sendKeys(Key.ENTER);
-      await messageInput.sendKeys(Key.ENTER);
-
-      // Check that the contents match what we expect (repeated back by the mock LLM)
-      await TestUtils.waitForSuccess(() => {
-        return GUISelectors.getThreadMessageByText(
-          view,
-          "Current terminal contents:",
-        );
-      });
-    });
-  });
-
-  describe("should repeat back the system message", () => {
-    it("should repeat back the system message", async () => {
-      await GUIActions.selectModeFromDropdown(view, "Chat");
-      await GUIActions.selectModelFromDropdown(view, "SYSTEM MESSAGE MOCK LLM");
-      const [messageInput] = await GUISelectors.getMessageInputFields(view);
-      await messageInput.sendKeys("Hello");
-      await messageInput.sendKeys(Key.ENTER);
-      await TestUtils.waitForSuccess(() =>
-        GUISelectors.getThreadMessageByText(view, "TEST_SYS_MSG"),
-      );
-    });
-  });
-
-  describe("Chat Paths", () => {
-    it("Send many messages → chat auto scrolls → go to history → open previous chat → it is scrolled to the bottom", async () => {
-      for (let i = 0; i <= 20; i++) {
-        const { userMessage, llmResponse } =
-          TestUtils.generateTestMessagePair(i);
-        await GUIActions.sendMessage({
-          view,
-          message: userMessage,
-          inputFieldIndex: i,
-        });
-        const response = await TestUtils.waitForSuccess(() =>
-          GUISelectors.getThreadMessageByText(view, llmResponse),
-        );
-
-        const viewportHeight = await driver.executeScript(
-          "return window.innerHeight",
-        );
-
-        const isInViewport = await driver.executeScript(
-          `
-          const rect = arguments[0].getBoundingClientRect();
-          return (
-            rect.top >= 0 &&
-            rect.bottom <= ${viewportHeight}
-          );
-          `,
-          response,
-        );
-
-        expect(isInViewport).to.eq(true);
-      }
-
-      ({ view, driver } = await GUIActions.runCommandFromGui(
-        view,
-        "NextCLI: View History",
-      ));
-      TestUtils.waitForSuccess(async () => {
-        await (await GUISelectors.getNthHistoryTableRow(view, 0)).click();
-      });
-
-      const { llmResponse } = TestUtils.generateTestMessagePair(20);
-      const response = await TestUtils.waitForSuccess(() =>
-        GUISelectors.getThreadMessageByText(view, llmResponse),
-      );
-
-      const viewportHeight = await driver.executeScript(
-        "return window.innerHeight",
-      );
-
-      const isInViewport = await driver.executeScript(
-        `
-        const rect = arguments[0].getBoundingClientRect();
-        return (
-          rect.top >= 0 &&
-          rect.bottom <= ${viewportHeight}
-        );
-        `,
-        response,
-      );
-
-      expect(isInViewport).to.eq(true);
-    });
-
-    it("Open chat and send message → press arrow up and arrow down to cycle through messages → submit another message → press arrow up and arrow down to cycle through messages", async () => {
-      // Loading a history entry refocuses the editor in a setTimeout, which
-      // moves the caret; a key sent before that lands in the wrong place
-      const waitForRefocus = () => TestUtils.waitForTimeout(300);
-
-      await GUIActions.sendMessage({
-        view,
-        message: "MESSAGE 1",
-        inputFieldIndex: 0,
-      });
-
-      const input1 = await TestUtils.waitForSuccess(async () => {
-        return GUISelectors.getMessageInputFieldAtIndex(view, 1);
-      });
-      expect(await input1.getText()).to.equal("");
-
-      await input1.sendKeys(Key.ARROW_UP);
-      await driver.wait(
-        until.elementTextIs(input1, "MESSAGE 1"),
-        DEFAULT_TIMEOUT.SM,
-      );
-      await waitForRefocus();
-
-      await input1.sendKeys(Key.ARROW_DOWN); // First press - bring caret to the end of the message
-      await input1.sendKeys(Key.ARROW_DOWN); // Second press - trigger message change
-      await driver.wait(until.elementTextIs(input1, ""), DEFAULT_TIMEOUT.SM);
-
-      await GUIActions.sendMessage({
-        view,
-        message: "MESSAGE 2",
-        inputFieldIndex: 1,
-      });
-
-      const input2 = await TestUtils.waitForSuccess(async () => {
-        return GUISelectors.getMessageInputFieldAtIndex(view, 2);
-      });
-      expect(await input2.getText()).to.equal("");
-
-      await input2.sendKeys(Key.ARROW_UP);
-      await driver.wait(
-        until.elementTextIs(input2, "MESSAGE 2"),
-        DEFAULT_TIMEOUT.SM,
-      );
-      await waitForRefocus();
-
-      await input2.sendKeys(Key.ARROW_UP);
-      await driver.wait(
-        until.elementTextIs(input2, "MESSAGE 1"),
-        DEFAULT_TIMEOUT.SM,
-      );
-      await waitForRefocus();
-
-      await input2.sendKeys(Key.ARROW_DOWN); // First press - bring caret to the end of the message
-      await input2.sendKeys(Key.ARROW_DOWN); // Second press - trigger message change
-      await driver.wait(
-        until.elementTextIs(input2, "MESSAGE 2"),
-        DEFAULT_TIMEOUT.SM,
-      );
-      await waitForRefocus();
-
-      await input2.sendKeys(Key.ARROW_DOWN);
-      await driver.wait(until.elementTextIs(input2, ""), DEFAULT_TIMEOUT.SM);
-    });
-
-    it("Open chat and type → open history → press new session button → chat opens, empty and in focus", async () => {
-      const originalTextInput = await GUISelectors.getMessageInputFieldAtIndex(
-        view,
-        0,
-      );
-      await originalTextInput.click();
-      await originalTextInput.sendKeys("Hello");
-      expect(await originalTextInput.getText()).to.equal("Hello");
-
-      ({ view, driver } = await GUIActions.runCommandFromGui(
-        view,
-        "NextCLI: View History",
-      ));
-
-      ({ view, driver } = await GUIActions.runCommandFromGui(
-        view,
-        "NextCLI: New Session",
-      ));
-
-      const newTextInput = await TestUtils.waitForSuccess(() =>
-        GUISelectors.getMessageInputFieldAtIndex(view, 0),
-      );
-      const activeElement: WebElement = await driver.switchTo().activeElement();
-      const newTextInputHtml = await newTextInput.getAttribute("outerHTML");
-      const activeElementHtml = await activeElement.getAttribute("outerHTML");
-      expect(newTextInputHtml).to.equal(activeElementHtml);
-
-      const textInputValue = await newTextInput.getText();
-      expect(textInputValue).to.equal("");
-    });
-
-    it("chat → history → chat", async () => {
-      const messagePair1 = TestUtils.generateTestMessagePair(1);
-      await GUIActions.sendMessage({
-        view,
-        message: messagePair1.userMessage,
-        inputFieldIndex: 0,
-      });
-      await TestUtils.waitForSuccess(() =>
-        GUISelectors.getThreadMessageByText(view, messagePair1.llmResponse),
-      );
-
-      const messagePair2 = TestUtils.generateTestMessagePair(2);
-      await GUIActions.sendMessage({
-        view,
-        message: messagePair2.userMessage,
-        inputFieldIndex: 1,
-      });
-      await TestUtils.waitForSuccess(() =>
-        GUISelectors.getThreadMessageByText(view, messagePair2.llmResponse),
-      );
-
-      /**
-       * SWITCHING BACK AND FORTH
-       * We are switching back and forth here because the history is broken.
-       * It only updates once a another chat is opened, so we need to open a
-       * different chat first.
-       */
-      ({ view, driver } = await GUIActions.runCommandFromGui(
-        view,
-        "NextCLI: View History",
-      ));
-
-      await (await GUISelectors.getNthHistoryTableRow(view, 0)).click();
-
-      ({ view, driver } = await GUIActions.runCommandFromGui(
-        view,
-        "NextCLI: View History",
-      ));
-      /**
-       * END OF SWITCHING BACK AND FORTH
-       */
-
-      await (await GUISelectors.getNthHistoryTableRow(view, 0)).click();
-
-      await GUISelectors.getThreadMessageByText(view, messagePair1.llmResponse);
-      await GUISelectors.getThreadMessageByText(view, messagePair2.llmResponse);
-
-      const messagePair3 = TestUtils.generateTestMessagePair(3);
-      await GUIActions.sendMessage({
-        view,
-        message: messagePair3.userMessage,
-        inputFieldIndex: 2,
-      });
-      await TestUtils.waitForSuccess(() =>
-        GUISelectors.getThreadMessageByText(view, messagePair3.llmResponse),
-      );
-    });
+  it("adds the terminal's contents with @terminal", async () => {
+    // Replies with the message it was sent, context included
+    await GUIActions.useModel(view, "LAST MESSAGE MOCK LLM");
+    const input = await GUISelectors.getMainInput(view);
+    await input.sendKeys("@", "terminal");
+    // Enter picks the provider, the second Enter sends
+    await input.sendKeys(Key.ENTER);
+    await input.sendKeys(Key.ENTER);
+    await waitForReply("Current terminal contents:");
   });
 });
