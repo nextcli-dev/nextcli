@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.12.2](https://github.com/nextcli-dev/nextcli/compare/cli-v0.12.1...cli-v0.12.2) (2026-11-14)
+
+
+### Bug Fixes
+
+* **cli:** import ignore-walk through its default export ([#142](https://github.com/nextcli-dev/nextcli/issues/142)) ([7bdd8cd](https://github.com/nextcli-dev/nextcli/commit/7bdd8cdef847a248c5feafec0f8a37c9f5f2081e))
+* **cli:** make a compaction one call without tools ([#137](https://github.com/nextcli-dev/nextcli/issues/137)) ([a6f4430](https://github.com/nextcli-dev/nextcli/commit/a6f4430a81011ba3d3cdc03c26f4f34e99352954))
+* **llm-info:** match every DeepSeek V4 model id ([#136](https://github.com/nextcli-dev/nextcli/issues/136)) ([cf8b0ec](https://github.com/nextcli-dev/nextcli/commit/cf8b0ec9ad01b9ae94164238b2fbb3aacc2905b2))
+
 ## [0.12.1](https://github.com/nextcli-dev/nextcli/compare/cli-v0.12.0...cli-v0.12.1) (2026-11-12)
 
 
