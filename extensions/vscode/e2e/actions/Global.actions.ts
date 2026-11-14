@@ -243,6 +243,31 @@ export class GlobalActions {
     return new TextEditor();
   }
 
+  /**
+   * Opens a file in the workspace through Go to File and returns it as the
+   * active editor. `relativePath` is relative to the workspace folder.
+   */
+  public static async openWorkspaceFile(
+    relativePath: string,
+  ): Promise<TextEditor> {
+    const fileName = path.basename(relativePath);
+    const goToFile = await GlobalActions.runCommandWithInput(
+      "workbench.action.quickOpen",
+    );
+    await goToFile.setText(relativePath);
+    await GlobalActions.selectPick(goToFile, fileName);
+    await TestUtils.waitForSuccess(
+      async () => {
+        const editor = new TextEditor();
+        expect(await editor.getTitle()).to.equal(fileName);
+      },
+      DEFAULT_TIMEOUT.SM,
+      250,
+      `${relativePath} to open`,
+    );
+    return new TextEditor();
+  }
+
   /** Gives `editor` keyboard focus and checks that it has it */
   public static async focusEditor(editor: TextEditor) {
     await VSBrowser.instance.driver.switchTo().defaultContent();

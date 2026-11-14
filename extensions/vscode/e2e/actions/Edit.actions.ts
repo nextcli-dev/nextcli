@@ -1,9 +1,12 @@
-import { TextEditor, WebView } from "vscode-extension-tester";
+import { expect } from "chai";
+import { CodeLens, TextEditor, WebView } from "vscode-extension-tester";
 
+import { DEFAULT_TIMEOUT } from "../constants";
 import { EditSelectors } from "../selectors/Edit.selectors";
 import { TestUtils } from "../TestUtils";
 
 export class EditActions {
+  /** Cmd/Ctrl+I, the Edit shortcut. Focus the editor first. */
   static async invokeEditShortcut(editor: TextEditor) {
     await editor
       .getDriver()
@@ -14,27 +17,52 @@ export class EditActions {
       .perform();
   }
 
-  static async acceptEditInGUI(view: WebView): Promise<void> {
-    await TestUtils.waitForSuccess(async () =>
-      (await EditSelectors.getEditAcceptButton(view)).click(),
+  /**
+   * Waits for the GUI's Edit accept button, which shows once the edit has
+   * finished streaming. In Edit mode the toolbar shows no stop button.
+   */
+  static async waitForEditDone(view: WebView) {
+    await TestUtils.waitForSuccess(
+      () => EditSelectors.getEditAcceptButton(view),
+      DEFAULT_TIMEOUT.MD,
+      250,
+      "the Edit accept button (the edit finished)",
     );
-    await view.switchBack();
   }
 
-  static async rejectEditInGUI(view: WebView): Promise<void> {
-    await TestUtils.waitForSuccess(async () =>
-      (await EditSelectors.getEditRejectButton(view)).click(),
+  /** Waits for a CodeLens titled `title` (Accept or Reject) */
+  static async waitForCodeLens(
+    editor: TextEditor,
+    title: string,
+  ): Promise<CodeLens> {
+    return TestUtils.waitForSuccess(
+      async () => {
+        const lens = await editor.getCodeLens(title);
+        expect(lens, `a "${title}" CodeLens`).to.not.equal(undefined);
+        return lens!;
+      },
+      DEFAULT_TIMEOUT.MD,
+      250,
+      `the ${title} CodeLens`,
     );
-    await view.switchBack();
   }
 
-  static async acceptEditWithCodeLens(editor: TextEditor): Promise<void> {
-    const acceptCodeLens = await editor.getCodeLens("Accept");
-    await acceptCodeLens?.click();
-  }
-
-  static async rejectEditWithCodeLens(editor: TextEditor): Promise<void> {
-    const rejectCodeLens = await editor.getCodeLens("Reject");
-    await rejectCodeLens?.click();
+  /** Waits until the editor shows no diff CodeLenses */
+  static async waitForNoCodeLenses(editor: TextEditor) {
+    await TestUtils.waitForSuccess(
+      async () => {
+        expect(
+          await editor.getCodeLens("Accept"),
+          "an Accept CodeLens",
+        ).to.equal(undefined);
+        expect(
+          await editor.getCodeLens("Reject"),
+          "a Reject CodeLens",
+        ).to.equal(undefined);
+      },
+      DEFAULT_TIMEOUT.MD,
+      250,
+      "the diff CodeLenses to go",
+    );
   }
 }

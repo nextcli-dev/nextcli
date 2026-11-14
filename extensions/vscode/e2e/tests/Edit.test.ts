@@ -1,114 +1,87 @@
 import { expect } from "chai";
-import {
-  before,
-  beforeEach,
-  CodeLens,
-  TextEditor,
-  WebView,
-} from "vscode-extension-tester";
+import * as fs from "fs";
+import * as path from "path";
+import { beforeEach, TextEditor, WebView } from "vscode-extension-tester";
 
 import "../Baseline";
 import { EditActions } from "../actions/Edit.actions";
 import { GlobalActions } from "../actions/Global.actions";
 import { GUIActions } from "../actions/GUI.actions";
-import { DEFAULT_TIMEOUT } from "../constants";
+import { EditSelectors } from "../selectors/Edit.selectors";
 import { TestUtils } from "../TestUtils";
 
-describe("Edit Test", () => {
-  let view: WebView;
+/**
+ * Edit mode end to end: Cmd+I on a selection, a prompt, then the diff
+ * resolved from a CodeLens or from the GUI. The diff logic itself is tested
+ * in src/diff/vertical/handler.vitest.ts; this checks what needs a real
+ * VS Code: the shortcut, the rendered CodeLens and the GUI round trip.
+ *
+ * Every check reads something an unresolved diff can't fake: while a diff
+ * is open, the original line is only a decoration, so the editor's text
+ * alone would already look accepted.
+ */
+describe("Edit", () => {
+  const FILE = "edit-fixtures/hello.txt";
+  const FILE_PATH = path.resolve(GlobalActions.defaultFolder, FILE);
+  const ORIGINAL = "Hello world!\n";
+  const { userMessage, llmResponse } = TestUtils.generateTestMessagePair(0);
+
   let editor: TextEditor;
-  let originalEditorText = "Hello world!";
-  let { userMessage, llmResponse } = TestUtils.generateTestMessagePair();
+  let view: WebView;
 
   beforeEach(async function () {
-    editor = await GlobalActions.openNewUntitledFile();
-    await GUIActions.toggleGui();
-
-    // The GUI took focus. Give it back to the editor, or typing and the
-    // command palette (used by typeTextAt) do not reach it on VS Code 1.101.
-    await editor.click();
-
-    await editor.typeTextAt(1, 1, originalEditorText);
-    await editor.selectText(originalEditorText);
-
+    fs.mkdirSync(path.dirname(FILE_PATH), { recursive: true });
+    fs.writeFileSync(FILE_PATH, ORIGINAL);
+    editor = await GlobalActions.openWorkspaceFile(FILE);
+    await GlobalActions.runCommand("editor.action.selectAll");
+    await GlobalActions.focusEditor(editor);
     await EditActions.invokeEditShortcut(editor);
 
-    ({ view } = await GUIActions.switchToReactIframe());
-
+    ({ view } = await GUIActions.open());
     await GUIActions.sendMessage({
       view,
       message: userMessage,
       inputFieldIndex: 0,
     });
 
+    // The change is shown: the edit finished and its CodeLenses are there
+    await EditActions.waitForEditDone(view);
     await view.switchBack();
-
-    // Wait for the diff to stream into the editor before the test acts on it.
-    await TestUtils.waitForSuccess(async () => {
-      expect(await editor.getText()).to.include(llmResponse);
-    }, DEFAULT_TIMEOUT.MD);
+    await EditActions.waitForCodeLens(editor, "Accept");
   });
 
-  async function getCodeLensWithRetry(editor: TextEditor, text: string) {
-    let codeLens: CodeLens | undefined;
-    await TestUtils.waitForSuccess(async () => {
-      codeLens = await editor.getCodeLens(text);
-      expect(codeLens).to.not.be.undefined;
-    }, DEFAULT_TIMEOUT.SM);
-    return codeLens;
+  /** The diff is gone everywhere, and the saved file is exactly `expected` */
+  async function expectResolvedTo(expected: string) {
+    ({ view } = await GUIActions.open());
+    await TestUtils.expectNoElement(() =>
+      EditSelectors.getEditAcceptButton(view),
+    );
+    // Checked with the editor focused. After a CodeLens accept the GUI takes
+    // focus, and VS Code keeps showing the resolved block's lenses until the
+    // editor has focus again (seen in 1.103.2: still shown after 10s,
+    // gone within 1s of focusing the editor).
+    await GlobalActions.focusEditor(editor);
+    await EditActions.waitForNoCodeLenses(editor);
+    await GlobalActions.runCommand("workbench.action.files.save");
+    await TestUtils.waitForSuccess(
+      async () => {
+        expect(fs.readFileSync(FILE_PATH, "utf8")).to.equal(expected);
+      },
+      undefined,
+      250,
+      `${FILE} on disk`,
+    );
   }
 
-  it("Accepts an Edit in the GUI", async () => {
-    ({ view } = await GUIActions.switchToReactIframe());
+  it("accepts the edit from its CodeLens", async () => {
+    await (await EditActions.waitForCodeLens(editor, "Accept")).click();
+    await expectResolvedTo(`${llmResponse}\n`);
+  });
 
-    await EditActions.acceptEditInGUI(view);
-
+  it("rejects the edit from the GUI", async () => {
+    ({ view } = await GUIActions.open());
+    await (await EditSelectors.getEditRejectButton(view)).click();
     await view.switchBack();
-
-    await TestUtils.waitForSuccess(async () => {
-      const editorText = await editor.getText();
-
-      expect(editorText).to.not.include(originalEditorText);
-      expect(editorText).to.include(llmResponse);
-    }, DEFAULT_TIMEOUT.SM);
-  });
-
-  it("Rejects an Edit in the GUI", async () => {
-    ({ view } = await GUIActions.switchToReactIframe());
-
-    await EditActions.rejectEditInGUI(view);
-
-    await view.switchBack();
-
-    await TestUtils.waitForSuccess(async () => {
-      const editorText = await editor.getText();
-
-      expect(editorText).to.include(originalEditorText);
-      expect(editorText).to.not.include(llmResponse);
-    }, DEFAULT_TIMEOUT.SM);
-  });
-
-  it("Accepts an Edit using CodeLens buttons", async () => {
-    const acceptCodeLens = await editor.getCodeLens("Accept");
-    await acceptCodeLens?.click();
-
-    await TestUtils.waitForSuccess(async () => {
-      const editorText = await editor.getText();
-
-      expect(editorText).to.not.include(originalEditorText);
-      expect(editorText).to.include(llmResponse);
-    }, DEFAULT_TIMEOUT.SM);
-  });
-
-  it("Rejects an Edit using CodeLens buttons", async () => {
-    const rejectCodeLens = await getCodeLensWithRetry(editor, "Reject");
-    await rejectCodeLens?.click();
-
-    await TestUtils.waitForSuccess(async () => {
-      const editorText = await editor.getText();
-
-      expect(editorText).to.include(originalEditorText);
-      expect(editorText).to.not.include(llmResponse);
-    }, DEFAULT_TIMEOUT.SM);
+    await expectResolvedTo(ORIGINAL);
   });
 });
