@@ -1,11 +1,9 @@
 import { expect } from "chai";
 import {
-  afterEach,
   before,
   beforeEach,
   CodeLens,
   TextEditor,
-  VSBrowser,
   WebView,
 } from "vscode-extension-tester";
 
@@ -14,7 +12,6 @@ import { EditActions } from "../actions/Edit.actions";
 import { GlobalActions } from "../actions/Global.actions";
 import { GUIActions } from "../actions/GUI.actions";
 import { DEFAULT_TIMEOUT } from "../constants";
-import { GUISelectors } from "../selectors/GUI.selectors";
 import { TestUtils } from "../TestUtils";
 
 describe("Edit Test", () => {
@@ -23,14 +20,8 @@ describe("Edit Test", () => {
   let originalEditorText = "Hello world!";
   let { userMessage, llmResponse } = TestUtils.generateTestMessagePair();
 
-  before(async function () {
-    await GUIActions.moveContinueToSidebar(VSBrowser.instance.driver);
-    await GlobalActions.openTestWorkspace();
-    ({ editor } = await GlobalActions.createAndOpenNewTextFile());
-    await GlobalActions.disableNextEdit();
-  });
-
   beforeEach(async function () {
+    editor = await GlobalActions.openNewUntitledFile();
     await GUIActions.toggleGui();
 
     // The GUI took focus. Give it back to the editor, or typing and the
@@ -56,18 +47,6 @@ describe("Edit Test", () => {
     await TestUtils.waitForSuccess(async () => {
       expect(await editor.getText()).to.include(llmResponse);
     }, DEFAULT_TIMEOUT.MD);
-  });
-
-  afterEach(async function () {
-    await editor.clearText();
-
-    ({ view } = await GUIActions.switchToReactIframe());
-
-    const tipTapEditor = await GUISelectors.getMessageInputFieldAtIndex(
-      view,
-      0,
-    );
-    await tipTapEditor.clear();
   });
 
   async function getCodeLensWithRetry(editor: TextEditor, text: string) {

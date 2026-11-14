@@ -1,15 +1,11 @@
 import { expect } from "chai";
 import {
-  afterEach,
-  before,
   beforeEach,
-  EditorView,
   Key,
   TextEditor,
   until,
   VSBrowser,
   WebDriver,
-  WebElement,
   WebView,
 } from "vscode-extension-tester";
 
@@ -26,44 +22,10 @@ describe("Keyboard Shortcuts", () => {
   let editor: TextEditor;
   let view: WebView;
 
-  before(async function () {
-    await GUIActions.moveContinueToSidebar(VSBrowser.instance.driver);
-    await GlobalActions.disableNextEdit();
-  });
-
   beforeEach(async function () {
-    await GlobalActions.runCommand("workbench.action.files.newUntitledFile");
-
     driver = VSBrowser.instance.driver;
-
-    editor = (await new EditorView().openEditor("Untitled-1")) as TextEditor;
+    editor = await GlobalActions.openNewUntitledFile();
   });
-
-  afterEach(async function () {
-    await cleanupChat();
-    await view.switchBack();
-    await editor.clearText();
-    await new EditorView().closeAllEditors();
-  });
-
-  async function cleanupChat(chatInput?: WebElement) {
-    try {
-      if (!chatInput) {
-        chatInput = await TestUtils.waitForSuccess(async () => {
-          return GUISelectors.getMessageInputFieldAtIndex(view, 0);
-        });
-      }
-      if (
-        chatInput &&
-        (await chatInput.isDisplayed()) &&
-        (await chatInput.isEnabled())
-      ) {
-        await chatInput.clear();
-      }
-    } catch (e) {
-      console.error(`Failed to clear chat: ${e}`);
-    }
-  }
 
   it("Should correctly undo and redo using keyboard shortcuts when writing a chat message", async () => {
     await GUIActions.executeFocusContinueInputShortcut(driver);
@@ -137,10 +99,7 @@ describe("Keyboard Shortcuts", () => {
     const textInput = await TestUtils.waitForSuccess(() =>
       GUISelectors.getMessageInputFieldAtIndex(view, 0),
     );
-    const activeElement: WebElement = await driver.switchTo().activeElement();
-    const textInputHtml = await textInput.getAttribute("outerHTML");
-    const activeElementHtml = await activeElement.getAttribute("outerHTML");
-    expect(textInputHtml).to.equal(activeElementHtml);
+    await GUIActions.waitForFocus(driver, textInput, "the chat input");
     expect(await textInput.isDisplayed()).to.equal(true);
 
     await GUIActions.executeFocusContinueInputShortcut(driver);
@@ -164,30 +123,22 @@ describe("Keyboard Shortcuts", () => {
     await view.switchBack();
 
     await KeyboardShortcutsActions.HACK__typeWithSelect(editor, "hello");
-
-    await TestUtils.waitForTimeout(DEFAULT_TIMEOUT.XS);
+    // The shortcut is pressed from the code editor, not the GUI
+    await GlobalActions.focusEditor(editor);
 
     await GUIActions.executeFocusContinueInputShortcut(driver);
 
     ({ view } = await GUIActions.switchToReactIframe());
 
-    await TestUtils.waitForTimeout(DEFAULT_TIMEOUT.XS);
-
     const textInput = await TestUtils.waitForSuccess(() =>
       GUISelectors.getMessageInputFieldAtIndex(view, 0),
     );
-    const activeElement: WebElement = await driver.switchTo().activeElement();
-    const textInputHtml = await textInput.getAttribute("outerHTML");
-    const activeElementHtml = await activeElement.getAttribute("outerHTML");
-    expect(textInputHtml).to.equal(activeElementHtml);
+    await GUIActions.waitForFocus(driver, textInput, "the chat input");
 
     await GUIActions.executeFocusContinueInputShortcut(driver);
 
     await driver.wait(until.elementIsNotVisible(textInput), DEFAULT_TIMEOUT.XS);
     expect(await textInput.isDisplayed()).to.equal(false);
-
-    // Make sure the view is visible again, so it can be cleared in afterEach()
-    await GUIActions.executeFocusContinueInputShortcut(driver);
   });
 
   it("Should create a code block when Cmd+L is pressed with text highlighted", async () => {

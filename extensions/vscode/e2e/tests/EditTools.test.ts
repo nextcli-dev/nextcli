@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import * as fs from "fs";
 import * as path from "path";
-import { after, before, VSBrowser, WebView } from "vscode-extension-tester";
+import { after, before, WebView } from "vscode-extension-tester";
 
 import "../Baseline";
 import { GlobalActions } from "../actions/Global.actions";
@@ -36,10 +36,7 @@ describe("Edit tools on CRLF files", () => {
       "function mul(a, b) {\r\n  return a * b;\r\n}\r\n\r\nmodule.exports = { mul };\r\n",
     );
 
-    await GUIActions.moveContinueToSidebar(VSBrowser.instance.driver);
-    await GlobalActions.openTestWorkspace();
     await GlobalActions.clearAllNotifications();
-    await GlobalActions.disableNextEdit();
     await GUIActions.toggleGui();
     ({ view } = await GUIActions.switchToReactIframe());
     await GUIActions.selectModelFromDropdown(view, "EDIT TOOLS MOCK LLM");

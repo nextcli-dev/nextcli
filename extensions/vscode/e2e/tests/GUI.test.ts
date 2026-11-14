@@ -1,13 +1,9 @@
 import { expect } from "chai";
 import {
-  afterEach,
   before,
   beforeEach,
-  By,
-  EditorView,
   Key,
   until,
-  VSBrowser,
   WebDriver,
   WebElement,
   WebView,
@@ -24,26 +20,11 @@ describe("GUI Test", () => {
   let view: WebView;
   let driver: WebDriver;
 
-  before(async function () {
-    // Uncomment this line for faster testing
-    await GUIActions.moveContinueToSidebar(VSBrowser.instance.driver);
-    await GlobalActions.openTestWorkspace();
-    await GlobalActions.clearAllNotifications();
-    await GlobalActions.disableNextEdit();
-  });
-
   beforeEach(async function () {
     await GUIActions.toggleGui();
 
     ({ view, driver } = await GUIActions.switchToReactIframe());
     await GUIActions.selectModelFromDropdown(view, "TEST LLM");
-  });
-
-  afterEach(async function () {
-    await view.switchBack();
-    // Close the GUI; beforeEach opens it again with toggleGui
-    await GlobalActions.runCommand("workbench.action.closeAuxiliaryBar");
-    await new EditorView().closeAllEditors();
   });
 
   describe("Chat", () => {

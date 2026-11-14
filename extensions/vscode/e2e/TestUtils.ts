@@ -3,7 +3,22 @@ import { Key } from "vscode-extension-tester";
 
 import { DEFAULT_TIMEOUT } from "./constants";
 
+const NO_RETRY = Symbol("no retry");
+const DEADLINE = Symbol("deadline");
+
 export class TestUtils {
+  /**
+   * Marks an error so waitForSuccess rethrows it at once instead of trying
+   * again: what failed may already have taken effect, such as a click
+   * WebDriver may have delivered.
+   */
+  public static doNotRetry(error: unknown): unknown {
+    if (error && typeof error === "object") {
+      (error as { [NO_RETRY]?: boolean })[NO_RETRY] = true;
+    }
+    return error;
+  }
+
   /**
    * Calls `fn` until it resolves or `timeout` passes, then rethrows the last
    * error `fn` threw, prefixed with what was being waited for and how many
@@ -30,7 +45,12 @@ export class TestUtils {
       try {
         return await TestUtils.withDeadline(fn(), deadline);
       } catch (e) {
-        lastError = e;
+        // Keep the last real error over the deadline's own: it says why the
+        // earlier attempts failed
+        if (!(e as { [DEADLINE]?: boolean })?.[DEADLINE] || !lastError) {
+          lastError = e;
+        }
+        if ((e as { [NO_RETRY]?: boolean })?.[NO_RETRY]) break;
       }
       if (Date.now() + interval >= deadline) break;
       await TestUtils.waitForTimeout(interval);
@@ -53,8 +73,13 @@ export class TestUtils {
     let timer: NodeJS.Timeout | undefined;
     const timeout = new Promise<never>((_, reject) => {
       timer = setTimeout(
-        () =>
-          reject(new Error("The attempt was still running at the deadline")),
+        () => {
+          const error = new Error(
+            "The attempt was still running at the deadline",
+          );
+          (error as { [DEADLINE]?: boolean })[DEADLINE] = true;
+          reject(error);
+        },
         Math.max(deadline - Date.now(), 0),
       );
     });

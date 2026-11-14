@@ -13,7 +13,7 @@
 //     e2e/test-continue (config.json) and/or e2e/test-continue-yaml.
 // Before each instance it removes the config directory's sessions, index and
 // dev data, and the files tests wrote into the workspace. After each one it
-// copies the logs and new screenshots to e2e/artifacts/<file>-<config>/,
+// copies the logs and new screenshots to e2e/artifacts/<file>-<config>-<time>/,
 // because the next launch wipes the VS Code logs.
 const { spawnSync } = require("child_process");
 const fs = require("fs");
@@ -99,11 +99,12 @@ function listScreenshotDirs() {
 }
 
 function saveArtifacts(file, configName, screenshotDirsBefore) {
+  // One folder per run, so repeated runs keep each run's evidence
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const dest = path.join(
     ARTIFACTS,
-    `${path.basename(file, ".test.js")}-${configName}`,
+    `${path.basename(file, ".test.js")}-${configName}-${stamp}`,
   );
-  fs.rmSync(dest, { recursive: true, force: true });
   fs.mkdirSync(dest, { recursive: true });
 
   const copy = (from, to) => {

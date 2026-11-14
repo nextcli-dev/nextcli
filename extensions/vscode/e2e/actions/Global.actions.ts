@@ -4,9 +4,9 @@ import * as path from "path";
 
 import {
   By,
-  EditorView,
   InputBox,
   Key,
+  QuickPickItem,
   TextEditor,
   until,
   VSBrowser,
@@ -43,6 +43,13 @@ const BUILTIN_COMMAND_LABELS: Record<string, string | string[]> = {
   ],
 };
 
+/** WebDriver errors that mean a click never reached the element */
+const CLICK_NOT_DELIVERED = new Set([
+  "ElementNotInteractableError",
+  "ElementClickInterceptedError",
+  "StaleElementReferenceError",
+]);
+
 /** A command ID such as `continue.newSession`: dotted, no spaces */
 const COMMAND_ID = /^[\w-]+(\.[\w-]+)+$/;
 
@@ -61,11 +68,6 @@ export class GlobalActions {
       title,
       `window title; is ${GlobalActions.defaultFolder} open?`,
     ).to.include(path.basename(GlobalActions.defaultFolder));
-  }
-
-  public static async openTestWorkspace() {
-    await GlobalActions.expectTestWorkspaceOpen();
-    await GlobalActions.clearAllNotifications();
   }
 
   public static async clearAllNotifications() {
@@ -100,8 +102,13 @@ export class GlobalActions {
    *
    * Unlike ExTester's Workbench.executeCommand, it never presses Enter on
    * whatever happens to be highlighted: it clicks the pick whose label is
-   * exactly the expected one, or throws and lists the picks it saw. Only
-   * opening the palette is retried; the click never is.
+   * exactly the expected one, or throws and lists the picks it saw.
+   *
+   * Opening the palette, typing and finding the pick run nothing, so a
+   * failure there is retried from the start; so is a click WebDriver reports
+   * it never delivered (see clickPick). A focus change can close the palette
+   * at any of those points, for example the GUI focusing its input when it
+   * loads. A click that may have run the command is never repeated.
    *
    * Leaves the driver in the top-level frame. Callers that were inside a
    * webview must switch into it again.
@@ -138,7 +145,11 @@ export class GlobalActions {
    * quick input and clicks it. Throws with the visible labels if it doesn't
    * show up.
    */
-  public static async selectPick(input: InputBox, label: string | string[]) {
+  public static async selectPick(
+    input: InputBox,
+    label: string | string[],
+    timeout = DEFAULT_TIMEOUT.SM,
+  ) {
     const wanted = Array.isArray(label) ? label : [label];
     const pick = await TestUtils.waitForSuccess(
       async () => {
@@ -152,40 +163,48 @@ export class GlobalActions {
         }
         return picks[index];
       },
-      DEFAULT_TIMEOUT.SM,
+      timeout,
       250,
       `the ${wanted.map((w) => `"${w}"`).join(" or ")} pick`,
     );
-    await pick.select();
+    await GlobalActions.clickPick(pick);
   }
 
   /**
-   * Opens the palette, types the command and clicks its pick. Opening and
-   * typing run nothing, so they are retried: a focus change (such as the GUI
-   * taking focus after it opens) closes the palette under the cursor. The
-   * click is never retried.
+   * Clicks a pick. When WebDriver reports the click was never delivered (the
+   * pick went stale, hidden or covered, for example because the quick input
+   * closed), the error is left retryable, since nothing ran. Any other error
+   * is marked so waitForSuccess won't repeat a click that may have landed.
    */
+  private static async clickPick(pick: QuickPickItem) {
+    try {
+      await pick.select();
+    } catch (e) {
+      if (CLICK_NOT_DELIVERED.has((e as Error)?.name)) throw e;
+      throw TestUtils.doNotRetry(e);
+    }
+  }
+
   private static async selectCommand(command: string) {
     const isId = COMMAND_ID.test(command);
     const label = isId ? GlobalActions.commandLabel(command) : command;
-    const driver = VSBrowser.instance.driver;
-    await driver.switchTo().defaultContent();
 
-    const palette = await TestUtils.waitForSuccess(
+    await TestUtils.waitForSuccess(
       async () => {
-        const input = await GlobalActions.openCommandPalette();
+        // A palette left open by a failed attempt
+        await GlobalActions.closeVisible(".quick-input-widget");
+        const palette = await GlobalActions.openCommandPalette();
         // Typing an exact command ID lists that command, under its label
-        await input.setText(`>${command}`);
-        if ((await input.getText()) !== `>${command}`) {
-          throw new Error(`The palette shows "${await input.getText()}"`);
+        await palette.setText(`>${command}`);
+        if ((await palette.getText()) !== `>${command}`) {
+          throw new Error(`The palette shows "${await palette.getText()}"`);
         }
-        return input;
+        await GlobalActions.selectPick(palette, label, DEFAULT_TIMEOUT.XS);
       },
       DEFAULT_TIMEOUT.MD,
       500,
-      `type ${command} into the command palette`,
+      `run ${command} from the command palette`,
     );
-    await GlobalActions.selectPick(palette, label);
   }
 
   /**
@@ -205,20 +224,88 @@ export class GlobalActions {
     return new InputBox().wait();
   }
 
-  public static async createAndOpenNewTextFile(): Promise<{
-    editor: TextEditor;
-  }> {
+  /**
+   * Opens a new untitled text file and returns it as the active editor.
+   * Doesn't look it up by title: VS Code names an untitled file after its
+   * first line, so the title changes as soon as the test types.
+   */
+  public static async openNewUntitledFile(): Promise<TextEditor> {
+    const before = await GlobalActions.openEditorCount();
     await GlobalActions.runCommand("workbench.action.files.newUntitledFile");
-    const editor = (await new EditorView().openEditor(
-      "Untitled-1",
-    )) as TextEditor;
+    await TestUtils.waitForSuccess(
+      async () => {
+        expect(await GlobalActions.openEditorCount()).to.equal(before + 1);
+      },
+      DEFAULT_TIMEOUT.SM,
+      250,
+      "the new untitled file's tab",
+    );
+    return new TextEditor();
+  }
 
-    return { editor };
+  /** Gives `editor` keyboard focus and checks that it has it */
+  public static async focusEditor(editor: TextEditor) {
+    await VSBrowser.instance.driver.switchTo().defaultContent();
+    await editor.focus();
+    expect(await editor.hasFocus(), "the code editor has focus").to.equal(true);
+  }
+
+  public static async openEditorCount() {
+    const driver = VSBrowser.instance.driver;
+    await driver.switchTo().defaultContent();
+    return (await driver.findElements(By.css(".editor-group-container .tab")))
+      .length;
+  }
+
+  /**
+   * Closes every editor without a save prompt ("View: Revert and Close
+   * Editor" on each). Returns how many were open.
+   */
+  public static async closeAllEditors(): Promise<number> {
+    const open = await GlobalActions.openEditorCount();
+    for (let i = 0; i < open; i++) {
+      await GlobalActions.runCommand(
+        "workbench.action.revertAndCloseActiveEditor",
+      );
+    }
+    expect(
+      await GlobalActions.openEditorCount(),
+      "open editors after closing them all",
+    ).to.equal(0);
+    return open;
+  }
+
+  /**
+   * Closes a command palette or quick pick, and a VS Code modal dialog, left
+   * open. Returns what it closed.
+   */
+  public static async closeQuickInputAndDialogs(): Promise<string[]> {
+    const closed: string[] = [];
+    if (await GlobalActions.closeVisible(".quick-input-widget")) {
+      closed.push("a quick input");
+    }
+    if (await GlobalActions.closeVisible(".monaco-dialog-box")) {
+      closed.push("a dialog");
+    }
+    return closed;
+  }
+
+  /** Presses Escape while an element matching `css` is visible */
+  private static async closeVisible(css: string): Promise<boolean> {
+    const driver = VSBrowser.instance.driver;
+    await driver.switchTo().defaultContent();
+    for (const element of await driver.findElements(By.css(css))) {
+      if (await element.isDisplayed()) {
+        await driver.actions().sendKeys(Key.ESCAPE).perform();
+        await driver.wait(until.elementIsNotVisible(element), 2000);
+        return true;
+      }
+    }
+    return false;
   }
 
   static async setNextEditEnabled(enabled: boolean) {
     const workbench = new Workbench();
-    process.env.CONTINUE_E2E_NON_NEXT_EDIT_TEST = "true";
 
     await GlobalActions.clearAllNotifications();
     const statusBar = await workbench.getStatusBar();
@@ -249,9 +336,5 @@ export class GlobalActions {
       }
       throw new Error(`Next Edit is ${hasNE ? "on" : "off"}`);
     }, DEFAULT_TIMEOUT.MD);
-  }
-
-  static async disableNextEdit() {
-    await this.setNextEditEnabled(false);
   }
 }

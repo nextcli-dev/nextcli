@@ -1,12 +1,5 @@
 import { expect } from "chai";
-import {
-  afterEach,
-  before,
-  beforeEach,
-  EditorView,
-  Key,
-  TextEditor,
-} from "vscode-extension-tester";
+import { beforeEach, Key, TextEditor } from "vscode-extension-tester";
 
 import "../Baseline";
 import { GlobalActions } from "../actions/Global.actions";
@@ -14,24 +7,13 @@ import { GlobalActions } from "../actions/Global.actions";
 describe("Prompt file", () => {
   let editor: TextEditor;
 
-  before(async function () {
-    await GlobalActions.disableNextEdit();
-  });
-
   beforeEach(async function () {
-    await GlobalActions.openTestWorkspace();
-    await GlobalActions.runCommand("workbench.action.files.newUntitledFile");
+    editor = await GlobalActions.openNewUntitledFile();
     const languages = await GlobalActions.runCommandWithInput(
       "workbench.action.editor.changeLanguageMode",
     );
     await languages.setText("Prompt Language");
     await GlobalActions.selectPick(languages, "Prompt Language");
-    editor = (await new EditorView().openEditor("Untitled-1")) as TextEditor;
-  });
-
-  afterEach(async function () {
-    await editor.clearText();
-    await new EditorView().closeAllEditors();
   });
 
   it("Should display intellisense for default context providers and preamble", async () => {

@@ -1,11 +1,5 @@
 import { expect } from "chai";
-import {
-  afterEach,
-  before,
-  beforeEach,
-  EditorView,
-  TextEditor,
-} from "vscode-extension-tester";
+import { beforeEach, TextEditor } from "vscode-extension-tester";
 
 import "../Baseline";
 import { AutocompleteActions } from "../actions/Autocomplete.actions";
@@ -14,19 +8,8 @@ import { GlobalActions } from "../actions/Global.actions";
 describe("Autocomplete", () => {
   let editor: TextEditor;
 
-  before(async function () {
-    process.env.NEXT_EDIT_TEST_ENABLED = "false";
-    await GlobalActions.disableNextEdit();
-  });
-
   beforeEach(async function () {
-    await GlobalActions.openTestWorkspace();
-    ({ editor } = await GlobalActions.createAndOpenNewTextFile());
-  });
-
-  afterEach(async function () {
-    await editor.clearText();
-    await new EditorView().closeAllEditors();
+    editor = await GlobalActions.openNewUntitledFile();
   });
 
   it("Should display completions", async () => {

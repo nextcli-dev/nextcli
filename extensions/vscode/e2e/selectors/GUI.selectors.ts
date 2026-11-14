@@ -3,6 +3,35 @@ import { By, WebDriver, WebView } from "vscode-extension-tester";
 import { SelectorUtils } from "./SelectorUtils";
 
 export class GUISelectors {
+  /** The main chat input's editor (not the inputs of sent messages) */
+  public static getMainInput(view: WebView) {
+    return view.findWebElement(
+      By.css("[data-testid='continue-input-box-main-editor-input'] .tiptap"),
+    );
+  }
+
+  public static getThreadMessages(view: WebView) {
+    return view.findWebElements(By.css(".thread-message"));
+  }
+
+  /** Shown while a turn streams; empty when the GUI is idle */
+  public static getStopStreamingButtons(view: WebView) {
+    return view.findWebElements(
+      By.css("[data-testid='stop-streaming-button']"),
+    );
+  }
+
+  public static getEditAcceptButtons(view: WebView) {
+    return view.findWebElements(By.css("[data-testid='edit-accept-button']"));
+  }
+
+  /** Buttons of an open GUI dialog with exactly this text */
+  public static getDialogButtons(view: WebView, text: string) {
+    return view.findWebElements(
+      By.xpath(`//button[normalize-space()="${text}"]`),
+    );
+  }
+
   public static getMessageInputFields(view: WebView) {
     return view.findWebElements(By.className("tiptap"));
   }
@@ -22,10 +51,6 @@ export class GUISelectors {
 
   public static getAllIframes(driver: WebDriver) {
     return driver.findElements(By.css("iframe"));
-  }
-
-  public static getReactIframe(driver: WebDriver) {
-    return driver.findElement(By.css("iframe"));
   }
 
   public static getSubmitInputButton(view: WebView) {
