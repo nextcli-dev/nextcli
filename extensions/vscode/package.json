@@ -235,7 +235,7 @@
       },
       {
         "command": "continue.forceAutocomplete",
-        "title": "NextCLI: Force Autocomplete",
+        "title": "Force Autocomplete",
         "category": "NextCLI"
       },
       {
@@ -339,7 +339,8 @@
       },
       {
         "command": "continue.toggleNextEditEnabled",
-        "title": "NextCLI: Toggle Next Edit"
+        "category": "NextCLI",
+        "title": "Toggle Next Edit"
       },
       {
         "command": "continue.nextEditWindow.hideNextEditSuggestion",
@@ -354,17 +355,17 @@
       {
         "command": "continue.forceNextEdit",
         "category": "NextCLI",
-        "title": "NextCLI: Force Next Edit"
+        "title": "Force Next Edit"
       },
       {
         "command": "continue.acceptJump",
         "category": "NextCLI",
-        "title": "NextCLI: Accept Jump Suggestion"
+        "title": "Accept Jump Suggestion"
       },
       {
         "command": "continue.rejectJump",
         "category": "NextCLI",
-        "title": "NextCLI: Reject Jump Suggestion"
+        "title": "Reject Jump Suggestion"
       },
       {
         "command": "continue.openInNewWindow",

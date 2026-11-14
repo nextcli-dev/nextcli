@@ -70,4 +70,23 @@ describe("package.json contributes", () => {
     );
     expect(ids.filter((id, i) => ids.indexOf(id) !== i)).toEqual([]);
   });
+
+  it("labels each command in the palette with the NextCLI category once", () => {
+    const manifest = JSON.parse(
+      readFileSync(join(__dirname, "../../package.json"), "utf8"),
+    );
+    // The palette shows "<category>: <title>", so a title that repeats the
+    // category reads "NextCLI: NextCLI: ..."
+    const commands: { command: string; category?: string; title: string }[] =
+      manifest.contributes.commands;
+    expect(
+      commands
+        .filter(
+          (c) => c.category !== "NextCLI" || c.title.startsWith("NextCLI"),
+        )
+        .map(
+          (c) => `${c.command}: ${c.category ?? "(no category)"}: ${c.title}`,
+        ),
+    ).toEqual([]);
+  });
 });
