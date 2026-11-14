@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.6.17](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.16...vscode-v1.6.17) (2026-11-14)
+
+
+### Bug Fixes
+
+* **ci:** keep the commit-stamped VS Code version valid semver ([#143](https://github.com/nextcli-dev/nextcli/issues/143)) ([73a9294](https://github.com/nextcli-dev/nextcli/commit/73a9294c2c9e9edbf7b4b88566f1fa808687533a))
+* **vscode:** drop the doubled "NextCLI:" from command palette titles ([#147](https://github.com/nextcli-dev/nextcli/issues/147)) ([841b907](https://github.com/nextcli-dev/nextcli/commit/841b9072eab2b483eabfd6f8f1e3a40c644ccb3c))
+* **vscode:** keep Cmd+I from replacing the code being edited while its diff is open ([#148](https://github.com/nextcli-dev/nextcli/issues/148)) ([000ee75](https://github.com/nextcli-dev/nextcli/commit/000ee75da5af9941d7e01dcbbe64bf1678461955))
+* **vscode:** keep diff CodeLenses refreshing after a config reload ([#146](https://github.com/nextcli-dev/nextcli/issues/146)) ([61cf1d7](https://github.com/nextcli-dev/nextcli/commit/61cf1d7b12e1a5bf083b3acac968d47f1350671d))
+
 ## [1.6.16](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.15...vscode-v1.6.16) (2026-11-13)
 
 
