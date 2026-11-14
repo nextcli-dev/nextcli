@@ -3,8 +3,9 @@
  *
  * The hooks register once, at module load, on mocha's root suite. That puts
  * them after ExTester's own root hook that launches VS Code; hooks passed
- * to mocha as rootHooks would run before it. They come from ExTester, which
- * takes a screenshot when one fails.
+ * to mocha as rootHooks would run before it. They are defined here with
+ * ExTester's wrappers of mocha's hook functions (imported from
+ * vscode-extension-tester), which take a screenshot when a hook fails.
  *
  * Every test starts from the same state, so no test depends on what the one
  * before it left behind:

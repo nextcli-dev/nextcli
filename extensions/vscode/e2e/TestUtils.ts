@@ -26,8 +26,10 @@ export class TestUtils {
    * error name still shows.
    *
    * Only for functions that are safe to repeat: reads and element lookups.
-   * Never wrap a click, keystroke or command whose effect may already have
-   * happened when it throws.
+   * A click, keystroke or command may be wrapped only if every failure after
+   * which its effect may already have happened is marked with doNotRetry,
+   * which makes this rethrow it at once (GlobalActions.clickPick does so for
+   * any click WebDriver doesn't report as undelivered).
    */
   public static async waitForSuccess<T>(
     fn: () => Promise<T>,
