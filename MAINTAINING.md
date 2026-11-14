@@ -57,6 +57,10 @@ node scripts/ci/affected.mjs --base origin/main --explain
 
 For a full run on a pull request, add the `ci:full` label and push, or run the CI workflow manually on the branch. A scheduled full run on `main` every Monday catches anything the narrowed selection misses. Release PRs always get a full run.
 
+Changing a pull request's base branch doesn't start CI: `ci.yml` doesn't run on `edited` events, which a title change would also trigger. A stacked pull request retargeted to `main` keeps the result of its old base until something is pushed. Rebase it onto `main` and push. The ruleset requires branches to be up to date, so a retargeted branch can't merge before that.
+
+**VS Code e2e tests.** The `vscode-e2e` jobs run each file in `extensions/vscode/e2e/tests` with both test configs (JSON and YAML), one job each: 12 jobs. That is the limit for one CI mode. A new test file means grouping files into jobs, not adding jobs. A new or re-enabled e2e test needs a green stress run first: add the `e2e:stress` label and push. Every file then runs 20 times per config inside the same 12 jobs. Link the run in the pull request. A failing e2e test is fixed, or the change that broke it reverted; don't skip it to merge. `extensions/vscode/e2e/README.md` has the rules for writing tests.
+
 Pull request titles must follow [Conventional Commits](https://www.conventionalcommits.org/) (`fix(cli): ...`, `feat(vscode): ...`). The squash commit uses the title, and release-please reads it.
 
 Other workflows:
