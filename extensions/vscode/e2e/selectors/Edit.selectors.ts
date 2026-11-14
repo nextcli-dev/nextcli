@@ -1,8 +1,12 @@
-import { WebView } from "vscode-extension-tester";
+import { By, WebView } from "vscode-extension-tester";
 
 import { SelectorUtils } from "./SelectorUtils";
 
 export class EditSelectors {
+  public static editAcceptButtonLocator = By.css(
+    "[data-testid='edit-accept-button']",
+  );
+
   public static getEditAcceptButton(view: WebView) {
     return SelectorUtils.getElementByDataTestId(view, "edit-accept-button");
   }

@@ -1,39 +1,19 @@
 import { expect } from "chai";
-import {
-  EditorView,
-  InputBox,
-  Key,
-  TextEditor,
-  Workbench,
-} from "vscode-extension-tester";
+import { beforeEach, Key, TextEditor } from "vscode-extension-tester";
 
+import "../Baseline";
 import { GlobalActions } from "../actions/Global.actions";
-import { DEFAULT_TIMEOUT } from "../constants";
 
 describe("Prompt file", () => {
   let editor: TextEditor;
 
-  before(async function () {
-    this.timeout(DEFAULT_TIMEOUT.MD);
-    await GlobalActions.disableNextEdit();
-  });
-
   beforeEach(async function () {
-    this.timeout(DEFAULT_TIMEOUT.XL);
-
-    await GlobalActions.openTestWorkspace();
-    await new Workbench().executeCommand("File: New Untitled Text File");
-    await new Workbench().executeCommand("Change Language Mode");
-    const inputBox = await new InputBox();
-    await inputBox.setText("Prompt Language");
-    await inputBox.confirm();
-    editor = (await new EditorView().openEditor("Untitled-1")) as TextEditor;
-  });
-
-  afterEach(async function () {
-    this.timeout(DEFAULT_TIMEOUT.XL);
-    await editor.clearText();
-    await new EditorView().closeAllEditors();
+    editor = await GlobalActions.openNewUntitledFile();
+    const languages = await GlobalActions.runCommandWithInput(
+      "workbench.action.editor.changeLanguageMode",
+    );
+    await languages.setText("Prompt Language");
+    await GlobalActions.selectPick(languages, "Prompt Language");
   });
 
   it("Should display intellisense for default context providers and preamble", async () => {
@@ -80,5 +60,5 @@ describe("Prompt file", () => {
     // await editor.typeText(Key.ENTER);
     // const text = await editor.getText();
     // expect(text).equals("description: \n\n---");
-  }).timeout(DEFAULT_TIMEOUT.XL);
+  });
 });

@@ -7,16 +7,10 @@ inputs:
   command:
     description: "Command to run (e2e:ci:run or e2e:ci:run-yaml)"
     required: true
-  ssh_key:
-    description: "SSH private key for testing"
+  repeat:
+    description: "How many times to run the test file, each in a fresh VS Code instance (the e2e:stress label sets 20)"
     required: false
-  ssh_host:
-    description: "SSH host for testing"
-    required: false
-  is_fork:
-    description: "Whether this is a fork (affects SSH tests)"
-    required: false
-    default: "false"
+    default: "1"
   github_token:
     description: "GitHub token for authenticated API requests (e.g., @vscode/ripgrep download)"
     required: false
@@ -29,13 +23,16 @@ runs:
       with:
         node-version-file: ".nvmrc"
 
-    # The VS Code version the e2e tests download and select locators for.
-    # Cached storage must match it: run-tests with locators for one version
-    # against a cached binary of another fails in every hook.
-    - name: Read the e2e VS Code version
+    # The VS Code version the e2e tests download and select locators for, and
+    # the ExTester version, which picks the matching ChromeDriver. The cached
+    # downloads must match both: locators for one VS Code version against a
+    # binary of another fail in every hook.
+    - name: Read the e2e VS Code and ExTester versions
       id: e2e-vscode
       shell: bash
-      run: echo "version=$(node -p "require('./extensions/vscode/package.json').config.e2eVscodeVersion")" >> "$GITHUB_OUTPUT"
+      run: |
+        echo "version=$(node -p "require('./extensions/vscode/package.json').config.e2eVscodeVersion")" >> "$GITHUB_OUTPUT"
+        echo "extester=$(node -p "require('./extensions/vscode/package-lock.json').packages['node_modules/vscode-extension-tester'].version")" >> "$GITHUB_OUTPUT"
 
     - uses: actions/cache@v6
       id: vscode-node-modules-cache
@@ -43,18 +40,14 @@ runs:
         path: extensions/vscode/node_modules
         key: ${{ runner.os }}-vscode-node-modules-${{ hashFiles('extensions/vscode/package-lock.json') }}
 
-    # We don't want to cache the Continue extension, so it is deleted at the end of the job
-    - uses: actions/cache@v6
-      id: test-extensions-cache
-      with:
-        path: extensions/vscode/e2e/.test-extensions
-        key: test-extensions-vscode-${{ steps.e2e-vscode.outputs.version }}
-
-    - uses: actions/cache@v6
+    # Only the VS Code and ChromeDriver downloads are cached; the cache is
+    # saved right after downloading (below), before any test writes into
+    # e2e/storage, so a job whose tests fail still fills it.
+    - uses: actions/cache/restore@v6
       id: storage-cache
       with:
         path: extensions/vscode/e2e/storage
-        key: ${{ runner.os }}-vscode-storage-${{ steps.e2e-vscode.outputs.version }}-${{ hashFiles('extensions/vscode/package-lock.json') }}
+        key: ${{ runner.os }}-vscode-${{ steps.e2e-vscode.outputs.version }}-extester-${{ steps.e2e-vscode.outputs.extester }}
 
     - name: Download build artifact
       uses: actions/download-artifact@v8
@@ -62,22 +55,30 @@ runs:
         name: vscode-extension-build-Linux
         path: extensions/vscode/build
 
+    # Each cache gates only what it holds: the extension's node_modules can
+    # miss (a lockfile change) while the VS Code download still hits, and the
+    # download needs node_modules for ExTester.
     - name: Build packages and download e2e dependencies
       shell: bash
       run: |
         node ./scripts/build-packages.js
+        (cd core && npm ci)
+        cd extensions/vscode
+        if [ "${{ steps.vscode-node-modules-cache.outputs.cache-hit }}" != "true" ]; then
+          npm ci
+        fi
         if [ "${{ steps.storage-cache.outputs.cache-hit }}" != "true" ]; then
-          cd core
-          npm ci
-          cd ../extensions/vscode
-          npm ci
           npm run e2e:ci:download
-        else
-          cd core
-          npm ci
         fi
       env:
         GITHUB_TOKEN: ${{ inputs.github_token }}
+
+    - name: Save the VS Code and ChromeDriver downloads
+      if: steps.storage-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v6
+      with:
+        path: extensions/vscode/e2e/storage
+        key: ${{ steps.storage-cache.outputs.cache-primary-key }}
 
     - name: Fix VSCode binary permissions
       shell: bash
@@ -85,38 +86,15 @@ runs:
         chmod +x extensions/vscode/e2e/storage/VSCode-linux-x64/code
         chmod +x extensions/vscode/e2e/storage/chromedriver-linux64/chromedriver
 
-    - name: Set up SSH
-      if: ${{ inputs.ssh_key != '' && inputs.ssh_host != '' && inputs.is_fork == 'false' }}
-      shell: bash
-      env:
-        SSH_KEY: ${{ inputs.ssh_key }}
-        SSH_HOST: ${{ inputs.ssh_host }}
-      run: |
-        mkdir -p ~/.ssh
-        echo "$SSH_KEY" > ~/.ssh/id_rsa
-        chmod 600 ~/.ssh/id_rsa
-        ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
-        echo -e "Host ssh-test-container\n\tHostName $SSH_HOST\n\tUser ec2-user\n\tIdentityFile ~/.ssh/id_rsa" >> ~/.ssh/config
-
-    - name: Set up Xvfb
-      shell: bash
-      run: |
-        Xvfb :99 &
-        export DISPLAY=:99
-
+    # xvfb-run waits for the X server before it starts the tests. The screen
+    # is larger than the 1200x800 window e2e/Baseline.ts checks for.
     - name: Run e2e tests
       shell: bash
       run: |
         cd extensions/vscode
-        IGNORE_SSH_TESTS="${{ inputs.is_fork }}" TEST_FILE="${{ inputs.test_file }}" npm run ${{ inputs.command }}
-      env:
-        DISPLAY: :99
-
-    - name: Delete continue from test extensions
-      shell: bash
-      run: |
-        cd extensions/vscode
-        rm -rf e2e/.test-extensions/continue* e2e/.test-extensions/nextcli*
+        TEST_FILE="${{ inputs.test_file }}" E2E_REPEAT="${{ inputs.repeat }}" \
+          xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
+          npm run ${{ inputs.command }}
 
     - name: Sanitize test file name
       id: sanitize_filename
@@ -127,23 +105,20 @@ runs:
         SANITIZED_FILENAME="${FILENAME//\//-}" # Replace / with - using bash parameter expansion
         echo "sanitized_test_file=${SANITIZED_FILENAME}" >> $GITHUB_OUTPUT
 
-    - name: Upload e2e test screenshots
+    # Screenshots (test bodies and, through the hook wrappers, hooks), the VS
+    # Code logs (exthost.log has the extension's own output), and the
+    # ChromeDriver and WebDriver logs. e2e/artifacts keeps a copy per VS Code
+    # instance, since each launch wipes the previous one's logs.
+    - name: Upload e2e failure evidence
       if: failure()
       uses: actions/upload-artifact@v7
       with:
-        name: e2e-failure-screenshots-${{ steps.sanitize_filename.outputs.sanitized_test_file || 'unknown' }}-${{ inputs.command == 'e2e:ci:run-yaml' && 'yaml' || 'json' }}
-        path: extensions/vscode/e2e/storage/screenshots
-
-    - name: Find e2e log file
-      if: always()
-      shell: bash
-      run: |
-        echo "Searching for e2e.log file..."
-        find $GITHUB_WORKSPACE -name "e2e.log" -type f
-
-    - name: Upload e2e logs
-      if: always()
-      uses: actions/upload-artifact@v7
-      with:
-        name: e2e-logs-${{ steps.sanitize_filename.outputs.sanitized_test_file || 'unknown' }}-${{ inputs.command == 'e2e:ci:run-yaml' && 'yaml' || 'json' }}
-        path: extensions/vscode/e2e.log
+        name: e2e-failure-${{ steps.sanitize_filename.outputs.sanitized_test_file || 'unknown' }}-${{ inputs.command == 'e2e:ci:run-yaml' && 'yaml' || 'json' }}
+        path: |
+          extensions/vscode/e2e/artifacts
+          extensions/vscode/e2e/storage/screenshots
+          extensions/vscode/e2e/storage/settings/logs
+          extensions/vscode/e2e/storage/chromedriver.log
+          extensions/vscode/e2e/storage/test.log
+          extensions/vscode/e2e/storage/crashes
+        if-no-files-found: warn

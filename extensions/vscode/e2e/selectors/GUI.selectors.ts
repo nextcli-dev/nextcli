@@ -3,8 +3,33 @@ import { By, WebDriver, WebView } from "vscode-extension-tester";
 import { SelectorUtils } from "./SelectorUtils";
 
 export class GUISelectors {
-  public static getDescription(view: WebView) {
-    return view.findWebElement(By.xpath("//*[contains(text(), 'quickly')]"));
+  /** The main chat input's editor (not the inputs of sent messages) */
+  public static getMainInput(view: WebView) {
+    return view.findWebElement(
+      By.css("[data-testid='continue-input-box-main-editor-input'] .tiptap"),
+    );
+  }
+
+  public static getThreadMessages(view: WebView) {
+    return view.findWebElements(By.css(".thread-message"));
+  }
+
+  /** Shown while a turn streams; empty when the GUI is idle */
+  public static getStopStreamingButtons(view: WebView) {
+    return view.findWebElements(
+      By.css("[data-testid='stop-streaming-button']"),
+    );
+  }
+
+  public static getEditAcceptButtons(view: WebView) {
+    return view.findWebElements(By.css("[data-testid='edit-accept-button']"));
+  }
+
+  /** Buttons of an open GUI dialog with exactly this text */
+  public static getDialogButtons(view: WebView, text: string) {
+    return view.findWebElements(
+      By.xpath(`//button[normalize-space()="${text}"]`),
+    );
   }
 
   public static getMessageInputFields(view: WebView) {
@@ -28,106 +53,33 @@ export class GUISelectors {
     return driver.findElements(By.css("iframe"));
   }
 
-  public static getReactIframe(driver: WebDriver) {
-    return driver.findElement(By.css("iframe"));
-  }
-
-  public static getSubmitInputButton(view: WebView) {
-    return SelectorUtils.getElementByDataTestId(view, "submit-input-button");
-  }
-
-  public static getAcceptToolCallButton(view: WebView) {
-    return view.findWebElement(
-      By.css("[data-testid*='accept-tool-call-button']"),
-    );
-  }
-
-  public static getRejectToolCallButton(view: WebView) {
-    return view.findWebElement(
-      By.css("[data-testid*='reject-tool-call-button']"),
-    );
-  }
-
   public static getToolCallStatusMessage(view: WebView) {
     return SelectorUtils.getElementByDataTestId(view, "tool-call-title");
-  }
-
-  public static getToolsTab(view: WebView) {
-    return SelectorUtils.getElementByDataTestId(view, "tab-tools");
-  }
-
-  public static getBackButton(view: WebView) {
-    return SelectorUtils.getElementByDataTestId(view, "tab-back");
-  }
-
-  /** The header that expands a tool group on the Tools settings page */
-  public static getToolGroupHeader(view: WebView, groupName: string) {
-    return SelectorUtils.getElementByDataTestId(
-      view,
-      `tool-group-${groupName}`,
-    );
-  }
-
-  /** An option of an open headless-ui Listbox, by its label */
-  public static getListboxOption(view: WebView, label: string) {
-    return view.findWebElement(
-      By.xpath(`//*[@role="option" and normalize-space()="${label}"]`),
-    );
-  }
-
-  public static getToolPolicyButton(view: WebView, toolName: string) {
-    return SelectorUtils.getElementByDataTestId(
-      view,
-      `tool-policy-item-${toolName}`,
-    );
   }
 
   public static getModelDropdownButton(view: WebView) {
     return SelectorUtils.getElementByDataTestId(view, "model-select-button");
   }
 
+  /** The selected model's title in the model button, without the effort or other badges */
+  public static getModelDropdownTitle(view: WebView) {
+    return view.findWebElement(
+      By.css("[data-testid='model-select-button'] > span:first-child"),
+    );
+  }
+
   public static getModeDropdownButton(view: WebView) {
     return SelectorUtils.getElementByDataTestId(view, "mode-select-button");
-  }
-
-  public static getFirstContextProviderDropdownItem(view: WebView) {
-    return SelectorUtils.getElementByDataTestId(
-      view,
-      "context-provider-dropdown-item",
-    );
-  }
-
-  public static getContextItemsPeek(view: WebView) {
-    return SelectorUtils.getElementByDataTestId(view, "context-items-peek");
-  }
-
-  public static getFirstContextItemsPeekItem(view: WebView) {
-    return SelectorUtils.getElementByDataTestId(
-      view,
-      "context-items-peek-item",
-    );
-  }
-
-  public static getRulesPeek(view: WebView) {
-    return SelectorUtils.getElementByDataTestId(view, "rules-peek");
-  }
-
-  public static getFirstRulesPeekItem(view: WebView) {
-    return SelectorUtils.getElementByDataTestId(view, "rules-peek-item");
   }
 
   public static getNthHistoryTableRow(view: WebView, index: number) {
     return SelectorUtils.getElementByDataTestId(view, `history-row-${index}`);
   }
 
-  public static getNthMessageDeleteButton(view: WebView, index: number) {
-    return SelectorUtils.getElementByDataTestId(view, `delete-button-${index}`);
-  }
-
   public static getModelDropdownOption(view: WebView, option: string) {
     return view.findWebElement(
       By.xpath(
-        `//*[@data-testid="model-select-menu"]//*[contains(text(), "${option}")]`,
+        `//*[@data-testid="model-select-menu"]//*[normalize-space(text())="${option}"]`,
       ),
     );
   }
@@ -141,33 +93,8 @@ export class GUISelectors {
 
   public static getModeDropdownOption(view: WebView, option: string) {
     return view.findWebElement(
-      By.xpath(`//*[@role="listbox"]//*[contains(text(), "${option}")]`),
+      By.xpath(`//*[@role="listbox"]//*[normalize-space(text())="${option}"]`),
     );
-  }
-
-  public static getOnboardingTabButton(view: WebView, title: string) {
-    return SelectorUtils.getElementByDataTestId(
-      view,
-      `onboarding-tab-${title}`,
-    );
-  }
-
-  public static getBestChatApiKeyInput(view: WebView) {
-    return SelectorUtils.getElementByDataTestId(
-      view,
-      "best-chat-api-key-input",
-    );
-  }
-
-  public static getBestAutocompleteApiKeyInput(view: WebView) {
-    return SelectorUtils.getElementByDataTestId(
-      view,
-      "best-autocomplete-api-key-input",
-    );
-  }
-
-  public static getTutorialCard(view: WebView) {
-    return SelectorUtils.getElementByDataTestId(view, "tutorial-card");
   }
 
   public static getThreadMessageByText(view: WebView, text: string) {

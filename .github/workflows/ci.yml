@@ -8,6 +8,11 @@ name: CI
 #   - add the `ci:full` label to the pull request and push, or
 #   - run this workflow manually on the branch (Actions > CI > Run workflow).
 # A weekly scheduled run on main runs everything as a safety net for the narrowed test selection.
+#
+# The `e2e:stress` label (add it, then push) runs every VS Code e2e test
+# file 20 times per config, each run in a fresh VS Code instance, inside the
+# same 12 jobs (set up once, then repeated). A new or re-enabled e2e test
+# needs a green stress run before it counts as working.
 on:
   pull_request:
     branches: [main]
@@ -291,6 +296,7 @@ jobs:
     timeout-minutes: 15
     outputs:
       test_file_matrix: ${{ steps.files.outputs.test_file_matrix }}
+      repeat: ${{ steps.files.outputs.repeat }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -327,16 +333,17 @@ jobs:
         id: files
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
-          SKIP_SSH: ${{ github.event.pull_request.head.repo.fork == true || github.actor == 'dependabot[bot]' }}
+          STRESS: ${{ contains(github.event.pull_request.labels.*.name, 'e2e:stress') }}
         run: |
           node ./scripts/build-packages.js
           cd extensions/vscode
           npm ci
           npm run e2e:compile
-          if [ "$SKIP_SSH" = "true" ]; then
-            FILES=$(ls -1 e2e/_output/tests/*.test.js | grep -v "SSH" | jq -R . | jq -s -c .)
+          FILES=$(ls -1 e2e/_output/tests/*.test.js | jq -R . | jq -s -c .)
+          if [ "$STRESS" = "true" ]; then
+            echo "repeat=20" >> "$GITHUB_OUTPUT"
           else
-            FILES=$(ls -1 e2e/_output/tests/*.test.js | jq -R . | jq -s -c .)
+            echo "repeat=1" >> "$GITHUB_OUTPUT"
           fi
           echo "test_file_matrix=$FILES" >> "$GITHUB_OUTPUT"
           echo "Test files: $FILES"
@@ -385,7 +392,8 @@ jobs:
     name: e2e ${{ matrix.test_file }} (${{ matrix.command }})
     needs: [vscode-e2e-matrix, vscode-build-linux]
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # A stress run repeats the file 20 times in this job
+    timeout-minutes: ${{ needs.vscode-e2e-matrix.outputs.repeat == '1' && 15 || 50 }}
     strategy:
       fail-fast: false
       matrix:
@@ -405,9 +413,7 @@ jobs:
         with:
           test_file: ${{ matrix.test_file }}
           command: ${{ matrix.command }}
-          ssh_key: ${{ secrets.GH_ACTIONS_SSH_TEST_KEY_PEM }}
-          ssh_host: ${{ secrets.GH_ACTIONS_SSH_TEST_DNS_NAME }}
-          is_fork: ${{ github.event.pull_request.head.repo.fork == true || github.actor == 'dependabot[bot]' }}
+          repeat: ${{ needs.vscode-e2e-matrix.outputs.repeat }}
           github_token: ${{ steps.app-token.outputs.token }}
 
   cli-lint:

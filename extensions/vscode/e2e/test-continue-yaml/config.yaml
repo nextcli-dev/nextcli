@@ -38,7 +38,8 @@ models:
                   type: function
                   function:
                     name: view_diff
-          - REPEAT_LAST_MSG
+          - - role: assistant
+              content: TOOL TURN DONE
     roles:
       - chat
       - edit

@@ -26,5 +26,8 @@ e2e/test-continue/*
 !e2e/test-continue/config.json
 e2e/test-continue-yaml/*
 !e2e/test-continue-yaml/config.yaml
+e2e/fixture-workspace/*
+!e2e/fixture-workspace/README.md
+e2e/artifacts
 config-yaml-schema.json
 src/.buildTimestamp.ts

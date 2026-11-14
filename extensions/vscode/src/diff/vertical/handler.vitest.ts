@@ -586,3 +586,84 @@ describe("VerticalDiffHandler instant lazy apply on a CRLF file", () => {
     expect(getText()).toBe(CRLF_ORIGINAL);
   });
 });
+
+describe("VerticalDiffHandler accepts or rejects one block at a time", () => {
+  /** Two separate changes, so the diff has two blocks */
+  const BEFORE = "a\nb\nc\nd\ne\n";
+  const AFTER = "a\nB\nc\nD\ne\n";
+
+  async function runTwoBlocks() {
+    const { editor, getText } = createEditor(BEFORE);
+    (vscode.window as any).activeTextEditor = editor;
+    (vscode.window as any).visibleTextEditors = [editor];
+    const codeLens = new Map<string, any[]>();
+    const statuses: [string | undefined, number][] = [];
+    const handler = new VerticalDiffHandler(
+      0,
+      BEFORE.split("\n").length - 1,
+      editor,
+      codeLens,
+      () => {},
+      () => {},
+      {
+        onStatusUpdate: (status, numDiffs) =>
+          statuses.push([status, numDiffs ?? -1]),
+      },
+    );
+    await handler.run(
+      streamDiff(BEFORE.split("\n"), toStream(AFTER.split("\n"))),
+    );
+    const uri = editor.document.uri.toString();
+    const blocks = () => codeLens.get(uri) ?? [];
+    statuses.length = 0;
+    return { handler, getText, blocks, statuses };
+  }
+
+  // What a CodeLens Accept/Reject on block `index` does (manager.ts
+  // acceptRejectVerticalDiffBlock)
+  async function resolveBlock(
+    handler: VerticalDiffHandler,
+    blocks: () => any[],
+    accept: boolean,
+    index: number,
+  ) {
+    const block = blocks()[index];
+    await handler.acceptRejectBlock(
+      accept,
+      block.start,
+      block.numGreen,
+      block.numRed,
+    );
+  }
+
+  it("accepting one block and rejecting the other keeps exactly that", async () => {
+    const { handler, getText, blocks, statuses } = await runTwoBlocks();
+    expect(blocks()).toHaveLength(2);
+
+    await resolveBlock(handler, blocks, true, 0);
+    expect(blocks()).toHaveLength(1);
+    expect(statuses).toEqual([[undefined, 1]]);
+
+    await resolveBlock(handler, blocks, false, 0);
+    expect(blocks()).toHaveLength(0);
+    expect(statuses).toEqual([
+      [undefined, 1],
+      ["closed", 0],
+    ]);
+    expect(getText()).toBe("a\nB\nc\nd\ne\n");
+  });
+
+  it("rejecting every block restores the file", async () => {
+    const { handler, getText, blocks } = await runTwoBlocks();
+    await resolveBlock(handler, blocks, false, 0);
+    await resolveBlock(handler, blocks, false, 0);
+    expect(getText()).toBe(BEFORE);
+  });
+
+  it("accepting every block gives the new text", async () => {
+    const { handler, getText, blocks } = await runTwoBlocks();
+    await resolveBlock(handler, blocks, true, 1);
+    await resolveBlock(handler, blocks, true, 0);
+    expect(getText()).toBe(AFTER);
+  });
+});

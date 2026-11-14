@@ -42,7 +42,7 @@
                 ]
               }
             ],
-            ["REPEAT_LAST_MSG"]
+            [{ "role": "assistant", "content": "TOOL TURN DONE" }]
           ]
         }
       }

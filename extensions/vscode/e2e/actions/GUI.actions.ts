@@ -1,85 +1,168 @@
 import {
   By,
-  InputBox,
   Key,
+  until,
+  VSBrowser,
   WebDriver,
   WebElement,
   WebView,
-  Workbench,
 } from "vscode-extension-tester";
 
 import { DEFAULT_TIMEOUT } from "../constants";
 import { GUISelectors } from "../selectors/GUI.selectors";
 import { TestUtils } from "../TestUtils";
+import { GlobalActions } from "./Global.actions";
 
 export class GUIActions {
-  public static moveContinueToSidebar = async (driver: WebDriver) => {
-    await GUIActions.toggleGui();
-    await TestUtils.waitForSuccess(async () => {
-      await new Workbench().executeCommand("View: Move View");
-      await (
-        await InputBox.create(DEFAULT_TIMEOUT.MD)
-      ).selectQuickPick("NextCLI");
-      await (
-        await InputBox.create(DEFAULT_TIMEOUT.MD)
-      ).selectQuickPick("New Secondary Side Bar Entry");
-    });
+  /**
+   * Moves the NextCLI view into its own secondary side bar entry, where the
+   * extension's Cmd+L hides it again, and leaves it closed. Runs once per
+   * VS Code instance, from e2e/Baseline.ts.
+   */
+  public static async moveToSecondarySideBar() {
+    // Move the view before its webview first loads: a loading webview takes
+    // focus, which closes the quick pick. Nothing moves until the last pick
+    // is clicked, so a failure before that starts over.
+    await TestUtils.waitForSuccess(
+      async () => {
+        const moveView = await GlobalActions.runCommandWithInput(
+          "workbench.action.moveView",
+        );
+        await GlobalActions.selectPick(moveView, "NextCLI");
+        await GlobalActions.selectPick(
+          moveView,
+          "New Secondary Side Bar Entry",
+        );
+      },
+      DEFAULT_TIMEOUT.MD,
+      500,
+      "move the NextCLI view to the secondary side bar",
+    );
 
-    // first call focuses the input
-    await TestUtils.waitForTimeout(DEFAULT_TIMEOUT.XS);
-    await GUIActions.executeFocusContinueInputShortcut(driver);
+    // Focusing the view must now show the secondary side bar
+    await GUIActions.close();
+    await GUIActions.open();
+    await GUIActions.close();
+  }
 
-    // Widen the side bar while it's open; the width stays when it reopens
-    await TestUtils.waitForTimeout(DEFAULT_TIMEOUT.XS);
-    await GUIActions.widenSecondarySideBar(driver);
+  /** Whether the secondary side bar, which holds only the GUI, is shown */
+  public static async isOpen() {
+    const driver = VSBrowser.instance.driver;
+    await driver.switchTo().defaultContent();
+    const bars = await driver.findElements(
+      By.id("workbench.parts.auxiliarybar"),
+    );
+    return bars.length > 0 && (await bars[0].isDisplayed());
+  }
 
-    // second call closes the gui
-    await TestUtils.waitForTimeout(DEFAULT_TIMEOUT.XS);
-    await GUIActions.executeFocusContinueInputShortcut(driver);
-  };
+  /**
+   * Shows the GUI if it's hidden and switches into its iframe once the main
+   * input exists. Unlike Cmd+L, it never hides the GUI or starts a new
+   * session. The GUI may take focus a moment later; focus the code editor
+   * with GlobalActions.focusEditor before typing into it.
+   */
+  public static async open() {
+    if (!(await GUIActions.isOpen())) {
+      await GlobalActions.runCommand("continue.continueGUIView.focus");
+      await TestUtils.waitForSuccess(
+        async () => {
+          if (!(await GUIActions.isOpen())) {
+            throw new Error("The secondary side bar is hidden");
+          }
+        },
+        DEFAULT_TIMEOUT.MD,
+        250,
+        "the GUI to open",
+      );
+    }
+    return TestUtils.waitForSuccess(
+      async () => {
+        const gui = await GUIActions.switchToReactIframe();
+        await GUISelectors.getMainInput(gui.view);
+        return gui;
+      },
+      DEFAULT_TIMEOUT.MD,
+      500,
+      "the GUI's main input",
+    );
+  }
 
+  /** Hides the GUI if it's shown. Leaves the driver in the top-level frame. */
+  public static async close() {
+    if (!(await GUIActions.isOpen())) return;
+    await GlobalActions.runCommand("workbench.action.closeAuxiliaryBar");
+    await TestUtils.waitForSuccess(
+      async () => {
+        if (await GUIActions.isOpen()) {
+          throw new Error("The secondary side bar is still shown");
+        }
+      },
+      DEFAULT_TIMEOUT.SM,
+      250,
+      "the GUI to close",
+    );
+  }
+
+  /**
+   * Stops a turn that is still running and waits until it has stopped.
+   * Returns whether there was one. A "Stop the running turn?" dialog is
+   * answered "Keep running" first, so the turn is stopped here instead.
+   */
+  public static async stopRunningTurn(view: WebView): Promise<boolean> {
+    for (const button of await GUISelectors.getDialogButtons(
+      view,
+      "Keep running",
+    )) {
+      await button.click();
+    }
+    const [stopButton] = await GUISelectors.getStopStreamingButtons(view);
+    if (!stopButton) return false;
+    await stopButton.click();
+    await TestUtils.waitForSuccess(
+      async () => {
+        if ((await GUISelectors.getStopStreamingButtons(view)).length > 0) {
+          throw new Error("The stop button is still shown");
+        }
+      },
+      DEFAULT_TIMEOUT.SM,
+      250,
+      "the running turn to stop",
+    );
+    return true;
+  }
+
+  /**
+   * Switches from the top-level frame into the GUI's React iframe. Starts
+   * from the top-level frame, so it is safe to call again after a failure.
+   */
   public static switchToReactIframe = async () => {
     const view = new WebView();
     const driver = view.getDriver();
+    await driver.switchTo().defaultContent();
 
-    const iframes = await GUISelectors.getAllIframes(driver);
     let continueIFrame: WebElement | undefined = undefined;
-    for (let i = 0; i < iframes.length; i++) {
-      const iframe = iframes[i];
+    for (const iframe of await GUISelectors.getAllIframes(driver)) {
       const src = await iframe.getAttribute("src");
       if (src?.includes("extensionId=nextcli.nextcli")) {
         continueIFrame = iframe;
         break;
       }
     }
-
     if (!continueIFrame) {
-      throw new Error("Could not find Continue iframe");
+      throw new Error("Could not find the NextCLI webview iframe");
     }
-
     await driver.switchTo().frame(continueIFrame);
 
-    await new Promise((res) => {
-      setTimeout(res, 500);
-    });
-
-    const reactIFrame = await GUISelectors.getReactIframe(driver);
-
-    if (!reactIFrame) {
-      throw new Error("Could not find React iframe");
-    }
-
+    const reactIFrame = await driver.wait(
+      until.elementLocated(By.css("iframe")),
+      DEFAULT_TIMEOUT.XS,
+      "Could not find the GUI's React iframe",
+    );
     await driver.switchTo().frame(reactIFrame);
     return {
       view,
       driver,
     };
-  };
-
-  public static toggleGui = async () => {
-    return TestUtils.waitForSuccess(() =>
-      new Workbench().executeCommand("continue.focusContinueInput"),
-    );
   };
 
   public static selectModelFromDropdown = async (
@@ -106,6 +189,63 @@ export class GUIActions {
 
     await dropdownOption.click();
   };
+
+  /**
+   * Selects a model by title if needed, then checks the GUI shows it. The
+   * title must match exactly: "Mock" must not count as "TOOL MOCK LLM".
+   */
+  public static useModel(view: WebView, title: string) {
+    return GUIActions.useDropdown(
+      view,
+      title,
+      "model",
+      GUISelectors.getModelDropdownTitle,
+      GUIActions.selectModelFromDropdown,
+    );
+  }
+
+  /** Selects a mode (Agent, Chat, Plan) if needed, then checks it exactly */
+  public static useMode(view: WebView, mode: string) {
+    // The button's icons have no text, so its textContent is the label alone
+    return GUIActions.useDropdown(
+      view,
+      mode,
+      "mode",
+      GUISelectors.getModeDropdownButton,
+      GUIActions.selectModeFromDropdown,
+    );
+  }
+
+  /**
+   * Selects `value` in a dropdown unless `shownIn` already shows exactly
+   * that, then waits until it does.
+   */
+  private static async useDropdown(
+    view: WebView,
+    value: string,
+    what: string,
+    shownIn: (view: WebView) => Promise<WebElement>,
+    select: (view: WebView, option: string) => Promise<void>,
+  ) {
+    // textContent, not getText: labels are hidden in a narrow side bar (the
+    // mode's below Tailwind's sm width)
+    const shown = async () =>
+      ((await (await shownIn(view)).getAttribute("textContent")) ?? "").trim();
+    if ((await shown()) !== value) {
+      await select(view, value);
+    }
+    await TestUtils.waitForSuccess(
+      async () => {
+        const text = await shown();
+        if (text !== value) {
+          throw new Error(`The ${what} button shows "${text}"`);
+        }
+      },
+      DEFAULT_TIMEOUT.SM,
+      250,
+      `the ${value} ${what} to be selected`,
+    );
+  }
 
   public static selectModeFromDropdown = async (
     view: WebView,
@@ -138,6 +278,30 @@ export class GUIActions {
     await editor.sendKeys(Key.ENTER);
   }
 
+  /**
+   * Waits until `element`, in the driver's current frame, has keyboard focus.
+   * The GUI focuses its input a moment after it opens (a 20ms timer), so a
+   * single read right away can see the page's body instead.
+   */
+  public static async waitForFocus(
+    driver: WebDriver,
+    element: WebElement,
+    what: string,
+  ) {
+    await TestUtils.waitForSuccess(
+      async () => {
+        const focused = await driver.executeScript<boolean>(
+          "return document.activeElement === arguments[0];",
+          element,
+        );
+        if (!focused) throw new Error(`${what} doesn't have focus`);
+      },
+      DEFAULT_TIMEOUT.SM,
+      100,
+      `${what} to have focus`,
+    );
+  }
+
   public static async executeFocusContinueInputShortcut(driver: WebDriver) {
     return driver
       .actions()
@@ -145,110 +309,5 @@ export class GUIActions {
       .sendKeys("l")
       .keyUp(TestUtils.osControlKey)
       .perform();
-  }
-
-  /**
-   * Runs a command palette command (the history, new-session and settings
-   * buttons are VS Code view-title actions, outside the webview) and returns
-   * the GUI's iframe again, which callers must use from then on.
-   */
-  public static async runCommandFromGui(view: WebView, command: string) {
-    await view.switchBack();
-    // The palette's input is sometimes not interactable yet right after
-    // leaving the webview; retry like toggleGui does
-    await TestUtils.waitForSuccess(() =>
-      new Workbench().executeCommand(command),
-    );
-    return GUIActions.switchToReactIframe();
-  }
-
-  /**
-   * Drags the secondary side bar's left edge towards the editor. The default
-   * width is too narrow for the settings page ("Screen width too small"
-   * below Tailwind's sm breakpoint).
-   */
-  public static async widenSecondarySideBar(driver: WebDriver, by = 700) {
-    const auxiliaryBar = await driver.findElement(
-      By.id("workbench.parts.auxiliarybar"),
-    );
-    const leftEdge = (await auxiliaryBar.getRect()).x;
-    let sash: WebElement | undefined;
-    let closest = Infinity;
-    for (const candidate of await driver.findElements(
-      By.css(".monaco-sash.vertical"),
-    )) {
-      const rect = await candidate.getRect();
-      const distance = Math.abs(rect.x + rect.width / 2 - leftEdge);
-      if (rect.height > 100 && distance < closest) {
-        closest = distance;
-        sash = candidate;
-      }
-    }
-    if (!sash) {
-      throw new Error("Could not find the secondary side bar's sash");
-    }
-    await driver
-      .actions()
-      .move({ origin: sash })
-      .press()
-      .move({ origin: sash, x: -by, y: 0 })
-      .release()
-      .perform();
-    await TestUtils.waitForTimeout(500);
-  }
-
-  /**
-   * Sets a built-in tool's policy on the Tools settings page and returns to
-   * the chat. Returns the GUI's iframe, which callers must use from then on.
-   * desiredState: 0 = Automatic, 1 = Excluded, 2 = Ask First, or the label.
-   */
-  public static async toggleToolPolicy(
-    view: WebView,
-    toolName: string,
-    desiredState: number | string,
-  ): Promise<WebView> {
-    const label =
-      typeof desiredState === "number"
-        ? (["Automatic", "Excluded", "Ask First"][desiredState] ?? "Ask First")
-        : desiredState;
-
-    ({ view } = await GUIActions.runCommandFromGui(
-      view,
-      "NextCLI: Open Settings",
-    ));
-    await (
-      await TestUtils.waitForSuccess(() => GUISelectors.getToolsTab(view))
-    ).click();
-
-    // The group starts collapsed, and its tools aren't rendered until opened
-    const groupHeader = await TestUtils.waitForSuccess(() =>
-      GUISelectors.getToolGroupHeader(view, "Built-In"),
-    );
-    if ((await groupHeader.getAttribute("aria-expanded")) !== "true") {
-      await groupHeader.click();
-    }
-
-    const policyButton = await TestUtils.waitForSuccess(() =>
-      GUISelectors.getToolPolicyButton(view, toolName),
-    );
-    if (!(await policyButton.getText()).includes(label)) {
-      await policyButton.click();
-      await (
-        await TestUtils.waitForSuccess(() =>
-          GUISelectors.getListboxOption(view, label),
-        )
-      ).click();
-      await TestUtils.waitForSuccess(async () => {
-        if (!(await policyButton.getText()).includes(label)) {
-          throw new Error(`${toolName} policy is not ${label} yet`);
-        }
-      });
-    }
-
-    await (
-      await TestUtils.waitForSuccess(() => GUISelectors.getBackButton(view))
-    ).click();
-    await TestUtils.waitForTimeout(500);
-    return view;
   }
 }
