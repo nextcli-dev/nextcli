@@ -11,10 +11,13 @@
 //   - CONTINUE_GLOBAL_DIR picks the NextCLI config directory. Without it,
 //     E2E_CONFIG=json|yaml|both (default both) runs each file with
 //     e2e/test-continue (config.json) and/or e2e/test-continue-yaml.
+//   - E2E_REPEAT=N (default 1) runs each file and config N times, each time in
+//     a fresh instance. The e2e:stress label in CI sets 20.
 // Before each instance it removes the config directory's sessions, index and
 // dev data, and the files tests wrote into the workspace. After each one it
 // copies the logs and new screenshots to e2e/artifacts/<file>-<config>-<time>/,
-// because the next launch wipes the VS Code logs.
+// because the next launch wipes the VS Code logs. With E2E_REPEAT above 1, only
+// failed runs keep that copy.
 const { spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
@@ -127,28 +130,59 @@ function saveArtifacts(file, configName, screenshotDirsBefore) {
   return dest;
 }
 
+const repeat = Number(process.env.E2E_REPEAT || "1");
+if (!Number.isInteger(repeat) || repeat < 1) {
+  console.error(
+    `E2E_REPEAT must be a positive whole number (got "${process.env.E2E_REPEAT}")`,
+  );
+  process.exit(1);
+}
+
 const results = [];
 for (const file of testFiles()) {
   for (const { name, dir } of configs()) {
-    console.log(`\n=== ${path.basename(file)} with ${name} config (${dir})\n`);
-    removeTestState(dir);
-    const screenshotDirsBefore = listScreenshotDirs();
-    const status = extest(["run-tests", file, ...options], {
-      ...process.env,
-      NODE_ENV: "e2e",
-      CONTINUE_GLOBAL_DIR: dir,
-    });
-    const artifacts = saveArtifacts(file, name, screenshotDirsBefore);
-    results.push({ file: path.basename(file), name, status, artifacts });
+    for (let run = 1; run <= repeat; run++) {
+      const label = repeat > 1 ? `, run ${run} of ${repeat}` : "";
+      console.log(
+        `\n=== ${path.basename(file)} with ${name} config (${dir})${label}\n`,
+      );
+      removeTestState(dir);
+      const screenshotDirsBefore = listScreenshotDirs();
+      const status = extest(["run-tests", file, ...options], {
+        ...process.env,
+        NODE_ENV: "e2e",
+        CONTINUE_GLOBAL_DIR: dir,
+      });
+      let artifacts = saveArtifacts(file, name, screenshotDirsBefore);
+      if (status === 0 && repeat > 1) {
+        fs.rmSync(artifacts, { recursive: true, force: true });
+        artifacts = "";
+      }
+      results.push({ file: path.basename(file), name, run, status, artifacts });
+    }
   }
 }
 
 if (results.length > 1) {
   console.log("\n=== e2e summary");
   for (const r of results) {
+    const run = repeat > 1 ? ` run ${r.run}` : "";
     console.log(
-      `${r.status === 0 ? "pass" : "FAIL"}  ${r.file} (${r.name})  ${r.artifacts}`,
+      `${r.status === 0 ? "pass" : "FAIL"}  ${r.file} (${r.name})${run}  ${r.artifacts}`,
     );
+  }
+  if (repeat > 1) {
+    const groups = new Map();
+    for (const r of results) {
+      const key = `${r.file} (${r.name})`;
+      const g = groups.get(key) ?? { passed: 0, runs: 0 };
+      g.runs++;
+      if (r.status === 0) g.passed++;
+      groups.set(key, g);
+    }
+    for (const [key, g] of groups) {
+      console.log(`${g.passed}/${g.runs} passed  ${key}`);
+    }
   }
 }
 process.exit(results.every((r) => r.status === 0) ? 0 : 1);

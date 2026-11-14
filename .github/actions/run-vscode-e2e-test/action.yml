@@ -7,8 +7,8 @@ inputs:
   command:
     description: "Command to run (e2e:ci:run or e2e:ci:run-yaml)"
     required: true
-  run:
-    description: "Run number, when the e2e:stress label repeats each test"
+  repeat:
+    description: "How many times to run the test file, each in a fresh VS Code instance (the e2e:stress label sets 20)"
     required: false
     default: "1"
   github_token:
@@ -91,7 +91,7 @@ runs:
       shell: bash
       run: |
         cd extensions/vscode
-        TEST_FILE="${{ inputs.test_file }}" \
+        TEST_FILE="${{ inputs.test_file }}" E2E_REPEAT="${{ inputs.repeat }}" \
           xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
           npm run ${{ inputs.command }}
 
@@ -106,13 +106,15 @@ runs:
 
     # Screenshots (test bodies and, through the hook wrappers, hooks), the VS
     # Code logs (exthost.log has the extension's own output), and the
-    # ChromeDriver and WebDriver logs.
+    # ChromeDriver and WebDriver logs. e2e/artifacts keeps a copy per VS Code
+    # instance, since each launch wipes the previous one's logs.
     - name: Upload e2e failure evidence
       if: failure()
       uses: actions/upload-artifact@v7
       with:
-        name: e2e-failure-${{ steps.sanitize_filename.outputs.sanitized_test_file || 'unknown' }}-${{ inputs.command == 'e2e:ci:run-yaml' && 'yaml' || 'json' }}-run${{ inputs.run }}
+        name: e2e-failure-${{ steps.sanitize_filename.outputs.sanitized_test_file || 'unknown' }}-${{ inputs.command == 'e2e:ci:run-yaml' && 'yaml' || 'json' }}
         path: |
+          extensions/vscode/e2e/artifacts
           extensions/vscode/e2e/storage/screenshots
           extensions/vscode/e2e/storage/settings/logs
           extensions/vscode/e2e/storage/chromedriver.log
