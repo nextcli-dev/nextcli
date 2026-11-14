@@ -2,7 +2,9 @@ import { NextEditProvider } from "core/nextEdit/NextEditProvider";
 import { NextEditOutcome } from "core/nextEdit/types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
+
 import { getTheme } from "../util/getTheme";
+
 import { CompletionDataForAfterJump, JumpManager } from "./JumpManager";
 
 // Mock VSCode API
@@ -42,8 +44,12 @@ vi.mock("vscode", () => {
         // Return a configuration object with a get method
         return {
           get: vi.fn().mockImplementation((key: string) => {
-            if (key === "fontSize") return 14;
-            if (key === "fontFamily") return "monaco";
+            if (key === "fontSize") {
+              return 14;
+            }
+            if (key === "fontFamily") {
+              return "monaco";
+            }
             return undefined;
           }),
         };

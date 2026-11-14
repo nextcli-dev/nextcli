@@ -1,10 +1,10 @@
+import { GlobalContext } from "core/util/GlobalContext";
 import { getContinueRcPath, getTsConfigPath } from "core/util/paths";
 import * as vscode from "vscode";
 
 import { VsCodeExtension } from "../extension/VsCodeExtension";
 import { isUnsupportedPlatform } from "../util/util";
 
-import { GlobalContext } from "core/util/GlobalContext";
 import { VsCodeContinueApi } from "./api";
 import setupInlineTips from "./InlineTipManager";
 import { registerYamlSchema } from "./yamlSchema";

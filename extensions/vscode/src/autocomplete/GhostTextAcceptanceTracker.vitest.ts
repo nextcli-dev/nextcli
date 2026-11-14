@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
+
 import { GhostTextAcceptanceTracker } from "./GhostTextAcceptanceTracker";
 
 // Mock the vscode module

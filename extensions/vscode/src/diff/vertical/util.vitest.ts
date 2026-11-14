@@ -30,9 +30,15 @@ function applyThen(
 
   const result: string[] = [];
   diffs.forEach((d, i) => {
-    if (d.type === "same") result.push(lines[i]);
-    if (d.type === "old" && action === "reject") result.push(d.line);
-    if (d.type === "new" && action === "accept") result.push(lines[i]);
+    if (d.type === "same") {
+      result.push(lines[i]);
+    }
+    if (d.type === "old" && action === "reject") {
+      result.push(d.line);
+    }
+    if (d.type === "new" && action === "accept") {
+      result.push(lines[i]);
+    }
   });
   // Lines after the diffed entries (the range's empty last line)
   result.push(...lines.slice(diffs.length));

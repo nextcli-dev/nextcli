@@ -7,6 +7,13 @@ import {
   MockedFunction,
   vi,
 } from "vitest";
+import * as vscode from "vscode";
+
+import {
+  ACCEPT_NEXT_EDIT_SUGGESTION_COMMAND,
+  HIDE_NEXT_EDIT_SUGGESTION_COMMAND,
+  NextEditWindowManager,
+} from "./NextEditWindowManager";
 
 // Mock all modules FIRST with inline factories (no external references)
 vi.mock("vscode", () => ({
@@ -118,15 +125,6 @@ vi.mock("core/diff/myers", () => ({
 vi.mock("core/nextEdit/diff/diff", () => ({
   getOffsetPositionAtLastNewLine: vi.fn(() => ({ line: 0, character: 0 })),
 }));
-
-// Import after mocks are set up
-import * as vscode from "vscode";
-
-import {
-  ACCEPT_NEXT_EDIT_SUGGESTION_COMMAND,
-  HIDE_NEXT_EDIT_SUGGESTION_COMMAND,
-  NextEditWindowManager,
-} from "./NextEditWindowManager";
 
 const mockVscode = vi.mocked(vscode);
 

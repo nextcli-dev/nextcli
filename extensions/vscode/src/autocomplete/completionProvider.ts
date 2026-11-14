@@ -5,21 +5,21 @@ import {
   type AutocompleteOutcome,
 } from "core/autocomplete/util/types";
 import { ConfigHandler } from "core/config/ConfigHandler";
-import * as URI from "uri-js";
-import { v4 as uuidv4 } from "uuid";
-import * as vscode from "vscode";
-
-import { handleLLMError } from "../util/errorHandling";
-import { VsCodeIde } from "../VsCodeIde";
-import { VsCodeWebviewProtocol } from "../webviewProtocol";
-
 import { checkFim } from "core/nextEdit/diff/diff";
 import { NextEditLoggingService } from "core/nextEdit/NextEditLoggingService";
 import { PrefetchQueue } from "core/nextEdit/NextEditPrefetchQueue";
 import { NextEditProvider } from "core/nextEdit/NextEditProvider";
 import { NextEditOutcome } from "core/nextEdit/types";
+import * as URI from "uri-js";
+import { v4 as uuidv4 } from "uuid";
+import * as vscode from "vscode";
+
 import { JumpManager } from "../activation/JumpManager";
 import { NextEditWindowManager } from "../activation/NextEditWindowManager";
+import { handleLLMError } from "../util/errorHandling";
+import { VsCodeIde } from "../VsCodeIde";
+import { VsCodeWebviewProtocol } from "../webviewProtocol";
+
 import { GhostTextAcceptanceTracker } from "./GhostTextAcceptanceTracker";
 import { getDefinitionsFromLsp } from "./lsp";
 import { RecentlyEditedTracker } from "./recentlyEdited";
@@ -390,7 +390,9 @@ export class ContinueCompletionProvider
 
         while (this.prefetchQueue.processedCount > 0 && !isJumpSuggested) {
           const nextItemInQueue = this.prefetchQueue.dequeueProcessed();
-          if (!nextItemInQueue) continue;
+          if (!nextItemInQueue) {
+            continue;
+          }
 
           // Fill in the spot after dequeuing.
           if (!this.usingFullFileDiff) {

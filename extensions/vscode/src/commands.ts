@@ -4,11 +4,11 @@ import * as fs from "node:fs";
 import { ContextMenuConfig, ILLM, ModelInstaller } from "core";
 import { CompletionProvider } from "core/autocomplete/CompletionProvider";
 import { ConfigHandler } from "core/config/ConfigHandler";
-import { EXTENSION_NAME } from "core/util/constants";
 import { Core } from "core/core";
 import { walkDirAsync } from "core/indexing/walkDir";
 import { isModelInstaller } from "core/llm";
 import { NextEditLoggingService } from "core/nextEdit/NextEditLoggingService";
+import { EXTENSION_NAME } from "core/util/constants";
 import { startLocalLemonade } from "core/util/lemonadeHelper";
 import { startLocalOllama } from "core/util/ollamaHelper";
 import {

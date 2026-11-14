@@ -1,4 +1,12 @@
+import { filterLeadingAndTrailingNewLineInsertion } from "core/autocomplete/filtering/streamTransforms/lineStream";
+import { myersDiff } from "core/diff/myers";
+import { streamDiff } from "core/diff/streamDiff";
+import { generateLines } from "core/diff/util";
+import { executeFindAndReplace } from "core/edit/searchAndReplace/performReplace";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import * as vscode from "vscode";
+
+import { VerticalDiffHandler } from "./handler";
 
 // Minimal in-memory implementation of the vscode API used by the handler
 vi.mock("vscode", () => {
@@ -68,14 +76,6 @@ vi.mock("vscode", () => {
   };
 });
 
-import * as vscode from "vscode";
-import { streamDiff } from "core/diff/streamDiff";
-import { filterLeadingAndTrailingNewLineInsertion } from "core/autocomplete/filtering/streamTransforms/lineStream";
-import { myersDiff } from "core/diff/myers";
-import { generateLines } from "core/diff/util";
-import { executeFindAndReplace } from "core/edit/searchAndReplace/performReplace";
-import { VerticalDiffHandler } from "./handler";
-
 /** An editor backed by a string, applying edits like VS Code does. Like a
   VS Code document, it has one line ending: line text excludes it, and
   inserted text is converted to it. */
@@ -84,9 +84,13 @@ function createEditor(initial: string, eol: "\n" | "\r\n" = "\n") {
   const lines = () => text.split(eol);
   const offsetAt = (pos: vscode.Position) => {
     const ls = lines();
-    if (pos.line >= ls.length) return text.length;
+    if (pos.line >= ls.length) {
+      return text.length;
+    }
     let offset = 0;
-    for (let i = 0; i < pos.line; i++) offset += ls[i].length + eol.length;
+    for (let i = 0; i < pos.line; i++) {
+      offset += ls[i].length + eol.length;
+    }
     return offset + Math.min(pos.character, ls[pos.line].length);
   };
   const positionAt = (offset: number) => {
@@ -178,7 +182,9 @@ function createEditor(initial: string, eol: "\n" | "\r\n" = "\n") {
 }
 
 async function* toStream(lines: string[]) {
-  for (const line of lines) yield line;
+  for (const line of lines) {
+    yield line;
+  }
 }
 
 async function runApply(
