@@ -44,8 +44,9 @@ describe("GUI", () => {
     await GUIActions.useMode(view, "Agent");
     await (await GUISelectors.getMainInput(view)).sendKeys("Hello", Key.ENTER);
 
-    // view_diff runs without asking; the turn then continues with the
-    // model's second message and ends
+    // view_diff runs without asking. Its status reads "viewed" while the
+    // call is still running (an instant tool), so only the reply the model
+    // sends after receiving the tool result shows the turn continued.
     await TestUtils.waitForSuccess(
       async () => {
         expect(
@@ -54,8 +55,9 @@ describe("GUI", () => {
       },
       DEFAULT_TIMEOUT.MD,
       250,
-      "the finished view_diff call",
+      "the view_diff call",
     );
+    await waitForReply("TOOL TURN DONE");
     await TestUtils.waitForSuccess(
       async () => {
         expect(await GUISelectors.getStopStreamingButtons(view)).to.have.length(
