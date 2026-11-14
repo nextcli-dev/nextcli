@@ -7,16 +7,6 @@ inputs:
   command:
     description: "Command to run (e2e:ci:run or e2e:ci:run-yaml)"
     required: true
-  ssh_key:
-    description: "SSH private key for testing"
-    required: false
-  ssh_host:
-    description: "SSH host for testing"
-    required: false
-  is_fork:
-    description: "Whether this is a fork (affects SSH tests)"
-    required: false
-    default: "false"
   github_token:
     description: "GitHub token for authenticated API requests (e.g., @vscode/ripgrep download)"
     required: false
@@ -42,13 +32,6 @@ runs:
       with:
         path: extensions/vscode/node_modules
         key: ${{ runner.os }}-vscode-node-modules-${{ hashFiles('extensions/vscode/package-lock.json') }}
-
-    # We don't want to cache the Continue extension, so it is deleted at the end of the job
-    - uses: actions/cache@v6
-      id: test-extensions-cache
-      with:
-        path: extensions/vscode/e2e/.test-extensions
-        key: test-extensions-vscode-${{ steps.e2e-vscode.outputs.version }}
 
     - uses: actions/cache@v6
       id: storage-cache
@@ -85,34 +68,15 @@ runs:
         chmod +x extensions/vscode/e2e/storage/VSCode-linux-x64/code
         chmod +x extensions/vscode/e2e/storage/chromedriver-linux64/chromedriver
 
-    - name: Set up SSH
-      if: ${{ inputs.ssh_key != '' && inputs.ssh_host != '' && inputs.is_fork == 'false' }}
-      shell: bash
-      env:
-        SSH_KEY: ${{ inputs.ssh_key }}
-        SSH_HOST: ${{ inputs.ssh_host }}
-      run: |
-        mkdir -p ~/.ssh
-        echo "$SSH_KEY" > ~/.ssh/id_rsa
-        chmod 600 ~/.ssh/id_rsa
-        ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
-        echo -e "Host ssh-test-container\n\tHostName $SSH_HOST\n\tUser ec2-user\n\tIdentityFile ~/.ssh/id_rsa" >> ~/.ssh/config
-
     # xvfb-run waits for the X server before it starts the tests. The screen
     # is larger than the 1200x800 window e2e/Baseline.ts checks for.
     - name: Run e2e tests
       shell: bash
       run: |
         cd extensions/vscode
-        IGNORE_SSH_TESTS="${{ inputs.is_fork }}" TEST_FILE="${{ inputs.test_file }}" \
+        TEST_FILE="${{ inputs.test_file }}" \
           xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
           npm run ${{ inputs.command }}
-
-    - name: Delete continue from test extensions
-      shell: bash
-      run: |
-        cd extensions/vscode
-        rm -rf e2e/.test-extensions/continue* e2e/.test-extensions/nextcli*
 
     - name: Sanitize test file name
       id: sanitize_filename

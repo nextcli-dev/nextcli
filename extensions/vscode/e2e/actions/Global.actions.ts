@@ -49,7 +49,6 @@ const COMMAND_ID = /^[\w-]+(\.[\w-]+)+$/;
 export class GlobalActions {
   /** The workspace folder; e2e:test opens it when VS Code starts */
   static defaultFolder = "e2e/fixture-workspace";
-  public static defaultNewFilename = "test.py";
 
   /**
    * Fails unless the window shows the fixture workspace. It is opened at
@@ -215,50 +214,6 @@ export class GlobalActions {
     )) as TextEditor;
 
     return { editor };
-  }
-
-  public static async createAndSaveNewFile(
-    filename = GlobalActions.defaultNewFilename,
-  ): Promise<{
-    editor: TextEditor;
-  }> {
-    let { editor } = await GlobalActions.createAndOpenNewTextFile();
-
-    const inputBox = await GlobalActions.runCommandWithInput(
-      "workbench.action.files.saveAs",
-    );
-
-    // Get current path and replace filename
-    const currentPath = await inputBox.getText();
-    const pathParts = currentPath.split(/[\/\\]/);
-    pathParts[pathParts.length - 1] = filename;
-    const newPath = pathParts.join("/");
-
-    await inputBox.setText(newPath);
-
-    await inputBox.confirm();
-    await TestUtils.waitForTimeout(DEFAULT_TIMEOUT.XS);
-
-    editor = (await new EditorView().openEditor(filename)) as TextEditor;
-
-    return { editor };
-  }
-
-  public static async deleteFileFromFolder(
-    filename = GlobalActions.defaultNewFilename,
-    folder = GlobalActions.defaultFolder,
-  ): Promise<void> {
-    const fs = require("fs");
-    const path = require("path");
-
-    const folderPath = path.join(process.cwd(), folder);
-    const filePath = path.join(folderPath, filename);
-
-    try {
-      await fs.promises.unlink(filePath);
-    } catch (error) {
-      console.warn(`Failed to delete file ${filePath}:`, error);
-    }
   }
 
   static async setNextEditEnabled(enabled: boolean) {

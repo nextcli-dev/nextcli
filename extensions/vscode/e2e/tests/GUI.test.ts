@@ -46,56 +46,6 @@ describe("GUI Test", () => {
     await new EditorView().closeAllEditors();
   });
 
-  describe("Onboarding", () => {
-    it.skip("should display correct panel description", async () => {
-      const description = await GUISelectors.getDescription(view);
-
-      expect(await description.getText()).has.string(
-        "Log in to quickly build your first custom AI code agent",
-      );
-    });
-
-    // We no longer have a quick start button
-    it.skip("should display tutorial card after accepting onboarding quick start", async () => {
-      // Get paragraph with text Best
-      const bestTab = await GUISelectors.getOnboardingTabButton(view, "Best");
-      await bestTab.click();
-
-      const anthropicInput = await TestUtils.waitForSuccess(
-        async () => await GUISelectors.getBestChatApiKeyInput(view),
-      );
-      anthropicInput.sendKeys("invalid_api_key");
-
-      const mistralInput =
-        await GUISelectors.getBestAutocompleteApiKeyInput(view);
-      mistralInput.sendKeys("invalid_api_key");
-
-      // Get button with text "Connect" and click it
-      const connectButton = await view.findWebElement(
-        By.xpath("//button[text()='Connect']"),
-      );
-      await connectButton.click();
-
-      await TestUtils.waitForSuccess(
-        async () => await GUISelectors.getTutorialCard(view),
-      );
-
-      // TODO validate that claude has been added to list
-
-      // Skip testing Quick Start because github auth opens external app and breaks test
-      // const quickStartButton = await view.findWebElement(
-      //   By.xpath("//*[contains(text(), 'Get started using our API keys')]")
-      // );
-      // await quickStartButton.click();
-      // await view.switchBack();
-      // const allowButton = await TestUtils.waitForSuccess(
-      //   async () => await driver.findElement(By.xpath(`//a[contains(text(), "Allow")]`))
-      // );
-      // await allowButton.click();
-      // ({ view, driver } = await GUIActions.switchToReactIframe());
-    });
-  });
-
   describe("Chat", () => {
     it("Can submit message by pressing enter", async () => {
       const [messageInput] = await GUISelectors.getMessageInputFields(view);
