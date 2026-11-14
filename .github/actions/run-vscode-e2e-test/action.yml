@@ -55,19 +55,20 @@ runs:
         name: vscode-extension-build-Linux
         path: extensions/vscode/build
 
+    # Each cache gates only what it holds: the extension's node_modules can
+    # miss (a lockfile change) while the VS Code download still hits, and the
+    # download needs node_modules for ExTester.
     - name: Build packages and download e2e dependencies
       shell: bash
       run: |
         node ./scripts/build-packages.js
+        (cd core && npm ci)
+        cd extensions/vscode
+        if [ "${{ steps.vscode-node-modules-cache.outputs.cache-hit }}" != "true" ]; then
+          npm ci
+        fi
         if [ "${{ steps.storage-cache.outputs.cache-hit }}" != "true" ]; then
-          cd core
-          npm ci
-          cd ../extensions/vscode
-          npm ci
           npm run e2e:ci:download
-        else
-          cd core
-          npm ci
         fi
       env:
         GITHUB_TOKEN: ${{ inputs.github_token }}
