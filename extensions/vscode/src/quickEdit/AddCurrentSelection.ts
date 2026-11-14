@@ -24,8 +24,9 @@ export async function addCurrentSelectionToEdit({
     return;
   }
 
+  // Handlers are keyed by URI string, as everywhere else in the extension
   const existingDiff = verticalDiffManager.getHandlerForFile(
-    editor.document.fileName,
+    editor.document.uri.toString(),
   );
 
   // If there's a diff currently being applied, then we just toggle focus back to the input
