@@ -194,54 +194,56 @@ export class GUIActions {
    * Selects a model by title if needed, then checks the GUI shows it. The
    * title must match exactly: "Mock" must not count as "TOOL MOCK LLM".
    */
-  public static async useModel(view: WebView, title: string) {
-    // textContent, not getText: labels can be hidden in a narrow side bar
-    const shown = async () =>
-      (
-        (await (
-          await GUISelectors.getModelDropdownTitle(view)
-        ).getAttribute("textContent")) ?? ""
-      ).trim();
-    if ((await shown()) !== title) {
-      await GUIActions.selectModelFromDropdown(view, title);
-    }
-    await TestUtils.waitForSuccess(
-      async () => {
-        const text = await shown();
-        if (text !== title) {
-          throw new Error(`The model button shows "${text}"`);
-        }
-      },
-      DEFAULT_TIMEOUT.SM,
-      250,
-      `the ${title} model to be selected`,
+  public static useModel(view: WebView, title: string) {
+    return GUIActions.useDropdown(
+      view,
+      title,
+      "model",
+      GUISelectors.getModelDropdownTitle,
+      GUIActions.selectModelFromDropdown,
     );
   }
 
   /** Selects a mode (Agent, Chat, Plan) if needed, then checks it exactly */
-  public static async useMode(view: WebView, mode: string) {
-    // The mode's label is hidden below Tailwind's sm width, which the side
-    // bar is: read textContent, not the visible text. The button's icons
-    // have no text, so its textContent is the label alone.
+  public static useMode(view: WebView, mode: string) {
+    // The button's icons have no text, so its textContent is the label alone
+    return GUIActions.useDropdown(
+      view,
+      mode,
+      "mode",
+      GUISelectors.getModeDropdownButton,
+      GUIActions.selectModeFromDropdown,
+    );
+  }
+
+  /**
+   * Selects `value` in a dropdown unless `shownIn` already shows exactly
+   * that, then waits until it does.
+   */
+  private static async useDropdown(
+    view: WebView,
+    value: string,
+    what: string,
+    shownIn: (view: WebView) => Promise<WebElement>,
+    select: (view: WebView, option: string) => Promise<void>,
+  ) {
+    // textContent, not getText: labels are hidden in a narrow side bar (the
+    // mode's below Tailwind's sm width)
     const shown = async () =>
-      (
-        (await (
-          await GUISelectors.getModeDropdownButton(view)
-        ).getAttribute("textContent")) ?? ""
-      ).trim();
-    if ((await shown()) !== mode) {
-      await GUIActions.selectModeFromDropdown(view, mode);
+      ((await (await shownIn(view)).getAttribute("textContent")) ?? "").trim();
+    if ((await shown()) !== value) {
+      await select(view, value);
     }
     await TestUtils.waitForSuccess(
       async () => {
         const text = await shown();
-        if (text !== mode) {
-          throw new Error(`The mode button shows "${text}"`);
+        if (text !== value) {
+          throw new Error(`The ${what} button shows "${text}"`);
         }
       },
       DEFAULT_TIMEOUT.SM,
       250,
-      `${mode} mode to be selected`,
+      `the ${value} ${what} to be selected`,
     );
   }
 

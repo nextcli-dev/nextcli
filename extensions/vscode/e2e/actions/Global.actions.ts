@@ -25,7 +25,8 @@ const BUILTIN_COMMAND_LABELS: Record<string, string | string[]> = {
   "notifications.clearAll": "Notifications: Clear All Notifications",
   "workbench.action.files.newUntitledFile": "File: New Untitled Text File",
   "workbench.action.files.save": "File: Save",
-  "workbench.action.files.saveAs": "File: Save As...",
+  // No "File:" category, unlike Save: VS Code 1.103.2's palette lists it as
+  // "Save All" (EditTools runs it)
   "workbench.action.files.saveAll": "Save All",
   "workbench.action.editor.changeLanguageMode": "Change Language Mode",
   // Listed only while the secondary side bar is visible
@@ -49,9 +50,6 @@ const CLICK_NOT_DELIVERED = new Set([
   "ElementClickInterceptedError",
   "StaleElementReferenceError",
 ]);
-
-/** A command ID such as `continue.newSession`: dotted, no spaces */
-const COMMAND_ID = /^[\w-]+(\.[\w-]+)+$/;
 
 export class GlobalActions {
   /** The workspace folder; e2e:test opens it when VS Code starts */
@@ -91,14 +89,13 @@ export class GlobalActions {
         : contributed.title;
     }
     throw new Error(
-      `No command palette label known for ${commandId}. Add it to BUILTIN_COMMAND_LABELS in Global.actions.ts.`,
+      `No command palette label known for ${commandId}: it is neither in BUILTIN_COMMAND_LABELS (Global.actions.ts) nor among the extension's commands in package.json. Check the ID, or add a built-in command's label to the table.`,
     );
   }
 
   /**
-   * Runs a command through the command palette and waits for the palette to
-   * close. Takes a command ID (preferred) or, when the palette label itself
-   * is under test, an exact label.
+   * Runs a command, given by ID, through the command palette and waits for
+   * the palette to close.
    *
    * Unlike ExTester's Workbench.executeCommand, it never presses Enter on
    * whatever happens to be highlighted: it clicks the pick whose label is
@@ -113,8 +110,8 @@ export class GlobalActions {
    * Leaves the driver in the top-level frame. Callers that were inside a
    * webview must switch into it again.
    */
-  public static async runCommand(command: string): Promise<void> {
-    await GlobalActions.selectCommand(command);
+  public static async runCommand(commandId: string): Promise<void> {
+    await GlobalActions.selectCommand(commandId);
     await TestUtils.waitForSuccess(
       async () => {
         for (const widget of await VSBrowser.instance.driver.findElements(
@@ -127,7 +124,7 @@ export class GlobalActions {
       },
       DEFAULT_TIMEOUT.SM,
       100,
-      `the palette to close after ${command}`,
+      `the palette to close after ${commandId}`,
     );
   }
 
@@ -135,8 +132,10 @@ export class GlobalActions {
    * Runs a command that asks for more input (a second quick pick) and
    * returns that input box. Choose from it with selectPick.
    */
-  public static async runCommandWithInput(command: string): Promise<InputBox> {
-    await GlobalActions.selectCommand(command);
+  public static async runCommandWithInput(
+    commandId: string,
+  ): Promise<InputBox> {
+    await GlobalActions.selectCommand(commandId);
     return new InputBox().wait();
   }
 
@@ -185,9 +184,8 @@ export class GlobalActions {
     }
   }
 
-  private static async selectCommand(command: string) {
-    const isId = COMMAND_ID.test(command);
-    const label = isId ? GlobalActions.commandLabel(command) : command;
+  private static async selectCommand(commandId: string) {
+    const label = GlobalActions.commandLabel(commandId);
 
     await TestUtils.waitForSuccess(
       async () => {
@@ -195,15 +193,15 @@ export class GlobalActions {
         await GlobalActions.closeVisible(".quick-input-widget");
         const palette = await GlobalActions.openCommandPalette();
         // Typing an exact command ID lists that command, under its label
-        await palette.setText(`>${command}`);
-        if ((await palette.getText()) !== `>${command}`) {
+        await palette.setText(`>${commandId}`);
+        if ((await palette.getText()) !== `>${commandId}`) {
           throw new Error(`The palette shows "${await palette.getText()}"`);
         }
         await GlobalActions.selectPick(palette, label, DEFAULT_TIMEOUT.XS);
       },
       DEFAULT_TIMEOUT.MD,
       500,
-      `run ${command} from the command palette`,
+      `run ${commandId} from the command palette`,
     );
   }
 
