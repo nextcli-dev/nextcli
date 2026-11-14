@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/dom";
+import { screen, waitFor, within } from "@testing-library/dom";
 import { act } from "@testing-library/react";
 import { Editor } from "@tiptap/core";
 import { ChatMessage } from "core";
@@ -85,8 +85,12 @@ export async function sendInputWithMockedResponse(
   // Wait for the editor to be in the document
   const editor = await getMainEditor();
 
-  // Find the submit button
-  const sendButton = await getElementByTestId("submit-input-button");
+  // The main input's submit button; every sent message has its own input box
+  // with one too
+  const mainInputBox = await getElementByTestId(
+    "continue-input-box-main-editor-input",
+  );
+  const sendButton = within(mainInputBox).getByTestId("submit-input-button");
 
   // Insert content into the editor
   await act(async () => {
