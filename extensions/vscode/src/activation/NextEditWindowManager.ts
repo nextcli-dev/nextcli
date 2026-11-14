@@ -1,6 +1,4 @@
 /* eslint-disable @typescript-eslint/naming-convention */
-// @ts-ignore
-
 import { DiffChar, DiffLine } from "core";
 import { CodeRenderer } from "core/codeRenderer/CodeRenderer";
 import { myersCharDiff } from "core/diff/myers";

@@ -566,35 +566,7 @@ export class VsCodeExtension {
     });
 
     // Refresh index when branch is changed
-    this.ide
-      .getWorkspaceDirs()
-      .then((dirs) =>
-        Promise.all(
-          dirs.map(async (dir) => {
-            const repo = await this.ide.getRepo(dir);
-            if (repo) {
-              repo.state.onDidChange(() => {
-                // args passed to this callback are always undefined, so keep track of previous branch
-                const currentBranch = repo?.state?.HEAD?.name;
-                if (currentBranch) {
-                  if (this.PREVIOUS_BRANCH_FOR_WORKSPACE_DIR[dir]) {
-                    if (
-                      currentBranch !==
-                      this.PREVIOUS_BRANCH_FOR_WORKSPACE_DIR[dir]
-                    ) {
-                      // Trigger refresh of index only in this directory
-                      this.core.invoke("index/forceReIndex", { dirs: [dir] });
-                    }
-                  }
-
-                  this.PREVIOUS_BRANCH_FOR_WORKSPACE_DIR[dir] = currentBranch;
-                }
-              });
-            }
-          }),
-        ),
-      )
-      .catch(console.error);
+    this.reindexOnBranchChange().catch(console.error);
 
     // Register a content provider for the readonly virtual documents
     const documentContentProvider = new (class
@@ -658,6 +630,29 @@ export class VsCodeExtension {
 
   // eslint-disable-next-line @typescript-eslint/naming-convention
   private PREVIOUS_BRANCH_FOR_WORKSPACE_DIR: { [dir: string]: string } = {};
+
+  private async reindexOnBranchChange() {
+    for (const dir of await this.ide.getWorkspaceDirs()) {
+      const repo = await this.ide.getRepo(dir);
+      if (!repo) {
+        continue;
+      }
+      repo.state.onDidChange(() => {
+        // args passed to this callback are always undefined, so keep track of previous branch
+        const currentBranch = repo?.state?.HEAD?.name;
+        if (currentBranch) {
+          if (this.PREVIOUS_BRANCH_FOR_WORKSPACE_DIR[dir]) {
+            if (currentBranch !== this.PREVIOUS_BRANCH_FOR_WORKSPACE_DIR[dir]) {
+              // Trigger refresh of index only in this directory
+              this.core.invoke("index/forceReIndex", { dirs: [dir] });
+            }
+          }
+
+          this.PREVIOUS_BRANCH_FOR_WORKSPACE_DIR[dir] = currentBranch;
+        }
+      });
+    }
+  }
 
   registerCustomContextProvider(contextProvider: IContextProvider) {
     this.configHandler.registerCustomContextProvider(contextProvider);
