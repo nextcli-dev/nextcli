@@ -61,6 +61,13 @@ export class GUISelectors {
     return SelectorUtils.getElementByDataTestId(view, "model-select-button");
   }
 
+  /** The selected model's title in the model button, without the effort or other badges */
+  public static getModelDropdownTitle(view: WebView) {
+    return view.findWebElement(
+      By.css("[data-testid='model-select-button'] > span:first-child"),
+    );
+  }
+
   public static getModeDropdownButton(view: WebView) {
     return SelectorUtils.getElementByDataTestId(view, "mode-select-button");
   }
@@ -72,7 +79,7 @@ export class GUISelectors {
   public static getModelDropdownOption(view: WebView, option: string) {
     return view.findWebElement(
       By.xpath(
-        `//*[@data-testid="model-select-menu"]//*[contains(text(), "${option}")]`,
+        `//*[@data-testid="model-select-menu"]//*[normalize-space(text())="${option}"]`,
       ),
     );
   }
@@ -86,7 +93,7 @@ export class GUISelectors {
 
   public static getModeDropdownOption(view: WebView, option: string) {
     return view.findWebElement(
-      By.xpath(`//*[@role="listbox"]//*[contains(text(), "${option}")]`),
+      By.xpath(`//*[@role="listbox"]//*[normalize-space(text())="${option}"]`),
     );
   }
 

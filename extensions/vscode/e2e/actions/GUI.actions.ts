@@ -190,20 +190,25 @@ export class GUIActions {
     await dropdownOption.click();
   };
 
-  /** Selects a model by title if needed, then checks the GUI shows it */
+  /**
+   * Selects a model by title if needed, then checks the GUI shows it. The
+   * title must match exactly: "Mock" must not count as "TOOL MOCK LLM".
+   */
   public static async useModel(view: WebView, title: string) {
     // textContent, not getText: labels can be hidden in a narrow side bar
     const shown = async () =>
-      (await (
-        await GUISelectors.getModelDropdownButton(view)
-      ).getAttribute("textContent")) ?? "";
-    if (!(await shown()).includes(title)) {
+      (
+        (await (
+          await GUISelectors.getModelDropdownTitle(view)
+        ).getAttribute("textContent")) ?? ""
+      ).trim();
+    if ((await shown()) !== title) {
       await GUIActions.selectModelFromDropdown(view, title);
     }
     await TestUtils.waitForSuccess(
       async () => {
         const text = await shown();
-        if (!text.includes(title)) {
+        if (text !== title) {
           throw new Error(`The model button shows "${text}"`);
         }
       },
@@ -213,21 +218,24 @@ export class GUIActions {
     );
   }
 
-  /** Selects a mode (Agent, Chat, Plan) if needed, then checks it */
+  /** Selects a mode (Agent, Chat, Plan) if needed, then checks it exactly */
   public static async useMode(view: WebView, mode: string) {
     // The mode's label is hidden below Tailwind's sm width, which the side
-    // bar is: read textContent, not the visible text
+    // bar is: read textContent, not the visible text. The button's icons
+    // have no text, so its textContent is the label alone.
     const shown = async () =>
-      (await (
-        await GUISelectors.getModeDropdownButton(view)
-      ).getAttribute("textContent")) ?? "";
-    if (!(await shown()).includes(mode)) {
+      (
+        (await (
+          await GUISelectors.getModeDropdownButton(view)
+        ).getAttribute("textContent")) ?? ""
+      ).trim();
+    if ((await shown()) !== mode) {
       await GUIActions.selectModeFromDropdown(view, mode);
     }
     await TestUtils.waitForSuccess(
       async () => {
         const text = await shown();
-        if (!text.includes(mode)) {
+        if (text !== mode) {
           throw new Error(`The mode button shows "${text}"`);
         }
       },
