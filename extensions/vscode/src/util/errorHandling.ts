@@ -27,11 +27,13 @@ export async function handleLLMError(error: unknown): Promise<boolean> {
       options = ["Setup Instructions"];
     }
 
-    vscode.window.showErrorMessage(message, ...options).then((val) => {
+    void vscode.window.showErrorMessage(message, ...options).then((val) => {
       if (val === "Setup Instructions") {
-        vscode.env.openExternal(vscode.Uri.parse("https://lemonade-server.ai"));
+        void vscode.env.openExternal(
+          vscode.Uri.parse("https://lemonade-server.ai"),
+        );
       } else if (val === "Start Lemonade") {
-        vscode.commands.executeCommand("continue.startLocalLemonade");
+        void vscode.commands.executeCommand("continue.startLocalLemonade");
       }
     });
     return true;
@@ -64,14 +66,16 @@ export async function handleLLMError(error: unknown): Promise<boolean> {
     return false;
   }
 
-  vscode.window.showErrorMessage(message, ...options).then((val) => {
+  void vscode.window.showErrorMessage(message, ...options).then((val) => {
     if (val === "Download Ollama") {
-      vscode.env.openExternal(vscode.Uri.parse("https://ollama.ai/download"));
+      void vscode.env.openExternal(
+        vscode.Uri.parse("https://ollama.ai/download"),
+      );
     } else if (val === "Start Ollama") {
-      vscode.commands.executeCommand("continue.startLocalOllama");
+      void vscode.commands.executeCommand("continue.startLocalOllama");
     } else if (val === "Install Model" && "llm" in error) {
       //Eventually, we might be able to support installing models for other LLM providers than Ollama
-      vscode.commands.executeCommand(
+      void vscode.commands.executeCommand(
         "continue.installModel",
         modelName,
         error.llm,
@@ -79,4 +83,17 @@ export async function handleLLMError(error: unknown): Promise<boolean> {
     }
   });
   return true;
+}
+
+/**
+ * Wraps an async callback for an API that ignores the callback's return value
+ * (event listeners, timers, fs watchers), logging rejections instead of leaving
+ * them unhandled.
+ */
+export function fireAndForget<A extends unknown[]>(
+  fn: (...args: A) => Promise<unknown>,
+): (...args: A) => void {
+  return (...args) => {
+    fn(...args).catch(console.error);
+  };
 }

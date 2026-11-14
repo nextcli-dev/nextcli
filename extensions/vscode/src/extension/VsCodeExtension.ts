@@ -51,6 +51,7 @@ import {
   handleTextDocumentChange,
   initDocumentContentCache,
 } from "../util/editLoggingUtils";
+import { fireAndForget } from "../util/errorHandling";
 import { FileSearch } from "../util/FileSearch";
 import { VsCodeIdeUtils } from "../util/ideUtils";
 import { VsCodeIde } from "../VsCodeIde";
@@ -121,7 +122,7 @@ export class VsCodeExtension {
       !isNextEditTest() &&
       process.env.CONTINUE_E2E_NON_NEXT_EDIT_TEST === "true"
     ) {
-      vscode.window
+      void vscode.window
         .showWarningMessage(
           `The current autocomplete model (${autocompleteModel?.title || "unknown"}) does not support Next Edit.`,
           "Disable Next Edit",
@@ -129,13 +130,13 @@ export class VsCodeExtension {
         )
         .then((selection) => {
           if (selection === "Disable Next Edit") {
-            vscodeConfig.update(
+            void vscodeConfig.update(
               "enableNextEdit",
               false,
               vscode.ConfigurationTarget.Global,
             );
           } else if (selection === "Select different model") {
-            vscode.commands.executeCommand(
+            void vscode.commands.executeCommand(
               "continue.openTabAutocompleteConfigMenu",
             );
           }
@@ -307,7 +308,7 @@ export class VsCodeExtension {
     });
 
     this.configHandler.onConfigUpdate(
-      async ({ config: newConfig, configLoadInterrupted }) => {
+      fireAndForget(async ({ config: newConfig, configLoadInterrupted }) => {
         const shouldUseFullFileDiff = await getUsingFullFileDiff();
         this.completionProvider.updateUsingFullFileDiff(shouldUseFullFileDiff);
         selectionManager.updateUsingFullFileDiff(shouldUseFullFileDiff);
@@ -326,7 +327,7 @@ export class VsCodeExtension {
             newConfig,
           );
         }
-      },
+      }),
     );
 
     // Tab autocomplete
@@ -418,26 +419,30 @@ export class VsCodeExtension {
 
     // Listen for file saving - use global file watcher so that changes
     // from outside the window are also caught
-    fs.watchFile(getConfigJsonPath(), { interval: 1000 }, async (stats) => {
-      if (stats.size === 0) {
-        return;
-      }
-      await this.configHandler.reloadConfig(
-        "Global JSON config updated - fs file watch",
-      );
-    });
+    fs.watchFile(
+      getConfigJsonPath(),
+      { interval: 1000 },
+      fireAndForget(async (stats) => {
+        if (stats.size === 0) {
+          return;
+        }
+        await this.configHandler.reloadConfig(
+          "Global JSON config updated - fs file watch",
+        );
+      }),
+    );
 
     fs.watchFile(
       getConfigYamlPath("vscode"),
       { interval: 1000 },
-      async (stats) => {
+      fireAndForget(async (stats) => {
         if (stats.size === 0) {
           return;
         }
         await this.configHandler.reloadConfig(
           "Global YAML config updated - fs file watch",
         );
-      },
+      }),
     );
 
     fs.watchFile(getConfigTsPath(), { interval: 1000 }, (stats) => {
@@ -542,7 +547,9 @@ export class VsCodeExtension {
     // When GitHub sign-in status changes, reload config
     vscode.authentication.onDidChangeSessions(async (e) => {
       if (e.provider.id === "github") {
-        this.configHandler.reloadConfig("Github sign-in status changed");
+        this.configHandler
+          .reloadConfig("Github sign-in status changed")
+          .catch(console.error);
       }
     });
 
@@ -559,29 +566,35 @@ export class VsCodeExtension {
     });
 
     // Refresh index when branch is changed
-    void this.ide.getWorkspaceDirs().then((dirs) =>
-      dirs.forEach(async (dir) => {
-        const repo = await this.ide.getRepo(dir);
-        if (repo) {
-          repo.state.onDidChange(() => {
-            // args passed to this callback are always undefined, so keep track of previous branch
-            const currentBranch = repo?.state?.HEAD?.name;
-            if (currentBranch) {
-              if (this.PREVIOUS_BRANCH_FOR_WORKSPACE_DIR[dir]) {
-                if (
-                  currentBranch !== this.PREVIOUS_BRANCH_FOR_WORKSPACE_DIR[dir]
-                ) {
-                  // Trigger refresh of index only in this directory
-                  this.core.invoke("index/forceReIndex", { dirs: [dir] });
-                }
-              }
+    this.ide
+      .getWorkspaceDirs()
+      .then((dirs) =>
+        Promise.all(
+          dirs.map(async (dir) => {
+            const repo = await this.ide.getRepo(dir);
+            if (repo) {
+              repo.state.onDidChange(() => {
+                // args passed to this callback are always undefined, so keep track of previous branch
+                const currentBranch = repo?.state?.HEAD?.name;
+                if (currentBranch) {
+                  if (this.PREVIOUS_BRANCH_FOR_WORKSPACE_DIR[dir]) {
+                    if (
+                      currentBranch !==
+                      this.PREVIOUS_BRANCH_FOR_WORKSPACE_DIR[dir]
+                    ) {
+                      // Trigger refresh of index only in this directory
+                      this.core.invoke("index/forceReIndex", { dirs: [dir] });
+                    }
+                  }
 
-              this.PREVIOUS_BRANCH_FOR_WORKSPACE_DIR[dir] = currentBranch;
+                  this.PREVIOUS_BRANCH_FOR_WORKSPACE_DIR[dir] = currentBranch;
+                }
+              });
             }
-          });
-        }
-      }),
-    );
+          }),
+        ),
+      )
+      .catch(console.error);
 
     // Register a content provider for the readonly virtual documents
     const documentContentProvider = new (class

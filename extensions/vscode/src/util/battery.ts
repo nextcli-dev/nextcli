@@ -1,6 +1,8 @@
 import * as si from "systeminformation";
 import { Disposable, EventEmitter } from "vscode";
 
+import { fireAndForget } from "./errorHandling";
+
 const UPDATE_INTERVAL_MS = 1000;
 
 export class Battery implements Disposable {
@@ -12,7 +14,10 @@ export class Battery implements Disposable {
   private readonly batteryStatsPromise = si.battery();
 
   constructor() {
-    this.updateTimeout = setInterval(() => this.update(), UPDATE_INTERVAL_MS);
+    this.updateTimeout = setInterval(
+      fireAndForget(() => this.update()),
+      UPDATE_INTERVAL_MS,
+    );
   }
 
   dispose() {
@@ -25,7 +30,7 @@ export class Battery implements Disposable {
     const stats = await this.batteryStatsPromise;
     const level = stats.hasBattery ? stats.percent : 100;
     const isACConnected =
-      !stats.hasBattery || stats.acConnected || level == 100;
+      !stats.hasBattery || stats.acConnected || level === 100;
 
     if (isACConnected !== this.acConnected) {
       this.acConnected = isACConnected;

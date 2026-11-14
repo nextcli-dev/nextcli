@@ -50,7 +50,7 @@ export class VerticalDiffManager {
     options: VerticalDiffHandlerOptions,
   ): VerticalDiffHandler | undefined {
     if (this.fileUriToHandler.has(fileUri)) {
-      this.fileUriToHandler.get(fileUri)?.clear(false);
+      this.fileUriToHandler.get(fileUri)?.clear(false).catch(console.error);
       this.fileUriToHandler.delete(fileUri);
     }
     const editor = vscode.window.activeTextEditor;
@@ -149,7 +149,7 @@ export class VerticalDiffManager {
     if (handler) {
       // A handler that reverted itself after a user edit is already closed
       if (!handlerAlreadyCleared) {
-        handler.clear(accept);
+        handler.clear(accept).catch(console.error);
       }
       this.fileUriToHandler.delete(fileUri);
     }
@@ -227,7 +227,11 @@ export class VerticalDiffManager {
     toolCallId?: string,
     destructiveCheckSuggestedCode?: string,
   ) {
-    vscode.commands.executeCommand("setContext", "continue.diffVisible", true);
+    void vscode.commands.executeCommand(
+      "setContext",
+      "continue.diffVisible",
+      true,
+    );
 
     // Get the current editor fileUri/range
     let editor = vscode.window.activeTextEditor;
@@ -241,7 +245,7 @@ export class VerticalDiffManager {
     // Check for existing handlers in the same file the new one will be created in
     const existingHandler = this.getHandlerForFile(fileUri);
     if (existingHandler) {
-      existingHandler.clear(false);
+      existingHandler.clear(false).catch(console.error);
     }
 
     await new Promise((resolve) => {
@@ -290,7 +294,7 @@ export class VerticalDiffManager {
       );
     }
 
-    vscode.commands.executeCommand(
+    void vscode.commands.executeCommand(
       "setContext",
       "continue.streamingDiff",
       true,
@@ -312,7 +316,7 @@ export class VerticalDiffManager {
         throw new Error(message);
       }
     } finally {
-      vscode.commands.executeCommand(
+      void vscode.commands.executeCommand(
         "setContext",
         "continue.streamingDiff",
         false,
@@ -326,7 +330,11 @@ export class VerticalDiffManager {
     streamId: string,
     toolCallId?: string,
   ) {
-    vscode.commands.executeCommand("setContext", "continue.diffVisible", true);
+    void vscode.commands.executeCommand(
+      "setContext",
+      "continue.diffVisible",
+      true,
+    );
 
     const editor = vscode.window.activeTextEditor;
     if (!editor) {

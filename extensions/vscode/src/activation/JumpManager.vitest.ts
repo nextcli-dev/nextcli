@@ -570,7 +570,7 @@ describe("JumpManager", () => {
       // Now directly call the method that would show the completion
       // We need to manually implement what the callback would do
       if ((jumpManager as any)._completionAfterJump) {
-        vscode.commands.executeCommand(
+        void vscode.commands.executeCommand(
           "continue.showNextEditAfterJump",
           (jumpManager as any)._completionAfterJump,
         );

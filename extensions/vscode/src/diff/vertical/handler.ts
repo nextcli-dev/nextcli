@@ -109,7 +109,7 @@ export class VerticalDiffHandler implements vscode.Disposable {
         this.refreshCodeLens();
 
         // Handle any lines received while editor was closed
-        this.queueDiffLine(undefined);
+        this.queueDiffLine(undefined).catch(console.error);
       }
     });
     this.disposables.push(disposable);
@@ -304,7 +304,7 @@ export class VerticalDiffHandler implements vscode.Disposable {
   }
 
   async clear(accept: boolean) {
-    vscode.commands.executeCommand(
+    void vscode.commands.executeCommand(
       "setContext",
       "continue.streamingDiff",
       false,

@@ -493,9 +493,9 @@ describe("SelectionChangeManager", () => {
       );
 
       // Fire multiple events rapidly
-      selectionChangeManager.handleSelectionChange(mockEvent);
-      selectionChangeManager.handleSelectionChange(mockEvent);
-      selectionChangeManager.handleSelectionChange(mockEvent);
+      void selectionChangeManager.handleSelectionChange(mockEvent);
+      void selectionChangeManager.handleSelectionChange(mockEvent);
+      void selectionChangeManager.handleSelectionChange(mockEvent);
 
       // Only the last event should be queued due to debouncing
       const privateManager = selectionChangeManager as any;

@@ -12,18 +12,18 @@ export function registerDebugTracker(
 ) {
   vscode.debug.registerDebugAdapterTrackerFactory("*", {
     createDebugAdapterTracker(_session: vscode.DebugSession) {
-      const updateThreads = async () => {
-        webviewProtocol?.request("refreshSubmenuItems", {
+      const updateThreads = () => {
+        void webviewProtocol?.request("refreshSubmenuItems", {
           providers: ["debugger"],
         });
       };
 
       return {
-        async onWillStopSession() {
+        onWillStopSession() {
           threadStopped.clear();
           updateThreads();
         },
-        async onDidSendMessage(message: any) {
+        onDidSendMessage(message: any) {
           if (message.type === "event") {
             switch (message.event) {
               case "continued":

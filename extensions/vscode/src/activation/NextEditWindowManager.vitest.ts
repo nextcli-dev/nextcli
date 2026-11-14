@@ -104,7 +104,7 @@ vi.mock("core/codeRenderer/CodeRenderer", () => ({
 vi.mock("core/nextEdit/NextEditProvider", () => ({
   NextEditProvider: {
     getInstance: vi.fn(() => ({
-      deleteChain: vi.fn(),
+      deleteChain: vi.fn().mockResolvedValue(undefined),
     })),
   },
 }));

@@ -266,7 +266,7 @@ export function handleNextEditToggle(
 ) {
   const isEnabling = label === USE_NEXT_EDIT_MENU_ITEM_LABEL;
 
-  config.update(
+  void config.update(
     "enableNextEdit",
     isEnabling,
     vscode.ConfigurationTarget.Global,

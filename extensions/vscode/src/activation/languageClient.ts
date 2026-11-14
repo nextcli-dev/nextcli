@@ -20,7 +20,7 @@ let client: LanguageClient;
 
 export async function startLanguageClient(context: ExtensionContext) {
   const pythonLS = startPythonLanguageServer(context);
-  pythonLS.start();
+  await pythonLS.start();
 }
 
 export async function makeRequest(method: string, param: any): Promise<any> {

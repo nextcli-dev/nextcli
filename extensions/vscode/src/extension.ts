@@ -42,7 +42,7 @@ export function activate(context: vscode.ExtensionContext) {
     activationErrorChannel.appendLine(
       `Error activating NextCLI: ${(e instanceof Error && e.stack) || message}`,
     );
-    vscode.window
+    void vscode.window
       .showWarningMessage(
         `Error activating NextCLI: ${message}`,
         "View Logs",
@@ -50,10 +50,10 @@ export function activate(context: vscode.ExtensionContext) {
       )
       .then((selection) => {
         if (selection === "View Logs") {
-          vscode.commands.executeCommand("continue.viewLogs");
+          void vscode.commands.executeCommand("continue.viewLogs");
         } else if (selection === "Retry") {
           // Reload VS Code window
-          vscode.commands.executeCommand("workbench.action.reloadWindow");
+          void vscode.commands.executeCommand("workbench.action.reloadWindow");
         }
       });
   });

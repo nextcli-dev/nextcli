@@ -17,7 +17,7 @@ export class VsCodeWebviewProtocol
 
   send(messageType: string, data: any, messageId?: string): string {
     const id = messageId ?? uuidv4();
-    this.webview?.postMessage({
+    void this.webview?.postMessage({
       messageType,
       data,
       messageId: id,
@@ -133,40 +133,38 @@ export class VsCodeWebviewProtocol
     throw new Error("Method not implemented.");
   }
 
-  public request<T extends keyof ToWebviewProtocol>(
+  public async request<T extends keyof ToWebviewProtocol>(
     messageType: T,
     data: ToWebviewProtocol[T][0],
     retry: boolean = true,
   ): Promise<ToWebviewProtocol[T][1]> {
     const messageId = uuidv4();
-    return new Promise(async (resolve) => {
-      if (retry) {
-        let i = 0;
-        while (!this.webview) {
-          if (i >= 10) {
-            resolve(undefined);
-            return;
-          } else {
-            await new Promise((res) => setTimeout(res, i >= 5 ? 1000 : 500));
-            i++;
-          }
+    if (retry) {
+      let i = 0;
+      while (!this.webview) {
+        if (i >= 10) {
+          return undefined;
         }
+        await new Promise((res) => setTimeout(res, i >= 5 ? 1000 : 500));
+        i++;
       }
+    }
 
-      this.send(messageType, data, messageId);
+    this.send(messageType, data, messageId);
 
-      if (this.webview) {
-        const disposable = this.webview.onDidReceiveMessage(
-          (msg: Message<ToWebviewProtocol[T][1]>) => {
-            if (msg.messageId === messageId) {
-              resolve(msg.data);
-              disposable?.dispose();
-            }
-          },
-        );
-      } else if (!retry) {
-        resolve(undefined);
-      }
+    const webview = this.webview;
+    if (!webview) {
+      return undefined;
+    }
+    return new Promise((resolve) => {
+      const disposable = webview.onDidReceiveMessage(
+        (msg: Message<ToWebviewProtocol[T][1]>) => {
+          if (msg.messageId === messageId) {
+            resolve(msg.data);
+            disposable.dispose();
+          }
+        },
+      );
     });
   }
 }

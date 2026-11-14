@@ -16,7 +16,7 @@ import * as vscode from "vscode";
 
 import { JumpManager } from "../activation/JumpManager";
 import { NextEditWindowManager } from "../activation/NextEditWindowManager";
-import { handleLLMError } from "../util/errorHandling";
+import { fireAndForget, handleLLMError } from "../util/errorHandling";
 import { VsCodeIde } from "../VsCodeIde";
 import { VsCodeWebviewProtocol } from "../webviewProtocol";
 
@@ -48,15 +48,17 @@ export class ContinueCompletionProvider
     if (e instanceof Error) {
       message += `: ${e.message}`;
     }
-    vscode.window.showErrorMessage(message, "Documentation").then((val) => {
-      if (val === "Documentation") {
-        vscode.env.openExternal(
-          vscode.Uri.parse(
-            "https://docs.nextcli.dev/features/tab-autocomplete",
-          ),
-        );
-      }
-    });
+    void vscode.window
+      .showErrorMessage(message, "Documentation")
+      .then((val) => {
+        if (val === "Documentation") {
+          void vscode.env.openExternal(
+            vscode.Uri.parse(
+              "https://docs.nextcli.dev/features/tab-autocomplete",
+            ),
+          );
+        }
+      });
   }
 
   private completionProvider: CompletionProvider;
@@ -100,7 +102,7 @@ export class ContinueCompletionProvider
       this.configHandler,
       this.ide,
       getAutocompleteModel,
-      this.onError.bind(this),
+      fireAndForget(this.onError.bind(this)),
       getDefinitionsFromLsp,
     );
 
@@ -110,7 +112,7 @@ export class ContinueCompletionProvider
       this.configHandler,
       this.ide,
       getAutocompleteModel,
-      this.onError.bind(this),
+      fireAndForget(this.onError.bind(this)),
       getDefinitionsFromLsp,
       "fineTuned",
     );
@@ -373,12 +375,14 @@ export class ContinueCompletionProvider
 
           // Fill in the spot after dequeuing.
           if (!this.usingFullFileDiff) {
-            this.prefetchQueue.process({
-              ...ctx,
-              recentlyVisitedRanges: this.recentlyVisitedRanges.getSnippets(),
-              recentlyEditedRanges:
-                await this.recentlyEditedTracker.getRecentlyEditedRanges(),
-            });
+            this.prefetchQueue
+              .process({
+                ...ctx,
+                recentlyVisitedRanges: this.recentlyVisitedRanges.getSnippets(),
+                recentlyEditedRanges:
+                  await this.recentlyEditedTracker.getRecentlyEditedRanges(),
+              })
+              .catch(console.error);
           }
         }
       } else if (chainExists) {
@@ -396,12 +400,14 @@ export class ContinueCompletionProvider
 
           // Fill in the spot after dequeuing.
           if (!this.usingFullFileDiff) {
-            this.prefetchQueue.process({
-              ...ctx,
-              recentlyVisitedRanges: this.recentlyVisitedRanges.getSnippets(),
-              recentlyEditedRanges:
-                await this.recentlyEditedTracker.getRecentlyEditedRanges(),
-            });
+            this.prefetchQueue
+              .process({
+                ...ctx,
+                recentlyVisitedRanges: this.recentlyVisitedRanges.getSnippets(),
+                recentlyEditedRanges:
+                  await this.recentlyEditedTracker.getRecentlyEditedRanges(),
+              })
+              .catch(console.error);
           }
 
           const nextLocation = nextItemInQueue.location;
@@ -436,7 +442,7 @@ export class ContinueCompletionProvider
           // console.debug(
           //   "No suitable jump location found after trying all positions",
           // );
-          this.nextEditProvider.deleteChain();
+          this.nextEditProvider.deleteChain().catch(console.error);
           return undefined;
         }
       } else {
@@ -474,7 +480,7 @@ export class ContinueCompletionProvider
           // Start prefetching next edits if not using full file diff.
           // NOTE: this is better off not awaited. fire and forget.
           if (!this.usingFullFileDiff) {
-            this.prefetchQueue.process(ctx);
+            this.prefetchQueue.process(ctx).catch(console.error);
           }
 
           // If initial outcome is null, suggest a jump instead.
@@ -650,7 +656,7 @@ export class ContinueCompletionProvider
       if (isFim) {
         if (!fimText) {
           // console.debug("deleteChain from completionProvider.ts: !fimText");
-          this.nextEditProvider.deleteChain();
+          this.nextEditProvider.deleteChain().catch(console.error);
           return undefined;
         }
 
@@ -689,7 +695,7 @@ export class ContinueCompletionProvider
         // console.debug(
         //   "deleteChain from completionProvider.ts: diffLines.length === 0",
         // );
-        NextEditProvider.getInstance().deleteChain();
+        NextEditProvider.getInstance().deleteChain().catch(console.error);
       }
 
       if (NextEditWindowManager.isInstantiated()) {

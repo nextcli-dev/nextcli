@@ -238,7 +238,7 @@ function selectSuggestion(
     rangeToDelete.start,
     new vscode.Position(rangeToDelete.end.line, 0),
   );
-  editor.edit((edit) => {
+  void editor.edit((edit) => {
     edit.delete(rangeToDelete);
   });
 

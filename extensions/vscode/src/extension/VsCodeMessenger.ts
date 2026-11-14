@@ -83,12 +83,12 @@ export class VsCodeMessenger {
     private readonly vsCodeExtension: VsCodeExtension,
   ) {
     /** WEBVIEW ONLY LISTENERS **/
-    this.onWebview("showFile", (msg) => {
-      this.ide.openFile(msg.data.filepath);
+    this.onWebview("showFile", async (msg) => {
+      await this.ide.openFile(msg.data.filepath);
     });
 
     this.onWebview("vscode/openMoveRightMarkdown", (msg) => {
-      vscode.commands.executeCommand(
+      void vscode.commands.executeCommand(
         "markdown.showPreview",
         vscode.Uri.joinPath(
           getExtensionUri(),
@@ -99,17 +99,19 @@ export class VsCodeMessenger {
     });
 
     this.onWebview("toggleDevTools", (msg) => {
-      vscode.commands.executeCommand("continue.viewLogs");
+      void vscode.commands.executeCommand("continue.viewLogs");
     });
 
     this.onWebview("reloadWindow", (msg) => {
-      vscode.commands.executeCommand("workbench.action.reloadWindow");
+      void vscode.commands.executeCommand("workbench.action.reloadWindow");
     });
     this.onWebview("focusEditor", (msg) => {
-      vscode.commands.executeCommand("workbench.action.focusActiveEditorGroup");
+      void vscode.commands.executeCommand(
+        "workbench.action.focusActiveEditorGroup",
+      );
     });
     this.onWebview("toggleFullScreen", (msg) => {
-      vscode.commands.executeCommand("continue.openInNewWindow");
+      void vscode.commands.executeCommand("continue.openInNewWindow");
     });
 
     this.onWebview("acceptDiff", async ({ data: { filepath, streamId } }) => {
@@ -162,11 +164,13 @@ export class VsCodeMessenger {
         const editor = vscode.window.activeTextEditor;
 
         if (!editor) {
-          vscode.window.showErrorMessage("No active editor to apply edits to");
+          void vscode.window.showErrorMessage(
+            "No active editor to apply edits to",
+          );
           return;
         }
 
-        editor.edit((builder) =>
+        await editor.edit((builder) =>
           builder.replace(
             new vscode.Range(
               editor.document.positionAt(0),
@@ -184,7 +188,7 @@ export class VsCodeMessenger {
         return;
       }
 
-      editor.edit((editBuilder) => {
+      await editor.edit((editBuilder) => {
         editBuilder.replace(
           new vscode.Range(editor.selection.start, editor.selection.end),
           msg.data.text,
@@ -370,7 +374,7 @@ export class VsCodeMessenger {
       return await ide.readFile(msg.data.filepath);
     });
     this.onWebviewOrCore("openUrl", (msg) => {
-      vscode.env.openExternal(vscode.Uri.parse(msg.data));
+      void vscode.env.openExternal(vscode.Uri.parse(msg.data));
     });
 
     this.onWebviewOrCore("fileExists", async (msg) => {

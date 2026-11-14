@@ -22,7 +22,7 @@ export function appendToHistory(
     history = history.slice(-MAX_HISTORY_LENGTH);
   }
 
-  globalState.update(HISTORY_KEY, history);
+  void globalState.update(HISTORY_KEY, history);
 }
 
 export async function getHistoryQuickPickVal({

@@ -274,7 +274,7 @@ export class NextEditWindowManager {
       console.debug(
         "deleteChain from NextEditWindowManager.ts: hide next edit command",
       );
-      NextEditProvider.getInstance().deleteChain();
+      NextEditProvider.getInstance().deleteChain().catch(console.error);
       await this.hideAllNextEditWindowsAndResetCompletionId();
     });
     this.registerCommandSafely(
