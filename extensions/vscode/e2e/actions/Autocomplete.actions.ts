@@ -2,9 +2,10 @@ import { expect } from "chai";
 import { Key, TextEditor } from "vscode-extension-tester";
 
 import { DEFAULT_TIMEOUT } from "../constants";
-import { GlobalActions } from "./Global.actions";
 import { AutocompleteSelectors } from "../selectors/Autocomplete.selectors";
 import { TestUtils } from "../TestUtils";
+
+import { GlobalActions } from "./Global.actions";
 
 export class AutocompleteActions {
   public static async testCompletions(editor: TextEditor) {
