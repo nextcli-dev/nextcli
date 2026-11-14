@@ -61,7 +61,9 @@ export class VerticalDiffManager {
         editor,
         this.fileUriToCodeLens,
         this.clearForfileUri.bind(this),
-        this.refreshCodeLens,
+        // Through the manager, so the handler calls whatever refresh is
+        // current, not the one bound when it was created
+        () => this.refreshCodeLens(),
         options,
       );
       this.fileUriToHandler.set(fileUri, handler);

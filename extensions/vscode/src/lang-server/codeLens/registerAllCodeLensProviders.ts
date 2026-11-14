@@ -14,6 +14,9 @@ const { registerCodeLensProvider } = vscode.languages;
 
 export let verticalPerLineCodeLensProvider: vscode.Disposable | undefined =
   undefined;
+let verticalDiffCodeLens:
+  | providers.VerticalPerLineCodeLensProvider
+  | undefined = undefined;
 let diffsCodeLensDisposable: vscode.Disposable | undefined = undefined;
 let suggestionsCodeLensDisposable: vscode.Disposable | undefined = undefined;
 let configPyCodeLensDisposable: vscode.Disposable | undefined = undefined;
@@ -80,10 +83,6 @@ export function registerAllCodeLensProviders(
   editorToVerticalDiffCodeLens: Map<string, VerticalDiffCodeLens[]>,
   config: ContinueConfig | undefined,
 ) {
-  if (verticalPerLineCodeLensProvider) {
-    verticalPerLineCodeLensProvider.dispose();
-  }
-
   if (suggestionsCodeLensDisposable) {
     suggestionsCodeLensDisposable.dispose();
   }
@@ -108,14 +107,21 @@ export function registerAllCodeLensProviders(
     downloadYamlExtensionCodeLensDisposable.dispose();
   }
 
-  const verticalDiffCodeLens = new providers.VerticalPerLineCodeLensProvider(
-    editorToVerticalDiffCodeLens,
-  );
-
-  verticalPerLineCodeLensProvider = registerCodeLensProvider(
-    "*",
-    verticalDiffCodeLens,
-  );
+  // The diff CodeLens provider reads no config, so it is registered once and
+  // kept across config reloads. Replacing it on every reload left
+  // VerticalDiffManager.refreshCodeLens bound to the disposed provider, so
+  // after the first config change a diff's Accept/Reject lenses no longer
+  // updated until VS Code asked for them for another reason.
+  if (!verticalDiffCodeLens) {
+    verticalDiffCodeLens = new providers.VerticalPerLineCodeLensProvider(
+      editorToVerticalDiffCodeLens,
+    );
+    verticalPerLineCodeLensProvider = registerCodeLensProvider(
+      "*",
+      verticalDiffCodeLens,
+    );
+    context.subscriptions.push(verticalPerLineCodeLensProvider);
+  }
 
   suggestionsCodeLensDisposable = registerCodeLensProvider(
     "*",
@@ -140,7 +146,6 @@ export function registerAllCodeLensProviders(
     );
   }
 
-  context.subscriptions.push(verticalPerLineCodeLensProvider);
   context.subscriptions.push(suggestionsCodeLensDisposable);
   context.subscriptions.push(configJsonConverterCodeLensDisposable);
 
