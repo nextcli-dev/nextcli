@@ -162,45 +162,4 @@ describe("Keyboard Shortcuts", () => {
 
     await GUIActions.executeFocusContinueInputShortcut(driver);
   });
-
-  // the below 2 skips are skipped because some behaviour from https://github.com/continuedev/continue/pull/6711 was reverted
-  it.skip("Should create a code block with the whole file when Cmd+L is pressed on an empty line", async () => {
-    const text = "Hello,\n\n\nworld!";
-
-    await editor.setText(text);
-    await editor.moveCursor(2, 1); //Move cursor to an empty line
-
-    await GUIActions.executeFocusContinueInputShortcut(driver);
-
-    ({ view } = await GUIActions.switchToReactIframe());
-
-    const codeBlock = await TestUtils.waitForSuccess(() =>
-      GUISelectors.getInputBoxCodeBlockAtIndex(view, 0),
-    );
-    const codeblockContent = await codeBlock.getAttribute(
-      "data-codeblockcontent",
-    );
-
-    expect(codeblockContent).to.equal(text);
-  });
-
-  it.skip("Should create a code block when Cmd+L is pressed on a non-empty line", async () => {
-    const text = "Hello, world!";
-
-    await editor.setText(text);
-    await editor.moveCursor(1, 7); //Move cursor to the 1st space
-
-    await GUIActions.executeFocusContinueInputShortcut(driver);
-
-    ({ view } = await GUIActions.switchToReactIframe());
-
-    const codeBlock = await TestUtils.waitForSuccess(() =>
-      GUISelectors.getInputBoxCodeBlockAtIndex(view, 0),
-    );
-    const codeblockContent = await codeBlock.getAttribute(
-      "data-codeblockcontent",
-    );
-
-    expect(codeblockContent).to.equal(text);
-  });
 });
