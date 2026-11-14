@@ -127,23 +127,18 @@ runs:
         SANITIZED_FILENAME="${FILENAME//\//-}" # Replace / with - using bash parameter expansion
         echo "sanitized_test_file=${SANITIZED_FILENAME}" >> $GITHUB_OUTPUT
 
-    - name: Upload e2e test screenshots
+    # Screenshots (test bodies and, through the hook wrappers, hooks), the VS
+    # Code logs (exthost.log has the extension's own output), and the
+    # ChromeDriver and WebDriver logs.
+    - name: Upload e2e failure evidence
       if: failure()
       uses: actions/upload-artifact@v7
       with:
-        name: e2e-failure-screenshots-${{ steps.sanitize_filename.outputs.sanitized_test_file || 'unknown' }}-${{ inputs.command == 'e2e:ci:run-yaml' && 'yaml' || 'json' }}
-        path: extensions/vscode/e2e/storage/screenshots
-
-    - name: Find e2e log file
-      if: always()
-      shell: bash
-      run: |
-        echo "Searching for e2e.log file..."
-        find $GITHUB_WORKSPACE -name "e2e.log" -type f
-
-    - name: Upload e2e logs
-      if: always()
-      uses: actions/upload-artifact@v7
-      with:
-        name: e2e-logs-${{ steps.sanitize_filename.outputs.sanitized_test_file || 'unknown' }}-${{ inputs.command == 'e2e:ci:run-yaml' && 'yaml' || 'json' }}
-        path: extensions/vscode/e2e.log
+        name: e2e-failure-${{ steps.sanitize_filename.outputs.sanitized_test_file || 'unknown' }}-${{ inputs.command == 'e2e:ci:run-yaml' && 'yaml' || 'json' }}
+        path: |
+          extensions/vscode/e2e/storage/screenshots
+          extensions/vscode/e2e/storage/settings/logs
+          extensions/vscode/e2e/storage/chromedriver.log
+          extensions/vscode/e2e/storage/test.log
+          extensions/vscode/e2e/storage/crashes
+        if-no-files-found: warn

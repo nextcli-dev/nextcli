@@ -1,5 +1,8 @@
 import { expect } from "chai";
 import {
+  afterEach,
+  before,
+  beforeEach,
   CodeLens,
   TextEditor,
   VSBrowser,
@@ -20,7 +23,6 @@ describe("Edit Test", () => {
   let { userMessage, llmResponse } = TestUtils.generateTestMessagePair();
 
   before(async function () {
-    this.timeout(DEFAULT_TIMEOUT.XL);
     await GUIActions.moveContinueToSidebar(VSBrowser.instance.driver);
     await GlobalActions.openTestWorkspace();
     ({ editor } = await GlobalActions.createAndOpenNewTextFile());
@@ -28,8 +30,6 @@ describe("Edit Test", () => {
   });
 
   beforeEach(async function () {
-    this.timeout(DEFAULT_TIMEOUT.XL);
-
     await GUIActions.toggleGui();
 
     // The GUI took focus. Give it back to the editor, or typing and the
@@ -58,8 +58,6 @@ describe("Edit Test", () => {
   });
 
   afterEach(async function () {
-    this.timeout(DEFAULT_TIMEOUT.XL);
-
     await editor.clearText();
 
     ({ view } = await GUIActions.switchToReactIframe());
@@ -93,7 +91,7 @@ describe("Edit Test", () => {
       expect(editorText).to.not.include(originalEditorText);
       expect(editorText).to.include(llmResponse);
     }, DEFAULT_TIMEOUT.SM);
-  }).timeout(DEFAULT_TIMEOUT.XL);
+  });
 
   it("Rejects an Edit in the GUI", async () => {
     ({ view } = await GUIActions.switchToReactIframe());
@@ -108,7 +106,7 @@ describe("Edit Test", () => {
       expect(editorText).to.include(originalEditorText);
       expect(editorText).to.not.include(llmResponse);
     }, DEFAULT_TIMEOUT.SM);
-  }).timeout(DEFAULT_TIMEOUT.XL);
+  });
 
   it("Accepts an Edit using CodeLens buttons", async () => {
     const acceptCodeLens = await editor.getCodeLens("Accept");
@@ -120,7 +118,7 @@ describe("Edit Test", () => {
       expect(editorText).to.not.include(originalEditorText);
       expect(editorText).to.include(llmResponse);
     }, DEFAULT_TIMEOUT.SM);
-  }).timeout(DEFAULT_TIMEOUT.XL);
+  });
 
   it("Rejects an Edit using CodeLens buttons", async () => {
     const rejectCodeLens = await getCodeLensWithRetry(editor, "Reject");
@@ -132,5 +130,5 @@ describe("Edit Test", () => {
       expect(editorText).to.include(originalEditorText);
       expect(editorText).to.not.include(llmResponse);
     }, DEFAULT_TIMEOUT.SM);
-  }).timeout(DEFAULT_TIMEOUT.XL);
+  });
 });

@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import * as fs from "fs";
 import * as path from "path";
-import { VSBrowser, WebView, Workbench } from "vscode-extension-tester";
+import { after, before, VSBrowser, WebView } from "vscode-extension-tester";
 
 import { GlobalActions } from "../actions/Global.actions";
 import { GUIActions } from "../actions/GUI.actions";
@@ -25,7 +25,6 @@ describe("Edit tools on CRLF files", () => {
   let view: WebView;
 
   before(async function () {
-    this.timeout(DEFAULT_TIMEOUT.XL * 2);
     fs.mkdirSync(FIXTURES, { recursive: true });
     fs.writeFileSync(
       CRLF_FILE,
@@ -73,7 +72,7 @@ describe("Edit tools on CRLF files", () => {
     );
 
     await view.switchBack();
-    await new Workbench().executeCommand("File: Save All");
+    await GlobalActions.runCommand("workbench.action.files.saveAll");
 
     await TestUtils.waitForSuccess(async () => {
       // single_find_and_replace with an LF old_string and new_string
@@ -87,5 +86,5 @@ describe("Edit tools on CRLF files", () => {
         "function mul(a, b) {\r\n  // multiply\r\n  return a * b;\r\n}\r\n\r\nmodule.exports = { mul };\r\n",
       );
     }, DEFAULT_TIMEOUT.MD);
-  }).timeout(DEFAULT_TIMEOUT.XL * 2);
+  });
 });

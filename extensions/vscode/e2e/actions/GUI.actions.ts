@@ -1,29 +1,24 @@
 import {
   By,
-  InputBox,
   Key,
   WebDriver,
   WebElement,
   WebView,
-  Workbench,
 } from "vscode-extension-tester";
 
 import { DEFAULT_TIMEOUT } from "../constants";
 import { GUISelectors } from "../selectors/GUI.selectors";
 import { TestUtils } from "../TestUtils";
+import { GlobalActions } from "./Global.actions";
 
 export class GUIActions {
   public static moveContinueToSidebar = async (driver: WebDriver) => {
     await GUIActions.toggleGui();
-    await TestUtils.waitForSuccess(async () => {
-      await new Workbench().executeCommand("View: Move View");
-      await (
-        await InputBox.create(DEFAULT_TIMEOUT.MD)
-      ).selectQuickPick("NextCLI");
-      await (
-        await InputBox.create(DEFAULT_TIMEOUT.MD)
-      ).selectQuickPick("New Secondary Side Bar Entry");
-    });
+    const moveView = await GlobalActions.runCommandWithInput(
+      "workbench.action.moveView",
+    );
+    await GlobalActions.selectPick(moveView, "NextCLI");
+    await GlobalActions.selectPick(moveView, "New Secondary Side Bar Entry");
 
     // first call focuses the input
     await TestUtils.waitForTimeout(DEFAULT_TIMEOUT.XS);
@@ -77,9 +72,7 @@ export class GUIActions {
   };
 
   public static toggleGui = async () => {
-    return TestUtils.waitForSuccess(() =>
-      new Workbench().executeCommand("continue.focusContinueInput"),
-    );
+    await GlobalActions.runCommand("continue.focusContinueInput");
   };
 
   public static selectModelFromDropdown = async (
@@ -154,11 +147,7 @@ export class GUIActions {
    */
   public static async runCommandFromGui(view: WebView, command: string) {
     await view.switchBack();
-    // The palette's input is sometimes not interactable yet right after
-    // leaving the webview; retry like toggleGui does
-    await TestUtils.waitForSuccess(() =>
-      new Workbench().executeCommand(command),
-    );
+    await GlobalActions.runCommand(command);
     return GUIActions.switchToReactIframe();
   }
 

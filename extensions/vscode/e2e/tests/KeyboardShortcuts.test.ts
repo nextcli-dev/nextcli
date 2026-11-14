@@ -1,7 +1,9 @@
 import { expect } from "chai";
 import {
+  afterEach,
+  before,
+  beforeEach,
   EditorView,
-  InputBox,
   Key,
   TextEditor,
   until,
@@ -9,7 +11,6 @@ import {
   WebDriver,
   WebElement,
   WebView,
-  Workbench,
 } from "vscode-extension-tester";
 
 import { GlobalActions } from "../actions/Global.actions";
@@ -25,20 +26,12 @@ describe("Keyboard Shortcuts", () => {
   let view: WebView;
 
   before(async function () {
-    this.timeout(DEFAULT_TIMEOUT.XL);
     await GUIActions.moveContinueToSidebar(VSBrowser.instance.driver);
     await GlobalActions.disableNextEdit();
   });
 
   beforeEach(async function () {
-    this.timeout(DEFAULT_TIMEOUT.XL);
-
-    await TestUtils.waitForSuccess(async () => {
-      await new Workbench().executeCommand("Create: New File...");
-      await (
-        await InputBox.create(DEFAULT_TIMEOUT.MD)
-      ).selectQuickPick("Text File");
-    });
+    await GlobalActions.runCommand("workbench.action.files.newUntitledFile");
 
     driver = VSBrowser.instance.driver;
 
@@ -46,7 +39,6 @@ describe("Keyboard Shortcuts", () => {
   });
 
   afterEach(async function () {
-    this.timeout(DEFAULT_TIMEOUT.XL * 1000);
     await cleanupChat();
     await view.switchBack();
     await editor.clearText();
@@ -123,7 +115,7 @@ describe("Keyboard Shortcuts", () => {
       until.elementTextIs(chatInput, "HELLO WORLD HELLO CONTINUE"),
       DEFAULT_TIMEOUT.SM,
     );
-  }).timeout(DEFAULT_TIMEOUT.XL);
+  });
 
   it("Should not create a code block when Cmd+L is pressed on an empty document", async () => {
     expect((await editor.getText()).trim()).to.equal("");
@@ -136,7 +128,7 @@ describe("Keyboard Shortcuts", () => {
       return GUISelectors.getInputBoxCodeBlockAtIndex(view, 0);
     }, DEFAULT_TIMEOUT.XS);
     await GUIActions.executeFocusContinueInputShortcut(driver);
-  }).timeout(DEFAULT_TIMEOUT.XL);
+  });
 
   it("Fresh VS Code window → sidebar closed → cmd+L with no code highlighted → opens sidebar and focuses input → cmd+L closes sidebar", async () => {
     await GUIActions.executeFocusContinueInputShortcut(driver);
@@ -154,7 +146,7 @@ describe("Keyboard Shortcuts", () => {
 
     await driver.wait(until.elementIsNotVisible(textInput), DEFAULT_TIMEOUT.XS);
     expect(await textInput.isDisplayed()).to.equal(false);
-  }).timeout(DEFAULT_TIMEOUT.XL);
+  });
 
   it("Send a message → focus code editor (not sidebar) → cmd+L → should focus sidebar and start a new session", async () => {
     await GUIActions.executeFocusContinueInputShortcut(driver);
@@ -195,7 +187,7 @@ describe("Keyboard Shortcuts", () => {
 
     // Make sure the view is visible again, so it can be cleared in afterEach()
     await GUIActions.executeFocusContinueInputShortcut(driver);
-  }).timeout(DEFAULT_TIMEOUT.XL);
+  });
 
   it("Should create a code block when Cmd+L is pressed with text highlighted", async () => {
     const text = "Hello, world!";
@@ -217,7 +209,7 @@ describe("Keyboard Shortcuts", () => {
     expect(codeblockContent).to.equal(text);
 
     await GUIActions.executeFocusContinueInputShortcut(driver);
-  }).timeout(DEFAULT_TIMEOUT.XL);
+  });
 
   // the below 2 skips are skipped because some behaviour from https://github.com/continuedev/continue/pull/6711 was reverted
   it.skip("Should create a code block with the whole file when Cmd+L is pressed on an empty line", async () => {
@@ -240,26 +232,23 @@ describe("Keyboard Shortcuts", () => {
     expect(codeblockContent).to.equal(text);
   });
 
-  it.skip(
-    "Should create a code block when Cmd+L is pressed on a non-empty line",
-    async () => {
-      const text = "Hello, world!";
+  it.skip("Should create a code block when Cmd+L is pressed on a non-empty line", async () => {
+    const text = "Hello, world!";
 
-      await editor.setText(text);
-      await editor.moveCursor(1, 7); //Move cursor to the 1st space
+    await editor.setText(text);
+    await editor.moveCursor(1, 7); //Move cursor to the 1st space
 
-      await GUIActions.executeFocusContinueInputShortcut(driver);
+    await GUIActions.executeFocusContinueInputShortcut(driver);
 
-      ({ view } = await GUIActions.switchToReactIframe());
+    ({ view } = await GUIActions.switchToReactIframe());
 
-      const codeBlock = await TestUtils.waitForSuccess(() =>
-        GUISelectors.getInputBoxCodeBlockAtIndex(view, 0),
-      );
-      const codeblockContent = await codeBlock.getAttribute(
-        "data-codeblockcontent",
-      );
+    const codeBlock = await TestUtils.waitForSuccess(() =>
+      GUISelectors.getInputBoxCodeBlockAtIndex(view, 0),
+    );
+    const codeblockContent = await codeBlock.getAttribute(
+      "data-codeblockcontent",
+    );
 
-      expect(codeblockContent).to.equal(text);
-    },
-  ).timeout(DEFAULT_TIMEOUT.XL);
+    expect(codeblockContent).to.equal(text);
+  });
 });

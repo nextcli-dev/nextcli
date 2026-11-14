@@ -1,14 +1,16 @@
 import { expect } from "chai";
 import {
+  afterEach,
+  before,
+  beforeEach,
   By,
   EditorView,
   Key,
+  until,
   VSBrowser,
   WebDriver,
   WebElement,
   WebView,
-  Workbench,
-  until,
 } from "vscode-extension-tester";
 
 import { GlobalActions } from "../actions/Global.actions";
@@ -22,7 +24,6 @@ describe("GUI Test", () => {
   let driver: WebDriver;
 
   before(async function () {
-    this.timeout(DEFAULT_TIMEOUT.XL + DEFAULT_TIMEOUT.MD + DEFAULT_TIMEOUT.MD);
     // Uncomment this line for faster testing
     await GUIActions.moveContinueToSidebar(VSBrowser.instance.driver);
     await GlobalActions.openTestWorkspace();
@@ -31,8 +32,6 @@ describe("GUI Test", () => {
   });
 
   beforeEach(async function () {
-    this.timeout(DEFAULT_TIMEOUT.XL);
-
     await GUIActions.toggleGui();
 
     ({ view, driver } = await GUIActions.switchToReactIframe());
@@ -40,11 +39,9 @@ describe("GUI Test", () => {
   });
 
   afterEach(async function () {
-    this.timeout(DEFAULT_TIMEOUT.XL);
-
     await view.switchBack();
     // Close the GUI; beforeEach opens it again with toggleGui
-    await new Workbench().executeCommand("View: Close Secondary Side Bar");
+    await GlobalActions.runCommand("workbench.action.closeAuxiliaryBar");
     await new EditorView().closeAllEditors();
   });
 
@@ -55,50 +52,47 @@ describe("GUI Test", () => {
       expect(await description.getText()).has.string(
         "Log in to quickly build your first custom AI code agent",
       );
-    }).timeout(DEFAULT_TIMEOUT.XL);
+    });
 
     // We no longer have a quick start button
-    it.skip(
-      "should display tutorial card after accepting onboarding quick start",
-      async () => {
-        // Get paragraph with text Best
-        const bestTab = await GUISelectors.getOnboardingTabButton(view, "Best");
-        await bestTab.click();
+    it.skip("should display tutorial card after accepting onboarding quick start", async () => {
+      // Get paragraph with text Best
+      const bestTab = await GUISelectors.getOnboardingTabButton(view, "Best");
+      await bestTab.click();
 
-        const anthropicInput = await TestUtils.waitForSuccess(
-          async () => await GUISelectors.getBestChatApiKeyInput(view),
-        );
-        anthropicInput.sendKeys("invalid_api_key");
+      const anthropicInput = await TestUtils.waitForSuccess(
+        async () => await GUISelectors.getBestChatApiKeyInput(view),
+      );
+      anthropicInput.sendKeys("invalid_api_key");
 
-        const mistralInput =
-          await GUISelectors.getBestAutocompleteApiKeyInput(view);
-        mistralInput.sendKeys("invalid_api_key");
+      const mistralInput =
+        await GUISelectors.getBestAutocompleteApiKeyInput(view);
+      mistralInput.sendKeys("invalid_api_key");
 
-        // Get button with text "Connect" and click it
-        const connectButton = await view.findWebElement(
-          By.xpath("//button[text()='Connect']"),
-        );
-        await connectButton.click();
+      // Get button with text "Connect" and click it
+      const connectButton = await view.findWebElement(
+        By.xpath("//button[text()='Connect']"),
+      );
+      await connectButton.click();
 
-        await TestUtils.waitForSuccess(
-          async () => await GUISelectors.getTutorialCard(view),
-        );
+      await TestUtils.waitForSuccess(
+        async () => await GUISelectors.getTutorialCard(view),
+      );
 
-        // TODO validate that claude has been added to list
+      // TODO validate that claude has been added to list
 
-        // Skip testing Quick Start because github auth opens external app and breaks test
-        // const quickStartButton = await view.findWebElement(
-        //   By.xpath("//*[contains(text(), 'Get started using our API keys')]")
-        // );
-        // await quickStartButton.click();
-        // await view.switchBack();
-        // const allowButton = await TestUtils.waitForSuccess(
-        //   async () => await driver.findElement(By.xpath(`//a[contains(text(), "Allow")]`))
-        // );
-        // await allowButton.click();
-        // ({ view, driver } = await GUIActions.switchToReactIframe());
-      },
-    ).timeout(DEFAULT_TIMEOUT.XL);
+      // Skip testing Quick Start because github auth opens external app and breaks test
+      // const quickStartButton = await view.findWebElement(
+      //   By.xpath("//*[contains(text(), 'Get started using our API keys')]")
+      // );
+      // await quickStartButton.click();
+      // await view.switchBack();
+      // const allowButton = await TestUtils.waitForSuccess(
+      //   async () => await driver.findElement(By.xpath(`//a[contains(text(), "Allow")]`))
+      // );
+      // await allowButton.click();
+      // ({ view, driver } = await GUIActions.switchToReactIframe());
+    });
   });
 
   describe("Chat", () => {
@@ -173,7 +167,7 @@ describe("GUI Test", () => {
       await TestUtils.expectNoElement(() =>
         GUISelectors.getThreadMessageByText(view, llmResponse2),
       );
-    }).timeout(DEFAULT_TIMEOUT.XL);
+    });
 
     it("Can edit messages", async () => {
       const { userMessage: userMessage0, llmResponse: llmResponse0 } =
@@ -236,7 +230,7 @@ describe("GUI Test", () => {
           GUISelectors.getThreadMessageByText(view, llmResponse2),
         ),
       ]);
-    }).timeout(DEFAULT_TIMEOUT.XL);
+    });
   });
 
   describe("Agent with tools", () => {
@@ -285,7 +279,7 @@ describe("GUI Test", () => {
       expect(ruleItemText).to.include("Always applied");
       // The item shows where the rule comes from, not its text
       expect(ruleItemText).to.include("Source:");
-    }).timeout(DEFAULT_TIMEOUT.MD);
+    });
 
     it("should render tool call", async () => {
       const [messageInput] = await GUISelectors.getMessageInputFields(view);
@@ -300,7 +294,7 @@ describe("GUI Test", () => {
       expect(await statusMessage.getText()).contain(
         "NextCLI viewed the git diff",
       );
-    }).timeout(DEFAULT_TIMEOUT.MD * 100);
+    });
 
     it("should call tool after approval", async () => {
       view = await GUIActions.toggleToolPolicy(view, "view_diff", 2);
@@ -321,7 +315,7 @@ describe("GUI Test", () => {
 
       const text = await statusMessage.getText();
       expect(text).contain("the git diff");
-    }).timeout(DEFAULT_TIMEOUT.XL);
+    });
 
     it("should cancel tool", async () => {
       view = await GUIActions.toggleToolPolicy(view, "view_diff", 2);
@@ -342,7 +336,7 @@ describe("GUI Test", () => {
 
       const text = await statusMessage.getText();
       expect(text).contain("NextCLI tried to view the git diff");
-    }).timeout(DEFAULT_TIMEOUT.XL);
+    });
   });
 
   describe("Context providers", () => {
@@ -363,7 +357,7 @@ describe("GUI Test", () => {
           "Current terminal contents:",
         );
       });
-    }).timeout(DEFAULT_TIMEOUT.MD);
+    });
   });
 
   describe("should repeat back the system message", () => {
@@ -376,7 +370,7 @@ describe("GUI Test", () => {
       await TestUtils.waitForSuccess(() =>
         GUISelectors.getThreadMessageByText(view, "TEST_SYS_MSG"),
       );
-    }).timeout(DEFAULT_TIMEOUT.XL * 1000);
+    });
   });
 
   describe("Chat Paths", () => {
@@ -440,7 +434,7 @@ describe("GUI Test", () => {
       );
 
       expect(isInViewport).to.eq(true);
-    }).timeout(DEFAULT_TIMEOUT.XL * 1000);
+    });
 
     it("Open chat and send message → press arrow up and arrow down to cycle through messages → submit another message → press arrow up and arrow down to cycle through messages", async () => {
       // Loading a history entry refocuses the editor in a setTimeout, which
@@ -504,7 +498,7 @@ describe("GUI Test", () => {
 
       await input2.sendKeys(Key.ARROW_DOWN);
       await driver.wait(until.elementTextIs(input2, ""), DEFAULT_TIMEOUT.SM);
-    }).timeout(DEFAULT_TIMEOUT.XL);
+    });
 
     it("Open chat and type → open history → press new session button → chat opens, empty and in focus", async () => {
       const originalTextInput = await GUISelectors.getMessageInputFieldAtIndex(
@@ -535,7 +529,7 @@ describe("GUI Test", () => {
 
       const textInputValue = await newTextInput.getText();
       expect(textInputValue).to.equal("");
-    }).timeout(DEFAULT_TIMEOUT.XL);
+    });
 
     it("chat → history → chat", async () => {
       const messagePair1 = TestUtils.generateTestMessagePair(1);
@@ -593,6 +587,6 @@ describe("GUI Test", () => {
       await TestUtils.waitForSuccess(() =>
         GUISelectors.getThreadMessageByText(view, messagePair3.llmResponse),
       );
-    }).timeout(DEFAULT_TIMEOUT.XL);
+    });
   });
 });

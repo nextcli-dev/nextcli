@@ -26,71 +26,85 @@ export class TestUtils {
   }
 
   /**
-   * In many cases it might be more useful to use existing Selenium
-   * utilities. For example:
+   * Calls `fn` until it resolves or `timeout` passes, then rethrows the last
+   * error `fn` threw, prefixed with what was being waited for and how many
+   * attempts it took. The error keeps its type, so a chai diff or a WebDriver
+   * error name still shows.
    *
-   * await driver.wait(until.elementLocated(By.xpath(xpath)), 5000);
-   *
-   * There's also 'waitForAttributeValue'.
+   * Only for functions that are safe to repeat: reads and element lookups.
+   * Never wrap a click, keystroke or command whose effect may already have
+   * happened when it throws.
    */
   public static async waitForSuccess<T>(
-    locatorFn: () => Promise<T>,
+    fn: () => Promise<T>,
     timeout: number = DEFAULT_TIMEOUT.MD,
     interval: number = 500,
+    description?: string,
   ): Promise<T> {
-    const startTime = Date.now();
+    const start = Date.now();
+    const deadline = start + timeout;
+    let attempts = 0;
+    let lastError: unknown;
 
-    while (Date.now() - startTime < timeout) {
+    while (true) {
+      attempts++;
       try {
-        const result = await locatorFn();
-        return result;
+        return await TestUtils.withDeadline(fn(), deadline);
       } catch (e) {
-        if (Date.now() - startTime >= timeout) {
-          throw new Error(
-            `Element not found after ${timeout}ms timeout: ${locatorFn}`,
-          );
-        }
+        lastError = e;
       }
-      await new Promise((resolve) => setTimeout(resolve, interval));
+      if (Date.now() + interval >= deadline) break;
+      await TestUtils.waitForTimeout(interval);
     }
 
-    throw new Error(
-      `Element not found after ${timeout}ms timeout: ${locatorFn}`,
-    );
-  }
-
-  public static async logFailure<T>(locatorFn: () => Promise<T>): Promise<T> {
-    try {
-      const result = await locatorFn();
-      return result;
-    } catch (e) {
-      throw new Error(`Element not found: ${locatorFn}`);
+    const prefix = `[waited ${Date.now() - start}ms, ${attempts} attempt${attempts === 1 ? "" : "s"}${description ? `: ${description}` : ""}] `;
+    if (lastError instanceof Error) {
+      lastError.message = prefix + lastError.message;
+      throw lastError;
     }
+    throw new Error(prefix + String(lastError));
   }
 
+  /**
+   * Rejects when `deadline` passes before `promise` settles. The abandoned
+   * WebDriver call keeps running; this only stops the wait from overrunning.
+   */
+  private static withDeadline<T>(promise: Promise<T>, deadline: number) {
+    promise.catch(() => undefined);
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () =>
+          reject(new Error("The attempt was still running at the deadline")),
+        Math.max(deadline - Date.now(), 0),
+      );
+    });
+    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+  }
+
+  /**
+   * Fails if `locatorFn` finds the element at any point within `timeout`.
+   * Only Selenium's NoSuchElementError counts as "absent"; any other error is
+   * rethrown. Call it after a positive wait for the settled page, or it can
+   * pass before the element would have appeared.
+   */
   public static async expectNoElement<T>(
     locatorFn: () => Promise<T>,
     timeout: number = 1000,
     interval: number = 200,
   ): Promise<void> {
-    const startTime = Date.now();
-    let elementFound = false;
-
-    while (Date.now() - startTime < timeout) {
+    const deadline = Date.now() + timeout;
+    while (Date.now() < deadline) {
+      let element: T | undefined;
       try {
-        const element = await locatorFn();
-        console.log("ELEMENT", element);
-        if (element) {
-          elementFound = true;
-          break;
-        }
+        element = await locatorFn();
       } catch (e) {
-        // Continue if there's an error (element not found)
+        if ((e as Error)?.name !== "NoSuchElementError") throw e;
       }
-      await new Promise((resolve) => setTimeout(resolve, interval));
+      expect(element, "an element that should be absent was found").to.not.be
+        .ok;
+      await TestUtils.waitForTimeout(interval);
     }
-
-    expect(elementFound).to.be.false;
   }
 
   public static generateTestMessagePair(id: number = 0): {

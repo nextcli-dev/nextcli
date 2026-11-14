@@ -1,7 +1,8 @@
 import { expect } from "chai";
-import { TextEditor, VSBrowser, Workbench } from "vscode-extension-tester";
+import { TextEditor, VSBrowser } from "vscode-extension-tester";
 
 import { DEFAULT_TIMEOUT } from "../constants";
+import { GlobalActions } from "./Global.actions";
 import { AutocompleteSelectors } from "../selectors/Autocomplete.selectors";
 import { TestUtils } from "../TestUtils";
 
@@ -34,7 +35,7 @@ export class AutocompleteActions {
     await editor.setText("def main():\n    ");
     await editor.moveCursor(2, 5);
 
-    await new Workbench().executeCommand("Continue: Force Autocomplete");
+    await GlobalActions.runCommand("continue.forceAutocomplete");
 
     const ghostText = await TestUtils.waitForSuccess(() =>
       AutocompleteSelectors.getGhostTextContent(VSBrowser.instance.driver),
