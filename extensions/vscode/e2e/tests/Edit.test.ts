@@ -1,6 +1,7 @@
-import { expect } from "chai";
 import * as fs from "fs";
 import * as path from "path";
+
+import { expect } from "chai";
 import { beforeEach, TextEditor, WebView } from "vscode-extension-tester";
 
 import "../Baseline";

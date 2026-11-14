@@ -61,7 +61,9 @@ before(async function () {
  * screenshot doesn't show it.
  */
 afterEach(async function (this: Mocha.Context) {
-  if (this.currentTest?.state !== "failed") return;
+  if (this.currentTest?.state !== "failed") {
+    return;
+  }
   try {
     const driver = VSBrowser.instance.driver;
     await driver.switchTo().defaultContent();

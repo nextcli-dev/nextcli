@@ -24,7 +24,9 @@ export class AutocompleteSelectors {
         texts.push(await element.getText());
       } catch (e) {
         // Removed between finding and reading it: not on screen
-        if ((e as Error)?.name !== "StaleElementReferenceError") throw e;
+        if ((e as Error)?.name !== "StaleElementReferenceError") {
+          throw e;
+        }
       }
     }
     return texts.join("");

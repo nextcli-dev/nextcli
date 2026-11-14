@@ -1,7 +1,7 @@
-import { expect } from "chai";
 import * as fs from "fs";
 import * as path from "path";
 
+import { expect } from "chai";
 import {
   By,
   InputBox,
@@ -75,7 +75,9 @@ export class GlobalActions {
   /** The label(s) the command palette can show for a command ID */
   public static commandLabel(commandId: string): string | string[] {
     const builtin = BUILTIN_COMMAND_LABELS[commandId];
-    if (builtin) return builtin;
+    if (builtin) {
+      return builtin;
+    }
 
     const manifest = JSON.parse(
       fs.readFileSync(path.resolve("package.json"), "utf8"),
@@ -179,7 +181,9 @@ export class GlobalActions {
     try {
       await pick.select();
     } catch (e) {
-      if (CLICK_NOT_DELIVERED.has((e as Error)?.name)) throw e;
+      if (CLICK_NOT_DELIVERED.has((e as Error)?.name)) {
+        throw e;
+      }
       throw TestUtils.doNotRetry(e);
     }
   }
