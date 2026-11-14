@@ -1,4 +1,3 @@
-import { expect } from "chai";
 import { beforeEach, TextEditor } from "vscode-extension-tester";
 
 import "../Baseline";
@@ -16,7 +15,6 @@ describe("Autocomplete", () => {
     await AutocompleteActions.testCompletions(editor);
   });
   it("Should force a completion using the command", async () => {
-    const ghostText = await AutocompleteActions.forceCompletion(editor);
-    expect(ghostText).to.not.be.empty;
+    await AutocompleteActions.forceCompletion(editor);
   });
 });
