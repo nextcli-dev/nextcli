@@ -6,7 +6,7 @@ import {
   PlusIcon,
 } from "@heroicons/react/24/outline";
 import { getMetaKeyLabel } from "../../util";
-import { useFontSize } from "../ui";
+import { useFontSize } from "../ui/font";
 import { Divider } from "../ui/Divider";
 
 export interface ModelListOption {

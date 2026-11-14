@@ -6,12 +6,12 @@ import {
 import React from "react";
 import ToggleSwitch from "../../../components/gui/Switch";
 import { ToolTip } from "../../../components/gui/Tooltip";
+import { Listbox } from "@headlessui/react";
 import {
-  Listbox,
   ListboxButton,
   ListboxOption,
   ListboxOptions,
-} from "../../../components/ui";
+} from "../../../components/ui/Listbox";
 
 interface BaseUserSettingProps {
   title: string;
