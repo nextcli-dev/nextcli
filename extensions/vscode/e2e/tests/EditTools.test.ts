@@ -1,31 +1,31 @@
 import { expect } from "chai";
 import * as fs from "fs";
 import * as path from "path";
-import { after, before, WebView } from "vscode-extension-tester";
+import { beforeEach } from "vscode-extension-tester";
 
 import "../Baseline";
 import { GlobalActions } from "../actions/Global.actions";
 import { GUIActions } from "../actions/GUI.actions";
 import { DEFAULT_TIMEOUT } from "../constants";
+import { EditSelectors } from "../selectors/Edit.selectors";
 import { GUISelectors } from "../selectors/GUI.selectors";
 import { TestUtils } from "../TestUtils";
 
-// Files the EDIT TOOLS MOCK LLM (test-continue/config.json and
-// test-continue-yaml/config.yaml) edits, by paths relative to the workspace
+/**
+ * The agent's edit tools on files with CRLF line endings (#7909), end to
+ * end: the EDIT TOOLS MOCK LLM (test-continue/config.json and
+ * test-continue-yaml/config.yaml) sends LF tool arguments for
+ * single_find_and_replace and then edit_existing_file. Each tool shows
+ * its edit as a diff to accept, which the test does, as a user would. The line-ending logic itself is unit-tested in core
+ * (executeFindAndReplace, applyCodeBlock) and handler.vitest.ts; this
+ * checks a real document saved to disk.
+ */
 const FIXTURES = path.resolve(GlobalActions.defaultFolder, "edit-fixtures");
 const CRLF_FILE = path.join(FIXTURES, "crlf.js");
 const CRLF_REWRITE_FILE = path.join(FIXTURES, "crlf-rewrite.js");
 
-/** Every line break is CRLF */
-function expectCrlfOnly(text: string) {
-  expect(text).to.include("\r\n");
-  expect(text).not.to.match(/[^\r]\n|\r(?!\n)/);
-}
-
 describe("Edit tools on CRLF files", () => {
-  let view: WebView;
-
-  before(async function () {
+  beforeEach(async function () {
     fs.mkdirSync(FIXTURES, { recursive: true });
     fs.writeFileSync(
       CRLF_FILE,
@@ -35,54 +35,64 @@ describe("Edit tools on CRLF files", () => {
       CRLF_REWRITE_FILE,
       "function mul(a, b) {\r\n  return a * b;\r\n}\r\n\r\nmodule.exports = { mul };\r\n",
     );
-
-    await GlobalActions.clearAllNotifications();
-    await GUIActions.toggleGui();
-    ({ view } = await GUIActions.switchToReactIframe());
-    await GUIActions.selectModelFromDropdown(view, "EDIT TOOLS MOCK LLM");
-    await GUIActions.selectModeFromDropdown(view, "Agent");
-    // Automatic, so each edit is applied and accepted without a click
-    view = await GUIActions.toggleToolPolicy(
-      view,
-      "single_find_and_replace",
-      "Automatic",
-    );
-    view = await GUIActions.toggleToolPolicy(
-      view,
-      "edit_existing_file",
-      "Automatic",
-    );
-  });
-
-  after(() => {
-    fs.rmSync(FIXTURES, { recursive: true, force: true });
   });
 
   it("edits with LF tool arguments and keeps the files CRLF", async () => {
+    let { view } = await GUIActions.open();
+    await GUIActions.useModel(view, "EDIT TOOLS MOCK LLM");
+    await GUIActions.useMode(view, "Agent");
     await GUIActions.sendMessage({
       view,
       message: "Edit the fixtures",
       inputFieldIndex: 0,
     });
+
+    for (const toolCallId of ["edit_1", "edit_2"]) {
+      ({ view } = await GUIActions.open());
+      // An edit tool applies its change as a diff right away; accepting the
+      // diff is how the user approves it
+      const acceptDiff = await TestUtils.waitForSuccess(
+        () => EditSelectors.getEditAcceptButton(view),
+        DEFAULT_TIMEOUT.MD,
+        250,
+        `the diff of ${toolCallId}`,
+      );
+      await acceptDiff.click();
+      await TestUtils.waitForSuccess(
+        async () => {
+          expect(
+            await view.findWebElements(EditSelectors.editAcceptButtonLocator),
+          ).to.have.length(0);
+        },
+        DEFAULT_TIMEOUT.MD,
+        250,
+        `the diff of ${toolCallId} to close`,
+      );
+    }
+
+    ({ view } = await GUIActions.open());
     await TestUtils.waitForSuccess(
       () => GUISelectors.getThreadMessageByText(view, "EDITS DONE"),
-      DEFAULT_TIMEOUT.XL,
+      DEFAULT_TIMEOUT.MD,
+      250,
+      "the turn after both edits",
     );
 
-    await view.switchBack();
     await GlobalActions.runCommand("workbench.action.files.saveAll");
-
-    await TestUtils.waitForSuccess(async () => {
-      // single_find_and_replace with an LF old_string and new_string
-      const edited = fs.readFileSync(CRLF_FILE, "utf8");
-      expect(edited).to.include("  // subtract\r\n  return a - b;");
-      expectCrlfOnly(edited);
-
-      // edit_existing_file rewriting the whole file with LF code
-      const rewritten = fs.readFileSync(CRLF_REWRITE_FILE, "utf8");
-      expect(rewritten).to.equal(
-        "function mul(a, b) {\r\n  // multiply\r\n  return a * b;\r\n}\r\n\r\nmodule.exports = { mul };\r\n",
-      );
-    }, DEFAULT_TIMEOUT.MD);
+    await TestUtils.waitForSuccess(
+      async () => {
+        // single_find_and_replace with an LF old_string and new_string
+        expect(fs.readFileSync(CRLF_FILE, "utf8")).to.equal(
+          "function add(a, b) {\r\n  return a + b;\r\n}\r\n\r\nfunction sub(a, b) {\r\n  // subtract\r\n  return a - b;\r\n}\r\n",
+        );
+        // edit_existing_file rewriting the whole file with LF code
+        expect(fs.readFileSync(CRLF_REWRITE_FILE, "utf8")).to.equal(
+          "function mul(a, b) {\r\n  // multiply\r\n  return a * b;\r\n}\r\n\r\nmodule.exports = { mul };\r\n",
+        );
+      },
+      DEFAULT_TIMEOUT.MD,
+      250,
+      "the edited files on disk",
+    );
   });
 });
