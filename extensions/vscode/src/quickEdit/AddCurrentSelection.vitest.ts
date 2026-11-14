@@ -1,13 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const FILE_PATH = "/workspace/a.ts";
 const FILE_URI = "file:///workspace/a.ts";
 
 // The code under test replaces editor.selection, so each test gets a new one
 function newEditor() {
   return {
     document: {
-      fileName: FILE_PATH,
       uri: { toString: () => FILE_URI },
       lineAt: () => ({ range: { end: { character: 5 } } }),
     },
@@ -60,11 +58,6 @@ vi.mock("../util/addCode", () => ({
     },
   })),
 }));
-
-vi.mock("./EditDecorationManager", () => ({ default: class {} }));
-vi.mock("./QuickEditQuickPick", () => ({}));
-vi.mock("../diff/vertical/manager", () => ({}));
-vi.mock("../webviewProtocol", () => ({}));
 
 import { addCurrentSelectionToEdit } from "./AddCurrentSelection";
 
