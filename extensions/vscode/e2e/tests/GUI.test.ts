@@ -11,8 +11,8 @@ import { TestUtils } from "../TestUtils";
 /**
  * Smoke tests of the chat GUI inside a real VS Code: what needs the
  * webview, keyboard focus or VS Code's commands. The chat behavior itself
- * (deleting and editing messages, tool call approval, status text, rules,
- * input history) is unit-tested in gui/ with Vitest.
+ * (deleting and editing messages, tool call approval, status text, the
+ * rules peek, input history) is unit-tested in gui/ with Vitest.
  */
 describe("GUI", () => {
   let view: WebView;
@@ -68,6 +68,15 @@ describe("GUI", () => {
       250,
       "the turn to finish",
     );
+  });
+
+  it("sends the configured rules to the model as the system message", async () => {
+    // Replies with the system message it received. TEST_SYS_MSG is the
+    // config's rule (systemMessage in config.json, rules in config.yaml)
+    await GUIActions.useModel(view, "SYSTEM MESSAGE MOCK LLM");
+    await GUIActions.useMode(view, "Chat");
+    await (await GUISelectors.getMainInput(view)).sendKeys("Hello", Key.ENTER);
+    await waitForReply("TEST_SYS_MSG");
   });
 
   it("reopens a session from History and continues it", async () => {
