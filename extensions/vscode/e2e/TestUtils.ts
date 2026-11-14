@@ -52,9 +52,13 @@ export class TestUtils {
         if (!(e as { [DEADLINE]?: boolean })?.[DEADLINE] || !lastError) {
           lastError = e;
         }
-        if ((e as { [NO_RETRY]?: boolean })?.[NO_RETRY]) break;
+        if ((e as { [NO_RETRY]?: boolean })?.[NO_RETRY]) {
+          break;
+        }
       }
-      if (Date.now() + interval >= deadline) break;
+      if (Date.now() + interval >= deadline) {
+        break;
+      }
       await TestUtils.waitForTimeout(interval);
     }
 
@@ -105,7 +109,9 @@ export class TestUtils {
       try {
         element = await locatorFn();
       } catch (e) {
-        if ((e as Error)?.name !== "NoSuchElementError") throw e;
+        if ((e as Error)?.name !== "NoSuchElementError") {
+          throw e;
+        }
       }
       expect(element, "an element that should be absent was found").to.not.be
         .ok;

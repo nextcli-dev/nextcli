@@ -11,6 +11,7 @@ import {
 import { DEFAULT_TIMEOUT } from "../constants";
 import { GUISelectors } from "../selectors/GUI.selectors";
 import { TestUtils } from "../TestUtils";
+
 import { GlobalActions } from "./Global.actions";
 
 export class GUIActions {
@@ -89,7 +90,9 @@ export class GUIActions {
 
   /** Hides the GUI if it's shown. Leaves the driver in the top-level frame. */
   public static async close() {
-    if (!(await GUIActions.isOpen())) return;
+    if (!(await GUIActions.isOpen())) {
+      return;
+    }
     await GlobalActions.runCommand("workbench.action.closeAuxiliaryBar");
     await TestUtils.waitForSuccess(
       async () => {
@@ -116,7 +119,9 @@ export class GUIActions {
       await button.click();
     }
     const [stopButton] = await GUISelectors.getStopStreamingButtons(view);
-    if (!stopButton) return false;
+    if (!stopButton) {
+      return false;
+    }
     await stopButton.click();
     await TestUtils.waitForSuccess(
       async () => {
@@ -294,7 +299,9 @@ export class GUIActions {
           "return document.activeElement === arguments[0];",
           element,
         );
-        if (!focused) throw new Error(`${what} doesn't have focus`);
+        if (!focused) {
+          throw new Error(`${what} doesn't have focus`);
+        }
       },
       DEFAULT_TIMEOUT.SM,
       100,

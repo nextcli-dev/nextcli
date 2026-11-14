@@ -654,7 +654,7 @@
     "tsc": "tsc -p ./",
     "tsc:check": "tsc -p ./ --noEmit",
     "tsc-watch": "tsc -watch -p ./",
-    "lint": "eslint src",
+    "lint": "eslint src e2e",
     "lint:fix": "eslint . --fix",
     "test": "vitest run",
     "vitest": "vitest run",
