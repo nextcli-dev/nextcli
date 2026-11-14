@@ -26,8 +26,11 @@ if (target) {
   command += ` --target ${target}`;
 }
 
-exec(command, (error) => {
+exec(command, (error, stdout, stderr) => {
   if (error) {
+    // Show vsce's own output; the error alone only says "Command failed".
+    if (stdout) console.error(stdout);
+    if (stderr) console.error(stderr);
     throw error;
   }
   console.log(
