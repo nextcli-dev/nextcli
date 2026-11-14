@@ -38,7 +38,7 @@ models:
                   type: function
                   function:
                     name: view_diff
-          - REPEAT_LAST_MSG
+          - - REPEAT_LAST_MSG
     roles:
       - chat
       - edit

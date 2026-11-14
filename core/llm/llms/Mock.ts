@@ -15,7 +15,18 @@ class MockLLM extends BaseLLM {
   constructor(options: LLMOptions) {
     super(options);
     this.templateMessages = undefined;
-    this.chatStreams = options.requestOptions?.extraBodyProperties?.chatStream;
+    const chatStreams = options.requestOptions?.extraBodyProperties?.chatStream;
+    // Each turn is a list of messages. A bare string, as in YAML's
+    // `- REPEAT_LAST_MSG` where `- - REPEAT_LAST_MSG` was meant, would be
+    // streamed one character at a time.
+    chatStreams?.forEach((turn: unknown, index: number) => {
+      if (!Array.isArray(turn)) {
+        throw new Error(
+          `Mock model "${options.title ?? options.model}": chatStream turn ${index} must be a list of messages, got ${JSON.stringify(turn)}`,
+        );
+      }
+    });
+    this.chatStreams = chatStreams;
   }
 
   protected async *_streamComplete(
