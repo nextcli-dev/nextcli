@@ -8,6 +8,10 @@ name: CI
 #   - add the `ci:full` label to the pull request and push, or
 #   - run this workflow manually on the branch (Actions > CI > Run workflow).
 # A weekly scheduled run on main runs everything as a safety net for the narrowed test selection.
+#
+# The `e2e:stress` label (add it, then push) runs every VS Code e2e test
+# file 20 times per config. A new or re-enabled e2e test needs a green
+# stress run before it counts as working.
 on:
   pull_request:
     branches: [main]
@@ -291,6 +295,7 @@ jobs:
     timeout-minutes: 15
     outputs:
       test_file_matrix: ${{ steps.files.outputs.test_file_matrix }}
+      runs: ${{ steps.files.outputs.runs }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -327,12 +332,19 @@ jobs:
         id: files
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          STRESS: ${{ contains(github.event.pull_request.labels.*.name, 'e2e:stress') }}
         run: |
           node ./scripts/build-packages.js
           cd extensions/vscode
           npm ci
           npm run e2e:compile
           FILES=$(ls -1 e2e/_output/tests/*.test.js | jq -R . | jq -s -c .)
+          if [ "$STRESS" = "true" ]; then
+            RUNS=$(seq 1 20 | jq -s -c .)
+          else
+            RUNS="[1]"
+          fi
+          echo "runs=$RUNS" >> "$GITHUB_OUTPUT"
           echo "test_file_matrix=$FILES" >> "$GITHUB_OUTPUT"
           echo "Test files: $FILES"
 
@@ -377,7 +389,7 @@ jobs:
           retention-days: 7
 
   vscode-e2e:
-    name: e2e ${{ matrix.test_file }} (${{ matrix.command }})
+    name: e2e ${{ matrix.test_file }} (${{ matrix.command }})${{ matrix.run > 1 && format(' run {0}', matrix.run) || '' }}
     needs: [vscode-e2e-matrix, vscode-build-linux]
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -386,6 +398,7 @@ jobs:
       matrix:
         test_file: ${{ fromJson(needs.vscode-e2e-matrix.outputs.test_file_matrix) }}
         command: ["e2e:ci:run", "e2e:ci:run-yaml"]
+        run: ${{ fromJson(needs.vscode-e2e-matrix.outputs.runs) }}
     steps:
       - uses: actions/checkout@v7
       - name: Create GitHub App token
@@ -400,6 +413,7 @@ jobs:
         with:
           test_file: ${{ matrix.test_file }}
           command: ${{ matrix.command }}
+          run: ${{ matrix.run }}
           github_token: ${{ steps.app-token.outputs.token }}
 
   cli-lint:

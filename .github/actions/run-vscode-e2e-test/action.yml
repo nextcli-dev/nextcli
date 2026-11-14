@@ -7,6 +7,10 @@ inputs:
   command:
     description: "Command to run (e2e:ci:run or e2e:ci:run-yaml)"
     required: true
+  run:
+    description: "Run number, when the e2e:stress label repeats each test"
+    required: false
+    default: "1"
   github_token:
     description: "GitHub token for authenticated API requests (e.g., @vscode/ripgrep download)"
     required: false
@@ -19,13 +23,16 @@ runs:
       with:
         node-version-file: ".nvmrc"
 
-    # The VS Code version the e2e tests download and select locators for.
-    # Cached storage must match it: run-tests with locators for one version
-    # against a cached binary of another fails in every hook.
-    - name: Read the e2e VS Code version
+    # The VS Code version the e2e tests download and select locators for, and
+    # the ExTester version, which picks the matching ChromeDriver. The cached
+    # downloads must match both: locators for one VS Code version against a
+    # binary of another fail in every hook.
+    - name: Read the e2e VS Code and ExTester versions
       id: e2e-vscode
       shell: bash
-      run: echo "version=$(node -p "require('./extensions/vscode/package.json').config.e2eVscodeVersion")" >> "$GITHUB_OUTPUT"
+      run: |
+        echo "version=$(node -p "require('./extensions/vscode/package.json').config.e2eVscodeVersion")" >> "$GITHUB_OUTPUT"
+        echo "extester=$(node -p "require('./extensions/vscode/package-lock.json').packages['node_modules/vscode-extension-tester'].version")" >> "$GITHUB_OUTPUT"
 
     - uses: actions/cache@v6
       id: vscode-node-modules-cache
@@ -33,11 +40,14 @@ runs:
         path: extensions/vscode/node_modules
         key: ${{ runner.os }}-vscode-node-modules-${{ hashFiles('extensions/vscode/package-lock.json') }}
 
-    - uses: actions/cache@v6
+    # Only the VS Code and ChromeDriver downloads are cached; the cache is
+    # saved right after downloading (below), before any test writes into
+    # e2e/storage, so a job whose tests fail still fills it.
+    - uses: actions/cache/restore@v6
       id: storage-cache
       with:
         path: extensions/vscode/e2e/storage
-        key: ${{ runner.os }}-vscode-storage-${{ steps.e2e-vscode.outputs.version }}-${{ hashFiles('extensions/vscode/package-lock.json') }}
+        key: ${{ runner.os }}-vscode-${{ steps.e2e-vscode.outputs.version }}-extester-${{ steps.e2e-vscode.outputs.extester }}
 
     - name: Download build artifact
       uses: actions/download-artifact@v8
@@ -61,6 +71,13 @@ runs:
         fi
       env:
         GITHUB_TOKEN: ${{ inputs.github_token }}
+
+    - name: Save the VS Code and ChromeDriver downloads
+      if: steps.storage-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v6
+      with:
+        path: extensions/vscode/e2e/storage
+        key: ${{ steps.storage-cache.outputs.cache-primary-key }}
 
     - name: Fix VSCode binary permissions
       shell: bash
@@ -94,7 +111,7 @@ runs:
       if: failure()
       uses: actions/upload-artifact@v7
       with:
-        name: e2e-failure-${{ steps.sanitize_filename.outputs.sanitized_test_file || 'unknown' }}-${{ inputs.command == 'e2e:ci:run-yaml' && 'yaml' || 'json' }}
+        name: e2e-failure-${{ steps.sanitize_filename.outputs.sanitized_test_file || 'unknown' }}-${{ inputs.command == 'e2e:ci:run-yaml' && 'yaml' || 'json' }}-run${{ inputs.run }}
         path: |
           extensions/vscode/e2e/storage/screenshots
           extensions/vscode/e2e/storage/settings/logs
