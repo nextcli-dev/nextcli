@@ -7,6 +7,7 @@ import {
   TextEditor,
 } from "vscode-extension-tester";
 
+import "../Baseline";
 import { AutocompleteActions } from "../actions/Autocomplete.actions";
 import { GlobalActions } from "../actions/Global.actions";
 

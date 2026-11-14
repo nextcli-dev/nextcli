@@ -3,6 +3,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { after, before, VSBrowser, WebView } from "vscode-extension-tester";
 
+import "../Baseline";
 import { GlobalActions } from "../actions/Global.actions";
 import { GUIActions } from "../actions/GUI.actions";
 import { DEFAULT_TIMEOUT } from "../constants";

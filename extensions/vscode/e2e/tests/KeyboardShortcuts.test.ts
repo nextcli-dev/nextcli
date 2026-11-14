@@ -13,6 +13,7 @@ import {
   WebView,
 } from "vscode-extension-tester";
 
+import "../Baseline";
 import { GlobalActions } from "../actions/Global.actions";
 import { GUIActions } from "../actions/GUI.actions";
 import { KeyboardShortcutsActions } from "../actions/KeyboardShortcuts.actions";

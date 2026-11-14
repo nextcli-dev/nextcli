@@ -1,3 +1,4 @@
+import { expect } from "chai";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -46,11 +47,25 @@ const BUILTIN_COMMAND_LABELS: Record<string, string | string[]> = {
 const COMMAND_ID = /^[\w-]+(\.[\w-]+)+$/;
 
 export class GlobalActions {
-  static defaultFolder = "e2e/test-continue";
+  /** The workspace folder; e2e:test opens it when VS Code starts */
+  static defaultFolder = "e2e/fixture-workspace";
   public static defaultNewFilename = "test.py";
 
+  /**
+   * Fails unless the window shows the fixture workspace. It is opened at
+   * launch only: opening it later goes through VS Code's CLI, which can
+   * drop the request and leave the tests running with no folder.
+   */
+  public static async expectTestWorkspaceOpen() {
+    const title = await VSBrowser.instance.driver.getTitle();
+    expect(
+      title,
+      `window title; is ${GlobalActions.defaultFolder} open?`,
+    ).to.include(path.basename(GlobalActions.defaultFolder));
+  }
+
   public static async openTestWorkspace() {
-    await VSBrowser.instance.openResources(GlobalActions.defaultFolder);
+    await GlobalActions.expectTestWorkspaceOpen();
     await GlobalActions.clearAllNotifications();
   }
 

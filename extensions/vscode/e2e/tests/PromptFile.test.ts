@@ -8,6 +8,7 @@ import {
   TextEditor,
 } from "vscode-extension-tester";
 
+import "../Baseline";
 import { GlobalActions } from "../actions/Global.actions";
 
 describe("Prompt file", () => {

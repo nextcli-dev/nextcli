@@ -9,6 +9,7 @@ import {
   WebView,
 } from "vscode-extension-tester";
 
+import "../Baseline";
 import { EditActions } from "../actions/Edit.actions";
 import { GlobalActions } from "../actions/Global.actions";
 import { GUIActions } from "../actions/GUI.actions";

@@ -98,19 +98,15 @@ runs:
         ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
         echo -e "Host ssh-test-container\n\tHostName $SSH_HOST\n\tUser ec2-user\n\tIdentityFile ~/.ssh/id_rsa" >> ~/.ssh/config
 
-    - name: Set up Xvfb
-      shell: bash
-      run: |
-        Xvfb :99 &
-        export DISPLAY=:99
-
+    # xvfb-run waits for the X server before it starts the tests. The screen
+    # is larger than the 1200x800 window e2e/Baseline.ts checks for.
     - name: Run e2e tests
       shell: bash
       run: |
         cd extensions/vscode
-        IGNORE_SSH_TESTS="${{ inputs.is_fork }}" TEST_FILE="${{ inputs.test_file }}" npm run ${{ inputs.command }}
-      env:
-        DISPLAY: :99
+        IGNORE_SSH_TESTS="${{ inputs.is_fork }}" TEST_FILE="${{ inputs.test_file }}" \
+          xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
+          npm run ${{ inputs.command }}
 
     - name: Delete continue from test extensions
       shell: bash
