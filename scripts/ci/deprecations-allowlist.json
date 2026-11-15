@@ -1,4 +1,9 @@
 {
   "$comment": "Known deprecated npm packages, read by scripts/ci/check-deprecations.mjs. Each entry names the phase of the dependency-upgrade plan that removes it. Delete an entry when its fix lands; --strict fails on entries that no longer match anything. Omit `version` to allow every version of a package.",
-  "entries": []
+  "entries": [
+    {
+      "name": "@secretlint/secretlint-rule-preset-recommend",
+      "fix": "extensions/vscode dev tooling only: @vscode/vsce (also via ovsx and vscode-extension-tester) -> preset-recommend ^10.2.2, still in vsce 4.1.1. Waits for vsce to move to secretlint 14, where the preset is built in"
+    }
+  ]
 }
