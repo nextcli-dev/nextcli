@@ -164,31 +164,103 @@ function render(catalog, syncedAt) {
   return lines.join("\n");
 }
 
-/** Model ids added and removed since the last snapshot, per provider */
-function summarize(previousText, catalog) {
+/** The models of a previous snapshot, read back from its one-model lines */
+function parseSnapshot(text) {
   const previous = new Map();
   let provider;
-  for (const line of previousText.split("\n")) {
+  for (const line of text.split("\n")) {
     const providerMatch = line.match(/^ {2}"([^"]+)": \{$/);
     if (providerMatch) {
       provider = providerMatch[1];
-      previous.set(provider, new Set());
+      previous.set(provider, new Map());
       continue;
     }
-    const modelMatch = line.match(/^ {4}"([^"]+)":/);
-    if (modelMatch && provider) previous.get(provider).add(modelMatch[1]);
-  }
-  for (const [id, models] of Object.entries(catalog)) {
-    const before = previous.get(id) ?? new Set();
-    const now = new Set(Object.keys(models));
-    const added = [...now].filter((m) => !before.has(m));
-    const removed = [...before].filter((m) => !now.has(m));
-    if (added.length || removed.length) {
-      console.log(`${id}: +${added.length} -${removed.length}`);
-      for (const m of added) console.log(`  + ${m}`);
-      for (const m of removed) console.log(`  - ${m}`);
+    const modelMatch = line.match(/^ {4}("[^"]+"): (\{.*\}),$/);
+    if (modelMatch && provider) {
+      previous
+        .get(provider)
+        .set(JSON.parse(modelMatch[1]), JSON.parse(modelMatch[2]));
     }
   }
+  return previous;
+}
+
+const PRICE_FIELDS = ["input", "output", "cacheRead", "cacheWrite"];
+const LIMIT_FIELDS = ["context", "input", "output"];
+
+/** "input 5 → 10" for each price that moved by more than 10% */
+function priceChanges(label, before, after) {
+  const changes = [];
+  for (const field of PRICE_FIELDS) {
+    const from = before?.[field];
+    const to = after?.[field];
+    if (from === to) continue;
+    const moved =
+      from === undefined || to === undefined || from === 0
+        ? true
+        : Math.abs(to - from) / from > 0.1;
+    if (moved) changes.push(`${label}${field} ${from ?? "-"} → ${to ?? "-"}`);
+  }
+  return changes;
+}
+
+/**
+ * What a sync changes in requests and prices, per model: the review list
+ * for a sync PR. Efforts, "none" (Off) and fast mode change what requests
+ * send; limits change the context offered; prices change cost limits.
+ */
+function modelChanges(before, after) {
+  const changes = [];
+  const efforts = (model) => JSON.stringify(model.efforts ?? []);
+  if (efforts(before) !== efforts(after)) {
+    changes.push(`efforts ${efforts(before)} → ${efforts(after)}`);
+  }
+  if (!!before.fast !== !!after.fast) {
+    changes.push(after.fast ? "fast mode added" : "fast mode removed");
+  }
+  changes.push(...priceChanges("", before.cost, after.cost));
+  changes.push(...priceChanges("fast ", before.fast?.cost, after.fast?.cost));
+  for (const field of LIMIT_FIELDS) {
+    if (before[field] !== after[field]) {
+      changes.push(`${field} ${before[field] ?? "-"} → ${after[field] ?? "-"}`);
+    }
+  }
+  if (!!before.reasoning !== !!after.reasoning) {
+    changes.push(after.reasoning ? "now reasons" : "no longer reasons");
+  }
+  return changes;
+}
+
+/**
+ * Prints what changed since the last snapshot, per provider: models added
+ * and removed, and for kept models every change modelChanges reports
+ */
+function summarize(previousText, catalog) {
+  const previous = parseSnapshot(previousText);
+  let changed = 0;
+  for (const [id, models] of Object.entries(catalog)) {
+    const before = previous.get(id) ?? new Map();
+    const lines = [];
+    for (const modelId of Object.keys(models)) {
+      if (!before.has(modelId)) lines.push(`  + ${modelId}`);
+    }
+    for (const modelId of before.keys()) {
+      if (!(modelId in models)) lines.push(`  - ${modelId}`);
+    }
+    for (const [modelId, model] of Object.entries(models)) {
+      const old = before.get(modelId);
+      if (!old) continue;
+      for (const change of modelChanges(old, model)) {
+        lines.push(`  ~ ${modelId}: ${change}`);
+      }
+    }
+    if (lines.length) {
+      changed += lines.length;
+      console.log(`${id}:`);
+      for (const line of lines) console.log(line);
+    }
+  }
+  if (!changed) console.log("No model changes.");
 }
 
 const source = await loadCatalog(process.argv[2]);

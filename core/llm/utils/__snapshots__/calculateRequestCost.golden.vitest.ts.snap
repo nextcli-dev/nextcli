@@ -1,0 +1,117 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`prices of popular models > match the reviewed snapshot 1`] = `
+{
+  "anthropic claude-haiku-5-5": {
+    "cost": 0.0044,
+    "priced": "exact",
+  },
+  "anthropic claude-opus-5-5": {
+    "cost": 0.168,
+    "priced": "exact",
+  },
+  "anthropic claude-sonnet-4-5": {
+    "cost": 0.132,
+    "priced": "exact",
+  },
+  "anthropic claude-sonnet-5-5": {
+    "cost": 0.084,
+    "priced": "exact",
+  },
+  "anthropic claude-sonnet-5-5 @ https://llm-proxy.example.com": {
+    "cost": 0.084,
+    "priced": "estimated",
+  },
+  "deepseek deepseek-v4-pro": {
+    "cost": 0.022,
+    "priced": "catalog",
+  },
+  "gemini gemini-3.5-flash": {
+    "cost": 0.072,
+    "priced": "catalog",
+  },
+  "groq allam-2-7b": null,
+  "groq openai/gpt-oss-120b": {
+    "cost": 0.0084,
+    "priced": "catalog",
+  },
+  "mistral mistral-medium": {
+    "cost": 0.066,
+    "priced": "catalog",
+  },
+  "moonshot kimi-k3": {
+    "cost": 0.132,
+    "priced": "catalog",
+  },
+  "ollama qwen3-coder": null,
+  "oneprovider claude-opus-5-5": {
+    "cost": 0.32,
+    "priced": "exact",
+  },
+  "oneprovider deepseek-v4-pro": {
+    "cost": 0.09504,
+    "priced": "exact",
+  },
+  "openai claude-opus-5-5 @ http://127.0.0.1:8091/v1": {
+    "cost": 0.168,
+    "priced": "estimated",
+  },
+  "openai gpt-4.1": {
+    "cost": 0.092,
+    "priced": "exact",
+  },
+  "openai gpt-4.1-mini": {
+    "cost": 0.0184,
+    "priced": "exact",
+  },
+  "openai gpt-4o-2024-08-06": {
+    "cost": 0.14,
+    "priced": "exact",
+  },
+  "openai gpt-5-pro": {
+    "cost": 1.38,
+    "priced": "exact",
+  },
+  "openai gpt-5.4-mini": {
+    "cost": 0.036,
+    "priced": "exact",
+  },
+  "openai gpt-5.5": {
+    "cost": 0.24,
+    "priced": "exact",
+  },
+  "openai gpt-5.5 @ https://openpaths.io/v1": {
+    "cost": 0.24,
+    "priced": "estimated",
+  },
+  "openai gpt-6.1-terra": {
+    "cost": 0.042,
+    "priced": "exact",
+  },
+  "openai llama-3.3-70b-versatile @ https://api.groq.com/openai/v1": {
+    "cost": 0.03856,
+    "priced": "catalog",
+  },
+  "openai my-private-model @ http://127.0.0.1:8091/v1": null,
+  "openai o3": {
+    "cost": 0.092,
+    "priced": "exact",
+  },
+  "openrouter anthropic/claude-sonnet-4.5": {
+    "cost": 0.132,
+    "priced": "catalog",
+  },
+  "openrouter anthropic/claude-sonnet-4.5:nitro": {
+    "cost": 0.132,
+    "priced": "estimated",
+  },
+  "openrouter deepseek/deepseek-v4-pro": {
+    "cost": 0.034,
+    "priced": "catalog",
+  },
+  "xAI grok-4.7": {
+    "cost": 0.084,
+    "priced": "catalog",
+  },
+}
+`;
