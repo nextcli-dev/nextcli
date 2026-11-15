@@ -1,15 +1,15 @@
 /* eslint-disable @typescript-eslint/naming-convention */
-import { EXTENSION_NAME } from "core/util/constants";
-// @ts-ignore
-import * as vscode from "vscode";
-
 import { DiffChar, DiffLine } from "core";
 import { CodeRenderer } from "core/codeRenderer/CodeRenderer";
 import { myersCharDiff } from "core/diff/myers";
 import { getOffsetPositionAtLastNewLine } from "core/nextEdit/diff/diff";
 import { NextEditLoggingService } from "core/nextEdit/NextEditLoggingService";
 import { NextEditProvider } from "core/nextEdit/NextEditProvider";
+import { EXTENSION_NAME } from "core/util/constants";
+import * as vscode from "vscode";
+
 import { getThemeString } from "../util/getTheme";
+
 import {
   HandlerPriority,
   SelectionChangeManager,
@@ -272,7 +272,7 @@ export class NextEditWindowManager {
       console.debug(
         "deleteChain from NextEditWindowManager.ts: hide next edit command",
       );
-      NextEditProvider.getInstance().deleteChain();
+      NextEditProvider.getInstance().deleteChain().catch(console.error);
       await this.hideAllNextEditWindowsAndResetCompletionId();
     });
     this.registerCommandSafely(
@@ -932,10 +932,11 @@ export class NextEditWindowManager {
     ]);
 
     // Clear the timeout while SVG is on the editor.
-    if (this.currentDecoration && this.mostRecentCompletionId)
+    if (this.currentDecoration && this.mostRecentCompletionId) {
       this.loggingService.cancelRejectionTimeoutButKeepCompletionId(
         this.mostRecentCompletionId,
       );
+    }
   }
 
   private renderDeletions(editor: vscode.TextEditor, oldDiffChars: DiffChar[]) {

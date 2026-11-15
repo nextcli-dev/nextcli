@@ -238,7 +238,9 @@ export function getNextEditMenuItems(
   currentStatus: StatusBarStatus | undefined,
   nextEditEnabled: boolean,
 ): vscode.QuickPickItem[] {
-  if (currentStatus !== StatusBarStatus.Enabled) return [];
+  if (currentStatus !== StatusBarStatus.Enabled) {
+    return [];
+  }
 
   return [
     {
@@ -264,7 +266,7 @@ export function handleNextEditToggle(
 ) {
   const isEnabling = label === USE_NEXT_EDIT_MENU_ITEM_LABEL;
 
-  config.update(
+  void config.update(
     "enableNextEdit",
     isEnabling,
     vscode.ConfigurationTarget.Global,

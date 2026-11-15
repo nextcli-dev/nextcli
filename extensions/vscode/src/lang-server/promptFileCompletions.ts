@@ -264,7 +264,7 @@ export function registerAllPromptFilesCompletionProviders(
           // Delay slightly to ensure the editor updates before triggering suggestions
           setTimeout(() => {
             // Trigger suggestions
-            vscode.commands.executeCommand("editor.action.triggerSuggest");
+            void vscode.commands.executeCommand("editor.action.triggerSuggest");
           }, 50);
         }
       }

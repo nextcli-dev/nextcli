@@ -42,10 +42,9 @@ export default defineConfig([
       "@typescript-eslint/naming-convention": "off",
       // typescript-eslint 8 skips VS Code's Thenable by default; v5 checked it.
       "@typescript-eslint/no-floating-promises": [
-        "warn",
+        "error",
         { checkThenables: true },
       ],
-      "@typescript-eslint/no-misused-promises": "warn",
     },
   },
   {

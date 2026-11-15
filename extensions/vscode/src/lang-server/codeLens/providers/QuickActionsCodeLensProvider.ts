@@ -27,7 +27,7 @@ export function subscribeToVSCodeQuickActionsSettings(listener: Function) {
 export function toggleQuickActions() {
   const curStatus = quickActionsEnabledStatus();
 
-  getContinueWorkspaceConfig().update(ENABLE_QUICK_ACTIONS_KEY, curStatus);
+  void getContinueWorkspaceConfig().update(ENABLE_QUICK_ACTIONS_KEY, curStatus);
 }
 
 export function quickActionsEnabledStatus() {
@@ -131,7 +131,7 @@ export class QuickActionsCodeLensProvider implements vscode.CodeLensProvider {
     const symbols = await this.getTopLevelAndChildrenSymbols(document.uri);
 
     return symbols.flatMap(({ range }) => {
-      const commands: vscode.Command[] = !!this.customQuickActionsConfigs
+      const commands: vscode.Command[] = this.customQuickActionsConfigs
         ? this.getCustomCommands(range, this.customQuickActionsConfigs)
         : this.getDefaultCommand(range);
 

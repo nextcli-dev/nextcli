@@ -17,12 +17,10 @@ import { fontSize, isMetaEquivalentKeyPressed } from "../util";
 import { ROUTES } from "../util/navigation";
 import { FatalErrorIndicator } from "./config/FatalErrorNotice";
 import TextDialog from "./dialogs";
-import { useMainEditor } from "./mainInput/TipTapEditor";
-import {
-  isNewUserOnboarding,
-  OnboardingCard,
-  useOnboardingCard,
-} from "./OnboardingCard";
+import { useMainEditor } from "./mainInput/TipTapEditor/MainEditorProvider";
+import { isNewUserOnboarding } from "./OnboardingCard/utils";
+import { OnboardingCard } from "./OnboardingCard/OnboardingCard";
+import { useOnboardingCard } from "./OnboardingCard/hooks/useOnboardingCard";
 
 const LayoutTopDiv = styled(CustomScrollbarDiv)`
   height: 100%;

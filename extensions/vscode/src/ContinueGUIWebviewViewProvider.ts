@@ -51,7 +51,7 @@ export class ContinueGUIWebviewViewProvider
   }
 
   sendMainUserInput(input: string) {
-    this.webview?.postMessage({
+    void this.webview?.postMessage({
       type: "userInput",
       input,
     });

@@ -6,8 +6,10 @@ import { PrefetchQueue } from "core/nextEdit/NextEditPrefetchQueue";
 import { NextEditProvider } from "core/nextEdit/NextEditProvider";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
+
 import { VsCodeIde } from "../VsCodeIde";
 import { VsCodeWebviewProtocol } from "../webviewProtocol";
+
 import { JumpManager } from "./JumpManager";
 import { NextEditWindowManager } from "./NextEditWindowManager";
 import {
@@ -491,9 +493,9 @@ describe("SelectionChangeManager", () => {
       );
 
       // Fire multiple events rapidly
-      selectionChangeManager.handleSelectionChange(mockEvent);
-      selectionChangeManager.handleSelectionChange(mockEvent);
-      selectionChangeManager.handleSelectionChange(mockEvent);
+      void selectionChangeManager.handleSelectionChange(mockEvent);
+      void selectionChangeManager.handleSelectionChange(mockEvent);
+      void selectionChangeManager.handleSelectionChange(mockEvent);
 
       // Only the last event should be queued due to debouncing
       const privateManager = selectionChangeManager as any;

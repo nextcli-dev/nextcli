@@ -31,7 +31,7 @@ import { fontSize } from "../../../util";
 import FileIcon from "../../FileIcon";
 import SafeImg from "../../SafeImg";
 import HeaderButtonWithToolTip from "../../gui/HeaderButtonWithToolTip";
-import { Button } from "../../ui";
+import { Button } from "../../ui/Button";
 import { NAMED_ICONS } from "../icons";
 import type { ComboBoxItem, ComboBoxItemType } from "../types";
 

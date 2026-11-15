@@ -83,7 +83,7 @@ export class VsCodeIdeUtils {
   }
 
   showSuggestion(uri: vscode.Uri, range: Range, suggestion: string) {
-    showSuggestionInEditor(
+    void showSuggestionInEditor(
       uri,
       new vscode.Range(
         range.start.line,
@@ -229,7 +229,7 @@ export class VsCodeIdeUtils {
   }
 
   showVirtualFile(name: string, contents: string) {
-    vscode.workspace
+    void vscode.workspace
       .openTextDocument(
         vscode.Uri.parse(
           `${
@@ -238,7 +238,7 @@ export class VsCodeIdeUtils {
         ),
       )
       .then((doc) => {
-        vscode.window.showTextDocument(doc, { preview: false });
+        void vscode.window.showTextDocument(doc, { preview: false });
       });
   }
 
@@ -256,7 +256,7 @@ export class VsCodeIdeUtils {
     });
 
     // Add secret to VS Code settings
-    vscode.workspace
+    await vscode.workspace
       .getConfiguration(EXTENSION_NAME)
       .update(key, secret, vscode.ConfigurationTarget.Global);
 
@@ -270,7 +270,7 @@ export class VsCodeIdeUtils {
     if (accept) {
       acceptSuggestionCommand(key);
     } else {
-      rejectSuggestionCommand(key);
+      void rejectSuggestionCommand(key);
     }
   }
 
@@ -295,14 +295,16 @@ export class VsCodeIdeUtils {
       .map((tab) => (tab.input as vscode.TabInputText).uri);
   }
 
-  saveFile(uri: vscode.Uri) {
-    vscode.window.visibleTextEditors
-      .filter((editor) => this.documentIsCode(editor.document.uri))
-      .forEach((editor) => {
-        if (URI.equal(editor.document.uri.toString(), uri.toString())) {
-          editor.document.save();
-        }
-      });
+  async saveFile(uri: vscode.Uri): Promise<void> {
+    await Promise.all(
+      vscode.window.visibleTextEditors
+        .filter(
+          (editor) =>
+            this.documentIsCode(editor.document.uri) &&
+            URI.equal(editor.document.uri.toString(), uri.toString()),
+        )
+        .map((editor) => editor.document.save()),
+    );
   }
 
   async readRangeInFile(uri: vscode.Uri, range: vscode.Range): Promise<string> {
@@ -385,7 +387,7 @@ export class VsCodeIdeUtils {
     const session = vscode.debug.activeDebugSession;
 
     if (!session) {
-      vscode.window.showWarningMessage(
+      void vscode.window.showWarningMessage(
         "No active debug session found, therefore no debug context will be provided for the llm.",
       );
       return "";

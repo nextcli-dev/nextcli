@@ -1,6 +1,6 @@
 import { LLMInteractionItem } from "core";
-import { EXTENSION_NAME } from "core/util/constants";
 import { LLMLogger } from "core/llm/logger";
+import { EXTENSION_NAME } from "core/util/constants";
 import * as vscode from "vscode";
 
 import { getExtensionUri, getNonce } from "./util/vscode";

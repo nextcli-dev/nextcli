@@ -149,9 +149,7 @@ export class QuickEdit {
       this.initialPrompt = params.initialPrompt;
     }
 
-    this.range = !!params?.range
-      ? params.range
-      : this.editorWhenOpened.selection;
+    this.range = params?.range ? params.range : this.editorWhenOpened.selection;
 
     const { label: selectedLabel, value: selectedValue } =
       await this._getInitialQuickPickVal();
@@ -193,17 +191,17 @@ export class QuickEdit {
       const { label } = quickPick.selectedItems[0];
       switch (label) {
         case UserPromptLabels.AcceptAll:
-          vscode.commands.executeCommand("continue.acceptDiff", path);
+          void vscode.commands.executeCommand("continue.acceptDiff", path);
           break;
         case UserPromptLabels.RejectAll:
-          vscode.commands.executeCommand("continue.rejectDiff", path);
+          void vscode.commands.executeCommand("continue.rejectDiff", path);
           break;
         case QuickEditInitialItemLabels.Submit:
           if (quickPick.value) {
             await vscode.commands.executeCommand("continue.rejectDiff", path);
             const newPrompt = quickPick.value;
             appendToHistory(newPrompt, this.context);
-            this.handleUserPrompt(newPrompt, path);
+            this.handleUserPrompt(newPrompt, path).catch(console.error);
           }
           break;
         default:
@@ -348,7 +346,10 @@ export class QuickEdit {
     const model = await this.getCurModel();
 
     if (!model) {
-      this.ide.showToast("error", "Please configure a model to use Quick Edit");
+      void this.ide.showToast(
+        "error",
+        "Please configure a model to use Quick Edit",
+      );
       return { label: undefined, value: undefined };
     }
 
@@ -408,48 +409,49 @@ export class QuickEdit {
   }) => {
     const { uri } = this.editorWhenOpened.document;
 
-    if (value !== "") {
-      switch (true) {
-        case value.endsWith(FILE_SEARCH_CHAR):
-          quickPick.items = [
-            {
-              label: vscode.workspace.asRelativePath(uri),
-              description: "Current file",
-              alwaysShow: true,
-            },
-          ];
-          break;
-
-        case QuickEdit.hasFileSearchQueryRegex.test(value):
-          const lastAtIndex = value.lastIndexOf(FILE_SEARCH_CHAR);
-
-          // The search query is the last instance of the
-          // search character to the end of the string
-          const searchQuery = value.substring(lastAtIndex + 1);
-
-          const searchResults = this.fileSearch.search(searchQuery);
-
-          if (searchResults.length > 0) {
-            quickPick.items = searchResults
-              .map(({ relativePath }) => ({
-                label: relativePath,
-                alwaysShow: true,
-              }))
-              .slice(0, QuickEdit.maxFileSearchResults);
-          } else {
-            quickPick.items = [NO_RESULTS_ITEM];
-          }
-
-          break;
-
-        default:
-          // The user does not have a file search in progress,
-          // tso only show the submit option
-          quickPick.items = [SUBMIT_ITEM];
-          break;
-      }
-    } else {
+    if (value === "") {
       quickPick.items = initialItems;
+      return;
+    }
+
+    switch (true) {
+      case value.endsWith(FILE_SEARCH_CHAR):
+        quickPick.items = [
+          {
+            label: vscode.workspace.asRelativePath(uri),
+            description: "Current file",
+            alwaysShow: true,
+          },
+        ];
+        break;
+
+      case QuickEdit.hasFileSearchQueryRegex.test(value):
+        const lastAtIndex = value.lastIndexOf(FILE_SEARCH_CHAR);
+
+        // The search query is the last instance of the
+        // search character to the end of the string
+        const searchQuery = value.substring(lastAtIndex + 1);
+
+        const searchResults = this.fileSearch.search(searchQuery);
+
+        if (searchResults.length > 0) {
+          quickPick.items = searchResults
+            .map(({ relativePath }) => ({
+              label: relativePath,
+              alwaysShow: true,
+            }))
+            .slice(0, QuickEdit.maxFileSearchResults);
+        } else {
+          quickPick.items = [NO_RESULTS_ITEM];
+        }
+
+        break;
+
+      default:
+        // The user does not have a file search in progress,
+        // tso only show the submit option
+        quickPick.items = [SUBMIT_ITEM];
+        break;
     }
   };
 
@@ -521,7 +523,7 @@ export class QuickEdit {
         this.contextProviderStr = contextProviderVal ?? "";
 
         // Recurse back to let the user write their prompt
-        this.initiateNewQuickPick(editor, params);
+        await this.initiateNewQuickPick(editor, params);
 
         break;
 

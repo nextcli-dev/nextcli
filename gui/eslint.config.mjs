@@ -23,9 +23,7 @@ export default defineConfig([
     rules: {
       "@typescript-eslint/naming-convention": "off",
       "@typescript-eslint/no-floating-promises": "error",
-      // Warn until the remaining 11 barrel files are removed (follow-up PR);
-      // the old lint script checked no files, so these were never reported.
-      "no-barrel-files/no-barrel-files": "warn",
+      "no-barrel-files/no-barrel-files": "error",
     },
   },
 ]);

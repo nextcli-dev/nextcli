@@ -6,7 +6,9 @@ import { PrefetchQueue } from "core/nextEdit/NextEditPrefetchQueue";
 import { NextEditProvider } from "core/nextEdit/NextEditProvider";
 import { localPathOrUriToPath } from "core/util/pathToUri";
 import * as vscode from "vscode";
+
 import { VsCodeIde } from "../VsCodeIde";
+
 import { JumpManager } from "./JumpManager";
 import { NextEditWindowManager } from "./NextEditWindowManager";
 

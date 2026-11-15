@@ -17,19 +17,19 @@ export const sharedIgnores = [
 export const sharedLinterOptions = { reportUnusedDisableDirectives: "off" };
 
 export const sharedRules = {
-  "no-negated-condition": "warn",
+  "no-negated-condition": "error",
   "@typescript-eslint/naming-convention": "off",
-  "@typescript-eslint/no-floating-promises": "warn",
+  "@typescript-eslint/no-floating-promises": "error",
   "@typescript-eslint/no-misused-promises": "error",
-  curly: "warn",
-  eqeqeq: "warn",
-  "no-throw-literal": "warn",
+  curly: "error",
+  eqeqeq: "error",
+  "no-throw-literal": "error",
 };
 
 // `import/order` runs through eslint-plugin-import-x, registered as `import`
 // so existing `import/...` rule names and disable comments keep working.
 export const sharedImportOrder = [
-  "warn",
+  "error",
   {
     groups: [
       "builtin",

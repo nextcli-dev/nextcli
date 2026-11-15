@@ -1,13 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-import * as vscode from "vscode";
-
-import { ContinueCompletionProvider } from "../completionProvider";
-
 import * as NextEditLoggingServiceModule from "core/nextEdit/NextEditLoggingService";
 import * as PrefetchQueueModule from "core/nextEdit/NextEditPrefetchQueue";
 import * as NextEditProviderModule from "core/nextEdit/NextEditProvider";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import * as vscode from "vscode";
+
 import * as JumpManagerModule from "../../activation/JumpManager";
+import { ContinueCompletionProvider } from "../completionProvider";
 
 type MockNextEditProvider = ReturnType<typeof createMockNextEditProvider>;
 type MockPrefetchQueue = ReturnType<typeof createMockPrefetchQueue>;

@@ -1,6 +1,7 @@
 import { ChevronDownIcon, PlusIcon } from "@heroicons/react/24/outline";
 import { ToolTip } from "./gui/Tooltip";
-import { Listbox, ListboxButton, ListboxOption, ListboxOptions } from "./ui";
+import { Listbox } from "@headlessui/react";
+import { ListboxButton, ListboxOption, ListboxOptions } from "./ui/Listbox";
 
 interface DropdownOption {
   value: string;
