@@ -2,12 +2,16 @@
 /* eslint-disable max-lines */
 
 import type { ChatHistoryItem, ToolStatus, Usage } from "core/index.js";
-import { calculateRequestCost } from "core/llm/utils/calculateRequestCost.js";
+import {
+  calculateRequestCost,
+  unknownZeroPriceWarning,
+} from "core/llm/utils/calculateRequestCost.js";
 import { ContinueError, ContinueErrorReason } from "core/util/errors.js";
 import { ChatCompletionToolMessageParam } from "openai/resources/chat/completions.mjs";
 
 import { ToolPermissionServiceState } from "src/services/ToolPermissionService.js";
 
+import { safeStderr } from "../init.js";
 import { checkToolPermission } from "../permissions/permissionChecker.js";
 import { toolPermissionManager } from "../permissions/permissionManager.js";
 import {
@@ -364,6 +368,37 @@ function calculateFallbackCost(
 ): number {
   // Default pricing: $1/MTok input, $2/MTok output
   return (inputTokens * 1 + outputTokens * 2) / 1_000_000;
+}
+
+const warnedUnknownPrices = new Set<string>();
+
+/**
+ * Warns once per model per run when the catalog lists the model at $0,
+ * which means its price is unknown: on stderr in headless runs, in the chat
+ * otherwise. The cost is then estimated, so --max-cost still counts it.
+ */
+export function warnUnknownZeroPrice(
+  model: any,
+  isHeadless: boolean,
+  callbacks?: StreamCallbacks,
+): void {
+  const provider = String(model.provider ?? "");
+  const key = `${provider}\n${model.model}\n${model.apiBase ?? ""}`;
+  if (warnedUnknownPrices.has(key)) return;
+  const warning = unknownZeroPriceWarning(provider, model.model, model.apiBase);
+  if (!warning) return;
+  warnedUnknownPrices.add(key);
+  logger.warn(warning);
+  if (isHeadless) {
+    safeStderr(`Warning: ${warning}\n`);
+  } else {
+    callbacks?.onSystemMessage?.(`Warning: ${warning}`);
+  }
+}
+
+/** Forgets the models already warned about, for tests */
+export function forgetUnknownPriceWarnings(): void {
+  warnedUnknownPrices.clear();
 }
 
 /**

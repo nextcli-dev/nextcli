@@ -5,11 +5,13 @@ import {
   CATALOG_PROVIDERS,
   catalogPromptLimit,
   catalogProviderFor,
+  catalogProviderForApiBase,
   findCatalogCost,
   findCatalogModel,
   findCatalogModelsByCanonical,
   findGeneralCost,
   findLlmInfo,
+  hasUnknownZeroPrice,
 } from "./index.js";
 import { CATALOG } from "./generated/catalog.js";
 
@@ -188,6 +190,36 @@ describe("prices", () => {
     // A dated snapshot of a priced model
     expect(findGeneralCost("deepseek-v4-pro-20260801")).toEqual(openrouter);
     expect(findGeneralCost("my-local-finetune")).toBeUndefined();
+  });
+
+  it("treats a $0 catalog price as unknown, except OpenRouter's :free ids", () => {
+    // models.dev lists $0 where it doesn't know the price
+    expect(CATALOG.groq["allam-2-7b"].cost).toMatchObject({
+      input: 0,
+      output: 0,
+    });
+    expect(findCatalogCost("groq", "allam-2-7b")).toBeUndefined();
+    expect(hasUnknownZeroPrice("groq", "allam-2-7b")).toBe(true);
+    // OpenRouter's :free variants really are free
+    const free = "google/gemma-4-31b-it:free";
+    expect(findCatalogCost("openrouter", free)).toMatchObject({
+      input: 0,
+      output: 0,
+    });
+    expect(hasUnknownZeroPrice("openrouter", free)).toBe(false);
+    // A priced model is untouched
+    expect(hasUnknownZeroPrice("groq", "openai/gpt-oss-120b")).toBe(false);
+  });
+
+  it("knows Groq's catalog from its API host", () => {
+    expect(catalogProviderForApiBase("https://api.groq.com/openai/v1")).toBe(
+      "groq",
+    );
+    expect(
+      catalogProviderForApiBase("https://openpaths.io/v1"),
+    ).toBeUndefined();
+    expect(catalogProviderForApiBase(undefined)).toBeUndefined();
+    expect(catalogProviderForApiBase("not a url")).toBeUndefined();
   });
 
   it("never uses a free price as the general price", () => {

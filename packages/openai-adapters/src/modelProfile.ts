@@ -1,6 +1,7 @@
 import {
   CATALOG_PROVIDERS,
   catalogProviderFor,
+  catalogProviderForApiBase,
   findCatalogModel,
   type CatalogModel,
 } from "@nextcli/llm-info";
@@ -171,6 +172,12 @@ function catalogProviderForEndpoint(
   if (isOneProvider(identity)) {
     // OneProvider isn't in the catalog; its models are the vendors' own
     return vendorCatalogProvider(identity.model);
+  }
+  // An official API host keeps its catalog under any provider name: Groq
+  // set up as an OpenAI-compatible endpoint is still Groq
+  const hostCatalog = catalogProviderForApiBase(identity.apiBase);
+  if (hostCatalog) {
+    return hostCatalog;
   }
   if (identity.provider === "openai") {
     // A custom OpenAI-compatible endpoint (a bridge, vLLM, a gateway) gets

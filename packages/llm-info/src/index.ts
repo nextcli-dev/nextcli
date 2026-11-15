@@ -27,9 +27,11 @@ import {
 } from "./types.js";
 
 export {
+  CATALOG_HOSTS,
   CATALOG_PROVIDERS,
   CATALOG_SYNCED_AT,
   catalogPromptLimit,
+  catalogProviderForApiBase,
   catalogProviderFor,
   findCatalogModel,
   findCatalogModelsByCanonical,
@@ -38,6 +40,7 @@ export {
   findCatalogCost,
   findCatalogFastCost,
   findGeneralCost,
+  hasUnknownZeroPrice,
 } from "./catalogPrices.js";
 export type {
   CatalogCost,

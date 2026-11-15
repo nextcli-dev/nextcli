@@ -46,6 +46,7 @@ import {
   recordFailedCall,
   recordStreamTelemetry,
   trackFirstTokenTime,
+  warnUnknownZeroPrice,
 } from "./streamChatResponse.helpers.js";
 import {
   getCompletionOptions,
@@ -410,6 +411,7 @@ export async function streamChatResponse(
   });
 
   const isHeadless = services.toolPermissions.isHeadless();
+  warnUnknownZeroPrice(model, isHeadless, callbacks);
 
   let fullResponse = "";
   let finalResponse = "";

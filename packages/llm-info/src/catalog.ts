@@ -44,6 +44,26 @@ export const CATALOG_PROVIDERS: Readonly<Record<string, string>> = {
 };
 
 /**
+ * Official API hosts whose models.dev catalog applies whichever provider the
+ * config names: Groq set up as an OpenAI-compatible endpoint is still Groq
+ */
+export const CATALOG_HOSTS: Readonly<Record<string, string>> = {
+  "api.groq.com": "groq",
+};
+
+/** The models.dev provider of an API base's host, if it is an official one */
+export function catalogProviderForApiBase(
+  apiBase: string | undefined,
+): string | undefined {
+  if (!apiBase) return undefined;
+  try {
+    return CATALOG_HOSTS[new URL(apiBase).hostname.toLowerCase()];
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * The models.dev provider for a NextCLI provider name, if it has one. Names
  * are matched without case, so "xai" finds xAI's catalog.
  */

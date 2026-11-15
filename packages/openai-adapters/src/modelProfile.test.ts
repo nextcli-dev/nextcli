@@ -71,6 +71,16 @@ describe("resolveModelProfile", () => {
     ).toBeUndefined();
   });
 
+  it("reads Groq's catalog from its host under any provider name", () => {
+    const profile = resolveModelProfile({
+      provider: "openai",
+      model: "openai/gpt-oss-120b",
+      apiBase: "https://api.groq.com/openai/v1",
+    });
+    expect(profile.catalogProvider).toBe("groq");
+    expect(profile.catalog?.context).toBeGreaterThan(0);
+  });
+
   it("finds Claude on Bedrock through Anthropic's entry", () => {
     expect(
       resolveModelProfile({

@@ -1,13 +1,44 @@
-import { findCatalogModel } from "./catalog.js";
+import { findCatalogModel, type CatalogMatch } from "./catalog.js";
 import type { CatalogCost } from "./catalogTypes.js";
 import { CATALOG } from "./generated/catalog.js";
 
-/** A provider's own price for a model, from the catalog */
+/**
+ * A $0 input and output price that stands for an unknown price, not a free
+ * model: models.dev lists $0 for models whose price it doesn't know (Groq's
+ * allam-2-7b, most NVIDIA entries). Only OpenRouter's `:free` ids are free.
+ */
+function zeroMeansUnknown(match: CatalogMatch): boolean {
+  const cost = match.model.cost;
+  return (
+    !!cost &&
+    cost.input === 0 &&
+    cost.output === 0 &&
+    !(match.provider === "openrouter" && match.id.endsWith(":free"))
+  );
+}
+
+/**
+ * A provider's own price for a model, from the catalog. A $0 price the
+ * catalog uses for an unknown price is no price.
+ */
 export function findCatalogCost(
   catalogProvider: string | undefined,
   model: string,
 ): CatalogCost | undefined {
-  return findCatalogModel(catalogProvider, model)?.model.cost;
+  const match = findCatalogModel(catalogProvider, model);
+  return match && !zeroMeansUnknown(match) ? match.model.cost : undefined;
+}
+
+/**
+ * Whether the catalog lists the model at $0 for an unknown price, so it is
+ * priced like an unlisted model (findCatalogCost gives no price)
+ */
+export function hasUnknownZeroPrice(
+  catalogProvider: string | undefined,
+  model: string,
+): boolean {
+  const match = findCatalogModel(catalogProvider, model);
+  return !!match && zeroMeansUnknown(match);
 }
 
 /** A provider's price for the model's fast or priority mode, if it has one */

@@ -1,8 +1,10 @@
 import {
   catalogProviderFor,
+  catalogProviderForApiBase,
   findCatalogCost,
   findCatalogFastCost,
   findGeneralCost,
+  hasUnknownZeroPrice,
 } from "@nextcli/llm-info";
 
 import { Usage } from "../..";
@@ -540,6 +542,75 @@ function calculateMakerCost(
   }
 }
 
+interface PriceRoute {
+  normalizedProvider: string;
+  host: string | undefined;
+  onOneProvider: boolean;
+  /** The catalog of the host the request goes to, when the host has one */
+  hostCatalog: string | undefined;
+  /** The catalog the model's prices come from, if any */
+  catalogProvider: string | undefined;
+}
+
+/**
+ * Where a request's prices come from, or undefined for a host on this
+ * machine, which gets no price. OneProvider isn't in the catalog; its prices
+ * are its own table's. OpenRouter and official API hosts such as
+ * api.groq.com bring their own catalog whichever provider the config names.
+ */
+function priceRoute(
+  provider: string,
+  apiBase: string | undefined,
+): PriceRoute | undefined {
+  const normalizedProvider = provider.toLowerCase();
+  const host = hostOf(apiBase);
+  if (host && isLocalHost(host)) {
+    return undefined;
+  }
+  const onOneProvider =
+    normalizedProvider === "oneprovider" ||
+    (!!host && isHostOrSubdomain(host, "oneprovider.dev"));
+  const onOpenRouter =
+    !onOneProvider &&
+    (normalizedProvider === "openrouter" ||
+      (!!host && isHostOrSubdomain(host, "openrouter.ai")));
+  const hostCatalog = onOneProvider
+    ? undefined
+    : onOpenRouter
+      ? "openrouter"
+      : catalogProviderForApiBase(apiBase);
+  return {
+    normalizedProvider,
+    host,
+    onOneProvider,
+    hostCatalog,
+    catalogProvider: onOneProvider
+      ? undefined
+      : (hostCatalog ?? catalogProviderFor(provider)),
+  };
+}
+
+/**
+ * A warning for a model the catalog lists at $0, which means its price is
+ * unknown: the model is priced like an unlisted one instead of as free, so
+ * cost limits still count it. Undefined for any other model.
+ */
+export function unknownZeroPriceWarning(
+  provider: string,
+  model: string,
+  apiBase?: string,
+): string | undefined {
+  const catalogProvider = priceRoute(provider, apiBase)?.catalogProvider;
+  if (!hasUnknownZeroPrice(catalogProvider, model)) {
+    return undefined;
+  }
+  return (
+    `the models.dev catalog lists ${model} (${catalogProvider}) at $0, ` +
+    "which means its price is unknown, not that it is free. Its cost is " +
+    "estimated instead, so --max-cost still counts it."
+  );
+}
+
 /**
  * Prices one request. A host on the user's own machine (localhost, 127.x)
  * gets no price: it is a model server or a bridge, and NextCLI can't see
@@ -548,7 +619,8 @@ function calculateMakerCost(
  * checked next, because the same model costs different amounts on each:
  *
  * 1. oneprovider.dev (provider or host), by its price table: exact
- * 2. OpenRouter (provider or host), by its catalog prices: catalog
+ * 2. OpenRouter (provider or host) and official API hosts such as
+ *    api.groq.com, under any provider name, by their catalog prices: catalog
  * 3. Anthropic and OpenAI, by their list prices: exact on the maker's own API,
  *    estimated on any other host (a gateway or bridge given that provider)
  * 4. any other provider, by its own catalog prices (DeepSeek, Groq, Gemini,
@@ -557,8 +629,10 @@ function calculateMakerCost(
  *    gateways on public hosts, but not local model servers (ollama, vllm,
  *    ...) without an API base, which run on their local default.
  *
- * A fast request uses the provider's fast price from the catalog; without
- * one, the standard price is used and marked estimated.
+ * A catalog price of $0 means the price is unknown (unknownZeroPriceWarning)
+ * and counts as no price, except OpenRouter's `:free` ids. A fast request
+ * uses the provider's fast price from the catalog; without one, the standard
+ * price is used and marked estimated.
  */
 export function calculateRequestCost(
   provider: string,
@@ -566,30 +640,19 @@ export function calculateRequestCost(
   usage: Usage,
   options: RequestCostOptions = {},
 ): CostBreakdown | null {
-  const normalizedProvider = provider.toLowerCase();
-  const host = hostOf(options.apiBase);
-  const makerHost = MAKER_HOSTS[normalizedProvider];
-  const offMakerHost =
-    !!makerHost && !!host && !isHostOrSubdomain(host, makerHost);
-  if (host && isLocalHost(host)) {
+  const route = priceRoute(provider, options.apiBase);
+  if (!route) {
     return null;
   }
-
-  const onOneProvider =
-    normalizedProvider === "oneprovider" ||
-    (!!host && isHostOrSubdomain(host, "oneprovider.dev"));
-  const onOpenRouter =
-    !onOneProvider &&
-    (normalizedProvider === "openrouter" ||
-      (!!host && isHostOrSubdomain(host, "openrouter.ai")));
-  // OneProvider isn't in the catalog; its prices are its own table's
-  const catalogProvider = onOneProvider
-    ? undefined
-    : onOpenRouter
-      ? "openrouter"
-      : catalogProviderFor(provider);
+  const { normalizedProvider, host, onOneProvider, hostCatalog } = route;
+  const catalogProvider = route.catalogProvider;
   // A maker's model reached through another host may be billed differently
-  const offMaker = offMakerHost && !onOpenRouter;
+  const makerHost = MAKER_HOSTS[normalizedProvider];
+  const offMaker =
+    !!makerHost &&
+    !!host &&
+    !isHostOrSubdomain(host, makerHost) &&
+    !hostCatalog;
 
   const fastRates = options.fast
     ? ratesFromCatalog(findCatalogFastCost(catalogProvider, model))
@@ -607,7 +670,7 @@ export function calculateRequestCost(
     rates = findOneproviderRates(model);
     source = "exact";
   } else {
-    const makerCost = onOpenRouter
+    const makerCost = hostCatalog
       ? null
       : calculateMakerCost(normalizedProvider, model, usage);
     if (makerCost) {

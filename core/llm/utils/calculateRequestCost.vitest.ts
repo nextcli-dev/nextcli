@@ -8,7 +8,11 @@ import {
 
 import type { Usage } from "../..";
 
-import { calculateRequestCost, CostBreakdown } from "./calculateRequestCost";
+import {
+  calculateRequestCost,
+  CostBreakdown,
+  unknownZeroPriceWarning,
+} from "./calculateRequestCost";
 import { priceWithHostRates } from "./rates/hostRates";
 
 interface TestCase {
@@ -638,6 +642,54 @@ describe("calculateRequestCost by host", () => {
         `${provider} ${model} ${apiBase}`,
       ).toBeNull();
     }
+  });
+
+  it("never prices a model at the catalog's $0 placeholder", () => {
+    // Groq's allam-2-7b is listed at $0, which means unknown
+    const result = calculateRequestCost("groq", "allam-2-7b", usage, {
+      estimateUnknown: true,
+    });
+    expect(result?.cost ?? null).not.toBe(0);
+    expect(result?.priced ?? "estimated").toBe("estimated");
+    expect(unknownZeroPriceWarning("groq", "allam-2-7b")).toMatch(
+      /allam-2-7b \(groq\) at \$0.*unknown, not that it is free/,
+    );
+    // OpenRouter's :free ids stay free, with no warning
+    const free = calculateRequestCost(
+      "openrouter",
+      "google/gemma-4-31b-it:free",
+      usage,
+    );
+    expect(free).toMatchObject({ cost: 0, priced: "catalog" });
+    expect(
+      unknownZeroPriceWarning("openrouter", "google/gemma-4-31b-it:free"),
+    ).toBeUndefined();
+    expect(
+      unknownZeroPriceWarning("groq", "openai/gpt-oss-120b"),
+    ).toBeUndefined();
+  });
+
+  it("prices Groq by its host under any provider name", () => {
+    const groq = findCatalogCost("groq", "openai/gpt-oss-120b")!;
+    for (const provider of ["openai", "groq"]) {
+      expect(
+        calculateRequestCost(provider, "openai/gpt-oss-120b", usage, {
+          apiBase: "https://api.groq.com/openai/v1",
+          estimateUnknown: true,
+        }),
+        provider,
+      ).toMatchObject({
+        cost: expect.closeTo(groq.input + groq.output, 6),
+        priced: "catalog",
+      });
+    }
+    expect(
+      unknownZeroPriceWarning(
+        "openai",
+        "allam-2-7b",
+        "https://api.groq.com/openai/v1",
+      ),
+    ).toBeDefined();
   });
 
   it("returns null when no table knows the model", () => {
