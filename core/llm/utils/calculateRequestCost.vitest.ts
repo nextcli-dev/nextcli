@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 
+import { findCatalogCost, findGeneralCost } from "@nextcli/llm-info";
+
 import type { Usage } from "../..";
 
 import { calculateRequestCost, CostBreakdown } from "./calculateRequestCost";
+import { priceWithHostRates } from "./rates/hostRates";
 
 interface TestCase {
   provider: string;
@@ -417,14 +420,24 @@ describe("calculateRequestCost by host", () => {
     expect(result?.cost).toBeCloseTo(1.32, 6);
   });
 
+  // Prices from the models.dev snapshot (npm run sync-models) are read from
+  // it here, so a new snapshot doesn't need new numbers in these tests
+  const openRouterDeepSeek = findCatalogCost(
+    "openrouter",
+    "deepseek/deepseek-v4-pro",
+  )!;
+
   it("prices OpenRouter models from its catalog", () => {
     const result = calculateRequestCost(
       "openrouter",
       "deepseek/deepseek-v4-pro",
       usage,
     );
-    expect(result?.cost).toBeCloseTo(0.3583 + 0.7165, 6);
-    expect(result?.priced).toBe("exact");
+    expect(result?.cost).toBeCloseTo(
+      openRouterDeepSeek.input + openRouterDeepSeek.output,
+      6,
+    );
+    expect(result?.priced).toBe("catalog");
   });
 
   it("recognizes OpenRouter by its host", () => {
@@ -447,7 +460,8 @@ describe("calculateRequestCost by host", () => {
       ...deepseek,
       estimateUnknown: true,
     });
-    expect(estimate?.cost).toBeCloseTo(0.3583 + 0.7165, 6);
+    const general = findGeneralCost("deepseek-v4-pro")!;
+    expect(estimate?.cost).toBeCloseTo(general.input + general.output, 6);
     expect(estimate?.priced).toBe("estimated");
   });
 
@@ -472,11 +486,70 @@ describe("calculateRequestCost by host", () => {
     ).toBeNull();
   });
 
+  it("prices a provider's models from its own catalog entry", () => {
+    const deepseek = findCatalogCost("deepseek", "deepseek-v4-pro")!;
+    const result = calculateRequestCost("deepseek", "deepseek-v4-pro", usage);
+    expect(result?.cost).toBeCloseTo(deepseek.input + deepseek.output, 6);
+    expect(result?.priced).toBe("catalog");
+    // Provider names are matched without case (xAI, zAI)
+    expect(calculateRequestCost("xai", "grok-4.7", usage)?.priced).toBe(
+      "catalog",
+    );
+  });
+
+  it("prices provider oneprovider from its table without an API base", () => {
+    const result = calculateRequestCost(
+      "oneprovider",
+      "deepseek-v4-pro",
+      usage,
+    );
+    expect(result?.cost).toBeCloseTo(1.32 + 3.96, 6);
+    expect(result?.priced).toBe("exact");
+  });
+
+  it("gives a custom gateway the general price, even on localhost", () => {
+    const general = findGeneralCost("deepseek-v4-pro")!;
+    const result = calculateRequestCost("openai", "deepseek-v4-pro", usage, {
+      apiBase: "http://127.0.0.1:8091/v1",
+      estimateUnknown: true,
+    });
+    expect(result?.cost).toBeCloseTo(general.input + general.output, 6);
+    expect(result?.priced).toBe("estimated");
+  });
+
   it("returns null when no table knows the model", () => {
     expect(
       calculateRequestCost("openai", "my-private-model", usage, {
         estimateUnknown: true,
       }),
     ).toBeNull();
+  });
+});
+
+describe("priceWithHostRates", () => {
+  const rates = {
+    input: 2,
+    output: 10,
+    cachedInput: 0.2,
+    cacheWrite: 2.5,
+    tiers: [{ above: 200_000, input: 4, output: 15, cachedInput: 0.4 }],
+  };
+
+  it("bills cache reads and writes as parts of the prompt", () => {
+    const { cost } = priceWithHostRates("m", rates, {
+      promptTokens: 100_000,
+      completionTokens: 10_000,
+      promptTokensDetails: { cachedTokens: 60_000, cacheWriteTokens: 20_000 },
+    });
+    // 20K uncached, 60K cache reads, 20K cache writes, 10K output
+    expect(cost).toBeCloseTo(0.04 + 0.012 + 0.05 + 0.1, 6);
+  });
+
+  it("uses the long-context tier once the prompt passes it", () => {
+    const { cost } = priceWithHostRates("m", rates, {
+      promptTokens: 300_000,
+      completionTokens: 0,
+    });
+    expect(cost).toBeCloseTo(1.2, 6);
   });
 });

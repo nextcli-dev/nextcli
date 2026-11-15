@@ -29,6 +29,7 @@ export {
   findCatalogModel,
   findCatalogModelsByCanonical,
 } from "./catalog.js";
+export { findCatalogCost, findGeneralCost } from "./catalogPrices.js";
 export type {
   CatalogCost,
   CatalogMatch,
