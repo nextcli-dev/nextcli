@@ -167,9 +167,7 @@ export function aiSdkFetch(
 ): typeof fetch {
   const inner = customFetch(requestOptions);
   return async (input, init) => {
-    const url =
-      typeof input === "string" || input instanceof URL ? input : input.url;
-    const response: any = await inner(url, init as any);
+    const response: any = await inner(input, init as any);
     if (init?.signal?.aborted) {
       throw init.signal.reason ?? new DOMException("Aborted", "AbortError");
     }

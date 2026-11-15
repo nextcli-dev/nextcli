@@ -7,35 +7,25 @@
  * that host rather than a bare "Not Found".
  */
 
-interface ApiCallErrorLike {
-  name: string;
+type ApiCallErrorLike = {
+  name?: string;
   message: string;
   url?: string;
   statusCode?: number;
   responseBody?: string;
-}
-
-interface RetryErrorLike {
-  name: string;
-  lastError?: unknown;
-}
-
-// Checked by name, so this file doesn't load the `ai` package
-function isApiCallError(error: unknown): error is ApiCallErrorLike {
-  return (error as ApiCallErrorLike)?.name === "AI_APICallError";
-}
-
-function isRetryError(error: unknown): error is RetryErrorLike {
-  return (error as RetryErrorLike)?.name === "AI_RetryError";
-}
+};
 
 /**
  * The error to throw for a failed AI SDK call. Aborts and errors that aren't
  * HTTP errors are returned as they are.
  */
 export function formatAiSdkError(error: unknown): unknown {
-  const cause = isRetryError(error) ? (error.lastError ?? error) : error;
-  if (!isApiCallError(cause)) {
+  // Checked by name, so this file doesn't load the `ai` package
+  const retry = error as { name?: string; lastError?: unknown } | undefined;
+  const cause = (
+    retry?.name === "AI_RetryError" ? (retry.lastError ?? error) : error
+  ) as ApiCallErrorLike | undefined;
+  if (cause?.name !== "AI_APICallError") {
     return cause;
   }
   const status = cause.statusCode ?? "error";

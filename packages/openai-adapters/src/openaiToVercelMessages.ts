@@ -196,9 +196,9 @@ export function convertOpenAIMessagesToVercel(
         break;
 
       case "assistant": {
-        const parts: any[] = [
-          ...reasoningParts(msg as unknown as Record<string, unknown>),
-        ];
+        const parts: any[] = reasoningParts(
+          msg as unknown as Record<string, unknown>,
+        );
         const text = textOf(msg.content);
         if (text) {
           parts.push({ type: "text", text });
