@@ -14,11 +14,8 @@ import { Vllm } from "./providers/vllm.js";
 import { Voyage } from "./providers/voyage.js";
 import { xAI } from "./providers/xAI.js";
 import { zAI } from "./providers/zai.js";
-import {
-  catalogPromptLimit,
-  catalogProviderFor,
-  findCatalogModel,
-} from "./catalog.js";
+import { catalogPromptLimit } from "./catalog.js";
+import { resolveCatalog } from "./endpoint.js";
 import {
   LlmInfoWithProvider,
   MediaType,
@@ -27,15 +24,29 @@ import {
 } from "./types.js";
 
 export {
-  CATALOG_HOSTS,
   CATALOG_PROVIDERS,
   CATALOG_SYNCED_AT,
   catalogPromptLimit,
-  catalogProviderForApiBase,
   catalogProviderFor,
   findCatalogModel,
   findCatalogModelsByCanonical,
+  variantSuffix,
 } from "./catalog.js";
+export {
+  baseModelName,
+  CATALOG_HOSTS,
+  catalogProviderForApiBase,
+  hostOf,
+  isClaude,
+  isHostOrSubdomain,
+  isLocalHost,
+  isOneProviderBase,
+  resolveCatalog,
+  vendorCatalogMatch,
+  vendorCatalogProvider,
+  withoutThinkingSuffix,
+} from "./endpoint.js";
+export type { CatalogRoute, ModelEndpoint } from "./endpoint.js";
 export {
   findCatalogCost,
   findCatalogFastCost,
@@ -85,13 +96,15 @@ export const allLlms: LlmInfoWithProvider[] = allModelProviders.flatMap(
 export function findLlmInfo(
   model: string,
   preferProviderId?: string,
+  /** The model's API base: the host decides which catalog applies */
+  apiBase?: string,
 ): LlmInfoWithProvider | undefined {
   if (preferProviderId) {
     const provider = allModelProviders.find((p) => p.id === preferProviderId);
     const info = provider?.models.find((llm) =>
       llm.regex ? llm.regex.test(model) : llm.model === model,
     );
-    const fromCatalog = llmInfoFromCatalog(model, preferProviderId);
+    const fromCatalog = llmInfoFromCatalog(model, preferProviderId, apiBase);
     if (info) {
       // The catalog fills a context window the row leaves out, and its input
       // limit caps one the row states. The row's output limit is kept as it
@@ -118,22 +131,28 @@ export function findLlmInfo(
   );
 }
 
+/**
+ * A model's limits from the catalog that describes it on this endpoint. The
+ * catalog's output limit isn't used: many entries list the whole window as
+ * the output limit, and it would become the default max_tokens.
+ */
 function llmInfoFromCatalog(
   model: string,
   provider: string,
+  apiBase: string | undefined,
 ): LlmInfoWithProvider | undefined {
-  const match = findCatalogModel(catalogProviderFor(provider), model);
+  const { match } = resolveCatalog({ provider, model, apiBase });
   if (!match) {
     return undefined;
   }
-  const { output, images } = match.model;
   const contextLength = catalogPromptLimit(match.model);
   return {
     model,
     provider,
     ...(contextLength !== undefined && { contextLength }),
-    ...(output !== undefined && { maxCompletionTokens: output }),
-    ...(images && { mediaTypes: [MediaType.Text, MediaType.Image] }),
+    ...(match.model.images && {
+      mediaTypes: [MediaType.Text, MediaType.Image],
+    }),
   };
 }
 

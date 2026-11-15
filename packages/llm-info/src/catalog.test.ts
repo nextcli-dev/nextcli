@@ -12,6 +12,10 @@ import {
   findGeneralCost,
   findLlmInfo,
   hasUnknownZeroPrice,
+  hostOf,
+  isLocalHost,
+  resolveCatalog,
+  type ModelEndpoint,
 } from "./index.js";
 import { CATALOG } from "./generated/catalog.js";
 
@@ -144,8 +148,38 @@ describe("findLlmInfo", () => {
     expect(findLlmInfo("llama-3.3-70b-versatile", "groq")).toMatchObject({
       provider: "groq",
       contextLength: catalogModel.context,
-      maxCompletionTokens: catalogModel.output,
     });
+  });
+
+  it("leaves the output limit of catalog-only models to the default", () => {
+    // Many entries list the whole window as the output limit; as the
+    // default max_tokens it would reserve a quarter of the window per call
+    for (const [model, provider] of [
+      ["kimi-k3", "moonshot"],
+      ["grok-4.5", "xAI"],
+      ["llama-3.3-70b-versatile", "groq"],
+      ["anthropic/claude-sonnet-4.5", "openrouter"],
+    ]) {
+      const info = findLlmInfo(model, provider);
+      expect(info?.contextLength, model).toBeGreaterThan(0);
+      expect(info?.maxCompletionTokens, model).toBeUndefined();
+    }
+  });
+
+  it("applies no catalog to a custom OpenAI-compatible endpoint", () => {
+    // gpt-5.6 is only in the catalog, not the hand table
+    expect(findLlmInfo("gpt-5.6", "openai")?.contextLength).toBeGreaterThan(0);
+    expect(
+      findLlmInfo("gpt-5.6", "openai", "http://127.0.0.1:8091/v1"),
+    ).toBeUndefined();
+    // Groq's host brings Groq's catalog under the openai provider
+    expect(
+      findLlmInfo(
+        "llama-3.3-70b-versatile",
+        "openai",
+        "https://api.groq.com/openai/v1",
+      )?.contextLength,
+    ).toBe(CATALOG.groq["llama-3.3-70b-versatile"].context);
   });
 
   it("fills the context a hand-written row leaves out from the catalog", () => {
@@ -228,6 +262,112 @@ describe("prices", () => {
       const general = findGeneralCost(id.replace(/:free$/, ""));
       if (general) expect(general.input).toBeGreaterThan(0);
       expect(model.cost?.input ?? 0).toBe(0);
+    }
+  });
+});
+
+describe("resolveCatalog", () => {
+  it("answers which catalog describes a model on its endpoint", () => {
+    const cases: Array<[ModelEndpoint, string | undefined, string]> = [
+      [
+        { provider: "anthropic", model: "claude-opus-5-5" },
+        "anthropic",
+        "other",
+      ],
+      [{ provider: "openai", model: "gpt-5.5" }, "openai", "other"],
+      [
+        {
+          provider: "openai",
+          model: "gpt-5.5",
+          apiBase: "https://openpaths.io/v1",
+        },
+        undefined,
+        "other",
+      ],
+      [
+        { provider: "openai", model: "x", apiBase: "http://localhost:8091/v1" },
+        undefined,
+        "this-machine",
+      ],
+      [
+        {
+          provider: "openai",
+          model: "llama-3.3-70b-versatile",
+          apiBase: "https://api.groq.com/openai/v1",
+        },
+        "groq",
+        "catalog-host",
+      ],
+      [
+        {
+          provider: "openai",
+          model: "anthropic/claude-sonnet-4.5",
+          apiBase: "https://openrouter.ai/api/v1",
+        },
+        "openrouter",
+        "catalog-host",
+      ],
+      [
+        {
+          provider: "deepseek",
+          model: "deepseek-v4-pro",
+          apiBase: "https://api.oneprovider.dev/v1",
+        },
+        "deepseek",
+        "oneprovider",
+      ],
+      [
+        { provider: "oneprovider", model: "claude-sonnet-5-5-thinking" },
+        "anthropic",
+        "oneprovider",
+      ],
+    ];
+    for (const [endpoint, catalogProvider, host] of cases) {
+      const route = resolveCatalog(endpoint);
+      expect(route.catalogProvider, JSON.stringify(endpoint)).toBe(
+        catalogProvider,
+      );
+      expect(route.host, JSON.stringify(endpoint)).toBe(host);
+    }
+    expect(
+      resolveCatalog({
+        provider: "oneprovider",
+        model: "claude-sonnet-5-5-thinking",
+      }),
+    ).toMatchObject({
+      thinkingAlwaysOn: true,
+      match: { id: "claude-sonnet-5-5" },
+    });
+    // Claude on Bedrock falls back to Anthropic's entry
+    expect(
+      resolveCatalog({
+        provider: "bedrock",
+        model: "us.anthropic.claude-opus-5-5-v1:0",
+      }).match?.model.efforts,
+    ).toContain("max");
+  });
+
+  it("counts only this machine as local, containers included", () => {
+    for (const host of [
+      "localhost",
+      "127.0.0.1",
+      "[::1]",
+      "app.localhost",
+      "host.docker.internal",
+      "host.containers.internal",
+    ]) {
+      expect(isLocalHost(host), host).toBe(true);
+    }
+    // ::ffff:127.0.0.1, as URL writes it
+    expect(isLocalHost(hostOf("http://[::ffff:127.0.0.1]:8091")!)).toBe(true);
+    for (const host of [
+      "10.0.0.5",
+      "172.20.1.2",
+      "192.168.1.20",
+      "gpu-box.local",
+      "api.openai.com",
+    ]) {
+      expect(isLocalHost(host), host).toBe(false);
     }
   });
 });

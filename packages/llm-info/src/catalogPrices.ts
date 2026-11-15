@@ -1,4 +1,8 @@
-import { findCatalogModel, type CatalogMatch } from "./catalog.js";
+import {
+  findCatalogModel,
+  variantSuffix,
+  type CatalogMatch,
+} from "./catalog.js";
 import type { CatalogCost } from "./catalogTypes.js";
 import { CATALOG } from "./generated/catalog.js";
 
@@ -57,9 +61,9 @@ function nameKey(model: string): string {
     .replace(/\./g, "-");
 }
 
-// Dated snapshots and thinking or preview variants share their model's price
-const VARIANT_SUFFIX =
-  /^(?:-(?:\d{4}(?:-\d{2}){0,2}|\d{6,8}|thinking|preview|latest))+$/;
+// Dated snapshots and thinking, preview or latest variants share their
+// model's price
+const VARIANT_SUFFIX = variantSuffix();
 
 let generalPrices: Map<string, CatalogCost> | undefined;
 

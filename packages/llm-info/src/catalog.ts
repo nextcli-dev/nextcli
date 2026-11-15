@@ -44,26 +44,6 @@ export const CATALOG_PROVIDERS: Readonly<Record<string, string>> = {
 };
 
 /**
- * Official API hosts whose models.dev catalog applies whichever provider the
- * config names: Groq set up as an OpenAI-compatible endpoint is still Groq
- */
-export const CATALOG_HOSTS: Readonly<Record<string, string>> = {
-  "api.groq.com": "groq",
-};
-
-/** The models.dev provider of an API base's host, if it is an official one */
-export function catalogProviderForApiBase(
-  apiBase: string | undefined,
-): string | undefined {
-  if (!apiBase) return undefined;
-  try {
-    return CATALOG_HOSTS[new URL(apiBase).hostname.toLowerCase()];
-  } catch {
-    return undefined;
-  }
-}
-
-/**
  * The models.dev provider for a NextCLI provider name, if it has one. Names
  * are matched without case, so "xai" finds xAI's catalog.
  */
@@ -79,11 +59,17 @@ export function catalogProviderFor(
 }
 
 /**
- * Suffixes a provider adds to a model id without changing the model: dated
- * snapshots and the thinking, preview and latest variants
+ * A pattern for the suffixes a provider adds to a model id without changing
+ * the model: dated snapshots (-2024-08-06, -20250514, Mistral's -2512) and
+ * the thinking, preview and latest variants, plus any `extra` ones (a host's
+ * own effort suffixes, for example)
  */
-const VARIANT_SUFFIX =
-  /^(?:-(?:\d{4}(?:-\d{2}){0,2}|\d{6,8}|thinking|preview|latest))+$/;
+export function variantSuffix(extra: readonly string[] = []): RegExp {
+  const words = ["thinking", "preview", "latest", ...extra].join("|");
+  return new RegExp(`^(?:-(?:\\d{4}(?:-\\d{2}){0,2}|\\d{6,8}|${words}))+$`);
+}
+
+const VARIANT_SUFFIX = variantSuffix();
 
 /** A dated snapshot suffix: -2024-08-06, -20250514, or Mistral's -2512 */
 const DATE_SUFFIX = /-(?:\d{4}(?:-\d{2}){0,2}|\d{6,8})$/;

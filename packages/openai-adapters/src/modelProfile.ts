@@ -1,8 +1,10 @@
 import {
-  CATALOG_PROVIDERS,
-  catalogProviderFor,
-  catalogProviderForApiBase,
-  findCatalogModel,
+  baseModelName,
+  isClaude,
+  isOneProviderBase,
+  resolveCatalog,
+  vendorCatalogMatch,
+  vendorCatalogProvider,
   type CatalogModel,
 } from "@nextcli/llm-info";
 
@@ -30,15 +32,9 @@ export interface ModelProfile {
 const OPENAI_API_BASE = "https://api.openai.com/v1/";
 const ONEPROVIDER_PROVIDER = "oneprovider";
 
-/** Strips a vendor prefix such as `anthropic/` (OpenRouter model ids) */
-export function baseModelName(model: string): string {
-  const slash = model.lastIndexOf("/");
-  return (slash === -1 ? model : model.slice(slash + 1)).toLowerCase();
-}
-
-export function isClaude(model: string): boolean {
-  return baseModelName(model).includes("claude");
-}
+// Moved to @nextcli/llm-info (endpoint.ts), so the menus, limits and prices
+// share them
+export { baseModelName, isClaude, isOneProviderBase, vendorCatalogProvider };
 
 function isDeepSeek(model: string): boolean {
   return baseModelName(model).startsWith("deepseek");
@@ -46,20 +42,6 @@ function isDeepSeek(model: string): boolean {
 
 function isOfficialOpenAI(apiBase: string | undefined): boolean {
   return !apiBase || apiBase.replace(/\/?$/, "/") === OPENAI_API_BASE;
-}
-
-/** Whether an API base is OneProvider's, whichever provider id the config uses */
-export function isOneProviderBase(apiBase: string | undefined): boolean {
-  try {
-    const host = new URL(apiBase ?? "").hostname;
-    return host === "oneprovider.dev" || host.endsWith(".oneprovider.dev");
-  } catch {
-    return false;
-  }
-}
-
-function isOneProvider({ provider, apiBase }: ModelIdentity): boolean {
-  return provider === ONEPROVIDER_PROVIDER || isOneProviderBase(apiBase);
 }
 
 /** The request format for a model, following the adapter it goes through */
@@ -105,111 +87,22 @@ export function getControlsFormat({
   }
 }
 
-/** The models.dev provider of a model's vendor, from the model's name */
-const VENDORS: Array<[RegExp, string]> = [
-  [/^claude/, "anthropic"],
-  [/^(gpt|o\d|chatgpt)/, "openai"],
-  [/^gemini/, "google"],
-  [/^grok/, "xai"],
-  [/^deepseek/, "deepseek"],
-  [/^kimi/, "moonshotai"],
-  [/^glm/, "zai"],
-  [/^minimax/, "minimax"],
-  [/^(mistral|codestral|devstral|magistral|ministral)/, "mistral"],
-];
-
-/** OpenRouter's vendor slugs that differ from the models.dev provider id */
-const OPENROUTER_VENDORS: Record<string, string> = {
-  google: "google",
-  "x-ai": "xai",
-  "z-ai": "zai",
-  mistralai: "mistral",
-};
-
-/**
- * The models.dev provider of the model's vendor: from an OpenRouter-style
- * `vendor/` prefix, else from the model's name
- */
-export function vendorCatalogProvider(model: string): string | undefined {
-  const slash = model.indexOf("/");
-  if (slash !== -1) {
-    const vendor = model.slice(0, slash).toLowerCase();
-    const mapped = OPENROUTER_VENDORS[vendor] ?? vendor;
-    if (Object.values(CATALOG_PROVIDERS).includes(mapped)) {
-      return mapped;
-    }
-  }
-  const name = baseModelName(model);
-  return VENDORS.find(([pattern]) => pattern.test(name))?.[1];
-}
-
 /** The model's entry in its vendor's own catalog */
 export function vendorCatalogModel(model: string): CatalogModel | undefined {
-  const name = withoutThinkingSuffix(model);
-  return findCatalogModel(vendorCatalogProvider(name), baseModelName(name))
-    ?.model;
+  return vendorCatalogMatch(model)?.model;
 }
 
 /**
- * Bedrock ids carry a region and a version around the vendor's id:
- * us.anthropic.claude-opus-5-5-v1:0
+ * The model's format, catalog entry and FIM support on its endpoint. Which
+ * catalog describes it is resolveCatalog's answer in @nextcli/llm-info.
  */
-function claudeNameOnBedrock(model: string): string {
-  const match = baseModelName(model).match(
-    /claude-[a-z0-9.-]+?(?=-v\d+(:\d+)?$|$)/,
-  );
-  return match?.[0] ?? model;
-}
-
-function withoutThinkingSuffix(model: string): string {
-  return model.replace(/-thinking$/i, "");
-}
-
-/** The models.dev provider that describes a model on this endpoint */
-function catalogProviderForEndpoint(
-  identity: ModelIdentity,
-): string | undefined {
-  if (isOneProvider(identity)) {
-    // OneProvider isn't in the catalog; its models are the vendors' own
-    return vendorCatalogProvider(identity.model);
-  }
-  // An official API host keeps its catalog under any provider name: Groq
-  // set up as an OpenAI-compatible endpoint is still Groq
-  const hostCatalog = catalogProviderForApiBase(identity.apiBase);
-  if (hostCatalog) {
-    return hostCatalog;
-  }
-  if (identity.provider === "openai") {
-    // A custom OpenAI-compatible endpoint (a bridge, vLLM, a gateway) gets
-    // no tables: its limits come from the config
-    return isOfficialOpenAI(identity.apiBase) ? "openai" : undefined;
-  }
-  return catalogProviderFor(identity.provider);
-}
-
 export function resolveModelProfile(identity: ModelIdentity): ModelProfile {
-  const format = getControlsFormat(identity);
-  const oneProvider = isOneProvider(identity);
-  const thinkingAlwaysOn =
-    oneProvider && /-thinking$/i.test(baseModelName(identity.model));
-  const model = oneProvider
-    ? withoutThinkingSuffix(identity.model)
-    : identity.model;
-  const catalogProvider = catalogProviderForEndpoint(identity);
-
-  let catalog = findCatalogModel(catalogProvider, model)?.model;
-  if (!catalog && (format === "bedrock" || format === "anthropic")) {
-    // Bedrock's and proxies' Claude ids, through Anthropic's own entry
-    catalog = isClaude(model)
-      ? findCatalogModel("anthropic", claudeNameOnBedrock(model))?.model
-      : undefined;
-  }
-
+  const route = resolveCatalog(identity);
   return {
-    format,
-    catalogProvider,
-    catalog,
+    format: getControlsFormat(identity),
+    catalogProvider: route.catalogProvider,
+    catalog: route.match?.model,
     fim: supportsFimEndpoint(identity.provider, identity.apiBase),
-    thinkingAlwaysOn,
+    thinkingAlwaysOn: route.thinkingAlwaysOn,
   };
 }
