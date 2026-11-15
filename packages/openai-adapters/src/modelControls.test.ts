@@ -391,22 +391,28 @@ describe("thinking modes", () => {
 });
 
 describe("Gemini, Bedrock and xAI controls", () => {
-  it("uses thinking levels on Gemini 3 and budgets on 2.5", () => {
+  it("uses the catalog's thinking levels on Gemini 3 and budgets on 2.5", () => {
+    // gemini-3.1-pro is listed as gemini-3.1-pro-preview
     expect(
       getModelControls({ provider: "gemini", model: "gemini-3.1-pro" }),
     ).toMatchObject({
       format: "gemini",
-      efforts: ["low", "high"],
+      efforts: ["low", "medium", "high"],
       effortNeedsThinking: true,
       fast: false,
+      maxContextLength: 1_048_576,
       experimental: false,
     });
     expect(
       getModelControls({ provider: "gemini", model: "gemini-3.8-flash" }),
     ).toMatchObject({
-      efforts: ["minimal", "low", "medium", "high"],
-      experimental: true,
+      efforts: ["low", "medium", "high"],
+      experimental: false,
     });
+    // Not in the catalog: low and high, which every thinking level takes
+    expect(
+      getModelControls({ provider: "gemini", model: "gemini-9-flash" }),
+    ).toMatchObject({ efforts: ["low", "high"], experimental: true });
     expect(
       getModelControls({ provider: "gemini", model: "gemini-2.5-flash" })
         .efforts,
@@ -595,14 +601,16 @@ describe("context options", () => {
 });
 
 describe("DeepSeek", () => {
-  it("has thinking modes, no effort and a 1M context window", () => {
+  it("has thinking modes, no effort and the catalog's context window", () => {
+    // The catalog lists low, high and max; catalogOverrides.ts keeps them out
+    // until they are checked
     expect(
       getModelControls({ provider: "deepseek", model: "deepseek-v4-pro" }),
     ).toMatchObject({
       efforts: [],
       thinkingModes: ["off", "hidden", "shown"],
       fast: false,
-      maxContextLength: 1_000_000,
+      maxContextLength: 1_048_576,
     });
     expect(getContextOptions(1_000_000, 64_000)).toEqual([
       64_000, 128_000, 200_000, 256_000, 400_000, 1_000_000,
@@ -611,12 +619,16 @@ describe("DeepSeek", () => {
     expect(getContextOptions(1_000_000, 1_000_000).at(-1)).toBe(1_000_000);
   });
 
-  it("uses a 1M context window for DeepSeek V4 Flash too", () => {
-    for (const model of ["deepseek-v4-flash", "deepseek-v4.1-flash"]) {
-      expect(
-        getModelControls({ provider: "deepseek", model }).maxContextLength,
-      ).toBe(1_000_000);
-    }
+  it("reads V4 Flash's context from the catalog, and none for unlisted models", () => {
+    expect(
+      getModelControls({ provider: "deepseek", model: "deepseek-v4-flash" })
+        .maxContextLength,
+    ).toBe(1_048_576);
+    // Not in the catalog: the configured context length is offered instead
+    expect(
+      getModelControls({ provider: "deepseek", model: "deepseek-v4.1-flash" })
+        .maxContextLength,
+    ).toBeUndefined();
   });
 
   it("routes OneProvider DeepSeek through the deepseek case", () => {
@@ -624,7 +636,7 @@ describe("DeepSeek", () => {
       getModelControls({ provider: "oneprovider", model: "deepseek-v4-pro" }),
     ).toMatchObject({
       format: "deepseek",
-      maxContextLength: 1_000_000,
+      maxContextLength: 1_048_576,
     });
   });
 
@@ -818,8 +830,15 @@ describe("generic providers", () => {
     getModelControls({ provider: "mistral", model, reasoningConfigured });
 
   it("offers reasoning rows only for reasoning models", () => {
-    expect(generic("mistral-large-latest").efforts).toEqual([]);
-    expect(generic("mistral-large-latest").thinkingModes).toEqual([]);
+    expect(generic("codestral-latest").efforts).toEqual([]);
+    expect(generic("codestral-latest").thinkingModes).toEqual([]);
+    // The catalog marks Mistral Large as reasoning, with its levels
+    expect(generic("mistral-large-latest")).toMatchObject({
+      efforts: ["low", "medium", "high"],
+      thinkingModes: ["hidden", "shown"],
+      maxContextLength: 1_048_576,
+      experimental: false,
+    });
     expect(generic("phi-4-reasoning").efforts).toEqual([
       "low",
       "medium",
@@ -896,6 +915,7 @@ describe("OpenRouter effort levels per vendor", () => {
   it("lists the vendor's own levels", () => {
     expect(efforts("google/gemini-3.1-pro-preview").efforts).toEqual([
       "low",
+      "medium",
       "high",
     ]);
     expect(efforts("moonshotai/kimi-k3.1-pro")).toMatchObject({
@@ -927,9 +947,80 @@ describe("OpenRouter effort levels per vendor", () => {
   it("never sends a level the vendor lacks", () => {
     expect(
       buildModelControlFields(
-        { provider: "openrouter", model: "google/gemini-3.1-pro-preview" },
+        { provider: "openrouter", model: "moonshotai/kimi-k3.1-pro" },
         { effort: "medium" },
       ),
     ).toEqual({ reasoning_effort: "low" });
+  });
+});
+
+describe("catalog-backed controls", () => {
+  it("fixes OpenAI models the version rules missed", () => {
+    expect(
+      getModelControls({ provider: "openai", model: "o4-mini" }),
+    ).toMatchObject({
+      efforts: ["low", "medium", "high"],
+      thinkingModes: ["hidden", "shown"],
+      experimental: false,
+    });
+    expect(
+      getModelControls({ provider: "openai", model: "gpt-5-pro" }).efforts,
+    ).toEqual(["high"]);
+  });
+
+  it("gives unlisted models conservative levels, marked experimental", () => {
+    expect(
+      getModelControls({ provider: "openai", model: "gpt-7" }),
+    ).toMatchObject({
+      efforts: ["low", "medium", "high"],
+      thinkingModes: ["hidden", "shown"],
+      fast: false,
+      experimental: true,
+    });
+    expect(
+      getModelControls({ provider: "openai", model: "gpt-7" }),
+    ).not.toHaveProperty("maxContextLength", expect.any(Number));
+  });
+
+  it("reads OneProvider's non-Claude models from their vendor's catalog", () => {
+    expect(
+      getModelControls({ provider: "oneprovider", model: "gpt-5.5" }),
+    ).toMatchObject({
+      format: "generic",
+      efforts: ["low", "medium", "high", "xhigh"],
+      maxContextLength: 1_050_000,
+      experimental: false,
+    });
+  });
+
+  it("keeps thinking on for OneProvider's -thinking ids", () => {
+    const controls = getModelControls({
+      provider: "oneprovider",
+      model: "claude-sonnet-5-5-thinking",
+    });
+    expect(controls.thinkingModes).toEqual(["hidden", "shown"]);
+    expect(controls.thinkingUnavailable.off).toContain("-thinking");
+    expect(controls.maxContextLength).toBe(1_000_000);
+  });
+
+  it("applies no tables to a custom OpenAI-compatible endpoint", () => {
+    expect(
+      getModelControls({
+        provider: "openai",
+        model: "gpt-5.5",
+        apiBase: "http://127.0.0.1:8091/v1",
+      }),
+    ).toMatchObject({
+      format: "generic",
+      efforts: ["low", "medium", "high"],
+      experimental: true,
+    });
+    expect(
+      getModelControls({
+        provider: "openai",
+        model: "gpt-5.5",
+        apiBase: "http://127.0.0.1:8091/v1",
+      }).maxContextLength,
+    ).toBeUndefined();
   });
 });
