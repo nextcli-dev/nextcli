@@ -218,27 +218,31 @@ function calculateAnthropicCost(
     return null; // Unknown model
   }
 
-  const promptLength =
-    usage.promptTokens +
-    (usage.promptTokensDetails?.cachedTokens ?? 0) +
-    (usage.promptTokensDetails?.cacheWriteTokens ?? 0);
+  // promptTokens counts every input token, cached ones included, as every
+  // adapter reports it; the cache reads and writes are parts of it
+  const cacheReadTokens = usage.promptTokensDetails?.cachedTokens ?? 0;
+  const cacheWriteTokens = usage.promptTokensDetails?.cacheWriteTokens ?? 0;
+  const uncachedTokens = Math.max(
+    0,
+    usage.promptTokens - cacheReadTokens - cacheWriteTokens,
+  );
   const modelPricing =
     basePricing.longPrompt &&
-    promptLength > basePricing.longPrompt.thresholdTokens
+    usage.promptTokens > basePricing.longPrompt.thresholdTokens
       ? basePricing.longPrompt
       : basePricing;
 
   // Calculate costs
-  const inputCost = (usage.promptTokens / 1_000_000) * modelPricing.input;
+  const inputCost = (uncachedTokens / 1_000_000) * modelPricing.input;
   const outputCost = (usage.completionTokens / 1_000_000) * modelPricing.output;
 
   // Build breakdown components
   const breakdownParts: string[] = [];
 
   // Input tokens breakdown
-  if (usage.promptTokens > 0) {
+  if (uncachedTokens > 0) {
     breakdownParts.push(
-      `Input: ${usage.promptTokens.toLocaleString()} tokens × $${modelPricing.input}/MTok = $${inputCost.toFixed(6)}`,
+      `Input: ${uncachedTokens.toLocaleString()} tokens × $${modelPricing.input}/MTok = $${inputCost.toFixed(6)}`,
     );
   }
 

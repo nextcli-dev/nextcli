@@ -414,7 +414,12 @@ class Anthropic extends BaseLLM {
         case "message_start":
           // Capture initial usage information
           const startEvent = rawEvent as RawMessageStartEvent;
-          usage.promptTokens = startEvent.message.usage.input_tokens;
+          // All input tokens, cached ones included; the cache reads and
+          // writes are parts of it (see calculateAnthropicCost)
+          usage.promptTokens =
+            startEvent.message.usage.input_tokens +
+            (startEvent.message.usage.cache_read_input_tokens ?? 0) +
+            (startEvent.message.usage.cache_creation_input_tokens ?? 0);
           usage.promptTokensDetails!.cachedTokens =
             startEvent.message.usage.cache_read_input_tokens ?? undefined;
           usage.promptTokensDetails!.cacheWriteTokens =

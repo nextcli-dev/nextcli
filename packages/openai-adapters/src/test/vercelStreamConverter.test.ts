@@ -1,315 +1,337 @@
 import { describe, expect, test } from "vitest";
+
 import {
   convertVercelStream,
-  convertVercelStreamPart,
+  toOpenAIUsage,
+  VercelStreamConverter,
   type VercelStreamPart,
 } from "../vercelStreamConverter.js";
 
-describe("convertVercelStreamPart", () => {
-  const options = { model: "gpt-4o-mini" };
+async function collect(parts: VercelStreamPart[]) {
+  async function* source() {
+    yield* parts;
+  }
+  const chunks = [];
+  for await (const chunk of convertVercelStream(source(), { model: "m" })) {
+    chunks.push(chunk);
+  }
+  return chunks;
+}
 
-  test("converts text-delta to chat chunk", () => {
-    const part: VercelStreamPart = {
-      type: "text-delta",
-      id: "text-1",
-      text: "Hello",
-    };
+const deltas = (chunks: Awaited<ReturnType<typeof collect>>) =>
+  chunks.filter((c) => c.choices.length > 0).map((c) => c.choices[0].delta);
 
-    const result = convertVercelStreamPart(part, options);
+describe("VercelStreamConverter", () => {
+  test("streams text with no finish reason until the end", async () => {
+    const chunks = await collect([
+      { type: "text-start", id: "t" },
+      { type: "text-delta", id: "t", text: "Hel" },
+      { type: "text-delta", id: "t", text: "lo" },
+      { type: "text-end", id: "t" },
+      { type: "finish", finishReason: "stop" },
+    ]);
 
-    expect(result).not.toBeNull();
-    expect(result?.object).toBe("chat.completion.chunk");
-    expect(result?.model).toBe("gpt-4o-mini");
-    expect(result?.choices).toHaveLength(1);
-    expect(result?.choices[0].delta.content).toBe("Hello");
+    expect(chunks.map((c) => c.choices[0]?.delta.content)).toEqual([
+      "Hel",
+      "lo",
+      undefined,
+    ]);
+    expect(chunks.map((c) => c.choices[0]?.finish_reason)).toEqual([
+      null,
+      null,
+      "stop",
+    ]);
   });
 
-  test("converts reasoning-delta to chat chunk", () => {
-    const part: VercelStreamPart = {
-      type: "reasoning-delta",
-      id: "reasoning-1",
-      text: "Let me think...",
-    };
-
-    const result = convertVercelStreamPart(part, options);
-
-    expect(result).not.toBeNull();
-    expect((result?.choices[0].delta as any).reasoning_content).toBe(
-      "Let me think...",
-    );
-    expect(result?.choices[0].delta.content).toBeUndefined();
+  test.each([
+    ["length", "length"],
+    ["tool-calls", "tool_calls"],
+    ["content-filter", "content_filter"],
+    ["other", "stop"],
+    ["interrupted", "length"],
+  ])("maps the %s finish reason to %s", async (from, to) => {
+    const chunks = await collect([{ type: "finish", finishReason: from }]);
+    expect(chunks[0].choices[0].finish_reason).toBe(to);
   });
 
-  test("returns null for tool-call without thoughtSignature", () => {
-    const part: VercelStreamPart = {
-      type: "tool-call",
-      toolCallId: "call_abc123",
-      toolName: "readFile",
-      input: { filepath: "/path/to/file" },
-    };
-
-    expect(convertVercelStreamPart(part, options)).toBeNull();
+  test("throws for an error finish instead of reporting a stop", async () => {
+    await expect(
+      collect([
+        { type: "text-delta", id: "t", text: "Part" },
+        { type: "finish", finishReason: "error" },
+      ]),
+    ).rejects.toThrow("ended the response with an error");
   });
 
-  test("converts tool-call with thoughtSignature to extra_content chunk", () => {
-    const part: VercelStreamPart = {
-      type: "tool-call",
-      toolCallId: "call_abc123",
-      toolName: "readFile",
-      input: { filepath: "/path/to/file" },
-      providerMetadata: {
-        google: {
-          thoughtSignature: "sig123",
+  test("throws an AbortError for an aborted stream", async () => {
+    // AI SDK 7 ends an aborted stream with an abort part and no finish
+    const result = collect([
+      { type: "text-delta", id: "t", text: "Part" },
+      { type: "abort", reason: "cancelled by user" },
+    ]);
+    await expect(result).rejects.toMatchObject({
+      name: "AbortError",
+      message: "cancelled by user",
+    });
+  });
+
+  test("passes a gateway's reasoning_details through from the raw chunks", async () => {
+    const details = [
+      { type: "reasoning.text", text: "Hm", signature: "sig", index: 0 },
+    ];
+    const parts: VercelStreamPart[] = [
+      {
+        type: "raw",
+        rawValue: {
+          choices: [{ delta: { reasoning: "Hm", reasoning_details: details } }],
         },
       },
-    };
-
-    const result = convertVercelStreamPart(part, options);
-
-    expect(result).not.toBeNull();
-    expect(result?.choices[0].delta.tool_calls).toHaveLength(1);
-    expect(result?.choices[0].delta.tool_calls?.[0]).toEqual({
-      index: 0,
-      extra_content: {
-        google: { thought_signature: "sig123" },
-      },
+      { type: "reasoning-delta", id: "reasoning-0", text: "Hm" },
+      { type: "raw", rawValue: { choices: [{ delta: { content: "Hi" } }] } },
+      { type: "text-delta", id: "txt-0", text: "Hi" },
+    ];
+    const converter = new VercelStreamConverter({
+      model: "m",
+      reasoningDetailsFromRaw: true,
     });
+
+    expect(
+      parts
+        .flatMap((part) => converter.convert(part))
+        .map((c) => c.choices[0].delta),
+    ).toEqual([
+      { role: "assistant", reasoning_details: details },
+      { role: "assistant", reasoning_content: "Hm" },
+      { role: "assistant", content: "Hi" },
+    ]);
   });
 
-  test("converts tool-input-delta to chat chunk", () => {
-    const part: VercelStreamPart = {
-      type: "tool-input-delta",
-      id: "call_abc123",
-      delta: '{"filepath":',
-    };
+  test("streams reasoning text with a reasoning detail per block", async () => {
+    const chunks = await collect([
+      { type: "reasoning-start", id: "0" },
+      { type: "reasoning-delta", id: "0", text: "Think" },
+      { type: "reasoning-delta", id: "3", text: "Again" },
+    ]);
 
-    const result = convertVercelStreamPart(part, options);
-
-    expect(result).not.toBeNull();
-    expect(result?.choices[0].delta.tool_calls).toHaveLength(1);
-    expect(result?.choices[0].delta.tool_calls?.[0]).toEqual({
-      index: 0,
-      function: {
-        arguments: '{"filepath":',
+    expect(deltas(chunks)).toEqual([
+      {
+        role: "assistant",
+        reasoning_content: "Think",
+        reasoning_details: [
+          { type: "reasoning.text", text: "Think", index: 0 },
+        ],
       },
-    });
-  });
-
-  test("converts finish to usage chunk", () => {
-    const part: VercelStreamPart = {
-      type: "finish",
-      finishReason: "stop",
-      totalUsage: {
-        inputTokens: 100,
-        outputTokens: 50,
-        totalTokens: 150,
+      {
+        role: "assistant",
+        reasoning_content: "Again",
+        reasoning_details: [
+          { type: "reasoning.text", text: "Again", index: 1 },
+        ],
       },
-    };
-
-    const result = convertVercelStreamPart(part, options);
-
-    expect(result).not.toBeNull();
-    expect(result?.usage).toEqual({
-      prompt_tokens: 100,
-      completion_tokens: 50,
-      total_tokens: 150,
-    });
+    ]);
   });
 
-  test("throws error for error event", () => {
-    const part: VercelStreamPart = {
-      type: "error",
-      error: new Error("Test error"),
-    };
-
-    expect(() => convertVercelStreamPart(part, options)).toThrow("Test error");
-  });
-
-  test("returns null for start-step (no OpenAI equivalent)", () => {
-    const part: VercelStreamPart = {
-      type: "start-step",
-    };
-
-    const result = convertVercelStreamPart(part, options);
-
-    expect(result).toBeNull();
-  });
-
-  test("returns null for finish-step (no OpenAI equivalent)", () => {
-    const part: VercelStreamPart = {
-      type: "finish-step",
-      response: {},
-      usage: {
-        inputTokens: 100,
-        outputTokens: 50,
-        totalTokens: 150,
+  test("keeps Claude's signature and redacted thinking for the next request", async () => {
+    const chunks = await collect([
+      { type: "reasoning-start", id: "0" },
+      { type: "reasoning-delta", id: "0", text: "Hmm" },
+      {
+        type: "reasoning-delta",
+        id: "0",
+        text: "",
+        providerMetadata: { anthropic: { signature: "sig" } },
       },
-      finishReason: "stop",
-    };
-
-    const result = convertVercelStreamPart(part, options);
-
-    expect(result).toBeNull();
-  });
-
-  test("returns null for tool-result (no OpenAI equivalent)", () => {
-    const part: VercelStreamPart = {
-      type: "tool-result",
-      toolCallId: "call_abc123",
-      result: { success: true },
-    };
-
-    const result = convertVercelStreamPart(part, options);
-
-    expect(result).toBeNull();
-  });
-
-  test("returns null for source", () => {
-    const part: VercelStreamPart = {
-      type: "source",
-      source: { url: "https://example.com" },
-    };
-
-    const result = convertVercelStreamPart(part, options);
-
-    expect(result).toBeNull();
-  });
-
-  test("returns null for file", () => {
-    const part: VercelStreamPart = {
-      type: "file",
-      file: { name: "output.txt", content: "file content" },
-    };
-
-    const result = convertVercelStreamPart(part, options);
-
-    expect(result).toBeNull();
-  });
-
-  test("converts tool-input-start to initial tool call chunk with id and name", () => {
-    const part: VercelStreamPart = {
-      type: "tool-input-start",
-      id: "call_abc123",
-      toolName: "readFile",
-    };
-
-    const result = convertVercelStreamPart(part, options);
-
-    expect(result).not.toBeNull();
-    expect(result?.choices[0].delta.tool_calls).toHaveLength(1);
-    expect(result?.choices[0].delta.tool_calls?.[0]).toEqual({
-      index: 0,
-      id: "call_abc123",
-      type: "function",
-      function: {
-        name: "readFile",
-        arguments: "",
+      {
+        type: "reasoning-start",
+        id: "1",
+        providerMetadata: { anthropic: { redactedData: "opaque" } },
       },
-    });
+    ]);
+
+    expect(deltas(chunks).map((d: any) => d.reasoning_details)).toEqual([
+      [{ type: "reasoning.text", text: "Hmm", index: 0 }],
+      [{ type: "reasoning.text", signature: "sig", index: 0 }],
+      [{ type: "reasoning.encrypted", data: "opaque", index: 1 }],
+    ]);
   });
-});
 
-describe("convertVercelStream", () => {
-  const options = { model: "gpt-4o-mini" };
+  test("keeps OpenAI's reasoning summary and encrypted content per item", async () => {
+    const chunks = await collect([
+      {
+        type: "reasoning-delta",
+        id: "rs_1:0",
+        text: "Summary",
+        providerMetadata: { openai: { itemId: "rs_1" } },
+      },
+      {
+        type: "reasoning-end",
+        id: "rs_1:0",
+        providerMetadata: {
+          openai: { itemId: "rs_1", reasoningEncryptedContent: "enc" },
+        },
+      },
+    ]);
 
-  test("converts stream of mixed events", async () => {
-    const parts: VercelStreamPart[] = [
-      { type: "start-step" },
-      { type: "text-delta", id: "text-1", text: "Hello " },
-      { type: "text-delta", id: "text-1", text: "world" },
-      { type: "tool-input-start", id: "call_1", toolName: "test" },
-      { type: "tool-input-delta", id: "call_1", delta: '{"arg":"value"}' },
-      { type: "tool-input-end", id: "call_1" },
+    expect(deltas(chunks).map((d: any) => d.reasoning_details)).toEqual([
+      [{ type: "reasoning.summary", summary: "Summary", id: "rs_1", index: 0 }],
+      [{ type: "reasoning.encrypted", id: "rs_1", data: "enc", index: 0 }],
+    ]);
+  });
+
+  test("gives parallel tool calls their own index", async () => {
+    const chunks = await collect([
+      { type: "tool-input-start", id: "a", toolName: "read" },
+      { type: "tool-input-start", id: "b", toolName: "grep" },
+      { type: "tool-input-delta", id: "a", delta: '{"p":1}' },
+      { type: "tool-input-delta", id: "b", delta: '{"q":2}' },
+      { type: "tool-call", toolCallId: "a", toolName: "read", input: { p: 1 } },
+      { type: "finish", finishReason: "tool-calls" },
+    ]);
+
+    expect(deltas(chunks).flatMap((d) => d.tool_calls ?? [])).toEqual([
+      {
+        index: 0,
+        id: "a",
+        type: "function",
+        function: { name: "read", arguments: "" },
+      },
+      {
+        index: 1,
+        id: "b",
+        type: "function",
+        function: { name: "grep", arguments: "" },
+      },
+      { index: 0, function: { arguments: '{"p":1}' } },
+      { index: 1, function: { arguments: '{"q":2}' } },
+    ]);
+    expect(chunks.at(-1)?.choices[0].finish_reason).toBe("tool_calls");
+  });
+
+  test("sends a tool call that arrives whole, with Gemini's thought signature", async () => {
+    const chunks = await collect([
       {
         type: "tool-call",
-        toolCallId: "call_1",
-        toolName: "test",
-        input: { arg: "value" },
+        toolCallId: "c",
+        toolName: "read",
+        input: { path: "x" },
+        providerMetadata: { google: { thoughtSignature: "ts" } },
       },
+    ]);
+
+    expect(deltas(chunks)[0].tool_calls).toEqual([
       {
-        type: "finish-step",
-        response: {},
-        usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
-        finishReason: "stop",
+        index: 0,
+        id: "c",
+        type: "function",
+        function: { name: "read", arguments: '{"path":"x"}' },
+        extra_content: { google: { thought_signature: "ts" } },
       },
+    ]);
+  });
+
+  test("adds only the thought signature to a call already streamed", async () => {
+    const chunks = await collect([
+      { type: "tool-input-start", id: "c", toolName: "read" },
+      {
+        type: "tool-call",
+        toolCallId: "c",
+        toolName: "read",
+        input: {},
+        providerMetadata: { google: { thoughtSignature: "ts" } },
+      },
+    ]);
+
+    expect(deltas(chunks)[1].tool_calls).toEqual([
+      { index: 0, extra_content: { google: { thought_signature: "ts" } } },
+    ]);
+  });
+
+  test("ends with a usage chunk", async () => {
+    const chunks = await collect([
       {
         type: "finish",
         finishReason: "stop",
         totalUsage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
       },
-    ];
+    ]);
 
-    async function* streamParts() {
-      for (const part of parts) {
-        yield part;
-      }
-    }
-
-    const chunks = [];
-    for await (const chunk of convertVercelStream(streamParts(), options)) {
-      chunks.push(chunk);
-    }
-
-    // text-delta (2) + tool-input-start (1) + tool-input-delta (1) + finish (1) = 5
-    // start-step, tool-input-end, tool-call (no thoughtSignature), and finish-step are filtered out
-    expect(chunks).toHaveLength(5);
-
-    expect(chunks[0].choices[0].delta.content).toBe("Hello ");
-    expect(chunks[1].choices[0].delta.content).toBe("world");
-    expect(chunks[2].choices[0].delta.tool_calls?.[0].id).toBe("call_1");
-    expect(chunks[2].choices[0].delta.tool_calls?.[0].function?.name).toBe(
-      "test",
-    );
-    expect(chunks[3].choices[0].delta.tool_calls?.[0].function?.arguments).toBe(
-      '{"arg":"value"}',
-    );
-    expect(chunks[4].usage).toBeDefined();
+    expect(chunks.at(-1)).toMatchObject({
+      choices: [],
+      usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+    });
   });
 
-  test("throws error when stream contains error event", async () => {
-    const parts: VercelStreamPart[] = [
-      { type: "text-delta", id: "text-1", text: "Hello" },
-      { type: "error", error: new Error("Stream error") },
-    ];
+  test("throws an HTTP error with its status, URL and body", () => {
+    const converter = new VercelStreamConverter({ model: "m" });
+    const error = Object.assign(new Error("Not Found"), {
+      name: "AI_APICallError",
+      url: "https://api.oneprovider.dev/beta/completions",
+      statusCode: 404,
+      responseBody:
+        '{"error":{"type":"not_found_error","message":"Not found"}}',
+    });
 
-    async function* streamParts() {
-      for (const part of parts) {
-        yield part;
-      }
-    }
-
-    const chunks = [];
-    try {
-      for await (const chunk of convertVercelStream(streamParts(), options)) {
-        chunks.push(chunk);
-      }
-      throw new Error("Should have thrown error");
-    } catch (error: any) {
-      expect(error.message).toBe("Stream error");
-      expect(chunks).toHaveLength(1); // Only the first chunk before error
-    }
+    expect(() => converter.convert({ type: "error", error })).toThrow(
+      'HTTP 404 from https://api.oneprovider.dev/beta/completions\n\n{"error":{"type":"not_found_error","message":"Not found"}}',
+    );
   });
 
-  test("filters out all non-convertible events", async () => {
-    const parts: VercelStreamPart[] = [
-      { type: "start-step" },
-      { type: "source", source: {} },
-      { type: "file", file: { name: "test.txt", content: "content" } },
-      { type: "tool-result", toolCallId: "call_1", result: {} },
-    ];
+  test("throws other errors as they are", () => {
+    const converter = new VercelStreamConverter({ model: "m" });
+    const error = new DOMException("Aborted", "AbortError");
+    expect(() => converter.convert({ type: "error", error })).toThrow(error);
+  });
 
-    async function* streamParts() {
-      for (const part of parts) {
-        yield part;
-      }
-    }
+  test.each<VercelStreamPart>([
+    { type: "start" },
+    { type: "start-step" },
+    { type: "finish-step", finishReason: "stop" },
+    { type: "text-start", id: "t" },
+    { type: "reasoning-end", id: "0" },
+    { type: "tool-input-end", id: "a" },
+    { type: "tool-result", toolCallId: "a" },
+    { type: "source", source: {} },
+    { type: "file", file: {} },
+    {
+      type: "raw",
+      rawValue: { choices: [{ delta: { reasoning_details: [{}] } }] },
+    },
+  ])("emits nothing for $type", (part) => {
+    expect(new VercelStreamConverter({ model: "m" }).convert(part)).toEqual([]);
+  });
+});
 
-    const chunks = [];
-    for await (const chunk of convertVercelStream(streamParts(), options)) {
-      chunks.push(chunk);
-    }
+describe("toOpenAIUsage", () => {
+  test("counts cached tokens inside prompt_tokens and lists them apart", () => {
+    expect(
+      toOpenAIUsage({
+        inputTokens: 1000,
+        outputTokens: 50,
+        inputTokenDetails: {
+          noCacheTokens: 100,
+          cacheReadTokens: 800,
+          cacheWriteTokens: 100,
+        },
+        outputTokenDetails: { reasoningTokens: 30 },
+      }),
+    ).toEqual({
+      prompt_tokens: 1000,
+      completion_tokens: 50,
+      total_tokens: 1050,
+      prompt_tokens_details: {
+        cached_tokens: 800,
+        cache_read_tokens: 800,
+        cache_write_tokens: 100,
+      },
+      completion_tokens_details: { reasoning_tokens: 30 },
+    });
+  });
 
-    // All events should be filtered out
-    expect(chunks).toHaveLength(0);
+  test("leaves out details the provider didn't report", () => {
+    expect(toOpenAIUsage({ inputTokens: 3, outputTokens: 4 })).toEqual({
+      prompt_tokens: 3,
+      completion_tokens: 4,
+      total_tokens: 7,
+    });
   });
 });
