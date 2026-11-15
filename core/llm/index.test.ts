@@ -6,7 +6,7 @@ import {
   Tool,
 } from "..";
 
-import { allModelProviders } from "@nextcli/llm-info";
+import { allModelProviders, findLlmInfo } from "@nextcli/llm-info";
 import { LlmInfo } from "@nextcli/llm-info/dist/types";
 import { BaseLLM } from ".";
 import { DEFAULT_CONTEXT_LENGTH } from "./constants";
@@ -310,10 +310,15 @@ describe("BaseLLM", () => {
       }
       const testContextLength = (llmInfo: LlmInfo) => () => {
         const llm = new LLMClass({ model: llmInfo.model, apiKey: "test-key" });
+        // The table's row, with the limits it leaves out filled from the
+        // models.dev catalog and its context capped at the input limit
+        const expected = findLlmInfo(
+          llmInfo.model,
+          modelProvider.id,
+        )?.contextLength;
+        expect(llm.contextLength).toEqual(expected ?? DEFAULT_CONTEXT_LENGTH);
         if (llmInfo.contextLength) {
-          expect(llm.contextLength).toEqual(llmInfo.contextLength);
-        } else {
-          expect(llm.contextLength).toEqual(DEFAULT_CONTEXT_LENGTH);
+          expect(llm.contextLength).toBeLessThanOrEqual(llmInfo.contextLength);
         }
       };
       describe(`${modelProvider.id}`, () => {

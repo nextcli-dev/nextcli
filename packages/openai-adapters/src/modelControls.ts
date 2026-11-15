@@ -1,3 +1,5 @@
+import { catalogPromptLimit, type CatalogModel } from "@nextcli/llm-info";
+
 import {
   anthropicCanDisableThinking,
   anthropicEffortLevels,
@@ -6,6 +8,36 @@ import {
   parseClaudeModelVersion,
 } from "./apis/AnthropicUtils.js";
 import { isResponsesModel } from "./apis/openaiResponses.js";
+import { overriddenEfforts } from "./catalogOverrides.js";
+import {
+  baseModelName,
+  getControlsFormat,
+  isClaude,
+  isOneProviderBase,
+  resolveModelProfile,
+  vendorCatalogModel,
+  type ModelProfile,
+} from "./modelProfile.js";
+
+/**
+ * The largest context window to offer: the longest prompt the catalog says
+ * the model takes (its input limit when that is below the window)
+ */
+function promptLimit(entry: CatalogModel | undefined): number | undefined {
+  return entry ? catalogPromptLimit(entry) : undefined;
+}
+
+export { getControlsFormat };
+
+/*
+ * Where the controls come from: effort levels, the context window, fast
+ * mode and whether a model reasons are read from the models.dev catalog
+ * (@nextcli/llm-info, through modelProfile.ts), with the live-checked
+ * corrections in catalogOverrides.ts. Whether and how thinking turns off is
+ * each API's own rule and stays here, because the catalog doesn't record it
+ * for most models. Models the catalog doesn't list get conservative
+ * defaults, marked experimental.
+ */
 
 /**
  * Which request format a model's controls are written in. It follows the
@@ -85,21 +117,17 @@ export interface ModelIdentity {
   reasoningConfigured?: boolean;
 }
 
-const OPENAI_API_BASE = "https://api.openai.com/v1/";
 const ONEPROVIDER_PROVIDER = "oneprovider";
+const CONSERVATIVE_EFFORTS = ["low", "medium", "high"];
 
-/** Strips a vendor prefix such as `anthropic/` (OpenRouter model ids) */
-function baseModelName(model: string): string {
-  const slash = model.lastIndexOf("/");
-  return (slash === -1 ? model : model.slice(slash + 1)).toLowerCase();
+/** The catalog's effort levels, without "none" (that's thinking off) */
+function catalogEfforts(entry: CatalogModel | undefined): string[] {
+  return (entry?.efforts ?? []).filter((effort) => effort !== "none");
 }
 
-function isClaude(model: string): boolean {
-  return baseModelName(model).includes("claude");
-}
-
-function isDeepSeek(model: string): boolean {
-  return baseModelName(model).startsWith("deepseek");
+/** The catalog lists "none" among the efforts: reasoning can be turned off */
+function turnsOffWithNone(entry: CatalogModel | undefined): boolean {
+  return !!entry?.efforts?.includes("none");
 }
 
 /** Claude 4.6 to 4.8 think only once an effort is set; Claude 5 by default */
@@ -113,108 +141,43 @@ function claudeThinkingNeedsEffort(model: string): boolean {
   );
 }
 
-/** Chat models that accept `service_tier: "priority"` */
-function supportsOpenAIPriority(model: string): boolean {
-  const name = baseModelName(model);
-  return isResponsesModel(name) || /^gpt-4(o|\.1)/.test(name);
-}
-
-interface OpenAIReasoningLevels {
-  efforts: string[];
-  /** Accepts `reasoning.effort: "none"` */
-  canTurnOff: boolean;
-  /** Newer than the models checked, so the levels are a best guess */
-  guessed: boolean;
-}
-
-/**
- * Effort levels per OpenAI reasoning model, checked against the live
- * Responses API on 2026-11-04 (models that reject a level return 400):
- * - gpt-5 (and -mini, -nano): minimal to high, no none
- * - gpt-5.1: none, low to high
- * - gpt-5.2 to 5.5: none, low to xhigh
- * - gpt-5.6 and gpt-6: none, low to max
- * - gpt-6.1: low to max, no none
- * - o-series: low to high, no none
- */
-export function openAIReasoningLevels(model: string): OpenAIReasoningLevels {
-  const name = baseModelName(model);
-  if (/^o\d/.test(name)) {
-    return {
-      efforts: ["low", "medium", "high"],
-      canTurnOff: false,
-      guessed: false,
-    };
-  }
-  const match = name.match(/^gpt-(\d+)(?:\.(\d+))?/);
-  const major = Number(match?.[1] ?? 5);
-  const minor = Number(match?.[2] ?? 0);
-  const upTo = (top: string) =>
-    ["low", "medium", "high", "xhigh", "max"].slice(
-      0,
-      ["low", "medium", "high", "xhigh", "max"].indexOf(top) + 1,
-    );
-  if (major === 5 && minor === 0) {
-    return {
-      efforts: ["minimal", "low", "medium", "high"],
-      canTurnOff: false,
-      guessed: false,
-    };
-  }
-  if (major === 5 && minor === 1) {
-    return { efforts: upTo("high"), canTurnOff: true, guessed: false };
-  }
-  if (major === 5 && minor <= 5) {
-    return { efforts: upTo("xhigh"), canTurnOff: true, guessed: false };
-  }
-  if ((major === 5 && minor >= 6) || (major === 6 && minor === 0)) {
-    return {
-      efforts: upTo("max"),
-      canTurnOff: true,
-      guessed: major === 5 && minor > 6,
-    };
-  }
-  // gpt-6.1 dropped none; newer models are assumed to match it
-  return {
-    efforts: upTo("max"),
-    canTurnOff: false,
-    guessed: !(major === 6 && minor === 1),
-  };
-}
-
 function openAIControls(
   format: "openai" | "azure",
   model: string,
+  entry: CatalogModel | undefined,
 ): ModelControls {
-  const levels = openAIReasoningLevels(model);
+  const known = !!entry;
+  const efforts = known ? catalogEfforts(entry) : CONSERVATIVE_EFFORTS;
+  const canTurnOff = turnsOffWithNone(entry);
   // Azure's Chat Completions endpoint returns no readable reasoning
   const modes: ThinkingMode[] =
     format === "azure"
-      ? levels.canTurnOff
+      ? canTurnOff
         ? ["off", "hidden"]
         : []
-      : levels.canTurnOff
+      : canTurnOff
         ? [...THINKING_MODES]
         : ["hidden", "shown"];
   return {
     format,
-    efforts: levels.efforts,
+    efforts,
     thinkingModes: modes,
     thinkingUnavailable:
-      levels.canTurnOff || format === "azure"
-        ? format === "azure"
-          ? { shown: "Azure's Chat Completions API doesn't return reasoning." }
-          : {}
-        : {
-            off: `${model} can't turn reasoning off. ${levels.efforts[0] === "minimal" ? "Minimal" : "Low"} effort is the lowest.`,
-          },
+      format === "azure"
+        ? { shown: "Azure's Chat Completions API doesn't return reasoning." }
+        : canTurnOff
+          ? {}
+          : {
+              off: `${model} can't turn reasoning off. ${efforts[0] === "minimal" ? "Minimal" : "Low"} effort is the lowest.`,
+            },
     // Readable summaries can need a verified organization
     defaultThinking: "hidden",
     canShowThinking: format === "openai",
     thinkingNeedsEffort: false,
     effortNeedsThinking: true,
-    fast: format === "openai" && supportsOpenAIPriority(model),
-    experimental: levels.guessed,
+    fast: format === "openai" && !!entry?.fast,
+    maxContextLength: promptLimit(entry),
+    experimental: !known,
   };
 }
 
@@ -242,37 +205,44 @@ export function parseGeminiModelVersion(
 
 /**
  * Gemini 2.5 uses a thinking budget, Gemini 3 and newer a thinking level.
- * Pro models always think. Gemini 2.5 Flash and Flash-Lite turn it off with
- * a budget of 0. On Gemini 3 and newer only Flash-Lite can: OpenRouter
- * rejects turning it off for 3.5 Flash and 3.1 Pro ("Reasoning is
- * mandatory", checked 2026-11-04). Versions after 3.1 are a best guess.
+ * Gemini 2.5 Flash and Flash-Lite turn thinking off with a budget of 0. On
+ * Gemini 3 and newer only Flash-Lite can: OpenRouter rejects turning it off
+ * for 3.5 Flash and 3.1 Pro ("Reasoning is mandatory", checked 2026-11-04).
  */
-function geminiControls(model: string): ModelControls {
-  const version = parseGeminiModelVersion(model);
-  const thinks =
+function geminiCanTurnOff(version: GeminiVersion | undefined): boolean {
+  return (
     !!version &&
-    (version.major >= 3 || (version.major === 2 && version.minor >= 5));
-  if (!version || !thinks) {
-    return noControls("gemini", version ? false : true);
+    (version.tier === "flash-lite" ||
+      (version.tier === "flash" && version.major < 3))
+  );
+}
+
+function geminiControls(
+  model: string,
+  entry: CatalogModel | undefined,
+): ModelControls {
+  const version = parseGeminiModelVersion(model);
+  const reasons = entry ? !!entry.reasoning : looksLikeReasoningModel(model);
+  if (!reasons) {
+    return {
+      ...noControls("gemini", !entry),
+      maxContextLength: promptLimit(entry),
+    };
   }
-  const canTurnOff =
-    version.tier === "flash-lite" ||
-    (version.tier === "flash" && version.major < 3);
-  const levels =
-    version.major >= 3
-      ? version.tier === "pro" || version.tier === "other"
-        ? ["low", "high"]
-        : ["minimal", "low", "medium", "high"]
-      : ["low", "medium", "high"];
+  const canTurnOff = geminiCanTurnOff(version);
+  // Budgets (2.5) take any level; thinking levels (3+) all take low and high
+  const fallback =
+    version?.major === 2 ? CONSERVATIVE_EFFORTS : ["low", "high"];
+  const efforts = entry?.efforts ? catalogEfforts(entry) : fallback;
   return {
     format: "gemini",
-    efforts: levels,
+    efforts: efforts.length > 0 ? efforts : fallback,
     thinkingModes: canTurnOff ? [...THINKING_MODES] : ["hidden", "shown"],
     thinkingUnavailable: canTurnOff
       ? {}
       : {
           off:
-            version.tier === "pro"
+            version?.tier === "pro"
               ? "Gemini Pro models always think. Pick a Flash-Lite model to turn thinking off."
               : "This Gemini model always thinks. Pick a Flash-Lite model to turn thinking off.",
         },
@@ -281,38 +251,33 @@ function geminiControls(model: string): ModelControls {
     thinkingNeedsEffort: false,
     effortNeedsThinking: true,
     fast: false,
-    maxContextLength: 1_048_576,
-    experimental:
-      version.tier === "other" ||
-      version.major > 3 ||
-      (version.major === 3 && version.minor > 1),
+    maxContextLength: promptLimit(entry),
+    experimental: !entry,
   };
 }
 
 /**
- * Grok, checked against the live xAI API on 2026-11-04:
- * - grok-4.3 to 4.7 take `reasoning_effort` minimal to xhigh; grok-4.3
- *   also takes "none" (no reasoning tokens), later ones reject it
- * - grok-4.20-*-reasoning and grok-build reject `reasoning_effort` and
- *   always reason
- * - `-non-reasoning` models don't reason
- * All reasoning models return the reasoning in `reasoning_content`.
+ * Grok returns its reasoning in `reasoning_content`. Models that take
+ * "none" as an effort (grok-4.3) turn reasoning off; models without effort
+ * levels in the catalog (grok-4.20 reasoning, grok-build) reject
+ * `reasoning_effort` and always reason.
  */
-function xaiControls(model: string): ModelControls {
+function xaiControls(
+  model: string,
+  entry: CatalogModel | undefined,
+): ModelControls {
   const name = baseModelName(model);
-  if (!name.startsWith("grok") || name.includes("non-reasoning")) {
-    return noControls("xai", !name.startsWith("grok"));
+  const reasons = entry ? !!entry.reasoning : looksLikeReasoningModel(name);
+  if (!reasons || name.includes("non-reasoning")) {
+    return {
+      ...noControls("xai", !entry),
+      maxContextLength: promptLimit(entry),
+    };
   }
-  const version = name.match(/^grok-4\.(\d)(?!\d)/);
-  const minor = version ? Number(version[1]) : undefined;
-  const takesEffort = minor !== undefined && minor >= 3;
-  const canTurnOff = minor === 3;
-  const known =
-    (minor !== undefined && minor >= 3 && minor <= 7) ||
-    /^grok-(4\.20|build)/.test(name);
+  const canTurnOff = turnsOffWithNone(entry);
   return {
     format: "xai",
-    efforts: takesEffort ? ["minimal", "low", "medium", "high", "xhigh"] : [],
+    efforts: overriddenEfforts("xai", name) ?? catalogEfforts(entry),
     thinkingModes: canTurnOff ? [...THINKING_MODES] : ["hidden", "shown"],
     thinkingUnavailable: canTurnOff
       ? {}
@@ -324,7 +289,8 @@ function xaiControls(model: string): ModelControls {
     thinkingNeedsEffort: false,
     effortNeedsThinking: true,
     fast: false,
-    experimental: !known,
+    maxContextLength: promptLimit(entry),
+    experimental: !entry,
   };
 }
 
@@ -350,72 +316,69 @@ export function looksLikeReasoningModel(model: string): boolean {
 }
 
 /**
- * Kimi. Checked against the live API on 2026-11-04: Kimi K3 models
- * (kimi-k3, kimi-k3.1-pro, kimi-k3.1-pro-highspeed) think by default,
- * `thinking: { type: "disabled" }` stops it (0 reasoning tokens), and
- * `reasoning_effort` takes low, high or max (max is the default; the API
- * lists these in GET /models). They have a 1M-token context window.
- * `-thinking` models always think; instruct models don't.
+ * Kimi, checked against the live API on 2026-11-04: Kimi K3 models think by
+ * default and `thinking: { type: "disabled" }` stops it (0 reasoning
+ * tokens). `-thinking` models always think; instruct models don't.
  */
-function moonshotControls(model: string): ModelControls {
+function moonshotControls(
+  model: string,
+  entry: CatalogModel | undefined,
+): ModelControls {
   const name = baseModelName(model);
-  if (name.includes("instruct")) {
-    return noControls("moonshot");
-  }
-  if (name.startsWith("kimi-k3")) {
+  if (name.includes("instruct") || (entry && !entry.reasoning)) {
     return {
-      format: "moonshot",
-      efforts: ["low", "high", "max"],
-      thinkingModes: [...THINKING_MODES],
-      thinkingUnavailable: {},
-      defaultThinking: "shown",
-      canShowThinking: true,
-      thinkingNeedsEffort: false,
-      effortNeedsThinking: true,
-      fast: false,
-      maxContextLength: 1_048_576,
-      experimental: false,
+      ...noControls("moonshot"),
+      maxContextLength: promptLimit(entry),
     };
   }
+  const canTurnOff = name.startsWith("kimi-k3");
+  const efforts = catalogEfforts(entry);
   return {
     format: "moonshot",
-    efforts: [],
-    thinkingModes: ["hidden", "shown"],
-    thinkingUnavailable: {
-      off: "This Kimi model always thinks. Kimi K3 models can turn thinking off.",
-    },
+    efforts,
+    thinkingModes: canTurnOff ? [...THINKING_MODES] : ["hidden", "shown"],
+    thinkingUnavailable: canTurnOff
+      ? {}
+      : {
+          off: "This Kimi model always thinks. Kimi K3 models can turn thinking off.",
+        },
     defaultThinking: "shown",
     canShowThinking: true,
     thinkingNeedsEffort: false,
-    effortNeedsThinking: false,
+    effortNeedsThinking: efforts.length > 0,
     fast: false,
-    experimental: !name.includes("thinking"),
+    maxContextLength: promptLimit(entry),
+    experimental: !entry,
   };
 }
 
 /**
- * OpenRouter maps the effort to each vendor's own setting. Turning
- * reasoning off (`reasoning.enabled: false`) follows the vendor: OpenRouter
- * rejects it for models that must reason ("Reasoning is mandatory": Gemini
- * 3+ Flash and Pro, Grok 4.5 and later), checked 2026-11-04.
+ * OpenRouter maps the effort to each vendor's own setting, so the menu
+ * lists the vendor's own levels. Turning reasoning off
+ * (`reasoning.enabled: false`) follows the vendor: OpenRouter rejects it for
+ * models that must reason ("Reasoning is mandatory": Gemini 3+ Flash and
+ * Pro, Grok models without "none"), checked 2026-11-04.
  */
-function openRouterControls(model: string): ModelControls {
+function openRouterControls(
+  model: string,
+  entry: CatalogModel | undefined,
+): ModelControls {
   const slash = model.indexOf("/");
   const vendor = slash === -1 ? "" : model.slice(0, slash).toLowerCase();
   const name = baseModelName(model);
+  const vendorEntry = vendorCatalogModel(model);
   const claude = isClaude(model)
-    ? claudeControls("openrouter", model)
+    ? claudeControls("openrouter", model, vendorEntry)
     : undefined;
-  const claudeLevels = claude ? anthropicEffortLevels(name) : [];
   const native =
     vendor === "google"
-      ? geminiControls(name)
+      ? geminiControls(name, vendorEntry)
       : vendor === "x-ai"
-        ? xaiControls(name)
+        ? xaiControls(name, vendorEntry)
         : vendor === "moonshotai"
-          ? moonshotControls(name)
+          ? moonshotControls(name, vendorEntry)
           : vendor === "openai" && isResponsesModel(name)
-            ? openAIControls("openai", name)
+            ? openAIControls("openai", name, vendorEntry)
             : undefined;
   // OpenRouter can disable reasoning for Kimi and OpenAI even where the
   // vendor rules need a specific model; it refuses for Gemini and Grok
@@ -423,16 +386,11 @@ function openRouterControls(model: string): ModelControls {
     vendor === "google" || vendor === "x-ai"
       ? (native?.thinkingModes.includes("off") ?? false)
       : true;
+  const vendorLevels = claude?.efforts ?? native?.efforts ?? [];
+  const known = !!claude || (native ? !native.experimental : false);
   return {
     format: "openrouter",
-    // OpenRouter accepts any level and maps it to the vendor's nearest one
-    // (checked 2026-11-04), so the menu lists the vendor's own levels
-    efforts:
-      claudeLevels.length > 0
-        ? claudeLevels
-        : native && native.efforts.length > 0
-          ? native.efforts
-          : ["low", "medium", "high"],
+    efforts: vendorLevels.length > 0 ? vendorLevels : CONSERVATIVE_EFFORTS,
     thinkingModes: canTurnOff ? [...THINKING_MODES] : ["hidden", "shown"],
     thinkingUnavailable: canTurnOff
       ? {}
@@ -443,12 +401,10 @@ function openRouterControls(model: string): ModelControls {
     canShowThinking: true,
     // Without `reasoning`, OpenRouter runs Claude 4.6 to 4.8 with no thinking
     thinkingNeedsEffort: claude?.thinkingNeedsEffort ?? false,
-    effortNeedsThinking: !claude || claudeLevels.length === 0,
+    effortNeedsThinking: claude ? claude.effortNeedsThinking : true,
     fast: false,
-    maxContextLength: native?.maxContextLength,
-    experimental:
-      claudeLevels.length === 0 &&
-      !(native && native.efforts.length > 0 && !native.experimental),
+    maxContextLength: promptLimit(entry) ?? promptLimit(vendorEntry),
+    experimental: !(known && vendorLevels.length > 0),
   };
 }
 
@@ -472,19 +428,24 @@ function noControls(
 function claudeControls(
   format: "anthropic" | "bedrock" | "openrouter",
   model: string,
+  entry: CatalogModel | undefined,
 ): ModelControls {
   const name = baseModelName(model);
   const version = parseClaudeModelVersion(name);
   if (!version) {
     return noControls(format, true);
   }
-  const levels = anthropicEffortLevels(name);
+  // The catalog's levels; for models it doesn't list, the levels the
+  // request code (anthropicControlParams) would send
+  const levels = entry?.efforts
+    ? catalogEfforts(entry)
+    : anthropicEffortLevels(name);
   const needsEffort = claudeThinkingNeedsEffort(name);
   const canTurnOff = anthropicCanDisableThinking(name);
   return {
     format,
     // Models without an effort parameter map levels to thinking budgets
-    efforts: levels.length > 0 ? levels : ["low", "medium", "high"],
+    efforts: levels.length > 0 ? levels : CONSERVATIVE_EFFORTS,
     thinkingModes: canTurnOff
       ? [...THINKING_MODES]
       : THINKING_MODES.filter((mode) => mode !== "off"),
@@ -497,70 +458,71 @@ function claudeControls(
     thinkingNeedsEffort: needsEffort,
     // Effort maps to a thinking budget on models without `effort`
     effortNeedsThinking: levels.length === 0,
+    // Fast mode needs its beta header, which the request code adds for the
+    // models anthropicFastMode knows
     fast: format === "anthropic" && !!anthropicFastMode(name),
-    maxContextLength:
-      version.major > 4 || (version.major === 4 && version.minor >= 6)
-        ? 1_000_000
-        : 200_000,
+    maxContextLength: promptLimit(entry),
+    experimental: !entry,
+  };
+}
+
+/**
+ * DeepSeek's only verified control turns thinking off (catalogOverrides.ts
+ * keeps the catalog's effort levels out)
+ */
+function deepSeekControls(
+  model: string,
+  entry: CatalogModel | undefined,
+): ModelControls {
+  return {
+    format: "deepseek",
+    efforts:
+      overriddenEfforts("deepseek", baseModelName(model)) ??
+      catalogEfforts(entry),
+    thinkingModes: [...THINKING_MODES],
+    thinkingUnavailable: {},
+    defaultThinking: "shown",
+    canShowThinking: true,
+    thinkingNeedsEffort: false,
+    effortNeedsThinking: false,
+    fast: false,
+    maxContextLength: promptLimit(entry),
     experimental: false,
   };
 }
 
-function isOfficialOpenAI(apiBase: string | undefined): boolean {
-  return !apiBase || apiBase.replace(/\/?$/, "/") === OPENAI_API_BASE;
-}
-
-/** Whether an API base is OneProvider's, whichever provider id the config uses */
-function isOneProviderBase(apiBase: string | undefined): boolean {
-  try {
-    const host = new URL(apiBase ?? "").hostname;
-    return host === "oneprovider.dev" || host.endsWith(".oneprovider.dev");
-  } catch {
-    return false;
+function genericControls(
+  identity: ModelIdentity,
+  entry: CatalogModel | undefined,
+): ModelControls {
+  // A model the catalog knows (OneProvider's non-Claude models): its own
+  // levels. Otherwise only models that look like reasoning models (or that
+  // the config marks as one) get reasoning rows.
+  const reasons = entry
+    ? !!entry.reasoning || !!identity.reasoningConfigured
+    : !!identity.reasoningConfigured || looksLikeReasoningModel(identity.model);
+  if (!reasons) {
+    return {
+      ...noControls("generic", !entry),
+      maxContextLength: promptLimit(entry),
+    };
   }
-}
-
-/** The request format for a model, following the adapter it goes through */
-export function getControlsFormat({
-  provider,
-  model,
-  apiBase,
-}: ModelIdentity): ControlsFormat {
-  switch (provider) {
-    case "anthropic":
-      return "anthropic";
-    case ONEPROVIDER_PROVIDER:
-      // Claude goes through OneProvider's Anthropic Messages endpoint;
-      // DeepSeek models go through its OpenAI-compatible endpoint but still
-      // use DeepSeek's own thinking controls and context window
-      if (isClaude(model)) return "anthropic";
-      return isDeepSeek(model) ? "deepseek" : "generic";
-    case "openai":
-      if (isOfficialOpenAI(apiBase)) return "openai";
-      // An OpenAI-compatible config pointed at OneProvider (what nextcli-checks
-      // writes) is the same endpoint as provider "oneprovider", which takes
-      // DeepSeek's own thinking switch (`thinking: { type: "disabled" }`)
-      return isOneProviderBase(apiBase) && isDeepSeek(model)
-        ? "deepseek"
-        : "generic";
-    case "openrouter":
-      return "openrouter";
-    case "deepseek":
-      return "deepseek";
-    case "moonshot":
-      return "moonshot";
-    case "gemini":
-      return "gemini";
-    case "bedrock":
-      return "bedrock";
-    case "xAI":
-    case "xai":
-      return "xai";
-    case "azure":
-      return "azure";
-    default:
-      return "generic";
-  }
+  const levels = catalogEfforts(entry);
+  return {
+    format: "generic",
+    efforts: levels.length > 0 ? levels : CONSERVATIVE_EFFORTS,
+    thinkingModes: ["hidden", "shown"],
+    thinkingUnavailable: {
+      off: "NextCli can't turn thinking off for this provider.",
+    },
+    defaultThinking: "shown",
+    canShowThinking: true,
+    thinkingNeedsEffort: false,
+    effortNeedsThinking: false,
+    fast: false,
+    maxContextLength: promptLimit(entry),
+    experimental: levels.length === 0,
+  };
 }
 
 /**
@@ -568,75 +530,69 @@ export function getControlsFormat({
  * fast mode and context window. The model menus show only these.
  */
 export function getModelControls(identity: ModelIdentity): ModelControls {
-  const format = getControlsFormat(identity);
+  const profile: ModelProfile = resolveModelProfile(identity);
   const { model } = identity;
+  const entry = profile.catalog;
 
-  switch (format) {
+  let controls: ModelControls;
+  switch (profile.format) {
     case "anthropic":
-      return claudeControls("anthropic", model);
+      controls = claudeControls("anthropic", model, entry);
+      break;
     case "bedrock":
       // Bedrock's Converse API takes Claude's thinking settings; other
       // Bedrock models have none
-      return isClaude(model)
-        ? claudeControls("bedrock", model)
-        : noControls("bedrock");
+      controls = isClaude(model)
+        ? claudeControls("bedrock", model, entry)
+        : { ...noControls("bedrock"), maxContextLength: promptLimit(entry) };
+      break;
     case "openai":
-    case "azure":
-      if (!isResponsesModel(baseModelName(model))) {
-        return {
-          ...noControls(format),
-          fast: format === "openai" && supportsOpenAIPriority(model),
-        };
-      }
-      return openAIControls(format, model);
+    case "azure": {
+      const reasons = entry
+        ? !!entry.reasoning
+        : isResponsesModel(baseModelName(model));
+      controls = reasons
+        ? openAIControls(profile.format, model, entry)
+        : {
+            ...noControls(profile.format, !entry),
+            fast: profile.format === "openai" && !!entry?.fast,
+            maxContextLength: promptLimit(entry),
+          };
+      break;
+    }
     case "openrouter":
-      return openRouterControls(model);
+      controls = openRouterControls(model, entry);
+      break;
     case "deepseek":
-      return {
-        format,
-        // DeepSeek's only control turns thinking off
-        efforts: [],
-        thinkingModes: [...THINKING_MODES],
-        thinkingUnavailable: {},
-        defaultThinking: "shown",
-        canShowThinking: true,
-        thinkingNeedsEffort: false,
-        effortNeedsThinking: false,
-        fast: false,
-        // DeepSeek V4 (Pro and Flash) has a 1M-token context window
-        // (https://deepseek.ai/deepseek-v4). Older deepseek-chat and
-        // deepseek-reasoner ids are no longer routed. A larger configured
-        // context length is still offered.
-        maxContextLength: 1_000_000,
-        experimental: false,
-      };
+      controls = deepSeekControls(model, entry);
+      break;
     case "moonshot":
-      return moonshotControls(model);
+      controls = moonshotControls(model, entry);
+      break;
     case "gemini":
-      return geminiControls(model);
+      controls = geminiControls(model, entry);
+      break;
     case "xai":
-      return xaiControls(model);
+      controls = xaiControls(model, entry);
+      break;
     case "generic":
-      // Only for models that look like reasoning models (or that the
-      // config marks as one); others get the context window only
-      if (!identity.reasoningConfigured && !looksLikeReasoningModel(model)) {
-        return noControls("generic", true);
-      }
-      return {
-        format,
-        efforts: ["low", "medium", "high"],
-        thinkingModes: ["hidden", "shown"],
-        thinkingUnavailable: {
-          off: "NextCli can't turn thinking off for this provider.",
-        },
-        defaultThinking: "shown",
-        canShowThinking: true,
-        thinkingNeedsEffort: false,
-        effortNeedsThinking: false,
-        fast: false,
-        experimental: true,
-      };
+      controls = genericControls(identity, entry);
+      break;
   }
+
+  // OneProvider's -thinking ids always think
+  if (profile.thinkingAlwaysOn && controls.thinkingModes.includes("off")) {
+    controls = {
+      ...controls,
+      thinkingModes: controls.thinkingModes.filter((mode) => mode !== "off"),
+      thinkingUnavailable: {
+        ...controls.thinkingUnavailable,
+        off: "This -thinking model always thinks. Pick the model without -thinking to turn it off.",
+      },
+      defaultThinking: "shown",
+    };
+  }
+  return controls;
 }
 
 const EFFORT_ORDER = ["minimal", "low", "medium", "high", "xhigh", "max"];

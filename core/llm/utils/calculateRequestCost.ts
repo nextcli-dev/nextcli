@@ -1,22 +1,31 @@
+import {
+  catalogProviderFor,
+  findCatalogCost,
+  findCatalogFastCost,
+  findGeneralCost,
+} from "@nextcli/llm-info";
+
 import { Usage } from "../..";
 
 import {
-  estimateRatesFromOpenRouter,
   findOneproviderRates,
-  findOpenRouterRates,
   hostOf,
   isHostOrSubdomain,
   isLocalHost,
   priceWithHostRates,
+  ratesFromCatalog,
 } from "./rates/hostRates";
 import type { HostRates } from "./rates/hostRates";
 
 /**
- * exact: from the price table of the host or model maker.
- * estimated: from OpenRouter's price for a model with the same name, because
- * the host has no price table.
+ * exact: from a price table checked by hand, the host's or the model maker's.
+ * catalog: the provider's own price, from the models.dev catalog snapshot.
+ * estimated: a price for a host that may charge differently: OpenRouter's
+ * price for a model of the same name on a custom gateway, a maker's list
+ * price on a host other than the maker's API, or the standard price of a
+ * fast request whose fast price isn't known.
  */
-export type PriceSource = "exact" | "estimated";
+export type PriceSource = "exact" | "catalog" | "estimated";
 
 export interface CostBreakdown {
   cost: number;
@@ -28,11 +37,40 @@ export interface RequestCostOptions {
   /** The model's API base URL. Hosts with their own prices are matched on it. */
   apiBase?: string;
   /**
-   * Estimate unknown models from OpenRouter prices instead of returning null.
-   * Never applied to local hosts.
+   * Price models nothing else prices with the general price (OpenRouter's,
+   * for a model of the same name) instead of returning null. Never applied
+   * to local model servers.
    */
   estimateUnknown?: boolean;
+  /** The request asked for the model's fast or priority mode */
+  fast?: boolean;
 }
+
+/**
+ * Servers that run models on the user's own hardware. Without an apiBase
+ * they run on their local default, so there is no price to give.
+ */
+const LOCAL_MODEL_SERVERS = new Set([
+  "docker",
+  "huggingface-tei",
+  "huggingface-tgi",
+  "lemonade",
+  "llama.cpp",
+  "llamacpp",
+  "llamafile",
+  "llamastack",
+  "lmstudio",
+  "msty",
+  "ollama",
+  "text-gen-webui",
+  "vllm",
+]);
+
+/** The makers' own APIs, where their list prices are what is billed */
+const MAKER_HOSTS: Record<string, string> = {
+  anthropic: "api.anthropic.com",
+  openai: "api.openai.com",
+};
 
 interface AnthropicRates {
   input: number;
@@ -503,13 +541,24 @@ function calculateMakerCost(
 }
 
 /**
- * Prices one request. Hosts that resell models at their own prices are
- * checked first, because the same model costs different amounts on each:
+ * Prices one request. A host on the user's own machine (localhost, 127.x)
+ * gets no price: it is a model server or a bridge, and NextCLI can't see
+ * which provider, if any, a bridge forwards to. Private-network hosts are
+ * priced like any other. Hosts that resell models at their own prices are
+ * checked next, because the same model costs different amounts on each:
  *
- * 1. oneprovider.dev, by its price table
- * 2. OpenRouter (provider or host), by its catalog
- * 3. Anthropic and OpenAI, by their list prices
- * 4. with `estimateUnknown`, OpenRouter's price for a model of the same name
+ * 1. oneprovider.dev (provider or host), by its price table: exact
+ * 2. OpenRouter (provider or host), by its catalog prices: catalog
+ * 3. Anthropic and OpenAI, by their list prices: exact on the maker's own API,
+ *    estimated on any other host (a gateway or bridge given that provider)
+ * 4. any other provider, by its own catalog prices (DeepSeek, Groq, Gemini,
+ *    xAI, ...): catalog
+ * 5. with `estimateUnknown`, the general price: estimated. That covers custom
+ *    gateways on public hosts, but not local model servers (ollama, vllm,
+ *    ...) without an API base, which run on their local default.
+ *
+ * A fast request uses the provider's fast price from the catalog; without
+ * one, the standard price is used and marked estimated.
  */
 export function calculateRequestCost(
   provider: string,
@@ -519,33 +568,75 @@ export function calculateRequestCost(
 ): CostBreakdown | null {
   const normalizedProvider = provider.toLowerCase();
   const host = hostOf(options.apiBase);
+  const makerHost = MAKER_HOSTS[normalizedProvider];
+  const offMakerHost =
+    !!makerHost && !!host && !isHostOrSubdomain(host, makerHost);
+  if (host && isLocalHost(host)) {
+    return null;
+  }
 
-  let exactRates: HostRates | undefined;
-  if (host && isHostOrSubdomain(host, "oneprovider.dev")) {
-    exactRates = findOneproviderRates(model);
-  } else if (
-    normalizedProvider === "openrouter" ||
-    (host && isHostOrSubdomain(host, "openrouter.ai"))
-  ) {
-    exactRates = findOpenRouterRates(model);
+  const onOneProvider =
+    normalizedProvider === "oneprovider" ||
+    (!!host && isHostOrSubdomain(host, "oneprovider.dev"));
+  const onOpenRouter =
+    !onOneProvider &&
+    (normalizedProvider === "openrouter" ||
+      (!!host && isHostOrSubdomain(host, "openrouter.ai")));
+  // OneProvider isn't in the catalog; its prices are its own table's
+  const catalogProvider = onOneProvider
+    ? undefined
+    : onOpenRouter
+      ? "openrouter"
+      : catalogProviderFor(provider);
+  // A maker's model reached through another host may be billed differently
+  const offMaker = offMakerHost && !onOpenRouter;
+
+  const fastRates = options.fast
+    ? ratesFromCatalog(findCatalogFastCost(catalogProvider, model))
+    : undefined;
+  if (fastRates) {
+    return {
+      ...priceWithHostRates(model, fastRates, usage),
+      priced: offMaker ? "estimated" : "catalog",
+    };
+  }
+
+  let rates: HostRates | undefined;
+  let source: PriceSource = "catalog";
+  if (onOneProvider) {
+    rates = findOneproviderRates(model);
+    source = "exact";
   } else {
-    const makerCost = calculateMakerCost(normalizedProvider, model, usage);
+    const makerCost = onOpenRouter
+      ? null
+      : calculateMakerCost(normalizedProvider, model, usage);
     if (makerCost) {
-      return { ...makerCost, priced: "exact" };
+      return {
+        ...makerCost,
+        priced: offMaker || options.fast ? "estimated" : "exact",
+      };
     }
+    rates = ratesFromCatalog(findCatalogCost(catalogProvider, model));
+    if (offMaker) source = "estimated";
   }
-  if (exactRates) {
-    return { ...priceWithHostRates(model, exactRates, usage), priced: "exact" };
+  if (rates) {
+    // A fast request without a known fast price: the standard price
+    return {
+      ...priceWithHostRates(model, rates, usage),
+      priced: options.fast ? "estimated" : source,
+    };
   }
 
-  if (!options.estimateUnknown || (host && isLocalHost(host))) {
+  // A local model server on its local default (a local host returned above)
+  const runsLocally = LOCAL_MODEL_SERVERS.has(normalizedProvider) && !host;
+  if (!options.estimateUnknown || runsLocally) {
     return null;
   }
-  const estimatedRates = estimateRatesFromOpenRouter(model);
-  if (!estimatedRates) {
+  const generalRates = ratesFromCatalog(findGeneralCost(model));
+  if (!generalRates) {
     return null;
   }
-  const estimate = priceWithHostRates(model, estimatedRates, usage);
+  const estimate = priceWithHostRates(model, generalRates, usage);
   return {
     cost: estimate.cost,
     breakdown: `${estimate.breakdown}\n(estimated from OpenRouter prices)`,
