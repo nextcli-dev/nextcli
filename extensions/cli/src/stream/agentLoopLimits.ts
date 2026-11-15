@@ -25,10 +25,11 @@ let configuredLimits: AgentLoopLimits = { ...DEFAULT_AGENT_LOOP_LIMITS };
 export type AgentLoopLimitKind = "turns" | "tokens" | "cost";
 
 /**
- * How a model call was priced: exact from a price table checked by hand,
- * catalog from the provider's own price in the models.dev snapshot,
- * estimated from the general (OpenRouter) price for the same model, or the
- * flat fallback rate.
+ * How a model call was priced: exact for the price the host bills (a maker's
+ * list price on its own API, OneProvider's table), catalog from the
+ * provider's own price in the models.dev snapshot, estimated for a price the
+ * host may not charge (a gateway, a bridge, OpenRouter's general price), or
+ * the flat fallback rate.
  */
 export type PriceSource = "exact" | "catalog" | "estimated" | "fallback";
 
@@ -42,6 +43,7 @@ const PRICE_SOURCE_RANK: Record<PriceSource, number> = {
 // What happened in this process, for the headless exit code and usage line
 let limitReached: AgentLoopLimitKind | undefined;
 let priceSource: PriceSource | undefined;
+let catalogDate: string | undefined;
 
 /** The limit that ended a run in this process, if any */
 export function getLimitReached(): AgentLoopLimitKind | undefined {
@@ -53,7 +55,16 @@ export function getPriceSource(): PriceSource | undefined {
   return priceSource;
 }
 
-export function recordPriceSource(source: PriceSource): void {
+/** The models.dev snapshot's date, when a price in this process came from it */
+export function getCatalogDate(): string | undefined {
+  return catalogDate;
+}
+
+export function recordPriceSource(
+  source: PriceSource,
+  fromCatalogOf?: string,
+): void {
+  catalogDate ??= fromCatalogOf;
   if (
     priceSource === undefined ||
     PRICE_SOURCE_RANK[source] > PRICE_SOURCE_RANK[priceSource]
@@ -102,6 +113,7 @@ export function resetAgentLoopLimits(): void {
   configuredLimits = { ...DEFAULT_AGENT_LOOP_LIMITS };
   limitReached = undefined;
   priceSource = undefined;
+  catalogDate = undefined;
 }
 
 /** Stable JSON so `{a:1,b:2}` and `{b:2,a:1}` fingerprint the same */

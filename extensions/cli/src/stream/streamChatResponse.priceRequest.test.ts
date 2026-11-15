@@ -1,4 +1,5 @@
 import {
+  CATALOG_SYNCED_AT,
   findCatalogCost,
   findCatalogFastCost,
   findGeneralCost,
@@ -23,6 +24,7 @@ describe("priceRequest", () => {
     ).toEqual({
       cost: expect.closeTo(deepseek.input + deepseek.output, 6),
       priced: "catalog",
+      catalogDate: CATALOG_SYNCED_AT,
     });
   });
 
@@ -49,20 +51,23 @@ describe("priceRequest", () => {
     ).toEqual({
       cost: expect.closeTo(general.input + general.output, 6),
       priced: "estimated",
+      catalogDate: CATALOG_SYNCED_AT,
     });
   });
 
-  it("charges a local bridge the flat fallback rate, as a local server", () => {
-    // Its upstream isn't visible, so no table applies; never zero
+  it("prices a known model behind a local bridge at its vendor's price", () => {
+    // The bridge's upstream isn't visible: a known name sets a floor
+    const deepseek = findCatalogCost("deepseek", "deepseek-v4-pro")!;
+    const bridge = { provider: "openai", apiBase: "http://127.0.0.1:8091/v1" };
     expect(
-      priceRequest(
-        {
-          provider: "openai",
-          model: "deepseek-v4-pro",
-          apiBase: "http://127.0.0.1:8091/v1",
-        },
-        usage,
-      ),
+      priceRequest({ ...bridge, model: "deepseek-v4-pro" }, usage),
+    ).toMatchObject({
+      cost: expect.closeTo(deepseek.input + deepseek.output, 6),
+      priced: "estimated",
+    });
+    // An unknown name: the flat fallback rate, never zero
+    expect(
+      priceRequest({ ...bridge, model: "my-private-model" }, usage),
     ).toEqual({ cost: 3, priced: "fallback" });
   });
 
@@ -74,7 +79,9 @@ describe("priceRequest", () => {
         priceRequest({ provider: "openai", model: "gpt-5.5" }, usage),
       ).toEqual({
         cost: expect.closeTo(priority.input + priority.output, 6),
-        priced: "catalog",
+        // OpenAI's own price on OpenAI's API
+        priced: "exact",
+        catalogDate: CATALOG_SYNCED_AT,
       });
     } finally {
       fast.on = false;

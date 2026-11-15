@@ -49,10 +49,37 @@ describe("interactionCost", () => {
     ).toBe("estimated");
   });
 
-  it("gives no cost for a bridge on a local host", () => {
+  it("prices a known model behind a local bridge as an estimate", () => {
+    // The bridge's upstream isn't visible: its vendor's list price is a floor
     expect(
-      interactionCost(interaction({ apiBase: "http://127.0.0.1:8091/v1" })),
+      interactionCost(interaction({ apiBase: "http://127.0.0.1:8091/v1" }))
+        ?.priced,
+    ).toBe("estimated");
+    expect(
+      interactionCost(
+        interaction({
+          options: { model: "my-private-model" },
+          apiBase: "http://127.0.0.1:8091/v1",
+        }),
+      ),
     ).toBeNull();
+  });
+
+  it("prices fast mode only when the request sent it", () => {
+    const standard = interactionCost(
+      interaction({ options: { model: "gpt-5.5" } }),
+    )!.cost;
+    // Core logs fast: false when the model has no fast mode to send
+    expect(
+      interactionCost(
+        interaction({ options: { model: "gpt-5.5", fast: false } }),
+      )?.cost,
+    ).toBe(standard);
+    expect(
+      interactionCost(
+        interaction({ options: { model: "gpt-5.5", fast: true } }),
+      )!.cost,
+    ).toBeGreaterThan(standard);
   });
 
   it("returns null without usage", () => {

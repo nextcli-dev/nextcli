@@ -104,6 +104,16 @@ describe("writeHeadlessRunSummary", () => {
     });
   });
 
+  it("reports the catalog's date when a price came from it", () => {
+    recordPriceSource("catalog", "2026-11-15");
+    writeHeadlessRunSummary(start, "json");
+
+    expect(summaryLine().usage).toMatchObject({
+      priced: "catalog",
+      catalogDate: "2026-11-15",
+    });
+  });
+
   it("reports the limit that ended the run", () => {
     configureAgentLoopLimits({ maxTurns: "1" });
     new AgentLoopBudget().nextTurn();

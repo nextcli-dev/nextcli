@@ -223,7 +223,13 @@ export abstract class BaseLLM implements ILLM {
 
     this.model = options.model;
     // Use @nextcli/llm-info package to autodetect certain parameters
-    const llmInfo = findLlmInfo(this.model, this.underlyingProviderName);
+    // The API base decides which catalog applies: a custom OpenAI-compatible
+    // endpoint gets none, Groq's or OneProvider's host gets theirs
+    const llmInfo = findLlmInfo(
+      this.model,
+      this.underlyingProviderName,
+      options.apiBase,
+    );
 
     const templateType =
       options.template ?? autodetectTemplateType(options.model);
@@ -717,7 +723,7 @@ export abstract class BaseLLM implements ILLM {
         kind: "startFim",
         prefix,
         suffix,
-        options: completionOptions,
+        options: this.optionsAsSent(completionOptions),
         provider: this.providerName,
         apiBase: this.apiBase,
       });
@@ -842,7 +848,7 @@ export abstract class BaseLLM implements ILLM {
       interaction?.logItem({
         kind: "startComplete",
         prompt,
-        options: completionOptions,
+        options: this.optionsAsSent(completionOptions),
         provider: this.providerName,
         apiBase: this.apiBase,
       });
@@ -976,7 +982,7 @@ export abstract class BaseLLM implements ILLM {
       interaction?.logItem({
         kind: "startComplete",
         prompt: prompt,
-        options: completionOptions,
+        options: this.optionsAsSent(completionOptions),
         provider: this.providerName,
         apiBase: this.apiBase,
       });
@@ -1219,6 +1225,17 @@ export abstract class BaseLLM implements ILLM {
     return overriddenTools;
   }
 
+  /**
+   * The options as the request carries them, for the interaction log: fast
+   * only when the model has a fast mode the request sends, so a saved Fast
+   * setting is never priced as a fast request that wasn't made
+   */
+  private optionsAsSent(options: CompletionOptions): CompletionOptions {
+    return options.fast && !this.getModelControls().fast
+      ? { ...options, fast: false }
+      : options;
+  }
+
   /** Logs the start of a chat request and calls the request hook, if any. */
   private logStartChat(
     interaction: ILLMInteractionLog | undefined,
@@ -1229,7 +1246,7 @@ export abstract class BaseLLM implements ILLM {
     interaction?.logItem({
       kind: "startChat",
       messages,
-      options,
+      options: this.optionsAsSent(options),
       provider: this.providerName,
       apiBase: this.apiBase,
     });

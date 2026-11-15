@@ -409,7 +409,7 @@ export function forgetUnknownPriceWarnings(): void {
 export function priceRequest(
   model: any,
   usage: Usage,
-): { cost: number; priced: PriceSource } {
+): { cost: number; priced: PriceSource; catalogDate?: string } {
   const costBreakdown = calculateRequestCost(
     String(model.provider ?? ""),
     model.model,
@@ -420,6 +420,9 @@ export function priceRequest(
     return {
       cost: costBreakdown.cost,
       priced: costBreakdown.priced ?? "exact",
+      ...(costBreakdown.catalogDate && {
+        catalogDate: costBreakdown.catalogDate,
+      }),
     };
   }
   return {
@@ -561,6 +564,7 @@ export function recordStreamTelemetry(options: {
   // Calculate cost using comprehensive pricing that includes caching
   let cost: number;
   let priced: PriceSource;
+  let catalogDate: string | undefined;
   let usage: Usage;
 
   if (fullUsage) {
@@ -580,7 +584,7 @@ export function recordStreamTelemetry(options: {
         : undefined,
     };
 
-    ({ cost, priced } = priceRequest(model, usage));
+    ({ cost, priced, catalogDate } = priceRequest(model, usage));
   } else {
     // Fallback when fullUsage not available
     usage = {
@@ -590,7 +594,7 @@ export function recordStreamTelemetry(options: {
     cost = calculateFallbackCost(inputTokens, outputTokens);
     priced = "fallback";
   }
-  recordPriceSource(priced);
+  recordPriceSource(priced, catalogDate);
 
   // Use tokens from fullUsage if available, otherwise use the passed params
   const actualInputTokens = fullUsage?.prompt_tokens ?? inputTokens;

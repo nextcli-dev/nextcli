@@ -1,4 +1,4 @@
-import type { CatalogCost } from "@nextcli/llm-info";
+import { variantSuffix, type CatalogCost } from "@nextcli/llm-info";
 
 import type { Usage } from "../../..";
 
@@ -17,10 +17,10 @@ export interface HostRates {
 }
 
 // Suffixes a host adds to a listed model without changing its price: dated
-// snapshots and the thinking, preview and effort variants. Anything else (for
-// example "-pro" after "gpt-5.5") is a different model and must not match.
-const VARIANT_SUFFIX =
-  /^(?:-(?:\d{4}(?:-\d{2}){0,2}|\d{6,8}|thinking|preview|low|high|tiered))+$/;
+// snapshots, the thinking and preview variants, and OneProvider's effort
+// suffixes. Anything else (for example "-pro" after "gpt-5.5") is a
+// different model and must not match.
+const VARIANT_SUFFIX = variantSuffix(["low", "high", "tiered"]);
 
 function sortedByLength(keys: string[]): string[] {
   return [...keys].sort((a, b) => b.length - a.length);
@@ -75,36 +75,6 @@ export function ratesFromCatalog(
       })),
     }),
   };
-}
-
-export function hostOf(apiBase: string | undefined): string | undefined {
-  if (!apiBase) {
-    return undefined;
-  }
-  try {
-    return new URL(apiBase).hostname.toLowerCase();
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * Hosts on the user's own machine. Private-network addresses (10.x,
- * 172.16-31.x, 192.168.x, .local names) are other machines and are priced
- * like any other host.
- */
-export function isLocalHost(host: string): boolean {
-  return (
-    host === "localhost" ||
-    host.endsWith(".localhost") ||
-    host === "0.0.0.0" ||
-    host === "[::1]" ||
-    /^127\./.test(host)
-  );
-}
-
-export function isHostOrSubdomain(host: string, domain: string): boolean {
-  return host === domain || host.endsWith(`.${domain}`);
 }
 
 /** The rates for the prompt's length: the highest tier it passes, if any */

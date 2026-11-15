@@ -3,6 +3,7 @@ import { getSessionUsage } from "../session.js";
 import { AgentLoopLimitError } from "../stream/agentLoopLimitError.js";
 import {
   getAgentLoopLimits,
+  getCatalogDate,
   getLimitReached,
   getPriceSource,
 } from "../stream/agentLoopLimits.js";
@@ -139,6 +140,8 @@ function runUsage(usageAtStart: UsageSnapshot) {
   return {
     cost: Number((usage.totalCost - usageAtStart.totalCost).toFixed(6)),
     priced: getPriceSource() ?? null,
+    // How old the models.dev prices are, when a price came from them
+    ...(getCatalogDate() && { catalogDate: getCatalogDate() }),
     promptTokens: usage.promptTokens - usageAtStart.promptTokens,
     completionTokens: usage.completionTokens - usageAtStart.completionTokens,
   };
