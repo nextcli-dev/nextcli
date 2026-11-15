@@ -1,4 +1,4 @@
-import type { CatalogModel } from "@nextcli/llm-info";
+import { catalogPromptLimit, type CatalogModel } from "@nextcli/llm-info";
 
 import {
   anthropicCanDisableThinking,
@@ -18,6 +18,14 @@ import {
   vendorCatalogModel,
   type ModelProfile,
 } from "./modelProfile.js";
+
+/**
+ * The largest context window to offer: the longest prompt the catalog says
+ * the model takes (its input limit when that is below the window)
+ */
+function promptLimit(entry: CatalogModel | undefined): number | undefined {
+  return entry ? catalogPromptLimit(entry) : undefined;
+}
 
 export { getControlsFormat };
 
@@ -168,7 +176,7 @@ function openAIControls(
     thinkingNeedsEffort: false,
     effortNeedsThinking: true,
     fast: format === "openai" && !!entry?.fast,
-    maxContextLength: entry?.context,
+    maxContextLength: promptLimit(entry),
     experimental: !known,
   };
 }
@@ -218,7 +226,7 @@ function geminiControls(
   if (!reasons) {
     return {
       ...noControls("gemini", !entry),
-      maxContextLength: entry?.context,
+      maxContextLength: promptLimit(entry),
     };
   }
   const canTurnOff = geminiCanTurnOff(version);
@@ -243,7 +251,7 @@ function geminiControls(
     thinkingNeedsEffort: false,
     effortNeedsThinking: true,
     fast: false,
-    maxContextLength: entry?.context,
+    maxContextLength: promptLimit(entry),
     experimental: !entry,
   };
 }
@@ -263,7 +271,7 @@ function xaiControls(
   if (!reasons || name.includes("non-reasoning")) {
     return {
       ...noControls("xai", !entry),
-      maxContextLength: entry?.context,
+      maxContextLength: promptLimit(entry),
     };
   }
   const canTurnOff = turnsOffWithNone(entry);
@@ -281,7 +289,7 @@ function xaiControls(
     thinkingNeedsEffort: false,
     effortNeedsThinking: true,
     fast: false,
-    maxContextLength: entry?.context,
+    maxContextLength: promptLimit(entry),
     experimental: !entry,
   };
 }
@@ -320,7 +328,7 @@ function moonshotControls(
   if (name.includes("instruct") || (entry && !entry.reasoning)) {
     return {
       ...noControls("moonshot"),
-      maxContextLength: entry?.context,
+      maxContextLength: promptLimit(entry),
     };
   }
   const canTurnOff = name.startsWith("kimi-k3");
@@ -339,7 +347,7 @@ function moonshotControls(
     thinkingNeedsEffort: false,
     effortNeedsThinking: efforts.length > 0,
     fast: false,
-    maxContextLength: entry?.context,
+    maxContextLength: promptLimit(entry),
     experimental: !entry,
   };
 }
@@ -395,7 +403,7 @@ function openRouterControls(
     thinkingNeedsEffort: claude?.thinkingNeedsEffort ?? false,
     effortNeedsThinking: claude ? claude.effortNeedsThinking : true,
     fast: false,
-    maxContextLength: entry?.context ?? vendorEntry?.context,
+    maxContextLength: promptLimit(entry) ?? promptLimit(vendorEntry),
     experimental: !(known && vendorLevels.length > 0),
   };
 }
@@ -453,7 +461,7 @@ function claudeControls(
     // Fast mode needs its beta header, which the request code adds for the
     // models anthropicFastMode knows
     fast: format === "anthropic" && !!anthropicFastMode(name),
-    maxContextLength: entry?.context,
+    maxContextLength: promptLimit(entry),
     experimental: !entry,
   };
 }
@@ -478,7 +486,7 @@ function deepSeekControls(
     thinkingNeedsEffort: false,
     effortNeedsThinking: false,
     fast: false,
-    maxContextLength: entry?.context,
+    maxContextLength: promptLimit(entry),
     experimental: false,
   };
 }
@@ -496,7 +504,7 @@ function genericControls(
   if (!reasons) {
     return {
       ...noControls("generic", !entry),
-      maxContextLength: entry?.context,
+      maxContextLength: promptLimit(entry),
     };
   }
   const levels = catalogEfforts(entry);
@@ -512,7 +520,7 @@ function genericControls(
     thinkingNeedsEffort: false,
     effortNeedsThinking: false,
     fast: false,
-    maxContextLength: entry?.context,
+    maxContextLength: promptLimit(entry),
     experimental: levels.length === 0,
   };
 }
@@ -536,7 +544,7 @@ export function getModelControls(identity: ModelIdentity): ModelControls {
       // Bedrock models have none
       controls = isClaude(model)
         ? claudeControls("bedrock", model, entry)
-        : { ...noControls("bedrock"), maxContextLength: entry?.context };
+        : { ...noControls("bedrock"), maxContextLength: promptLimit(entry) };
       break;
     case "openai":
     case "azure": {
@@ -548,7 +556,7 @@ export function getModelControls(identity: ModelIdentity): ModelControls {
         : {
             ...noControls(profile.format, !entry),
             fast: profile.format === "openai" && !!entry?.fast,
-            maxContextLength: entry?.context,
+            maxContextLength: promptLimit(entry),
           };
       break;
     }

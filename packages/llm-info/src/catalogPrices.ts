@@ -10,6 +10,14 @@ export function findCatalogCost(
   return findCatalogModel(catalogProvider, model)?.model.cost;
 }
 
+/** A provider's price for the model's fast or priority mode, if it has one */
+export function findCatalogFastCost(
+  catalogProvider: string | undefined,
+  model: string,
+): CatalogCost | undefined {
+  return findCatalogModel(catalogProvider, model)?.model.fast?.cost;
+}
+
 /** "deepseek/deepseek-v4.1-pro" -> "deepseek-v4-1-pro" */
 function nameKey(model: string): string {
   const slash = model.lastIndexOf("/");
@@ -44,7 +52,7 @@ function generalPriceIndex(): Map<string, CatalogCost> {
 
 /**
  * A general price for a model on a host without its own prices (a custom
- * gateway, a local bridge, a provider the catalog doesn't price): what
+ * gateway, a provider the catalog doesn't price): what
  * OpenRouter charges for a model of the same name. Names are compared
  * without the vendor prefix and with "." as "-", so "claude-opus-5-5" finds
  * "anthropic/claude-opus-5.5". When several vendors list the name, the

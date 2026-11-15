@@ -32,6 +32,7 @@ import { ToolInterruptedError } from "../tools/toolInterruptedError.js";
 import { PreprocessedToolCall, ToolCall } from "../tools/types.js";
 import { traceEvent } from "../trace/trace.js";
 import { logger } from "../util/logger.js";
+import { fastModeOn } from "../util/modelSettings.js";
 import { getModelMaxTokens } from "../util/tokenizer.js";
 import {
   parseEnvNumber,
@@ -378,7 +379,7 @@ export function priceRequest(
     String(model.provider ?? ""),
     model.model,
     usage,
-    { apiBase: model.apiBase, estimateUnknown: true },
+    { apiBase: model.apiBase, estimateUnknown: true, fast: fastModeOn(model) },
   );
   if (costBreakdown) {
     return {

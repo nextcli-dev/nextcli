@@ -1,8 +1,6 @@
-import {
-  calculateRequestCost,
-  CostBreakdown,
-} from "core/llm/utils/calculateRequestCost";
+import { CostBreakdown } from "core/llm/utils/calculateRequestCost";
 import { useMemo } from "react";
+import { interactionCost } from "../util/interactionCost";
 import { LLMLog } from "./useLLMLog";
 
 export interface TotalUsage {
@@ -53,20 +51,10 @@ export default function useTotalUsage(llmLog: LLMLog): TotalUsage {
           totalCacheWriteTokens +=
             usage.promptTokensDetails?.cacheWriteTokens || 0;
 
-          // Calculate cost if we have the necessary information
-          if (
-            interaction.start?.provider &&
-            interaction.start?.options?.model
-          ) {
-            const costBreakdown = calculateRequestCost(
-              interaction.start.provider,
-              interaction.start.options.model,
-              usage,
-            );
-            if (costBreakdown) {
-              totalCost += costBreakdown.cost;
-              costBreakdowns.push(costBreakdown);
-            }
+          const costBreakdown = interactionCost(interaction);
+          if (costBreakdown) {
+            totalCost += costBreakdown.cost;
+            costBreakdowns.push(costBreakdown);
           }
         }
 

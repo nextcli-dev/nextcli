@@ -577,6 +577,8 @@ export interface LLMInteractionStartChat extends LLMInteractionBase {
   messages: ChatMessage[];
   options: CompletionOptions;
   provider: string;
+  /** The API base the request went to, when the model sets one */
+  apiBase?: string;
 }
 
 export interface LLMInteractionStartComplete extends LLMInteractionBase {
@@ -584,6 +586,8 @@ export interface LLMInteractionStartComplete extends LLMInteractionBase {
   prompt: string;
   options: CompletionOptions;
   provider: string;
+  /** The API base the request went to, when the model sets one */
+  apiBase?: string;
 }
 
 export interface LLMInteractionStartFim extends LLMInteractionBase {
@@ -592,6 +596,8 @@ export interface LLMInteractionStartFim extends LLMInteractionBase {
   suffix: string;
   options: CompletionOptions;
   provider: string;
+  /** The API base the request went to, when the model sets one */
+  apiBase?: string;
 }
 
 export interface LLMInteractionChunk extends LLMInteractionBase {
