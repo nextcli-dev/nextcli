@@ -1,6 +1,6 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createDeepSeek } from "@ai-sdk/deepseek";
+import { createGoogle } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createXai } from "@ai-sdk/xai";
 import {
@@ -15,8 +15,9 @@ import {
   EmbeddingCreateParams,
   Model,
 } from "openai/resources/index";
+import { formatAiSdkError } from "../aiSdkErrors.js";
 import { AiSdkConfig } from "../types.js";
-import { customFetch, embedding } from "../util.js";
+import { aiSdkFetch, embedding } from "../util.js";
 import { filterAnthropicSamplingParams } from "./AnthropicUtils.js";
 import {
   BaseLlmApi,
@@ -25,35 +26,69 @@ import {
   RerankCreateParams,
 } from "./base.js";
 
-type AiSdkProviderCreator = (options: {
-  apiKey?: string;
-  baseURL?: string;
-  fetch?: typeof fetch;
-}) => (modelId: string) => any;
+interface ProviderSettings {
+  apiKey: string;
+  baseURL: string;
+  fetch: typeof fetch;
+}
 
-const PROVIDER_MAP: Record<string, AiSdkProviderCreator> = {
-  openai: createOpenAI,
-  anthropic: createAnthropic,
-  google: createGoogleGenerativeAI,
-  xai: createXai,
-  deepseek: createDeepSeek,
-  openrouter: (options) =>
-    createOpenAI({
-      ...options,
-      baseURL: options.baseURL ?? "https://openrouter.ai/api/v1/",
-    }),
-  clawrouter: (options) =>
-    createOpenAI({
-      ...options,
-      baseURL: options.baseURL ?? "http://localhost:1337/v1/",
-    }),
+interface AiSdkProvider {
+  /** Each provider's own default host, used when the config sets none */
+  defaultBaseURL: string;
+  create(settings: ProviderSettings): (modelId: string) => any;
+  /** Embedding models, for providers that have them */
+  embedding?(settings: ProviderSettings): (modelId: string) => any;
+}
+
+/**
+ * Every provider gets an explicit key, base URL and fetch. Left unset, the
+ * AI SDK providers would read ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL,
+ * OPENAI_API_KEY, OPENAI_BASE_URL and the like from the environment, and so
+ * send a key the config never named, or send requests to another host.
+ */
+const PROVIDERS: Record<string, AiSdkProvider> = {
+  openai: {
+    defaultBaseURL: "https://api.openai.com/v1",
+    create: (settings) => createOpenAI(settings),
+    embedding: (settings) => createOpenAI(settings).embedding,
+  },
+  anthropic: {
+    defaultBaseURL: "https://api.anthropic.com/v1",
+    create: (settings) => createAnthropic(settings),
+  },
+  google: {
+    defaultBaseURL: "https://generativelanguage.googleapis.com/v1beta",
+    create: (settings) => createGoogle(settings),
+    embedding: (settings) => createGoogle(settings).embedding,
+  },
+  xai: {
+    defaultBaseURL: "https://api.x.ai/v1",
+    create: (settings) => createXai(settings),
+  },
+  deepseek: {
+    defaultBaseURL: "https://api.deepseek.com",
+    create: (settings) => createDeepSeek(settings),
+  },
+  // Gateways that speak OpenAI Chat Completions, not the Responses API that
+  // createOpenAI's default model uses
+  openrouter: {
+    defaultBaseURL: "https://openrouter.ai/api/v1",
+    create: (settings) => createOpenAI(settings).chat,
+  },
+  clawrouter: {
+    defaultBaseURL: "http://localhost:1337/v1",
+    create: (settings) => createOpenAI(settings).chat,
+  },
 };
 
+/** Retries for a failed request (429 and 5xx), as the OpenAI SDK does */
+const MAX_RETRIES = 2;
+
 export class AiSdkApi implements BaseLlmApi {
-  private provider?: (modelId: string) => any;
   private config: AiSdkConfig;
   private providerId: string;
   private modelId: string;
+  private provider: AiSdkProvider;
 
   constructor(config: AiSdkConfig) {
     this.config = config;
@@ -65,6 +100,22 @@ export class AiSdkApi implements BaseLlmApi {
     const [providerId, ...modelParts] = config.model.split("/");
     this.providerId = providerId;
     this.modelId = modelParts.join("/");
+    const provider = PROVIDERS[providerId];
+    if (!provider) {
+      throw new Error(
+        `Unknown AI SDK provider: "${providerId}". ` +
+          `Supported providers: ${Object.keys(PROVIDERS).join(", ")}.`,
+      );
+    }
+    this.provider = provider;
+  }
+
+  private settings(): ProviderSettings {
+    return {
+      apiKey: this.config.apiKey ?? "",
+      baseURL: this.config.apiBase || this.provider.defaultBaseURL,
+      fetch: aiSdkFetch(this.config.requestOptions),
+    };
   }
 
   private samplingParams(body: {
@@ -85,131 +136,21 @@ export class AiSdkApi implements BaseLlmApi {
     return { temperature, topP };
   }
 
-  private initializeProvider() {
-    if (this.provider) {
-      return;
-    }
-
-    const createFn = PROVIDER_MAP[this.providerId];
-    if (!createFn) {
-      const supportedProviders = Object.keys(PROVIDER_MAP).join(", ");
-      throw new Error(
-        `Unknown AI SDK provider: "${this.providerId}". ` +
-          `Supported providers: ${supportedProviders}. ` +
-          `To use a different provider, install the @ai-sdk/* package and add it to the provider map.`,
-      );
-    }
-
-    const hasRequestOptions =
-      this.config.requestOptions &&
-      (this.config.requestOptions.headers ||
-        this.config.requestOptions.proxy ||
-        this.config.requestOptions.caBundlePath ||
-        this.config.requestOptions.clientCertificate ||
-        this.config.requestOptions.extraBodyProperties);
-
-    this.provider = createFn({
-      apiKey: this.config.apiKey ?? "",
-      baseURL: this.config.apiBase,
-      fetch: hasRequestOptions
-        ? customFetch(this.config.requestOptions)
-        : undefined,
-    });
-  }
-
   async chatCompletionNonStream(
     body: ChatCompletionCreateParamsNonStreaming,
     signal: AbortSignal,
   ): Promise<ChatCompletion> {
-    this.initializeProvider();
-
-    const { generateText } = await import("ai");
-    const { convertOpenAIMessagesToVercel } = await import(
-      "../openaiToVercelMessages.js"
+    const { collectChatCompletion } = await import("../aiSdkCompletion.js");
+    return collectChatCompletion(
+      this.chatCompletionStream({ ...body, stream: true }, signal),
+      this.modelId || body.model,
     );
-    const { convertToolsToVercelFormat } = await import(
-      "../convertToolsToVercel.js"
-    );
-    const { convertToolChoiceToVercel } = await import(
-      "../convertToolChoiceToVercel.js"
-    );
-
-    const vercelMessages = convertOpenAIMessagesToVercel(body.messages);
-    const systemMsg = vercelMessages.find((msg) => msg.role === "system");
-    const systemText =
-      systemMsg && typeof systemMsg.content === "string"
-        ? systemMsg.content
-        : undefined;
-    const nonSystemMessages = vercelMessages.filter(
-      (msg) => msg.role !== "system",
-    );
-
-    const modelId = this.modelId ?? body.model;
-    const model = this.provider!(modelId);
-    const vercelTools = await convertToolsToVercelFormat(body.tools);
-
-    const result = await generateText({
-      model,
-      system: systemText,
-      messages: nonSystemMessages as any,
-      ...this.samplingParams(body),
-      maxOutputTokens: body.max_tokens ?? undefined,
-      stopSequences: body.stop
-        ? Array.isArray(body.stop)
-          ? body.stop
-          : [body.stop]
-        : undefined,
-      tools: vercelTools,
-      toolChoice: convertToolChoiceToVercel(body.tool_choice, {
-        provider: this.providerId,
-        model: this.modelId,
-      }),
-      abortSignal: signal,
-    });
-
-    const toolCalls = result.toolCalls?.map((tc) => ({
-      id: tc.toolCallId,
-      type: "function" as const,
-      function: {
-        name: tc.toolName,
-        arguments: JSON.stringify(tc.input),
-      },
-    }));
-
-    return {
-      id: result.response?.id ?? "",
-      object: "chat.completion",
-      created: Math.floor(Date.now() / 1000),
-      model: modelId,
-      choices: [
-        {
-          index: 0,
-          message: {
-            role: "assistant",
-            content: result.text,
-            tool_calls: toolCalls,
-            refusal: null,
-          },
-          finish_reason:
-            result.finishReason === "tool-calls" ? "tool_calls" : "stop",
-          logprobs: null,
-        },
-      ],
-      usage: {
-        prompt_tokens: result.usage.inputTokens ?? 0,
-        completion_tokens: result.usage.outputTokens ?? 0,
-        total_tokens:
-          (result.usage.inputTokens ?? 0) + (result.usage.outputTokens ?? 0),
-      },
-    };
   }
 
   async *chatCompletionStream(
     body: ChatCompletionCreateParamsStreaming,
     signal: AbortSignal,
   ): AsyncGenerator<ChatCompletionChunk> {
-    this.initializeProvider();
-
     const { streamText } = await import("ai");
     const { convertOpenAIMessagesToVercel } = await import(
       "../openaiToVercelMessages.js"
@@ -222,24 +163,17 @@ export class AiSdkApi implements BaseLlmApi {
       "../convertToolChoiceToVercel.js"
     );
 
-    const vercelMessages = convertOpenAIMessagesToVercel(body.messages);
-    const systemMsg = vercelMessages.find((msg) => msg.role === "system");
-    const systemText =
-      systemMsg && typeof systemMsg.content === "string"
-        ? systemMsg.content
-        : undefined;
-    const nonSystemMessages = vercelMessages.filter(
-      (msg) => msg.role !== "system",
+    const { instructions, messages } = convertOpenAIMessagesToVercel(
+      body.messages,
     );
-
-    const modelId = this.modelId ?? body.model;
-    const model = this.provider!(modelId);
-    const vercelTools = await convertToolsToVercelFormat(body.tools);
+    const modelId = this.modelId || body.model;
+    const model = this.provider.create(this.settings())(modelId);
+    const tools = await convertToolsToVercelFormat(body.tools);
 
     const result = streamText({
       model,
-      system: systemText,
-      messages: nonSystemMessages as any,
+      instructions,
+      messages: messages as any,
       ...this.samplingParams(body),
       maxOutputTokens: body.max_tokens ?? undefined,
       stopSequences: body.stop
@@ -247,15 +181,19 @@ export class AiSdkApi implements BaseLlmApi {
           ? body.stop
           : [body.stop]
         : undefined,
-      tools: vercelTools,
+      tools,
       toolChoice: convertToolChoiceToVercel(body.tool_choice, {
         provider: this.providerId,
-        model: this.modelId,
+        model: modelId,
       }),
+      maxRetries: MAX_RETRIES,
       abortSignal: signal,
+      // Errors come through the stream as error parts, which the converter
+      // throws; don't also print them
+      onError: () => {},
     });
 
-    yield* convertVercelStream(result.fullStream as any, { model: modelId });
+    yield* convertVercelStream(result.stream as any, { model: modelId });
   }
 
   async completionNonStream(
@@ -286,46 +224,37 @@ export class AiSdkApi implements BaseLlmApi {
   }
 
   async embed(body: EmbeddingCreateParams): Promise<CreateEmbeddingResponse> {
-    this.initializeProvider();
+    if (!this.provider.embedding) {
+      throw new Error(
+        `AI SDK provider "${this.providerId}" does not support embeddings.`,
+      );
+    }
+    const { embedMany } = await import("ai");
 
-    const { embed: aiEmbed, embedMany } = await import("ai");
-
-    const modelId = typeof body.model === "string" ? body.model : body.model;
-    const model = this.provider!(modelId);
-
+    const modelId = String(body.model);
+    const model = this.provider.embedding(this.settings())(modelId);
     const inputs = Array.isArray(body.input) ? body.input : [body.input];
-    const stringInputs = inputs.map((input) =>
+    const values = inputs.map((input) =>
       typeof input === "string" ? input : String(input),
     );
 
-    if (stringInputs.length === 1) {
-      const result = await aiEmbed({
+    try {
+      const result = await embedMany({
         model,
-        value: stringInputs[0],
+        values,
+        maxRetries: MAX_RETRIES,
       });
       return embedding({
-        data: [result.embedding],
+        data: result.embeddings,
         model: modelId,
         usage: {
           prompt_tokens: result.usage?.tokens ?? 0,
           total_tokens: result.usage?.tokens ?? 0,
         },
       });
+    } catch (error) {
+      throw formatAiSdkError(error);
     }
-
-    const result = await embedMany({
-      model,
-      values: stringInputs,
-    });
-
-    return embedding({
-      data: result.embeddings,
-      model: modelId,
-      usage: {
-        prompt_tokens: result.usage?.tokens ?? 0,
-        total_tokens: result.usage?.tokens ?? 0,
-      },
-    });
   }
 
   async rerank(_body: RerankCreateParams): Promise<CreateRerankResponse> {
