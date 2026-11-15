@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   allModelProviders,
   CATALOG_PROVIDERS,
+  findCatalogCost,
   findCatalogModel,
   findCatalogModelsByCanonical,
+  findGeneralCost,
   findLlmInfo,
 } from "./index.js";
 import { CATALOG } from "./generated/catalog.js";
@@ -111,5 +113,35 @@ describe("findLlmInfo", () => {
     expect(findLlmInfo("openai/gpt-5.5", "openrouter")?.mediaTypes).toContain(
       "image",
     );
+  });
+});
+
+describe("prices", () => {
+  it("reads a provider's own price", () => {
+    expect(findCatalogCost("deepseek", "deepseek-v4-pro")).toEqual(
+      CATALOG.deepseek["deepseek-v4-pro"].cost,
+    );
+    expect(findCatalogCost(undefined, "deepseek-v4-pro")).toBeUndefined();
+  });
+
+  it("gives a general price from OpenRouter for a model on any host", () => {
+    const openrouter = CATALOG.openrouter["deepseek/deepseek-v4-pro"].cost;
+    expect(findGeneralCost("deepseek-v4-pro")).toEqual(openrouter);
+    // Maker names find OpenRouter's dotted names
+    expect(findGeneralCost("claude-opus-5-5")).toEqual(
+      CATALOG.openrouter["anthropic/claude-opus-5.5"].cost,
+    );
+    // A dated snapshot of a priced model
+    expect(findGeneralCost("deepseek-v4-pro-20260801")).toEqual(openrouter);
+    expect(findGeneralCost("my-local-finetune")).toBeUndefined();
+  });
+
+  it("never uses a free price as the general price", () => {
+    for (const [id, model] of Object.entries(CATALOG.openrouter)) {
+      if (!id.endsWith(":free")) continue;
+      const general = findGeneralCost(id.replace(/:free$/, ""));
+      if (general) expect(general.input).toBeGreaterThan(0);
+      expect(model.cost?.input ?? 0).toBe(0);
+    }
   });
 });

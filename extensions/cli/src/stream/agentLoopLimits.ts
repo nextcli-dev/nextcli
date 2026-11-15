@@ -25,15 +25,18 @@ let configuredLimits: AgentLoopLimits = { ...DEFAULT_AGENT_LOOP_LIMITS };
 export type AgentLoopLimitKind = "turns" | "tokens" | "cost";
 
 /**
- * How a model call was priced: exact from a price table, estimated from
- * another host's price for the same model, or the flat fallback rate.
+ * How a model call was priced: exact from a price table checked by hand,
+ * catalog from the provider's own price in the models.dev snapshot,
+ * estimated from the general (OpenRouter) price for the same model, or the
+ * flat fallback rate.
  */
-export type PriceSource = "exact" | "estimated" | "fallback";
+export type PriceSource = "exact" | "catalog" | "estimated" | "fallback";
 
 const PRICE_SOURCE_RANK: Record<PriceSource, number> = {
   exact: 0,
-  estimated: 1,
-  fallback: 2,
+  catalog: 1,
+  estimated: 2,
+  fallback: 3,
 };
 
 // What happened in this process, for the headless exit code and usage line

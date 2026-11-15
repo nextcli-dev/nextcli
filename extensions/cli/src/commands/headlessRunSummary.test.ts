@@ -130,6 +130,25 @@ describe("writeHeadlessRunSummary", () => {
     expect(summaryLine().usage.priced).toBe("estimated");
   });
 
+  it("doesn't warn for the host's own catalog price", () => {
+    configureAgentLoopLimits({ maxCost: "1" });
+    recordPriceSource("exact");
+    recordPriceSource("catalog");
+    writeHeadlessRunSummary(start, "json");
+
+    // Only the summary line, no warning
+    expect(stderr.filter((line) => line.startsWith("Warning:"))).toEqual([]);
+    expect(summaryLine().usage.priced).toBe("catalog");
+  });
+
+  it("ranks a catalog price above an estimate", () => {
+    recordPriceSource("estimated");
+    recordPriceSource("catalog");
+    writeHeadlessRunSummary(start, "json");
+
+    expect(summaryLine().usage.priced).toBe("estimated");
+  });
+
   it("writes only the warning without --format json", () => {
     configureAgentLoopLimits({ maxCost: "1" });
     recordPriceSource("fallback");
