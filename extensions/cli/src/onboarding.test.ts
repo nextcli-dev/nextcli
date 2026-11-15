@@ -156,10 +156,11 @@ name: "Incomplete Config"
 });
 
 // Separate describe block with its own mocking for BEDROCK tests
-describe("CONTINUE_USE_BEDROCK environment variable", () => {
+describe("NEXTCLI_USE_BEDROCK environment variable", () => {
   const mockConsoleLog = vi.fn();
   let mockAuthConfig: AuthConfig;
-  const originalEnv = process.env.CONTINUE_USE_BEDROCK;
+  const BEDROCK_VARS = ["NEXTCLI_USE_BEDROCK", "CONTINUE_USE_BEDROCK"];
+  let originalEnv: Record<string, string | undefined>;
 
   // Mock initialize for these tests only
   const mockInitialize = vi.fn().mockResolvedValue({
@@ -171,6 +172,10 @@ describe("CONTINUE_USE_BEDROCK environment variable", () => {
   });
 
   beforeEach(() => {
+    originalEnv = Object.fromEntries(
+      BEDROCK_VARS.map((name) => [name, process.env[name]]),
+    );
+    for (const name of BEDROCK_VARS) delete process.env[name];
     mockConsoleLog.mockClear();
     mockInitialize.mockClear();
 
@@ -184,16 +189,34 @@ describe("CONTINUE_USE_BEDROCK environment variable", () => {
   });
 
   afterEach(() => {
-    if (originalEnv) {
-      process.env.CONTINUE_USE_BEDROCK = originalEnv;
-    } else {
-      delete process.env.CONTINUE_USE_BEDROCK;
+    for (const name of BEDROCK_VARS) {
+      if (originalEnv[name] === undefined) {
+        delete process.env[name];
+      } else {
+        process.env[name] = originalEnv[name];
+      }
     }
     vi.restoreAllMocks();
     vi.doUnmock("./config.js");
   });
 
-  test("should bypass interactive options when CONTINUE_USE_BEDROCK=1", async () => {
+  test("should bypass interactive options when NEXTCLI_USE_BEDROCK=1", async () => {
+    process.env.NEXTCLI_USE_BEDROCK = "1";
+
+    vi.resetModules();
+    const { runOnboardingFlow } = await import("./onboarding.js");
+
+    const result = await runOnboardingFlow(undefined);
+
+    expect(result).toBe(true);
+    expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "✓ Using AWS Bedrock (NEXTCLI_USE_BEDROCK detected)",
+      ),
+    );
+  });
+
+  test("still reads the old name, CONTINUE_USE_BEDROCK=1", async () => {
     process.env.CONTINUE_USE_BEDROCK = "1";
 
     // Re-import to get the mocked version
@@ -210,8 +233,14 @@ describe("CONTINUE_USE_BEDROCK environment variable", () => {
     );
   });
 
-  test("should not bypass when CONTINUE_USE_BEDROCK is not '1'", async () => {
-    process.env.CONTINUE_USE_BEDROCK = "0";
+  test.each([
+    { NEXTCLI_USE_BEDROCK: undefined, CONTINUE_USE_BEDROCK: "0" },
+    // The new name wins over the old one
+    { NEXTCLI_USE_BEDROCK: "0", CONTINUE_USE_BEDROCK: "1" },
+  ])("should not bypass when Bedrock is not chosen: %o", async (vars) => {
+    for (const [name, value] of Object.entries(vars)) {
+      if (value !== undefined) process.env[name] = value;
+    }
 
     // Re-import to get the mocked version
     vi.resetModules();
@@ -227,9 +256,7 @@ describe("CONTINUE_USE_BEDROCK environment variable", () => {
       // Verify the Bedrock message was NOT called by checking all calls
       const allCalls = mockConsoleLog.mock.calls.flat();
       const hasBedrockMessage = allCalls.some((call) =>
-        String(call).includes(
-          "✓ Using AWS Bedrock (CONTINUE_USE_BEDROCK detected)",
-        ),
+        String(call).includes("✓ Using AWS Bedrock"),
       );
       expect(hasBedrockMessage).toBe(false);
     } finally {
@@ -260,6 +287,7 @@ describe("onboarding with provider choices", () => {
   const ENV_KEYS = [
     "CONTINUE_GLOBAL_DIR",
     "CONTINUE_USE_BEDROCK",
+    "NEXTCLI_USE_BEDROCK",
     "ANTHROPIC_API_KEY",
     "OPENAI_API_KEY",
     "DEEPSEEK_API_KEY",

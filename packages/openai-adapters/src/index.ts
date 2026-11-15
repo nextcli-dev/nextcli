@@ -80,7 +80,8 @@ function createAiSdkApiForProvider(
 }
 
 export function constructLlmApi(config: LLMConfig): BaseLlmApi | undefined {
-  if (process.env.CONTINUE_USE_AI_SDK) {
+  // NEXTCLI_USE_AI_SDK wins; CONTINUE_USE_AI_SDK is the old name, still read
+  if (process.env.NEXTCLI_USE_AI_SDK ?? process.env.CONTINUE_USE_AI_SDK) {
     if (["openai", "anthropic"].includes(config.provider)) {
       const aiSdkApi = createAiSdkApiForProvider(
         config as LLMConfig & { model?: string },

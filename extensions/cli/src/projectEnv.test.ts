@@ -9,6 +9,7 @@ import {
   canAskForTrust,
   isNeverFromFile,
   loadProjectEnvironment,
+  oldEnvNamesInUse,
 } from "./projectEnv.js";
 import { listStoredTrust } from "./workspaceTrust.js";
 
@@ -163,6 +164,9 @@ describe("loadProjectEnvironment", () => {
         "HOMEPATH=x",
         "XDG_CONFIG_HOME=x",
         "CONTINUE_METRICS_ENABLED=x",
+        "FEATURE_FLAG_DISABLE_CUSTOM_FETCH=1",
+        "VERBOSE_FETCH=1",
+        "NEXTCLI_USE_AI_SDK=1",
         "OPENAI_API_KEY=sk-legit",
       ].join("\n"),
     );
@@ -170,6 +174,8 @@ describe("loadProjectEnvironment", () => {
     const report = await run({ trustFlag: true }).result;
 
     expect(env.OPENAI_API_KEY).toBe("sk-legit");
+    // Choosing the transport is the folder's call, like choosing the endpoint
+    expect(env.NEXTCLI_USE_AI_SDK).toBe("1");
     for (const name of [
       "NODE_OPTIONS",
       "GIT_CONFIG_COUNT",
@@ -194,6 +200,8 @@ describe("loadProjectEnvironment", () => {
       "HOMEPATH",
       "XDG_CONFIG_HOME",
       "CONTINUE_METRICS_ENABLED",
+      "FEATURE_FLAG_DISABLE_CUSTOM_FETCH",
+      "VERBOSE_FETCH",
     ]) {
       expect(env[name], name).toBeUndefined();
     }
@@ -320,6 +328,8 @@ describe("isNeverFromFile", () => {
     "XDG_CONFIG_HOME",
     "USERPROFILE",
     "CONTINUE_METRICS_ENABLED",
+    "FEATURE_FLAG_DISABLE_CUSTOM_FETCH",
+    "verbose_fetch",
   ])("%s", (name) => expect(isNeverFromFile(name)).toBe(true));
 
   // A trusted folder may still choose its model endpoint
@@ -329,5 +339,31 @@ describe("isNeverFromFile", () => {
     "NEXTCLI_MODEL_BASE_URL",
     "GITHUB_TOKEN",
     "NODE_ENV",
+    "NEXTCLI_USE_AI_SDK",
+    "NEXTCLI_USE_BEDROCK",
   ])("allows %s", (name) => expect(isNeverFromFile(name)).toBe(false));
+});
+
+describe("oldEnvNamesInUse", () => {
+  it("lists a renamed variable set only under its old name", () => {
+    expect(
+      oldEnvNamesInUse({
+        CONTINUE_USE_AI_SDK: "1",
+        CONTINUE_USE_BEDROCK: "1",
+        VERBOSE_FETCH: "1",
+      }),
+    ).toEqual([
+      { old: "CONTINUE_USE_AI_SDK", name: "NEXTCLI_USE_AI_SDK" },
+      { old: "CONTINUE_USE_BEDROCK", name: "NEXTCLI_USE_BEDROCK" },
+    ]);
+  });
+
+  it("says nothing once the new name is set, or when neither is", () => {
+    expect(
+      oldEnvNamesInUse({
+        CONTINUE_USE_BEDROCK: "1",
+        NEXTCLI_USE_BEDROCK: "1",
+      }),
+    ).toEqual([]);
+  });
 });
