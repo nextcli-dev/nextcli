@@ -91,19 +91,23 @@ describe("model settings", () => {
     expect(getContextOptions(opus, 200_000)).toEqual([
       64_000, 128_000, 200_000, 256_000, 400_000, 1_000_000,
     ]);
-    expect(getContextOptions(gpt, 200_000)).toEqual([64_000, 128_000, 200_000]);
+    // GPT-5.5's window comes from the models.dev catalog
+    expect(getContextOptions(gpt, 200_000)).toEqual([
+      64_000, 128_000, 200_000, 256_000, 400_000, 1_000_000, 1_050_000,
+    ]);
   });
 
-  it("starts DeepSeek V4 at 200K and lets the config or menu extend it to 1M", () => {
+  it("starts DeepSeek V4 at 200K and lets the config or menu extend it", () => {
     const deepseek = model({
       provider: "deepseek",
-      model: "deepseek-v4.1-flash",
+      model: "deepseek-v4-flash",
       defaultCompletionOptions: { maxTokens: 32_000 },
     });
     updateModelSettings(deepseek, { contextLength: undefined });
 
     expect(getModelContextLimit(deepseek)).toBe(200_000);
-    expect(getContextOptions(deepseek, 200_000).at(-1)).toBe(1_000_000);
+    // The catalog's window for V4 Flash
+    expect(getContextOptions(deepseek, 200_000).at(-1)).toBe(1_048_576);
     expect(
       getModelContextLimit({
         ...deepseek,

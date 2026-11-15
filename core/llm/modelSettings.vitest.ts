@@ -280,13 +280,14 @@ describe("Azure OpenAI", () => {
 
 describe("generic providers", () => {
   test("show reasoning rows only for reasoning models or configured ones", () => {
-    const plain = new Mistral({ apiKey: "k", model: "mistral-large-latest" });
+    // The models.dev catalog lists Codestral as a non-reasoning model
+    const plain = new Mistral({ apiKey: "k", model: "codestral-latest" });
     expect(plain.getModelControls().efforts).toEqual([]);
     const configured = new Mistral({
       apiKey: "k",
-      model: "mistral-large-latest",
+      model: "codestral-latest",
       completionOptions: {
-        model: "mistral-large-latest",
+        model: "codestral-latest",
         reasoningEffort: "high",
       },
     });

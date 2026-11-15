@@ -261,7 +261,6 @@ export {
   getControlsFormat,
   getModelControls,
   looksLikeReasoningModel,
-  openAIReasoningLevels,
   parseGeminiModelVersion,
   thinkingLabel,
   THINKING_MODES,
@@ -287,5 +286,7 @@ export type {
 export { geminiThinkingConfig } from "./apis/Gemini.js";
 export { ONEPROVIDER_API_BASE } from "./apis/OneProvider.js";
 export { supportsFimEndpoint } from "./fimEndpoints.js";
+export { resolveModelProfile } from "./modelProfile.js";
+export type { ModelProfile } from "./modelProfile.js";
 export { OPENROUTER_HEADERS } from "./apis/OpenRouter.js";
 export { extractBase64FromDataUrl, parseDataUrl } from "./util/url.js";
