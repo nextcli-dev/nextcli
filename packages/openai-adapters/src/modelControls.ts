@@ -8,7 +8,7 @@ import {
   parseClaudeModelVersion,
 } from "./apis/AnthropicUtils.js";
 import { isResponsesModel } from "./apis/openaiResponses.js";
-import { overriddenEfforts } from "./catalogOverrides.js";
+import { overriddenEfforts, reasoningOffRejected } from "./catalogOverrides.js";
 import {
   baseModelName,
   getControlsFormat,
@@ -16,6 +16,7 @@ import {
   isOneProviderBase,
   resolveModelProfile,
   vendorCatalogModel,
+  vendorCatalogProvider,
   type ModelProfile,
 } from "./modelProfile.js";
 
@@ -148,7 +149,9 @@ function openAIControls(
 ): ModelControls {
   const known = !!entry;
   const efforts = known ? catalogEfforts(entry) : CONSERVATIVE_EFFORTS;
-  const canTurnOff = turnsOffWithNone(entry);
+  const canTurnOff =
+    turnsOffWithNone(entry) &&
+    !reasoningOffRejected("openai", baseModelName(model));
   // Azure's Chat Completions endpoint returns no readable reasoning
   const modes: ThinkingMode[] =
     format === "azure"
@@ -548,9 +551,17 @@ export function getModelControls(identity: ModelIdentity): ModelControls {
       break;
     case "openai":
     case "azure": {
-      const reasons = entry
-        ? !!entry.reasoning
-        : isResponsesModel(baseModelName(model));
+      // Azure also deploys Claude, DeepSeek and others, whose reasoning
+      // doesn't take OpenAI's reasoning_effort: only OpenAI's models get
+      // these controls there, as before the catalog
+      const openAIModel =
+        profile.format === "openai" ||
+        vendorCatalogProvider(model) === "openai";
+      const reasons = !openAIModel
+        ? false
+        : entry
+          ? !!entry.reasoning
+          : isResponsesModel(baseModelName(model));
       controls = reasons
         ? openAIControls(profile.format, model, entry)
         : {

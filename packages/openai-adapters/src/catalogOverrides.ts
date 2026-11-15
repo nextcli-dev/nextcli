@@ -39,3 +39,34 @@ export function overriddenEfforts(
   return EFFORT_OVERRIDES[family].find(({ models }) => models.test(modelName))
     ?.efforts;
 }
+
+interface OffOverride {
+  /** Model names it applies to, without a vendor prefix */
+  models: RegExp;
+  checked: string;
+}
+
+/**
+ * Models whose API rejects turning reasoning off, though the catalog lists
+ * "none" among their efforts. Sending it would fail with a 400, while
+ * leaving Off out of the menu only hides an option.
+ */
+const REASONING_OFF_REJECTED: Record<"openai", OffOverride[]> = {
+  openai: [
+    {
+      models: /^gpt-6\.1(?!\d)/,
+      checked:
+        "Live OpenAI Responses API, 2026-11-04: gpt-6.1 rejects reasoning_effort none; the catalog lists none for gpt-6.1-terra. Lift after a live check of each variant.",
+    },
+  ],
+};
+
+/** Whether the API rejects turning reasoning off for the model */
+export function reasoningOffRejected(
+  family: keyof typeof REASONING_OFF_REJECTED,
+  modelName: string,
+): boolean {
+  return REASONING_OFF_REJECTED[family].some(({ models }) =>
+    models.test(modelName),
+  );
+}

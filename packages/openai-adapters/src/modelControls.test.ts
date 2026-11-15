@@ -1,5 +1,7 @@
+import { CATALOG } from "@nextcli/llm-info/dist/generated/catalog.js";
 import { describe, expect, it } from "vitest";
 
+import { anthropicEffortLevels } from "./apis/AnthropicUtils.js";
 import {
   buildModelControlFields,
   chosenThinkingMode,
@@ -1044,5 +1046,62 @@ describe("catalog-backed controls", () => {
         apiBase: "http://127.0.0.1:8091/v1",
       }).maxContextLength,
     ).toBeUndefined();
+  });
+});
+
+describe("catalog corrections that change what is sent", () => {
+  it("keeps Off away from gpt-6.1, whose API rejects reasoning_effort none", () => {
+    // The catalog lists none for gpt-6.1-terra; the live check on
+    // 2026-11-04 found gpt-6.1 rejects it, so Off would be a 400
+    expect(CATALOG.openai["gpt-6.1-terra"].efforts).toContain("none");
+    for (const model of ["gpt-6.1-terra", "gpt-6.1-sol"]) {
+      const controls = getModelControls({ provider: "openai", model });
+      expect(controls.thinkingModes, model).not.toContain("off");
+      expect(
+        buildModelControlFields(
+          { provider: "openai", model },
+          { thinking: "off" },
+        ),
+        model,
+      ).not.toHaveProperty("reasoning_effort", "none");
+    }
+    // gpt-6-astra: the catalog has no none, so no Off either
+    expect(
+      getModelControls({ provider: "openai", model: "gpt-6-astra" })
+        .thinkingModes,
+    ).not.toContain("off");
+  });
+
+  it("gives OpenAI-style effort controls on Azure only to OpenAI's models", () => {
+    for (const model of ["claude-fable-5", "deepseek-v4-flash"]) {
+      const controls = getModelControls({ provider: "azure", model });
+      expect(controls.efforts, model).toEqual([]);
+      expect(controls.thinkingModes, model).toEqual([]);
+      expect(
+        buildModelControlFields(
+          { provider: "azure", model },
+          { effort: "high", thinking: "off" },
+        ),
+        model,
+      ).not.toHaveProperty("reasoning_effort");
+    }
+    expect(
+      getModelControls({ provider: "azure", model: "gpt-5.5" }).efforts,
+    ).toContain("high");
+  });
+
+  it("agrees with the request code on Claude's effort levels", () => {
+    // The menu reads the catalog; the Anthropic request code clamps with
+    // anthropicEffortLevels. A sync that moves one must move the other.
+    for (const provider of ["anthropic", "amazon-bedrock"]) {
+      for (const [id, model] of Object.entries(CATALOG[provider])) {
+        if (!id.includes("claude")) continue;
+        const name = id.replace(/^.*?anthropic\./, "");
+        expect(
+          (model.efforts ?? []).filter((effort) => effort !== "none"),
+          `${provider} ${id}`,
+        ).toEqual(anthropicEffortLevels(name));
+      }
+    }
   });
 });
