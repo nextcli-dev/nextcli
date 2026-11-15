@@ -1,8 +1,4 @@
-import {
-  findCatalogCost,
-  findGeneralCost,
-  type CatalogCost,
-} from "@nextcli/llm-info";
+import type { CatalogCost } from "@nextcli/llm-info";
 
 import type { Usage } from "../../..";
 
@@ -54,7 +50,11 @@ export function findOneproviderRates(model: string): HostRates | undefined {
   return findRates(ONEPROVIDER_RATES, ONEPROVIDER_KEYS, name);
 }
 
-function ratesFromCatalog(
+/**
+ * Rates from a models.dev catalog price in @nextcli/llm-info (npm run
+ * sync-models): a provider's own price, its fast price or the general price
+ */
+export function ratesFromCatalog(
   cost: CatalogCost | undefined,
 ): HostRates | undefined {
   if (!cost) {
@@ -77,32 +77,6 @@ function ratesFromCatalog(
   };
 }
 
-/**
- * A provider's own rates for a model, from the models.dev catalog snapshot
- * in @nextcli/llm-info (npm run sync-models). `catalogProvider` is the
- * catalog's provider id, such as "openrouter" or "deepseek".
- */
-export function findCatalogRates(
-  catalogProvider: string | undefined,
-  model: string,
-): HostRates | undefined {
-  return ratesFromCatalog(findCatalogCost(catalogProvider, model));
-}
-
-/** Rates for an OpenRouter model id, such as "deepseek/deepseek-v4-pro" */
-export function findOpenRouterRates(model: string): HostRates | undefined {
-  return findCatalogRates("openrouter", model);
-}
-
-/**
- * General rates for a model on a host without its own prices (a custom
- * gateway, a local bridge): OpenRouter's price for a model of the same name,
- * the highest when several vendors list it, never a free variant.
- */
-export function findGeneralRates(model: string): HostRates | undefined {
-  return ratesFromCatalog(findGeneralCost(model));
-}
-
 export function hostOf(apiBase: string | undefined): string | undefined {
   if (!apiBase) {
     return undefined;
@@ -112,6 +86,21 @@ export function hostOf(apiBase: string | undefined): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Hosts on the user's own machine. Private-network addresses (10.x,
+ * 172.16-31.x, 192.168.x, .local names) are other machines and are priced
+ * like any other host.
+ */
+export function isLocalHost(host: string): boolean {
+  return (
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host === "0.0.0.0" ||
+    host === "[::1]" ||
+    /^127\./.test(host)
+  );
 }
 
 export function isHostOrSubdomain(host: string, domain: string): boolean {
@@ -154,11 +143,13 @@ export function priceWithHostRates(
           usage.promptTokensDetails?.cacheWriteTokens ?? 0,
           usage.promptTokens - cachedTokens,
         );
+  // Zero tokens are counted at a rate the host doesn't list
+  const cachedRate = rates.cachedInput ?? 0;
+  const cacheWriteRate = rates.cacheWrite ?? 0;
   const uncachedTokens = usage.promptTokens - cachedTokens - cacheWriteTokens;
   const inputCost = (uncachedTokens / 1_000_000) * rates.input;
-  const cachedCost = (cachedTokens / 1_000_000) * (rates.cachedInput ?? 0);
-  const cacheWriteCost =
-    (cacheWriteTokens / 1_000_000) * (rates.cacheWrite ?? 0);
+  const cachedCost = (cachedTokens / 1_000_000) * cachedRate;
+  const cacheWriteCost = (cacheWriteTokens / 1_000_000) * cacheWriteRate;
   const outputCost = (usage.completionTokens / 1_000_000) * rates.output;
 
   const parts: string[] = [];
@@ -166,12 +157,10 @@ export function priceWithHostRates(
     parts.push(describe(uncachedTokens, "Input", rates.input));
   }
   if (cachedTokens > 0) {
-    parts.push(describe(cachedTokens, "Cached Input", rates.cachedInput ?? 0));
+    parts.push(describe(cachedTokens, "Cached Input", cachedRate));
   }
   if (cacheWriteTokens > 0) {
-    parts.push(
-      describe(cacheWriteTokens, "Cache Write", rates.cacheWrite ?? 0),
-    );
+    parts.push(describe(cacheWriteTokens, "Cache Write", cacheWriteRate));
   }
   if (usage.completionTokens > 0) {
     parts.push(describe(usage.completionTokens, "Output", rates.output));

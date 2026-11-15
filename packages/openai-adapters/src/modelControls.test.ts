@@ -161,6 +161,27 @@ describe("getModelControls", () => {
     ).toBe(false);
   });
 
+  it("keeps priority for gpt-4o and gpt-4.1 snapshots", () => {
+    // The catalog lists priority only on the undated ids
+    for (const model of [
+      "gpt-4o-2024-08-06",
+      "gpt-4o-2024-11-20",
+      "gpt-4.1-2025-04-14",
+    ]) {
+      expect(getModelControls({ provider: "openai", model }).fast, model).toBe(
+        true,
+      );
+    }
+  });
+
+  it("offers the input limit as the largest context, not the whole window", () => {
+    // GPT-5.5: a 1,050,000-token window, at most 922,000 tokens of input
+    expect(
+      getModelControls({ provider: "openai", model: "gpt-5.5" })
+        .maxContextLength,
+    ).toBe(922_000);
+  });
+
   it("uses Claude's own levels on OpenRouter and has no fast mode", () => {
     expect(
       getModelControls({
@@ -988,7 +1009,8 @@ describe("catalog-backed controls", () => {
     ).toMatchObject({
       format: "generic",
       efforts: ["low", "medium", "high", "xhigh"],
-      maxContextLength: 1_050_000,
+      // The input limit, not the 1,050,000-token window
+      maxContextLength: 922_000,
       experimental: false,
     });
   });

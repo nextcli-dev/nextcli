@@ -1,8 +1,5 @@
-import {
-  calculateRequestCost,
-  CostBreakdown,
-} from "core/llm/utils/calculateRequestCost";
 import { useMemo } from "react";
+import { interactionCost } from "../util/interactionCost";
 import { LLMInteraction } from "./useLLMLog";
 
 /**
@@ -66,18 +63,7 @@ export default function useLLMSummary(interaction: LLMInteraction) {
         : undefined;
     }
 
-    let costBreakdown: CostBreakdown | null = null;
-    if (
-      interaction.end?.usage &&
-      interaction.start?.provider &&
-      interaction.start?.options?.model
-    ) {
-      costBreakdown = calculateRequestCost(
-        interaction.start.provider,
-        interaction.start.options.model,
-        interaction.end.usage,
-      );
-    }
+    const costBreakdown = interactionCost(interaction);
 
     return {
       result,

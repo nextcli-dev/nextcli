@@ -719,6 +719,7 @@ export abstract class BaseLLM implements ILLM {
         suffix,
         options: completionOptions,
         provider: this.providerName,
+        apiBase: this.apiBase,
       });
       if (this.llmRequestHook) {
         this.llmRequestHook(completionOptions.model, fimLog);
@@ -843,6 +844,7 @@ export abstract class BaseLLM implements ILLM {
         prompt,
         options: completionOptions,
         provider: this.providerName,
+        apiBase: this.apiBase,
       });
       if (this.llmRequestHook) {
         this.llmRequestHook(completionOptions.model, prompt);
@@ -976,6 +978,7 @@ export abstract class BaseLLM implements ILLM {
         prompt: prompt,
         options: completionOptions,
         provider: this.providerName,
+        apiBase: this.apiBase,
       });
       if (this.llmRequestHook) {
         this.llmRequestHook(completionOptions.model, prompt);
@@ -1228,6 +1231,7 @@ export abstract class BaseLLM implements ILLM {
       messages,
       options,
       provider: this.providerName,
+      apiBase: this.apiBase,
     });
     if (this.llmRequestHook) {
       this.llmRequestHook(options.model, prompt);

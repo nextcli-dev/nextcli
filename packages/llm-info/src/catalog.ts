@@ -43,9 +43,19 @@ export const CATALOG_PROVIDERS: Readonly<Record<string, string>> = {
   zAI: "zai",
 };
 
-/** The models.dev provider for a NextCLI provider name, if it has one */
-export function catalogProviderFor(provider: string): string | undefined {
-  return CATALOG_PROVIDERS[provider];
+/**
+ * The models.dev provider for a NextCLI provider name, if it has one. Names
+ * are matched without case, so "xai" finds xAI's catalog.
+ */
+export function catalogProviderFor(
+  provider: string | undefined,
+): string | undefined {
+  if (!provider) return undefined;
+  if (CATALOG_PROVIDERS[provider]) return CATALOG_PROVIDERS[provider];
+  const lower = provider.toLowerCase();
+  return Object.entries(CATALOG_PROVIDERS).find(
+    ([name]) => name.toLowerCase() === lower,
+  )?.[1];
 }
 
 /**
@@ -54,6 +64,21 @@ export function catalogProviderFor(provider: string): string | undefined {
  */
 const VARIANT_SUFFIX =
   /^(?:-(?:\d{4}(?:-\d{2}){0,2}|\d{6,8}|thinking|preview|latest))+$/;
+
+/** A dated snapshot suffix: -2024-08-06, -20250514, or Mistral's -2512 */
+const DATE_SUFFIX = /-(?:\d{4}(?:-\d{2}){0,2}|\d{6,8})$/;
+
+/**
+ * How well a listed variant stands for an id given without a suffix, lower
+ * is better: the provider's `-latest` alias, then a current snapshot, then a
+ * deprecated one, then a thinking or preview variant (a different mode,
+ * often priced differently)
+ */
+function variantRank(suffix: string, model: CatalogModel): number {
+  if (/-latest\b/.test(suffix)) return 0;
+  if (/-(?:thinking|preview)\b/.test(suffix)) return 3;
+  return model.deprecated ? 2 : 1;
+}
 
 /** Claude ids come as claude-sonnet-4-6 and claude-sonnet-4.6 */
 function normalize(id: string): string {
@@ -84,10 +109,33 @@ export interface CatalogMatch {
 }
 
 /**
+ * The entry, with the fast mode of its undated alias when a dated snapshot
+ * lists none of its own (OpenAI lists priority for gpt-4o, not for
+ * gpt-4o-2024-08-06). The alias's fast prices come along only when the two
+ * have the same standard price.
+ */
+function withAliasFast(
+  models: Record<string, CatalogModel>,
+  id: string,
+): CatalogModel {
+  const model = models[id];
+  const alias = DATE_SUFFIX.test(id)
+    ? models[id.replace(DATE_SUFFIX, "")]
+    : undefined;
+  if (model.fast || !alias?.fast) return model;
+  const samePrice =
+    model.cost?.input === alias.cost?.input &&
+    model.cost?.output === alias.cost?.output;
+  const { cost, ...fast } = alias.fast;
+  return { ...model, fast: samePrice && cost ? { ...fast, cost } : fast };
+}
+
+/**
  * A model's catalog entry, matched by its exact id, then case and dots
  * ignored, then without a vendor prefix (`anthropic/claude-…` on a provider
- * that isn't OpenRouter), then as a dated or preview variant of a listed id,
- * or a listed id as a variant of it.
+ * that isn't OpenRouter), then as a dated or preview variant of a listed id
+ * (the longest such id), then as an id some listed variants extend: the
+ * `-latest` alias first, then the newest current snapshot (variantRank).
  */
 export function findCatalogModel(
   provider: string | undefined,
@@ -97,7 +145,9 @@ export function findCatalogModel(
   const models = CATALOG[provider];
   if (!models || !model) return undefined;
   const found = (id: string | undefined) =>
-    id && models[id] ? { provider, id, model: models[id] } : undefined;
+    id && models[id]
+      ? { provider, id, model: withAliasFast(models, id) }
+      : undefined;
 
   const exact = found(model);
   if (exact) return exact;
@@ -113,19 +163,50 @@ export function findCatalogModel(
     if (direct) return direct;
   }
   for (const candidate of candidates) {
-    // A dated variant of a listed id, or a listed variant of the id
-    for (const [key, id] of index) {
+    // A dated variant of a listed id: the most specific listed id
+    let base: string | undefined;
+    for (const key of index.keys()) {
       if (
-        (candidate.startsWith(key) &&
-          VARIANT_SUFFIX.test(candidate.slice(key.length))) ||
-        (key.startsWith(candidate) &&
-          VARIANT_SUFFIX.test(key.slice(candidate.length)))
+        candidate.startsWith(key) &&
+        VARIANT_SUFFIX.test(candidate.slice(key.length)) &&
+        (!base || key.length > base.length)
       ) {
-        return found(id);
+        base = key;
       }
     }
+    if (base) return found(index.get(base));
+
+    // Listed variants of the id: the best ranked, then the newest
+    let best: { id: string; rank: number; suffix: string } | undefined;
+    for (const [key, id] of index) {
+      const suffix = key.slice(candidate.length);
+      if (!key.startsWith(candidate) || !VARIANT_SUFFIX.test(suffix)) {
+        continue;
+      }
+      const rank = variantRank(suffix, models[id]);
+      if (
+        !best ||
+        rank < best.rank ||
+        (rank === best.rank && suffix > best.suffix)
+      ) {
+        best = { id, rank, suffix };
+      }
+    }
+    if (best) return found(best.id);
   }
   return undefined;
+}
+
+/**
+ * The longest prompt the model takes, in tokens: its input limit when the
+ * catalog gives one below the context window (GPT-5.5 has a 1,050,000-token
+ * window but takes at most 922,000 tokens of input), else the window
+ */
+export function catalogPromptLimit(model: CatalogModel): number | undefined {
+  if (model.input !== undefined && model.context !== undefined) {
+    return Math.min(model.input, model.context);
+  }
+  return model.input ?? model.context;
 }
 
 /** Every provider's entries for the model, by its vendor's canonical id */

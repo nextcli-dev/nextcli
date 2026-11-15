@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { findCatalogCost, findGeneralCost } from "@nextcli/llm-info";
+import {
+  findCatalogCost,
+  findCatalogFastCost,
+  findGeneralCost,
+} from "@nextcli/llm-info";
 
 import type { Usage } from "../..";
 
@@ -477,13 +481,85 @@ describe("calculateRequestCost by host", () => {
     expect(dotted?.priced).toBe("estimated");
   });
 
-  it("never estimates for local hosts", () => {
+  it("never estimates for a local model server on this machine", () => {
+    for (const [provider, apiBase] of [
+      ["ollama", "http://localhost:11434"],
+      ["ollama", undefined],
+      ["vllm", "http://127.0.0.1:8000/v1"],
+      ["lmstudio", "http://localhost:1234/v1"],
+    ]) {
+      expect(
+        calculateRequestCost(provider!, "deepseek-v4-pro", usage, {
+          apiBase,
+          estimateUnknown: true,
+        }),
+        `${provider} ${apiBase}`,
+      ).toBeNull();
+    }
+  });
+
+  it("estimates a local server's provider on a public host", () => {
+    // ollama.com serves paid models through the same provider
     expect(
       calculateRequestCost("ollama", "deepseek-v4-pro", usage, {
-        apiBase: "http://localhost:11434",
+        apiBase: "https://ollama.com",
         estimateUnknown: true,
-      }),
-    ).toBeNull();
+      })?.priced,
+    ).toBe("estimated");
+  });
+
+  it("marks a maker's list price estimated on any host but the maker's", () => {
+    const gateway = {
+      apiBase: "https://openpaths.io/v1",
+      estimateUnknown: true,
+    };
+    const listPrice = calculateRequestCost("openai", "gpt-4o", usage);
+    expect(listPrice?.priced).toBe("exact");
+    const onGateway = calculateRequestCost("openai", "gpt-4o", usage, gateway);
+    expect(onGateway?.priced).toBe("estimated");
+    expect(onGateway?.cost).toBeCloseTo(listPrice!.cost, 6);
+    expect(
+      calculateRequestCost("anthropic", "claude-sonnet-5-5", usage, {
+        apiBase: "https://llm-proxy.example.com",
+      })?.priced,
+    ).toBe("estimated");
+    // The makers' own APIs stay exact
+    expect(
+      calculateRequestCost("openai", "gpt-4o", usage, {
+        apiBase: "https://api.openai.com/v1",
+      })?.priced,
+    ).toBe("exact");
+    expect(
+      calculateRequestCost("anthropic", "claude-sonnet-5-5", usage, {
+        apiBase: "https://api.anthropic.com/v1",
+      })?.priced,
+    ).toBe("exact");
+  });
+
+  it("bills a fast request at the fast price", () => {
+    const fast = findCatalogFastCost("openai", "gpt-5.5")!;
+    const result = calculateRequestCost("openai", "gpt-5.5", usage, {
+      fast: true,
+    });
+    expect(result?.cost).toBeCloseTo(fast.input + fast.output, 6);
+    expect(result?.priced).toBe("catalog");
+    expect(result!.cost).toBeGreaterThan(
+      calculateRequestCost("openai", "gpt-5.5", usage)!.cost,
+    );
+    // Claude's fast mode too
+    const claudeFast = findCatalogFastCost("anthropic", "claude-opus-5-5")!;
+    expect(
+      calculateRequestCost("anthropic", "claude-opus-5-5", usage, {
+        fast: true,
+      })?.cost,
+    ).toBeCloseTo(claudeFast.input + claudeFast.output, 6);
+  });
+
+  it("marks a fast request estimated when its fast price isn't known", () => {
+    const result = calculateRequestCost("oneprovider", "gpt-5.5", usage, {
+      fast: true,
+    });
+    expect(result?.priced).toBe("estimated");
   });
 
   it("prices a provider's models from its own catalog entry", () => {
@@ -507,14 +583,61 @@ describe("calculateRequestCost by host", () => {
     expect(result?.priced).toBe("exact");
   });
 
-  it("gives a custom gateway the general price, even on localhost", () => {
+  it("gives a custom gateway on a public host the general price", () => {
     const general = findGeneralCost("deepseek-v4-pro")!;
     const result = calculateRequestCost("openai", "deepseek-v4-pro", usage, {
-      apiBase: "http://127.0.0.1:8091/v1",
+      apiBase: "https://openpaths.io/v1",
       estimateUnknown: true,
     });
     expect(result?.cost).toBeCloseTo(general.input + general.output, 6);
     expect(result?.priced).toBe("estimated");
+  });
+
+  it("prices private-network hosts like any other host", () => {
+    for (const apiBase of [
+      "http://10.0.0.5:4000/v1",
+      "http://172.20.1.2:8000/v1",
+      "http://192.168.1.20:11434/v1",
+      "http://gpu-box.local:8091/v1",
+    ]) {
+      expect(
+        calculateRequestCost("openai", "deepseek-v4-pro", usage, {
+          apiBase,
+          estimateUnknown: true,
+        })?.priced,
+        apiBase,
+      ).toBe("estimated");
+    }
+    // A local server's provider too: the machine isn't this one
+    expect(
+      calculateRequestCost("ollama", "deepseek-v4-pro", usage, {
+        apiBase: "http://192.168.1.20:11434",
+        estimateUnknown: true,
+      })?.priced,
+    ).toBe("estimated");
+    expect(
+      calculateRequestCost("anthropic", "claude-sonnet-5-5", usage, {
+        apiBase: "http://10.0.0.5:4000",
+      })?.priced,
+    ).toBe("estimated");
+  });
+
+  it("gives no price to a bridge on this machine", () => {
+    // NextCLI can't see which provider a bridge forwards to, so neither a
+    // general price nor a maker's list price applies
+    for (const [provider, model, apiBase] of [
+      ["openai", "deepseek-v4-pro", "http://127.0.0.1:8091/v1"],
+      ["openai", "gpt-4o", "http://localhost:8091/v1"],
+      ["anthropic", "claude-sonnet-5-5", "http://[::1]:4000"],
+    ]) {
+      expect(
+        calculateRequestCost(provider, model, usage, {
+          apiBase,
+          estimateUnknown: true,
+        }),
+        `${provider} ${model} ${apiBase}`,
+      ).toBeNull();
+    }
   });
 
   it("returns null when no table knows the model", () => {

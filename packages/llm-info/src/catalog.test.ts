@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   allModelProviders,
   CATALOG_PROVIDERS,
+  catalogPromptLimit,
+  catalogProviderFor,
   findCatalogCost,
   findCatalogModel,
   findCatalogModelsByCanonical,
@@ -48,6 +50,16 @@ describe("catalog snapshot", () => {
   });
 });
 
+describe("catalogProviderFor", () => {
+  it("matches provider names without case, and tolerates none", () => {
+    expect(catalogProviderFor("xAI")).toBe("xai");
+    expect(catalogProviderFor("xai")).toBe("xai");
+    expect(catalogProviderFor("together")).toBe("togetherai");
+    expect(catalogProviderFor("my-gateway")).toBeUndefined();
+    expect(catalogProviderFor(undefined)).toBeUndefined();
+  });
+});
+
 describe("findCatalogModel", () => {
   it.each([
     ["anthropic", "claude-sonnet-5-5", "claude-sonnet-5-5"],
@@ -70,6 +82,31 @@ describe("findCatalogModel", () => {
     ["anthropic", "claude-sonnet-4-5", "claude-sonnet-4-5"],
   ])("keeps %s %s apart from its family", (provider, model, id) => {
     expect(findCatalogModel(provider, model)?.id).toBe(id);
+  });
+
+  it.each([
+    // Mistral's -latest alias, not the oldest dated (YYMM) snapshot
+    ["mistral", "mistral-large", "mistral-large-latest"],
+    ["mistral", "mistral-medium", "mistral-medium-latest"],
+    ["mistral", "mistral-small", "mistral-small-latest"],
+    ["mistral", "codestral", "codestral-latest"],
+    // A current snapshot, not the thinking variant that sorts first
+    ["openrouter", "qwen/qwen3-235b-a22b", "qwen/qwen3-235b-a22b-2507"],
+    // A listed snapshot is used as it is
+    ["mistral", "mistral-medium-2505", "mistral-medium-2505"],
+  ])("finds unsuffixed %s %s as %s", (provider, model, id) => {
+    expect(findCatalogModel(provider, model)?.id).toBe(id);
+  });
+
+  it("gives a dated snapshot its alias's fast mode", () => {
+    // OpenAI's catalog lists priority for gpt-4o only
+    expect(CATALOG.openai["gpt-4o-2024-08-06"].fast).toBeUndefined();
+    const snapshot = findCatalogModel("openai", "gpt-4o-2024-08-06")?.model;
+    expect(snapshot?.fast).toEqual(CATALOG.openai["gpt-4o"].fast);
+    // A snapshot priced differently keeps its own fast prices
+    expect(findCatalogModel("openai", "gpt-4o-2024-05-13")?.model.fast).toEqual(
+      CATALOG.openai["gpt-4o-2024-05-13"].fast,
+    );
   });
 
   it("finds nothing for an unknown model or provider", () => {
@@ -107,6 +144,23 @@ describe("findLlmInfo", () => {
       contextLength: catalogModel.context,
       maxCompletionTokens: catalogModel.output,
     });
+  });
+
+  it("fills the context a hand-written row leaves out from the catalog", () => {
+    // The row for mistral-medium sets no context; the -latest entry does
+    const info = findLlmInfo("mistral-medium", "mistral");
+    expect(info?.contextLength).toBe(
+      CATALOG.mistral["mistral-medium-latest"].context,
+    );
+    // The row's output limit stays unset: it sets the default max_tokens
+    expect(info?.maxCompletionTokens).toBeUndefined();
+  });
+
+  it("plans for the input limit, not the whole context window", () => {
+    const gpt = CATALOG.openai["gpt-5.5"];
+    expect(gpt.input).toBeLessThan(gpt.context!);
+    expect(findLlmInfo("gpt-5.5", "openai")?.contextLength).toBe(gpt.input);
+    expect(catalogPromptLimit(gpt)).toBe(gpt.input);
   });
 
   it("reads images from the catalog", () => {

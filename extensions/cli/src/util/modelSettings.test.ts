@@ -91,9 +91,10 @@ describe("model settings", () => {
     expect(getContextOptions(opus, 200_000)).toEqual([
       64_000, 128_000, 200_000, 256_000, 400_000, 1_000_000,
     ]);
-    // GPT-5.5's window comes from the models.dev catalog
+    // GPT-5.5's limit comes from the models.dev catalog: its 922K input
+    // limit, not the 1.05M window, so a chosen size never overflows the input
     expect(getContextOptions(gpt, 200_000)).toEqual([
-      64_000, 128_000, 200_000, 256_000, 400_000, 1_000_000, 1_050_000,
+      64_000, 128_000, 200_000, 256_000, 400_000, 922_000,
     ]);
   });
 
