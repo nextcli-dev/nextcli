@@ -10,6 +10,10 @@
  *   and OpenAI's encrypted reasoning; a plain `reasoning_content` or
  *   `reasoning` string (DeepSeek, Kimi, most gateways) becomes one reasoning
  *   part, which OpenAI-compatible providers send back as `reasoning_content`.
+ *   The `reasoning_details` also go to OpenAI-compatible gateways as they
+ *   are (OpenRouter needs them back for Claude's signatures), through
+ *   `providerOptions.openaiCompatible`, which that provider copies into the
+ *   message.
  * - Tool calls become tool-call parts, with Gemini's thought signature;
  *   tool messages become tool results.
  */
@@ -19,6 +23,7 @@ import type { ChatCompletionMessageParam } from "openai/resources/index.js";
 export interface VercelCoreMessage {
   role: "user" | "assistant" | "tool";
   content: string | Array<any>;
+  providerOptions?: Record<string, Record<string, unknown>>;
 }
 
 export interface ConvertedMessages {
@@ -78,8 +83,8 @@ function userContent(content: unknown): string | Array<any> {
  * Reasoning parts from `reasoning_details`. OpenAI items (they have an `id`)
  * are grouped by id: the summaries become the text and the encrypted content
  * goes in providerOptions. Claude items keep their order: signed text becomes
- * a thinking block, encrypted data a redacted one. Anything else is plain
- * reasoning text.
+ * a thinking block, encrypted data a redacted one. Any other item with text
+ * or a summary (OpenRouter's summaries carry no id) is plain reasoning text.
  */
 function reasoningPartsFromDetails(details: ReasoningDetail[]): any[] {
   const parts: any[] = [];
@@ -112,6 +117,9 @@ function reasoningPartsFromDetails(details: ReasoningDetail[]): any[] {
           providerOptions: { anthropic: { signature: detail.signature } },
         }),
       });
+    } else {
+      const text = detail.summary ?? detail.text;
+      if (text) parts.push({ type: "reasoning", text });
     }
   }
   return parts.map((part) => {
@@ -130,18 +138,27 @@ function reasoningPartsFromDetails(details: ReasoningDetail[]): any[] {
   });
 }
 
+/**
+ * The message's reasoning parts. The plain text is added only when the
+ * details have no readable text of their own (encrypted items alone), so a
+ * signed Claude block is never followed by an unsigned copy of its text.
+ */
 function reasoningParts(msg: Record<string, unknown>): any[] {
   const details = msg.reasoning_details;
-  if (Array.isArray(details) && details.length > 0) {
-    return reasoningPartsFromDetails(details as ReasoningDetail[]);
-  }
+  const parts =
+    Array.isArray(details) && details.length > 0
+      ? reasoningPartsFromDetails(details as ReasoningDetail[])
+      : [];
   const text =
     typeof msg.reasoning_content === "string"
       ? msg.reasoning_content
       : typeof msg.reasoning === "string"
         ? msg.reasoning
         : "";
-  return text ? [{ type: "reasoning", text }] : [];
+  if (text && !parts.some((part) => part.text)) {
+    parts.push({ type: "reasoning", text });
+  }
+  return parts;
 }
 
 export function convertOpenAIMessagesToVercel(
@@ -206,6 +223,8 @@ export function convertOpenAIMessagesToVercel(
             }),
           });
         }
+        const details = (msg as { reasoning_details?: unknown })
+          .reasoning_details;
         vercelMessages.push({
           role: "assistant",
           content:
@@ -213,6 +232,12 @@ export function convertOpenAIMessagesToVercel(
             (parts.length === 1 && parts[0].type === "text")
               ? text
               : parts,
+          ...(Array.isArray(details) &&
+            details.length > 0 && {
+              providerOptions: {
+                openaiCompatible: { reasoning_details: details },
+              },
+            }),
         });
         break;
       }

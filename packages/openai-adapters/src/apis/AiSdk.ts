@@ -2,6 +2,7 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createDeepSeek } from "@ai-sdk/deepseek";
 import { createGoogle } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createXai } from "@ai-sdk/xai";
 import {
   ChatCompletion,
@@ -38,6 +39,22 @@ interface AiSdkProvider {
   create(settings: ProviderSettings): (modelId: string) => any;
   /** Embedding models, for providers that have them */
   embedding?(settings: ProviderSettings): (modelId: string) => any;
+  /**
+   * The provider streams and accepts OpenRouter-style `reasoning_details`,
+   * which the AI SDK model doesn't parse: read them from the raw chunks and
+   * send them back as they came (see openaiToVercelMessages.ts)
+   */
+  reasoningDetails?: boolean;
+}
+
+/**
+ * A gateway that speaks OpenAI Chat Completions. The compatible provider,
+ * unlike createOpenAI().chat, sends reasoning back as `reasoning_content`
+ * and passes `reasoning_details` through.
+ */
+function openAICompatible(name: string) {
+  return (settings: ProviderSettings) =>
+    createOpenAICompatible({ name, includeUsage: true, ...settings });
 }
 
 /**
@@ -69,15 +86,15 @@ const PROVIDERS: Record<string, AiSdkProvider> = {
     defaultBaseURL: "https://api.deepseek.com",
     create: (settings) => createDeepSeek(settings),
   },
-  // Gateways that speak OpenAI Chat Completions, not the Responses API that
-  // createOpenAI's default model uses
   openrouter: {
     defaultBaseURL: "https://openrouter.ai/api/v1",
-    create: (settings) => createOpenAI(settings).chat,
+    create: openAICompatible("openrouter"),
+    reasoningDetails: true,
   },
   clawrouter: {
     defaultBaseURL: "http://localhost:1337/v1",
-    create: (settings) => createOpenAI(settings).chat,
+    create: openAICompatible("clawrouter"),
+    reasoningDetails: true,
   },
 };
 
@@ -188,12 +205,16 @@ export class AiSdkApi implements BaseLlmApi {
       }),
       maxRetries: MAX_RETRIES,
       abortSignal: signal,
+      includeRawChunks: this.provider.reasoningDetails,
       // Errors come through the stream as error parts, which the converter
       // throws; don't also print them
       onError: () => {},
     });
 
-    yield* convertVercelStream(result.stream as any, { model: modelId });
+    yield* convertVercelStream(result.stream as any, {
+      model: modelId,
+      reasoningDetailsFromRaw: this.provider.reasoningDetails,
+    });
   }
 
   async completionNonStream(

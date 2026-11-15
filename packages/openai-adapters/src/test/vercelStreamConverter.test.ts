@@ -48,9 +48,62 @@ describe("VercelStreamConverter", () => {
     ["tool-calls", "tool_calls"],
     ["content-filter", "content_filter"],
     ["other", "stop"],
+    ["interrupted", "length"],
   ])("maps the %s finish reason to %s", async (from, to) => {
     const chunks = await collect([{ type: "finish", finishReason: from }]);
     expect(chunks[0].choices[0].finish_reason).toBe(to);
+  });
+
+  test("throws for an error finish instead of reporting a stop", async () => {
+    await expect(
+      collect([
+        { type: "text-delta", id: "t", text: "Part" },
+        { type: "finish", finishReason: "error" },
+      ]),
+    ).rejects.toThrow("ended the response with an error");
+  });
+
+  test("throws an AbortError for an aborted stream", async () => {
+    // AI SDK 7 ends an aborted stream with an abort part and no finish
+    const result = collect([
+      { type: "text-delta", id: "t", text: "Part" },
+      { type: "abort", reason: "cancelled by user" },
+    ]);
+    await expect(result).rejects.toMatchObject({
+      name: "AbortError",
+      message: "cancelled by user",
+    });
+  });
+
+  test("passes a gateway's reasoning_details through from the raw chunks", async () => {
+    const details = [
+      { type: "reasoning.text", text: "Hm", signature: "sig", index: 0 },
+    ];
+    const parts: VercelStreamPart[] = [
+      {
+        type: "raw",
+        rawValue: {
+          choices: [{ delta: { reasoning: "Hm", reasoning_details: details } }],
+        },
+      },
+      { type: "reasoning-delta", id: "reasoning-0", text: "Hm" },
+      { type: "raw", rawValue: { choices: [{ delta: { content: "Hi" } }] } },
+      { type: "text-delta", id: "txt-0", text: "Hi" },
+    ];
+    const converter = new VercelStreamConverter({
+      model: "m",
+      reasoningDetailsFromRaw: true,
+    });
+
+    expect(
+      parts
+        .flatMap((part) => converter.convert(part))
+        .map((c) => c.choices[0].delta),
+    ).toEqual([
+      { role: "assistant", reasoning_details: details },
+      { role: "assistant", reasoning_content: "Hm" },
+      { role: "assistant", content: "Hi" },
+    ]);
   });
 
   test("streams reasoning text with a reasoning detail per block", async () => {
@@ -239,8 +292,10 @@ describe("VercelStreamConverter", () => {
     { type: "tool-result", toolCallId: "a" },
     { type: "source", source: {} },
     { type: "file", file: {} },
-    { type: "abort" },
-    { type: "raw", rawValue: {} },
+    {
+      type: "raw",
+      rawValue: { choices: [{ delta: { reasoning_details: [{}] } }] },
+    },
   ])("emits nothing for $type", (part) => {
     expect(new VercelStreamConverter({ model: "m" }).convert(part)).toEqual([]);
   });

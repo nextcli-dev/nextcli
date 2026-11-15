@@ -87,6 +87,82 @@ describe("convertOpenAIMessagesToVercel", () => {
     ]);
   });
 
+  it("keeps OpenRouter's summaries that have no id, and the details as they came", () => {
+    const details = [
+      { type: "reasoning.summary", summary: "Sum", index: 0 },
+      { type: "reasoning.encrypted", data: "enc", index: 1 },
+    ];
+    const { messages } = convertOpenAIMessagesToVercel([
+      {
+        role: "assistant",
+        content: "Answer",
+        reasoning: "Sum",
+        reasoning_details: details,
+      } as any,
+    ]);
+
+    expect(messages[0]).toEqual({
+      role: "assistant",
+      content: [
+        { type: "reasoning", text: "Sum" },
+        {
+          type: "reasoning",
+          text: "",
+          providerOptions: { anthropic: { redactedData: "enc" } },
+        },
+        { type: "text", text: "Answer" },
+      ],
+      providerOptions: { openaiCompatible: { reasoning_details: details } },
+    });
+  });
+
+  it("keeps reasoning_content when the details are only encrypted", () => {
+    const { messages } = convertOpenAIMessagesToVercel([
+      {
+        role: "assistant",
+        content: "Answer",
+        reasoning_content: "Thought",
+        reasoning_details: [
+          { type: "reasoning.encrypted", data: "enc", id: "rs_1", index: 0 },
+        ],
+      } as any,
+    ]);
+
+    expect(messages[0].content).toEqual([
+      {
+        type: "reasoning",
+        text: "",
+        providerOptions: {
+          openai: { itemId: "rs_1", reasoningEncryptedContent: "enc" },
+        },
+      },
+      { type: "reasoning", text: "Thought" },
+      { type: "text", text: "Answer" },
+    ]);
+  });
+
+  it("doesn't repeat signed thinking as unsigned reasoning_content", () => {
+    const { messages } = convertOpenAIMessagesToVercel([
+      {
+        role: "assistant",
+        content: "Answer",
+        reasoning_content: "Think",
+        reasoning_details: [
+          { type: "reasoning.text", text: "Think", signature: "sig", index: 0 },
+        ],
+      } as any,
+    ]);
+
+    expect(messages[0].content).toEqual([
+      {
+        type: "reasoning",
+        text: "Think",
+        providerOptions: { anthropic: { signature: "sig" } },
+      },
+      { type: "text", text: "Answer" },
+    ]);
+  });
+
   it("sends plain reasoning_content back as reasoning (DeepSeek, Kimi, gateways)", () => {
     const { messages } = convertOpenAIMessagesToVercel([
       {

@@ -29,6 +29,21 @@ function sse(events: object[]): any {
   });
 }
 
+/** An OpenAI Chat Completions stream, as fetchwithRequestOptions returns */
+function chatSse(chunks: object[]): any {
+  const text =
+    chunks
+      .map(
+        (chunk) =>
+          `data: ${JSON.stringify({ id: "c1", object: "chat.completion.chunk", created: 0, model: "m", ...chunk })}\n\n`,
+      )
+      .join("") + "data: [DONE]\n\n";
+  return new NodeFetchResponse(Readable.from([Buffer.from(text)]), {
+    status: 200,
+    headers: { "content-type": "text/event-stream" },
+  });
+}
+
 const CLAUDE_STREAM = [
   {
     type: "message_start",
@@ -294,6 +309,97 @@ describe("AiSdkApi", () => {
       type: "image",
       source: { type: "base64", media_type: "image/png", data: "iVBORw0KGgo=" },
     });
+  });
+
+  it("streams OpenRouter's reasoning_details as they came, and sends them back", async () => {
+    const details = [
+      { type: "reasoning.text", text: "Hm.", signature: "sig-or", index: 0 },
+    ];
+    mockFetch.mockResolvedValue(
+      chatSse([
+        {
+          choices: [
+            {
+              index: 0,
+              delta: {
+                role: "assistant",
+                reasoning: "Hm.",
+                reasoning_details: details,
+              },
+            },
+          ],
+        },
+        { choices: [{ index: 0, delta: { content: "Hi." } }] },
+        { choices: [{ index: 0, delta: {}, finish_reason: "stop" }] },
+        {
+          choices: [],
+          usage: { prompt_tokens: 12, completion_tokens: 3, total_tokens: 15 },
+        },
+      ]),
+    );
+    const api = new AiSdkApi({
+      provider: "ai-sdk",
+      model: "openrouter/anthropic/claude-sonnet-5.5",
+      apiKey: "k",
+    } as any);
+
+    const completion = await api.chatCompletionNonStream(
+      {
+        model: "anthropic/claude-sonnet-5.5",
+        messages: [{ role: "user", content: "hi" }],
+      },
+      new AbortController().signal,
+    );
+    const first = lastRequest();
+    expect(first.url).toBe("https://openrouter.ai/api/v1/chat/completions");
+    expect(first.body.stream_options).toEqual({ include_usage: true });
+    const message = completion.choices[0].message as any;
+    expect(message).toMatchObject({
+      content: "Hi.",
+      reasoning_content: "Hm.",
+      reasoning_details: details,
+    });
+    expect(completion.usage).toMatchObject({ prompt_tokens: 12 });
+
+    mockFetch.mockResolvedValue(
+      chatSse([{ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] }]),
+    );
+    await api.chatCompletionNonStream(
+      {
+        model: "anthropic/claude-sonnet-5.5",
+        messages: [
+          { role: "user", content: "hi" },
+          message,
+          { role: "user", content: "and now?" },
+        ],
+      },
+      new AbortController().signal,
+    );
+    expect(lastRequest().body.messages[1]).toMatchObject({
+      role: "assistant",
+      content: "Hi.",
+      reasoning_content: "Hm.",
+      reasoning_details: details,
+    });
+  });
+
+  it("rejects a cancelled call instead of returning a finished answer", async () => {
+    const controller = new AbortController();
+    mockFetch.mockImplementation(async () => {
+      const response = sse(CLAUDE_STREAM);
+      controller.abort();
+      return response;
+    });
+
+    await expect(
+      claude({ apiKey: "k" }).chatCompletionNonStream(
+        {
+          model: "claude-sonnet-5-5",
+          messages: [{ role: "user", content: "hi" }],
+        },
+        controller.signal,
+      ),
+    ).rejects.toMatchObject({ name: "AbortError" });
   });
 
   it("reports an HTTP error with its status and URL", async () => {

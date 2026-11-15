@@ -7,7 +7,8 @@
  *   OpenAI's encrypted reasoning, so they can be sent back
  *   (openaiToVercelMessages.ts turns them into reasoning parts again)
  * - one tool-call index per call, so parallel calls stay apart
- * - `finish_reason` null until a last chunk with the real reason
+ * - `finish_reason` null until a last chunk with the real reason; an
+ *   aborted stream throws an AbortError and a failed one throws its error
  * - usage where `prompt_tokens` counts every input token, cached ones
  *   included, and the cache reads and writes are given as parts of it
  */
@@ -77,6 +78,13 @@ export type VercelStreamPart =
 
 export interface VercelStreamConverterOptions {
   model: string;
+  /**
+   * Take `reasoning_details` as the provider streamed them, from the raw
+   * chunks (streamText's includeRawChunks), instead of building them from
+   * the reasoning parts. For gateways such as OpenRouter, whose details
+   * carry each upstream vendor's signatures and encrypted reasoning.
+   */
+  reasoningDetailsFromRaw?: boolean;
 }
 
 type Delta = ChatCompletionChunk.Choice["delta"] & {
@@ -92,6 +100,9 @@ const FINISH_REASONS: Record<
   length: "length",
   "content-filter": "content_filter",
   "tool-calls": "tool_calls",
+  // The provider's stream ended before it said it was done, so the reply
+  // may be cut off: report it as cut off, so the caller can continue it
+  interrupted: "length",
 };
 
 /** OpenAI usage from AI SDK usage; see the file comment for the convention */
@@ -124,11 +135,13 @@ export function toOpenAIUsage(usage: Usage): CompletionUsage {
  */
 export class VercelStreamConverter {
   private readonly model: string;
+  private readonly reasoningDetailsFromRaw: boolean;
   private readonly reasoningIndexes = new Map<string, number>();
   private readonly toolIndexes = new Map<string, number>();
 
   constructor(options: VercelStreamConverterOptions) {
     this.model = options.model;
+    this.reasoningDetailsFromRaw = options.reasoningDetailsFromRaw ?? false;
   }
 
   convert(part: VercelStreamPart): ChatCompletionChunk[] {
@@ -150,7 +163,15 @@ export class VercelStreamConverter {
       }
 
       case "reasoning-delta":
+        if (this.reasoningDetailsFromRaw) {
+          return part.text
+            ? [this.chunk({ reasoning_content: part.text })]
+            : [];
+        }
         return this.reasoningDelta(part);
+
+      case "raw":
+        return this.rawReasoningDetails(part.rawValue);
 
       case "reasoning-end": {
         // OpenAI's encrypted reasoning arrives with the finished item
@@ -227,12 +248,15 @@ export class VercelStreamConverter {
       }
 
       case "finish": {
+        if (part.finishReason === "error") {
+          // An error part normally comes first and throws; never let a failed
+          // call look finished
+          throw formatAiSdkError(
+            new Error("The provider ended the response with an error."),
+          );
+        }
         const chunks = [
-          this.chunk(
-            {},
-            FINISH_REASONS[part.finishReason] ??
-              (part.finishReason === "error" ? null : "stop"),
-          ),
+          this.chunk({}, FINISH_REASONS[part.finishReason] ?? "stop"),
         ];
         if (part.totalUsage) {
           chunks.push(
@@ -248,6 +272,15 @@ export class VercelStreamConverter {
       case "error":
         throw formatAiSdkError(part.error);
 
+      case "abort":
+        // AI SDK ends an aborted stream quietly, with no finish part. Throw
+        // as the native adapters do, so a cancelled call never reads as a
+        // finished answer with whatever had streamed so far.
+        throw new DOMException(
+          part.reason ?? "This operation was aborted",
+          "AbortError",
+        );
+
       case "text-start":
       case "text-end":
       case "source":
@@ -258,8 +291,6 @@ export class VercelStreamConverter {
       case "start-step":
       case "finish-step":
       case "start":
-      case "abort":
-      case "raw":
         return [];
 
       default:
@@ -305,6 +336,13 @@ export class VercelStreamConverter {
       );
     }
     return chunks;
+  }
+
+  private rawReasoningDetails(rawValue: unknown): ChatCompletionChunk[] {
+    if (!this.reasoningDetailsFromRaw) return [];
+    const details = (rawValue as any)?.choices?.[0]?.delta?.reasoning_details;
+    if (!Array.isArray(details) || details.length === 0) return [];
+    return [this.chunk({ reasoning_details: details })];
   }
 
   private reasoningIndex(key: string): number {

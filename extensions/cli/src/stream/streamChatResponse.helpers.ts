@@ -587,10 +587,11 @@ export function recordStreamTelemetry(options: {
   telemetryService.recordTokenUsage(actualInputTokens, "input", model.model);
   telemetryService.recordTokenUsage(actualOutputTokens, "output", model.model);
 
-  // Record cache tokens if available
-  if (fullUsage?.prompt_tokens_details?.cache_read_tokens) {
+  // Record cache tokens if available: the same cache reads that were priced
+  const cacheReadTokens = usage.promptTokensDetails?.cachedTokens;
+  if (cacheReadTokens) {
     telemetryService.recordTokenUsage(
-      fullUsage.prompt_tokens_details.cache_read_tokens,
+      cacheReadTokens,
       "cacheRead",
       model.model,
     );
