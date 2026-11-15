@@ -96,6 +96,22 @@ interface ReasoningDetailParam {
   data?: string;
 }
 
+/**
+ * Anthropic reports uncached input tokens apart from cache reads and writes.
+ * Like every adapter, this one reports `prompt_tokens` as all input tokens,
+ * cached ones included, with the cache reads and writes given as parts of it
+ * in `prompt_tokens_details`.
+ */
+export function promptTokensWithCache(
+  usage: Record<string, number | null | undefined> | undefined,
+): number {
+  return (
+    (usage?.input_tokens ?? 0) +
+    (usage?.cache_read_input_tokens ?? 0) +
+    (usage?.cache_creation_input_tokens ?? 0)
+  );
+}
+
 export class AnthropicApi implements BaseLlmApi {
   apiBase: string = "https://api.anthropic.com/v1/";
 
@@ -475,9 +491,10 @@ export class AnthropicApi implements BaseLlmApi {
       model: body.model,
       created: Math.floor(Date.now() / 1000),
       usage: {
-        total_tokens: (usage?.input_tokens ?? 0) + (usage?.output_tokens ?? 0),
+        total_tokens:
+          promptTokensWithCache(usage) + (usage?.output_tokens ?? 0),
         completion_tokens: usage?.output_tokens ?? 0,
-        prompt_tokens: usage?.input_tokens ?? 0,
+        prompt_tokens: promptTokensWithCache(usage),
         prompt_tokens_details: {
           cached_tokens: usage?.cache_read_input_tokens ?? 0,
           cache_read_tokens: usage?.cache_read_input_tokens ?? 0,
@@ -544,7 +561,11 @@ export class AnthropicApi implements BaseLlmApi {
           break;
         case "message_start":
           const startEvent = rawEvent as RawMessageStartEvent;
-          usage.prompt_tokens = startEvent.message.usage?.input_tokens ?? 0;
+          usage.prompt_tokens = promptTokensWithCache(
+            startEvent.message.usage as unknown as
+              | Record<string, number>
+              | undefined,
+          );
           usage.prompt_tokens_details = {
             cache_write_tokens:
               startEvent.message.usage?.cache_creation_input_tokens ?? 0,

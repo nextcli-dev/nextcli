@@ -7,6 +7,7 @@ import { calculateRequestCost, CostBreakdown } from "./calculateRequestCost";
 interface TestCase {
   provider: string;
   model: string;
+  /** Every input token, cached ones included, as every adapter reports it */
   promptTokens: number;
   completionTokens: number;
   cachedTokens?: number;
@@ -63,7 +64,7 @@ describe("calculateRequestCost", () => {
     {
       provider: "anthropic",
       model: "claude-sonnet-5-5",
-      promptTokens: 1000,
+      promptTokens: 3000,
       completionTokens: 500,
       cachedTokens: 2000,
       expectedCost: 0.0072,
@@ -104,7 +105,7 @@ describe("calculateRequestCost", () => {
     {
       provider: "anthropic",
       model: "claude-haiku-5-5",
-      promptTokens: 60_000,
+      promptTokens: 110_000,
       completionTokens: 1000,
       cachedTokens: 50_000,
       expectedCost: 0.035,
@@ -130,7 +131,7 @@ describe("calculateRequestCost", () => {
     {
       provider: "anthropic",
       model: "claude-3-5-sonnet-20241022",
-      promptTokens: 1000,
+      promptTokens: 3000,
       completionTokens: 500,
       cachedTokens: 2000,
       expectedCost: 0.0111,
@@ -139,7 +140,7 @@ describe("calculateRequestCost", () => {
     {
       provider: "anthropic",
       model: "claude-3-5-sonnet-20241022",
-      promptTokens: 1000,
+      promptTokens: 1300,
       completionTokens: 500,
       cacheWriteTokens: 300,
       expectedCost: 0.011625,
@@ -204,7 +205,7 @@ describe("calculateRequestCost", () => {
     {
       provider: "anthropic",
       model: "claude-opus-4-5-20251101",
-      promptTokens: 1000,
+      promptTokens: 3000,
       completionTokens: 500,
       cachedTokens: 2000,
       expectedCost: 0.0185,
@@ -213,7 +214,7 @@ describe("calculateRequestCost", () => {
     {
       provider: "anthropic",
       model: "claude-opus-4-5-20251101",
-      promptTokens: 1000,
+      promptTokens: 1300,
       completionTokens: 500,
       cacheWriteTokens: 300,
       expectedCost: 0.019375,

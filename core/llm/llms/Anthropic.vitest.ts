@@ -1,3 +1,5 @@
+import { Readable } from "node:stream";
+
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { ILLM } from "../../index.js";
 import { claudeEditPrompt } from "../templates/edit.js";
@@ -863,5 +865,58 @@ describe("Anthropic configured thinking budget", () => {
         reasoningBudgetTokens: 6000,
       }).thinking,
     ).toBeUndefined();
+  });
+});
+
+describe("Anthropic usage", () => {
+  test("counts cached tokens inside promptTokens, as every adapter does", async () => {
+    const anthropic = new Anthropic({
+      apiKey: "test-api-key",
+      model: "claude-sonnet-5-5",
+      apiBase: "https://api.anthropic.com/v1/",
+    });
+    const events = [
+      {
+        type: "message_start",
+        message: {
+          usage: {
+            input_tokens: 10,
+            cache_read_input_tokens: 80,
+            cache_creation_input_tokens: 10,
+            output_tokens: 1,
+          },
+        },
+      },
+      {
+        type: "content_block_delta",
+        delta: { type: "text_delta", text: "Hi" },
+      },
+      { type: "message_delta", delta: {}, usage: { output_tokens: 20 } },
+    ];
+    // The setup file makes Response node-fetch's, which streams a Node
+    // stream of Buffers, as a real response does
+    const sse = events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join("");
+    (anthropic as any).fetch = vi.fn().mockResolvedValue(
+      new Response(Readable.from([Buffer.from(sse)]) as any, {
+        headers: { "Content-Type": "text/event-stream" },
+      }),
+    );
+
+    let text = "";
+    let usage: any;
+    for await (const message of anthropic.streamChat(
+      [{ role: "user", content: "hello" }],
+      new AbortController().signal,
+    )) {
+      if (typeof message.content === "string") text += message.content;
+      if ((message as any).usage) usage = (message as any).usage;
+    }
+
+    expect(text).toBe("Hi");
+    expect(usage).toEqual({
+      promptTokens: 100,
+      completionTokens: 20,
+      promptTokensDetails: { cachedTokens: 80, cacheWriteTokens: 10 },
+    });
   });
 });

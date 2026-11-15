@@ -305,3 +305,40 @@ describe("Thinking modes from a model menu", () => {
     expect(body.thinking).toEqual({ type: "adaptive", display: "omitted" });
   });
 });
+
+describe("AnthropicApi usage", () => {
+  it("counts cached tokens inside prompt_tokens, as every adapter does", async () => {
+    const chunks: any[] = [];
+    for await (const chunk of api.handleStreamResponse(
+      sseResponse([
+        {
+          type: "message_start",
+          message: {
+            usage: {
+              input_tokens: 10,
+              cache_read_input_tokens: 80,
+              cache_creation_input_tokens: 10,
+              output_tokens: 1,
+            },
+          },
+        },
+        { type: "message_delta", delta: {}, usage: { output_tokens: 20 } },
+        { type: "message_stop" },
+      ]),
+      "claude-x",
+    )) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks.at(-1).usage).toEqual({
+      prompt_tokens: 100,
+      completion_tokens: 20,
+      total_tokens: 120,
+      prompt_tokens_details: {
+        cached_tokens: 80,
+        cache_read_tokens: 80,
+        cache_write_tokens: 10,
+      },
+    });
+  });
+});

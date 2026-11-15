@@ -558,7 +558,10 @@ export function recordStreamTelemetry(options: {
       completionTokens: fullUsage.completion_tokens,
       promptTokensDetails: fullUsage.prompt_tokens_details
         ? {
-            cachedTokens: fullUsage.prompt_tokens_details.cache_read_tokens,
+            // OpenAI reports cache reads only as cached_tokens
+            cachedTokens:
+              fullUsage.prompt_tokens_details.cache_read_tokens ??
+              fullUsage.prompt_tokens_details.cached_tokens,
             cacheWriteTokens:
               fullUsage.prompt_tokens_details.cache_write_tokens,
           }
