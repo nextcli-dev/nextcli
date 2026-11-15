@@ -132,11 +132,14 @@ export async function runOnboardingFlow(
     return true;
   }
 
-  // Step 3: Check for CONTINUE_USE_BEDROCK environment variable first (before test env check)
-  if (process.env.CONTINUE_USE_BEDROCK === "1") {
-    console.log(
-      chalk.blue("✓ Using AWS Bedrock (CONTINUE_USE_BEDROCK detected)"),
-    );
+  // Step 3: NEXTCLI_USE_BEDROCK=1 picks AWS Bedrock (before the test env
+  // check). CONTINUE_USE_BEDROCK is the old name, still read.
+  const bedrockVar =
+    process.env.NEXTCLI_USE_BEDROCK === undefined
+      ? "CONTINUE_USE_BEDROCK"
+      : "NEXTCLI_USE_BEDROCK";
+  if (process.env[bedrockVar] === "1") {
+    console.log(chalk.blue(`✓ Using AWS Bedrock (${bedrockVar} detected)`));
     return true;
   }
 

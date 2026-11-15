@@ -67,7 +67,29 @@ const NEVER_FROM_FILE = [
   /^OTEL_/,
   /^CONTINUE_CLI_ENABLE_TELEMETRY$/,
   /^CONTINUE_METRICS_ENABLED$/,
+  // Bypasses the proxy and certificate settings for model requests
+  /^FEATURE_FLAG_DISABLE_CUSTOM_FETCH$/,
+  // Logs every request with its headers, API keys included
+  /^VERBOSE_FETCH$/,
 ];
+
+/**
+ * Old names still read as a fallback for their NEXTCLI_ replacements. The
+ * new name wins when both are set.
+ */
+export const RENAMED_ENV_VARS: ReadonlyArray<{ old: string; name: string }> = [
+  { old: "CONTINUE_USE_AI_SDK", name: "NEXTCLI_USE_AI_SDK" },
+  { old: "CONTINUE_USE_BEDROCK", name: "NEXTCLI_USE_BEDROCK" },
+];
+
+/** Renamed variables set only under their old name */
+export function oldEnvNamesInUse(
+  env: NodeJS.ProcessEnv = process.env,
+): Array<{ old: string; name: string }> {
+  return RENAMED_ENV_VARS.filter(
+    ({ old, name }) => env[old] !== undefined && env[name] === undefined,
+  );
+}
 
 export function isNeverFromFile(name: string): boolean {
   const upper = name.toUpperCase();

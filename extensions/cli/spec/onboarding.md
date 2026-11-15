@@ -7,7 +7,7 @@ When a user first runs `cn` in interactive mode, they will be taken through "onb
 **The onboarding flow runs when the user hasn't completed onboarding before, regardless of whether they have a valid config.yaml file.**
 
 1. If the --config flag is provided, load this config
-2. If the CONTINUE_USE_BEDROCK environment variable is set to "1", automatically use AWS Bedrock configuration and skip interactive prompts
+2. If the NEXTCLI_USE_BEDROCK environment variable is set to "1", automatically use AWS Bedrock configuration and skip interactive prompts
 3. Present the user with available options:
 
    - Log in with Continue: log them in, which will automatically create their assistant and then we can load the first assistant from the first org
@@ -24,16 +24,16 @@ When a user first runs `cn` in interactive mode, they will be taken through "onb
          ANTHROPIC_API_KEY: <THEIR_ANTHROPIC_API_KEY>
    ```
 
-   When CONTINUE_USE_BEDROCK=1 is detected, it will use AWS Bedrock configuration. The user must have AWS credentials configured through the standard AWS credential chain (AWS CLI, environment variables, IAM roles, etc.).
+   When NEXTCLI_USE_BEDROCK=1 is detected, it will use AWS Bedrock configuration. The user must have AWS credentials configured through the standard AWS credential chain (AWS CLI, environment variables, IAM roles, etc.).
 
-When something in the onboarding flow is done automatically, we should tell the user what happened. For example, when CONTINUE_USE_BEDROCK=1 is detected, the CLI displays: "✓ Using AWS Bedrock (CONTINUE_USE_BEDROCK detected)"
+When something in the onboarding flow is done automatically, we should tell the user what happened. For example, when NEXTCLI_USE_BEDROCK=1 is detected, the CLI displays: "✓ Using AWS Bedrock (NEXTCLI_USE_BEDROCK detected)"
 
 ### AWS Bedrock Environment Variable
 
-Users can bypass the interactive onboarding menu by setting the `CONTINUE_USE_BEDROCK` environment variable to "1":
+Users can bypass the interactive onboarding menu by setting the `NEXTCLI_USE_BEDROCK` environment variable to "1". The old name, `CONTINUE_USE_BEDROCK`, still works; `NEXTCLI_USE_BEDROCK` wins when both are set.
 
 ```bash
-export CONTINUE_USE_BEDROCK=1
+export NEXTCLI_USE_BEDROCK=1
 cn <command>
 ```
 

@@ -19,6 +19,7 @@ import { configureConsoleForHeadless, safeStderr } from "./init.js";
 import {
   canAskForTrust,
   loadProjectEnvironment,
+  oldEnvNamesInUse,
   type EnvironmentReport,
 } from "./projectEnv.js";
 import { addCommonOptions, mergeParentOptions } from "./shared-options.js";
@@ -212,6 +213,9 @@ function logEnvironmentReport(report: EnvironmentReport): void {
     logger.debug(
       `Not taken from a .env file: ${report.skippedNames.join(", ")}. Set them in the environment instead.`,
     );
+  }
+  for (const { old, name } of oldEnvNamesInUse()) {
+    logger.debug(`${old} is an old name; set ${name} instead.`);
   }
 }
 
