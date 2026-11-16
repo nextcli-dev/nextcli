@@ -473,16 +473,13 @@ describe("transport selection", () => {
   });
 
   it("sends a model without a route through the provider's own adapter", async () => {
-    // OpenAI's own API has no AI-SDK route yet
-    const { legacy, aiSdk } = transports({ provider: "openai", apiKey: "k" });
-    const body = requestBody({
-      name: "",
-      config: { provider: "openai" },
-      model: "gpt-4.1",
-    });
+    // Claude through OneProvider keeps the Anthropic adapter
+    const config = { provider: "oneprovider", apiKey: "k" };
+    const { legacy, aiSdk } = transports(config);
+    const body = requestBody({ name: "", config, model: "claude-sonnet-5-5" });
     const own = await sendChat(legacy, body, CHAT_REPLY);
     const viaAiSdk = await sendChat(aiSdk, body, CHAT_REPLY);
+    expect(own.request.url).toBe("https://api.oneprovider.dev/v1/messages");
     expect(viaAiSdk.request).toEqual(own.request);
-    expect(viaAiSdk.reply).toEqual(own.reply);
   });
 });

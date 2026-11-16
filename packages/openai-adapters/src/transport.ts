@@ -21,18 +21,14 @@ export interface AiSdkRoute {
 }
 
 /**
- * How the AI SDK sends a model's chat requests on its endpoint, or
- * undefined when that model stays on its provider's own adapter. Each route
- * sends what the provider's own adapter sends for the same request; the
- * parity tests (test/transportParity.vitest.ts) hold them to it.
+ * The route for an endpoint, whatever the model: undefined when the
+ * provider's own adapter sends everything there
  */
-export function aiSdkRoute({
+function endpointRoute({
   provider,
-  model,
   apiBase,
 }: {
   provider: string;
-  model: string;
   apiBase?: string;
 }): AiSdkRoute | undefined {
   switch (provider) {
@@ -48,8 +44,7 @@ export function aiSdkRoute({
         ? undefined
         : { factory: "openai-compatible" };
     case "oneprovider":
-      // Claude keeps the Anthropic adapter (OneProvider's Messages API)
-      return isClaude(model) ? undefined : { factory: "openai-compatible" };
+      return { factory: "openai-compatible" };
     case "deepseek":
       // DeepSeek through a gateway; DeepSeek's own API, with its FIM, stays
       return apiBase && hostOf(apiBase) !== "api.deepseek.com"
@@ -60,8 +55,23 @@ export function aiSdkRoute({
   }
 }
 
-/** Providers with at least one AI-SDK route */
-const MIGRATED_PROVIDERS = new Set(["openai", "oneprovider", "deepseek"]);
+/**
+ * How the AI SDK sends a model's chat requests on its endpoint, or
+ * undefined when that model stays on its provider's own adapter. Each route
+ * sends what the provider's own adapter sends for the same request; the
+ * parity tests (test/transportParity.vitest.ts) hold them to it.
+ */
+export function aiSdkRoute(identity: {
+  provider: string;
+  model: string;
+  apiBase?: string;
+}): AiSdkRoute | undefined {
+  // Claude keeps the Anthropic adapter (OneProvider's Messages API)
+  if (identity.provider === "oneprovider" && isClaude(identity.model)) {
+    return undefined;
+  }
+  return endpointRoute(identity);
+}
 
 /** An environment flag: set, and not empty, "0" or "false" */
 function envFlag(value: string | undefined): boolean {
@@ -71,16 +81,17 @@ function envFlag(value: string | undefined): boolean {
 }
 
 /**
- * The transport for a model config. A provider without AI-SDK routes always
- * keeps its own adapter. Otherwise the model's `transport` wins, then the
- * NEXTCLI_USE_AI_SDK opt-in (CONTINUE_USE_AI_SDK is its old name, still
+ * The transport for a model config. An endpoint without AI-SDK routes
+ * (OpenAI's own API, DeepSeek's own API, every other provider) always keeps
+ * the provider's own adapter. Otherwise the model's `transport` wins, then
+ * the NEXTCLI_USE_AI_SDK opt-in (CONTINUE_USE_AI_SDK is its old name, still
  * read). Without either, requests keep the provider's own adapter.
  */
 export function selectTransport(
-  config: { provider: string; transport?: Transport },
+  config: { provider: string; apiBase?: string; transport?: Transport },
   env: NodeJS.ProcessEnv = process.env,
 ): Transport {
-  if (!MIGRATED_PROVIDERS.has(config.provider)) {
+  if (!endpointRoute(config)) {
     return "legacy";
   }
   if (config.transport) {

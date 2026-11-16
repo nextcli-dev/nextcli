@@ -28,12 +28,13 @@ function openai() {
   return constructLlmApi({
     provider: "openai",
     apiKey: "k",
-    model: "gpt-5.5",
+    apiBase: "http://127.0.0.1:8091/v1",
+    model: "deepseek-v4-pro",
   } as any);
 }
 
 describe("NEXTCLI_USE_AI_SDK", () => {
-  it("routes OpenAI through the AI SDK", () => {
+  it("routes an OpenAI-compatible endpoint through the AI SDK", () => {
     setEnv({ NEXTCLI_USE_AI_SDK: "1" });
     expect(openai()).toBeInstanceOf(AiSdkApi);
   });

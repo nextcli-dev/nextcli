@@ -23,7 +23,7 @@ import { VertexAIApi } from "./apis/VertexAI.js";
 import { WatsonXApi } from "./apis/WatsonX.js";
 import { BaseLlmApi } from "./apis/base.js";
 import { OneProviderApi } from "./apis/OneProvider.js";
-import { LLMConfig, OpenAIConfigSchema } from "./types.js";
+import { AiSdkConfig, LLMConfig, OpenAIConfigSchema } from "./types.js";
 import { selectTransport } from "./transport.js";
 import { appendPathToUrlIfNotPresent } from "./util/appendPathToUrl.js";
 
@@ -64,11 +64,57 @@ function isHuggingFaceOpenAICompatible(url: string): boolean {
   return openAIPatterns.some((pattern) => normalizedUrl.includes(pattern));
 }
 
+/** The providers a `provider: "ai-sdk"` model can name */
+const AI_SDK_VENDORS: Record<string, LLMConfig["provider"]> = {
+  openai: "openai",
+  anthropic: "anthropic",
+  google: "gemini",
+  xai: "xAI",
+  deepseek: "deepseek",
+  openrouter: "openrouter",
+  clawrouter: "clawrouter",
+};
+
+/**
+ * `provider: "ai-sdk"` with a `<vendor>/<model>` model is the vendor's own
+ * config on the AI SDK transport: models with an AI-SDK route take it, the
+ * rest the vendor's own adapter.
+ */
+function fromAiSdkConfig(config: AiSdkConfig): BaseLlmApi {
+  const [vendor, ...rest] = (config.model ?? "").split("/");
+  const provider = AI_SDK_VENDORS[vendor];
+  if (!config.model || rest.length === 0) {
+    throw new Error(
+      "AI SDK provider requires a model in the format '<provider>/<model>' (e.g., 'openai/gpt-4o')",
+    );
+  }
+  if (!provider) {
+    throw new Error(
+      `Unknown AI SDK provider: "${vendor}". ` +
+        `Supported providers: ${Object.keys(AI_SDK_VENDORS).join(", ")}.`,
+    );
+  }
+  const vendorConfig = {
+    ...config,
+    provider,
+    model: rest.join("/"),
+    transport: "ai-sdk",
+  } as LLMConfig;
+  const own = constructOwnLlmApi(vendorConfig);
+  if (!own) {
+    throw new Error(`No adapter for AI SDK provider "${vendor}".`);
+  }
+  return new AiSdkApi(vendorConfig, own, `${vendor}/`);
+}
+
 /**
  * The API for a model config. Chat requests go through the AI SDK when
  * transport.ts selects it, and through the provider's own adapter otherwise.
  */
 export function constructLlmApi(config: LLMConfig): BaseLlmApi | undefined {
+  if (config.provider === "ai-sdk") {
+    return fromAiSdkConfig(config);
+  }
   const own = constructOwnLlmApi(config);
   if (own && selectTransport(config) === "ai-sdk") {
     return new AiSdkApi(config, own);
@@ -187,8 +233,6 @@ function constructOwnLlmApi(config: LLMConfig): BaseLlmApi | undefined {
       // Return undefined for native HuggingFace endpoints
       // (handled by HuggingFaceInferenceAPI class in core)
       return undefined;
-    case "ai-sdk":
-      return new AiSdkApi(config);
     default:
       return undefined;
   }

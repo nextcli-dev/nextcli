@@ -2,47 +2,64 @@ import { describe, expect, it } from "vitest";
 
 import { aiSdkRoute, selectTransport } from "../transport.js";
 
+const BRIDGE = { provider: "openai", apiBase: "http://127.0.0.1:8091/v1" };
+
 describe("selectTransport", () => {
   it("keeps the provider's own adapter by default", () => {
-    expect(selectTransport({ provider: "openai" }, {})).toBe("legacy");
+    expect(selectTransport(BRIDGE, {})).toBe("legacy");
   });
 
   it("opts in with NEXTCLI_USE_AI_SDK, or its old name", () => {
-    expect(
-      selectTransport({ provider: "openai" }, { NEXTCLI_USE_AI_SDK: "1" }),
-    ).toBe("ai-sdk");
-    expect(
-      selectTransport({ provider: "openai" }, { CONTINUE_USE_AI_SDK: "true" }),
-    ).toBe("ai-sdk");
+    expect(selectTransport(BRIDGE, { NEXTCLI_USE_AI_SDK: "1" })).toBe("ai-sdk");
+    expect(selectTransport(BRIDGE, { CONTINUE_USE_AI_SDK: "true" })).toBe(
+      "ai-sdk",
+    );
   });
 
   it('reads "0", "false" and an empty value as off', () => {
     for (const value of ["0", "false", "FALSE", ""]) {
-      expect(
-        selectTransport({ provider: "openai" }, { NEXTCLI_USE_AI_SDK: value }),
-      ).toBe("legacy");
+      expect(selectTransport(BRIDGE, { NEXTCLI_USE_AI_SDK: value })).toBe(
+        "legacy",
+      );
     }
   });
 
   it("lets the model's transport win over the environment", () => {
     expect(
       selectTransport(
-        { provider: "openai", transport: "legacy" },
+        { ...BRIDGE, transport: "legacy" },
         { NEXTCLI_USE_AI_SDK: "1" },
       ),
     ).toBe("legacy");
     expect(
-      selectTransport({ provider: "deepseek", transport: "ai-sdk" }, {}),
+      selectTransport(
+        {
+          provider: "deepseek",
+          apiBase: "https://gateway.example/v1",
+          transport: "ai-sdk",
+        },
+        {},
+      ),
     ).toBe("ai-sdk");
   });
 
-  it("ignores both for a provider without AI-SDK routes", () => {
-    expect(
-      selectTransport(
-        { provider: "bedrock", transport: "ai-sdk" },
-        { NEXTCLI_USE_AI_SDK: "1" },
-      ),
-    ).toBe("legacy");
+  // So a config the AI SDK can't serve gets the plain adapter, not a
+  // wrapper that passes every request on
+  it("ignores both where the endpoint has no AI-SDK route", () => {
+    const asked = { NEXTCLI_USE_AI_SDK: "1" };
+    for (const config of [
+      { provider: "bedrock" },
+      { provider: "anthropic" },
+      { provider: "openai" },
+      { provider: "openai", apiBase: "https://api.openai.com/v1" },
+      { provider: "deepseek" },
+      { provider: "deepseek", apiBase: "https://api.deepseek.com/" },
+    ]) {
+      expect(selectTransport({ ...config, transport: "ai-sdk" }, asked)).toBe(
+        "legacy",
+      );
+    }
+    expect(selectTransport({ provider: "oneprovider" }, asked)).toBe("ai-sdk");
   });
 });
 

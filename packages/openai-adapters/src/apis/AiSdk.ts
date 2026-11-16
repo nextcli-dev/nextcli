@@ -1,9 +1,4 @@
-import { createAnthropic } from "@ai-sdk/anthropic";
-import { createDeepSeek } from "@ai-sdk/deepseek";
-import { createGoogle } from "@ai-sdk/google";
-import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { createXai } from "@ai-sdk/xai";
 import {
   ChatCompletion,
   ChatCompletionChunk,
@@ -16,11 +11,9 @@ import {
   EmbeddingCreateParams,
   Model,
 } from "openai/resources/index";
-import { formatAiSdkError } from "../aiSdkErrors.js";
 import { aiSdkRoute, type AiSdkRoute } from "../transport.js";
-import { AiSdkConfig, LLMConfig } from "../types.js";
-import { addEmptyReasoningContent, aiSdkFetch, embedding } from "../util.js";
-import { filterAnthropicSamplingParams } from "./AnthropicUtils.js";
+import { LLMConfig } from "../types.js";
+import { addEmptyReasoningContent, aiSdkFetch } from "../util.js";
 import {
   BaseLlmApi,
   CreateRerankResponse,
@@ -31,79 +24,6 @@ import { DEEPSEEK_API_BASE } from "./DeepSeek.js";
 import { ONEPROVIDER_API_BASE } from "./OneProvider.js";
 import { chatSamplingParams } from "./OpenAI.js";
 
-interface ProviderSettings {
-  apiKey: string;
-  baseURL: string;
-  fetch: typeof fetch;
-}
-
-interface AiSdkProvider {
-  /** Each provider's own default host, used when the config sets none */
-  defaultBaseURL: string;
-  create(settings: ProviderSettings): (modelId: string) => any;
-  /** Embedding models, for providers that have them */
-  embedding?(settings: ProviderSettings): (modelId: string) => any;
-  /**
-   * The provider streams and accepts OpenRouter-style `reasoning_details`,
-   * which the AI SDK model doesn't parse: read them from the raw chunks and
-   * send them back as they came (see openaiToVercelMessages.ts)
-   */
-  reasoningDetails?: boolean;
-}
-
-/**
- * A gateway that speaks OpenAI Chat Completions. The compatible provider,
- * unlike createOpenAI().chat, sends reasoning back as `reasoning_content`
- * and passes `reasoning_details` through.
- */
-function openAICompatible(name: string) {
-  return (settings: ProviderSettings) =>
-    createOpenAICompatible({ name, includeUsage: true, ...settings });
-}
-
-/**
- * The providers of `provider: "ai-sdk"` configs, whose model is
- * `<provider>/<model>`. Every provider gets an explicit key, base URL and
- * fetch. Left unset, the AI SDK providers would read ANTHROPIC_API_KEY,
- * ANTHROPIC_BASE_URL, OPENAI_API_KEY, OPENAI_BASE_URL and the like from the
- * environment, and so send a key the config never named, or send requests
- * to another host.
- */
-const PROVIDERS: Record<string, AiSdkProvider> = {
-  openai: {
-    defaultBaseURL: "https://api.openai.com/v1",
-    create: (settings) => createOpenAI(settings),
-    embedding: (settings) => createOpenAI(settings).embedding,
-  },
-  anthropic: {
-    defaultBaseURL: "https://api.anthropic.com/v1",
-    create: (settings) => createAnthropic(settings),
-  },
-  google: {
-    defaultBaseURL: "https://generativelanguage.googleapis.com/v1beta",
-    create: (settings) => createGoogle(settings),
-    embedding: (settings) => createGoogle(settings).embedding,
-  },
-  xai: {
-    defaultBaseURL: "https://api.x.ai/v1",
-    create: (settings) => createXai(settings),
-  },
-  deepseek: {
-    defaultBaseURL: "https://api.deepseek.com",
-    create: (settings) => createDeepSeek(settings),
-  },
-  openrouter: {
-    defaultBaseURL: "https://openrouter.ai/api/v1",
-    create: openAICompatible("openrouter"),
-    reasoningDetails: true,
-  },
-  clawrouter: {
-    defaultBaseURL: "http://localhost:1337/v1",
-    create: openAICompatible("clawrouter"),
-    reasoningDetails: true,
-  },
-};
-
 /** The default host of each provider with AI-SDK routes */
 const DEFAULT_BASES: Record<string, string> = {
   openai: "https://api.openai.com/v1",
@@ -112,71 +32,53 @@ const DEFAULT_BASES: Record<string, string> = {
 };
 
 /**
- * The providerOptions key of OpenAI-compatible routes. The compatible
- * provider also reads messages' and parts' fields under this key.
+ * The providerOptions key of the OpenAI-compatible route. The compatible
+ * provider puts its fields into the body as they are, and reads messages'
+ * and parts' fields under the same key.
  */
 const COMPATIBLE = "openaiCompatible";
 
 /**
- * Chat Completions fields that become AI SDK call settings. Every other
- * field (reasoning_effort, thinking, service_tier, parallel_tool_calls, a
- * gateway's own parameters) goes into the request body as it is, as the
- * provider's own adapter sends it. nextcli_* fields are read by the request
- * code and never sent.
+ * The request fields the AI SDK writes itself, from the converted messages
+ * and tools. Every other field (max_tokens, temperature, stop,
+ * reasoning_effort, thinking, a gateway's own parameters) goes into the body
+ * as the caller sent it, as OpenAIApi sends it. nextcli_* fields are read by
+ * the request code and never sent.
  */
-const CALL_FIELDS = new Set([
+const SDK_FIELDS = new Set([
   "model",
   "messages",
-  "stream",
-  "stream_options",
-  "max_tokens",
-  "temperature",
-  "top_p",
-  "frequency_penalty",
-  "presence_penalty",
-  "stop",
-  "seed",
   "tools",
   "tool_choice",
+  "stream",
+  "stream_options",
 ]);
 
-function bodyFields(body: object): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(body).filter(
-      ([key, value]) =>
-        value !== undefined &&
-        !CALL_FIELDS.has(key) &&
-        !key.startsWith("nextcli_"),
-    ),
-  );
-}
-
-/** The fields of a chat request that decide its AI SDK call */
-type ChatRequest = {
+/** The caller's own fields, with the sampling rules OpenAIApi applies */
+function bodyFields(body: {
   model: string;
   temperature?: number | null;
   top_p?: number | null;
-};
-
-/** The converted prompt, which a route can adjust before the call */
-interface Prompt {
-  instructions?: any;
-  messages: any[];
-  tools?: Record<string, any>;
-}
-
-/** Call settings a route decides; the body's own are used otherwise */
-interface CallSettings {
-  temperature?: number;
-  topP?: number;
-  topK?: number;
-  maxOutputTokens?: number;
-  stopSequences?: string[];
-  toolChoice?: any;
+}): Record<string, unknown> {
+  const fields: Record<string, unknown> = Object.fromEntries(
+    Object.entries(body).filter(
+      ([key, value]) =>
+        value !== undefined &&
+        !SDK_FIELDS.has(key) &&
+        !key.startsWith("nextcli_"),
+    ),
+  );
+  delete fields.temperature;
+  delete fields.top_p;
+  const sampling = chatSamplingParams(body.model, body);
+  for (const [key, value] of Object.entries(sampling)) {
+    if (value !== undefined) fields[key] = value;
+  }
+  return fields;
 }
 
 /**
- * The AI SDK sends `tool_choice: auto` whenever there are tools. The
+ * The AI SDK writes `tool_choice: auto` whenever there are tools. The
  * providers' own adapters send none unless the caller chose one, and some
  * servers treat an explicit "auto" differently from the default (vLLM
  * needs a flag for it), so a choice the caller didn't make is left out.
@@ -191,160 +93,84 @@ function withoutDefaultToolChoice(
   return args;
 }
 
-/** One chat request as an AI SDK call */
-interface ChatCall {
-  model: any;
-  modelId: string;
-  /** The provider name the tool choice rules use */
-  toolChoiceProvider: string;
-  settings: CallSettings;
-  providerOptions?: Record<string, Record<string, unknown>>;
-  /** See AiSdkProvider.reasoningDetails */
-  reasoningDetails?: boolean;
-  prompt?: (prompt: Prompt) => Prompt;
-}
-
 /** Retries for a failed request (429 and 5xx), as the OpenAI SDK does */
 const MAX_RETRIES = 2;
 
 /**
- * Sends chat requests through the AI SDK.
- *
- * - A `provider: "ai-sdk"` config names its provider in the model,
- *   `<provider>/<model>`.
- * - Any other config is a provider's normal config (transport.ts chose the
- *   AI SDK for it), together with that provider's own adapter. Each request
- *   takes its model's route (transport.ts aiSdkRoute); a model without one,
- *   and every request that isn't chat (completions, FIM, embeddings, rerank,
- *   listing models), goes to the provider's own adapter.
+ * Sends a provider's chat requests through the AI SDK, together with that
+ * provider's own adapter (transport.ts chose the AI SDK for the config).
+ * Each request takes its model's route (transport.ts aiSdkRoute). A model
+ * without one, and every request that isn't chat (completions, FIM,
+ * embeddings, rerank, listing models), goes to the provider's own adapter.
  */
 export class AiSdkApi implements BaseLlmApi {
-  private config: AiSdkConfig | LLMConfig;
-  private legacy?: BaseLlmApi;
-  /** For `provider: "ai-sdk"` configs */
-  private fixed?: {
-    providerId: string;
-    modelId: string;
-    provider: AiSdkProvider;
-  };
+  /**
+   * @param modelPrefix A `provider: "ai-sdk"` config names its vendor in the
+   *   model (`openai/gpt-x`). Requests carry that name; both transports get
+   *   it without the prefix.
+   */
+  constructor(
+    private readonly config: LLMConfig,
+    private readonly own: BaseLlmApi,
+    private readonly modelPrefix = "",
+  ) {}
 
-  constructor(config: AiSdkConfig | LLMConfig, legacy?: BaseLlmApi) {
-    this.config = config;
-    this.legacy = legacy;
-    if (config.provider !== "ai-sdk") {
-      if (!legacy) {
-        throw new Error(
-          `The AI SDK transport for "${config.provider}" needs that provider's own adapter.`,
-        );
-      }
-      return;
-    }
-    if (!config.model) {
-      throw new Error(
-        "AI SDK provider requires a model in the format '<provider>/<model>' (e.g., 'openai/gpt-4o')",
-      );
-    }
-    const [providerId, ...modelParts] = config.model.split("/");
-    const provider = PROVIDERS[providerId];
-    if (!provider) {
-      throw new Error(
-        `Unknown AI SDK provider: "${providerId}". ` +
-          `Supported providers: ${Object.keys(PROVIDERS).join(", ")}.`,
-      );
-    }
-    this.fixed = { providerId, modelId: modelParts.join("/"), provider };
-  }
-
-  private settings(defaultBaseURL: string): ProviderSettings {
-    return {
-      apiKey: this.config.apiKey ?? "",
-      baseURL: this.config.apiBase || defaultBaseURL,
-      fetch: aiSdkFetch(this.config.requestOptions),
-    };
-  }
-
-  /** The AI SDK call for a request, or undefined for the own adapter */
-  private chatCall(body: ChatRequest): ChatCall | undefined {
-    if (this.fixed) {
-      return this.fixedCall(body);
-    }
-    const route = aiSdkRoute({
+  /** The route a model's chat requests take; undefined: the own adapter */
+  routeFor(model: string): AiSdkRoute | undefined {
+    return aiSdkRoute({
       provider: this.config.provider,
-      model: body.model,
+      model: this.modelName(model),
       apiBase: this.config.apiBase,
     });
-    if (!route) {
-      return undefined;
-    }
-    switch (route.factory) {
-      case "openai-compatible":
-        return this.compatibleCall(body, route);
-      default:
-        return undefined;
-    }
   }
 
-  private fixedCall(body: ChatRequest): ChatCall {
-    const { providerId, modelId: fixedModel, provider } = this.fixed!;
-    const modelId = fixedModel || body.model;
-    let temperature = body.temperature ?? undefined;
-    let topP = body.top_p ?? undefined;
-    if (providerId === "anthropic") {
-      ({ temperature, topP } = filterAnthropicSamplingParams(modelId, {
-        temperature,
-        topP,
-      }));
-    }
-    return {
-      model: provider.create(this.settings(provider.defaultBaseURL))(modelId),
-      modelId,
-      toolChoiceProvider: providerId,
-      settings: { temperature, topP },
-      reasoningDetails: provider.reasoningDetails,
-    };
+  private modelName(model: string): string {
+    return this.modelPrefix && model.startsWith(this.modelPrefix)
+      ? model.slice(this.modelPrefix.length)
+      : model;
+  }
+
+  private named<T extends { model: string }>(body: T): T {
+    return { ...body, model: this.modelName(body.model) };
   }
 
   /**
    * A Chat Completions endpoint that isn't OpenAI's own: a bridge, a local
-   * server, a gateway. The request is what OpenAIApi sends: the body's own
-   * fields pass through, and only the sampling rules apply.
+   * server, a gateway. The request is what OpenAIApi sends.
    */
-  private compatibleCall(body: ChatRequest, route: AiSdkRoute): ChatCall {
-    const toolChoiceSet = (body as { tool_choice?: unknown }).tool_choice;
-    const provider = createOpenAICompatible({
+  private compatibleModel(
+    body: ChatCompletionCreateParamsStreaming,
+    route: AiSdkRoute,
+  ) {
+    return createOpenAICompatible({
       name: COMPATIBLE,
       includeUsage: true,
-      ...this.settings(DEFAULT_BASES[this.config.provider]),
+      // Explicit, so no AI SDK provider reads a key or host from the
+      // environment
+      apiKey: this.config.apiKey ?? "",
+      baseURL: this.config.apiBase || DEFAULT_BASES[this.config.provider],
+      fetch: aiSdkFetch(this.config.requestOptions),
       transformRequestBody: (args: Record<string, any>) => {
-        withoutDefaultToolChoice(args, toolChoiceSet);
+        withoutDefaultToolChoice(args, body.tool_choice);
         return route.emptyReasoningContent
           ? addEmptyReasoningContent(args as { messages: { role: string }[] })
           : args;
       },
-    });
-    const sampling = chatSamplingParams(body.model, body);
-    return {
-      model: provider.chatModel(body.model),
-      modelId: body.model,
-      toolChoiceProvider: this.config.provider,
-      settings: { temperature: sampling.temperature, topP: sampling.top_p },
-      providerOptions: { [COMPATIBLE]: bodyFields(body) },
-      // A gateway's reasoning_details pass through as they came
-      reasoningDetails: true,
-    };
+    }).chatModel(body.model);
   }
 
   async chatCompletionNonStream(
     body: ChatCompletionCreateParamsNonStreaming,
     signal: AbortSignal,
   ): Promise<ChatCompletion> {
-    if (this.legacy && !this.chatCall(body)) {
-      return this.legacy.chatCompletionNonStream(body, signal);
+    const named = this.named(body);
+    if (!this.routeFor(named.model)) {
+      return this.own.chatCompletionNonStream(named, signal);
     }
     const { collectChatCompletion } = await import("../aiSdkCompletion.js");
     return collectChatCompletion(
-      this.chatCompletionStream({ ...body, stream: true }, signal),
-      this.fixed?.modelId || body.model,
+      this.chatCompletionStream({ ...named, stream: true }, signal),
+      named.model,
     );
   }
 
@@ -352,9 +178,10 @@ export class AiSdkApi implements BaseLlmApi {
     body: ChatCompletionCreateParamsStreaming,
     signal: AbortSignal,
   ): AsyncGenerator<ChatCompletionChunk> {
-    const call = this.chatCall(body);
-    if (!call) {
-      yield* this.legacy!.chatCompletionStream(body, signal);
+    const named = this.named(body);
+    const route = this.routeFor(named.model);
+    if (!route) {
+      yield* this.own.chatCompletionStream(named, signal);
       return;
     }
 
@@ -370,136 +197,64 @@ export class AiSdkApi implements BaseLlmApi {
       "../convertToolChoiceToVercel.js"
     );
 
-    const converted = convertOpenAIMessagesToVercel(body.messages);
-    let prompt: Prompt = {
-      instructions: converted.instructions,
-      messages: converted.messages,
-      tools: await convertToolsToVercelFormat(body.tools),
-    };
-    if (call.prompt) {
-      prompt = call.prompt(prompt);
-    }
-
+    const { instructions, messages } = convertOpenAIMessagesToVercel(
+      named.messages,
+    );
     const result = streamText({
-      model: call.model,
-      instructions: prompt.instructions,
-      messages: prompt.messages,
-      frequencyPenalty: body.frequency_penalty ?? undefined,
-      presencePenalty: body.presence_penalty ?? undefined,
-      seed: body.seed ?? undefined,
-      maxOutputTokens: body.max_tokens ?? undefined,
-      stopSequences: body.stop
-        ? Array.isArray(body.stop)
-          ? body.stop
-          : [body.stop]
-        : undefined,
-      tools: prompt.tools,
-      toolChoice: convertToolChoiceToVercel(body.tool_choice, {
-        provider: call.toolChoiceProvider,
-        model: call.modelId,
-      }),
-      ...call.settings,
-      providerOptions: call.providerOptions as any,
+      model: this.compatibleModel(named, route),
+      instructions,
+      messages: messages as any,
+      tools: await convertToolsToVercelFormat(named.tools),
+      toolChoice: convertToolChoiceToVercel(named.tool_choice),
+      providerOptions: { [COMPATIBLE]: bodyFields(named) } as any,
       maxRetries: MAX_RETRIES,
       abortSignal: signal,
-      includeRawChunks: call.reasoningDetails,
+      // A gateway's reasoning_details pass through as they came
+      includeRawChunks: true,
       // Errors come through the stream as error parts, which the converter
       // throws; don't also print them
       onError: () => {},
     });
 
     yield* convertVercelStream(result.stream as any, {
-      model: call.modelId,
-      reasoningDetailsFromRaw: call.reasoningDetails,
+      model: named.model,
+      reasoningDetailsFromRaw: true,
     });
   }
 
-  async completionNonStream(
+  completionNonStream(
     body: CompletionCreateParamsNonStreaming,
     signal: AbortSignal,
   ): Promise<Completion> {
-    if (this.legacy) {
-      return this.legacy.completionNonStream(body, signal);
-    }
-    throw new Error(
-      "AI SDK provider does not support legacy completions API. Use chat completions instead.",
-    );
+    return this.own.completionNonStream(this.named(body), signal);
   }
 
-  async *completionStream(
+  completionStream(
     body: CompletionCreateParamsStreaming,
     signal: AbortSignal,
   ): AsyncGenerator<Completion> {
-    if (this.legacy) {
-      yield* this.legacy.completionStream(body, signal);
-      return;
-    }
-    throw new Error(
-      "AI SDK provider does not support legacy completions API. Use chat completions instead.",
-    );
+    return this.own.completionStream(this.named(body), signal);
   }
 
-  async *fimStream(
+  fimStream(
     body: FimCreateParamsStreaming,
     signal: AbortSignal,
   ): AsyncGenerator<ChatCompletionChunk> {
-    if (this.legacy) {
-      yield* this.legacy.fimStream(body, signal);
-      return;
-    }
-    throw new Error(
-      "AI SDK provider does not support fill-in-the-middle (FIM) completions.",
-    );
+    return this.own.fimStream(this.named(body), signal);
   }
 
-  async embed(body: EmbeddingCreateParams): Promise<CreateEmbeddingResponse> {
-    if (this.legacy) {
-      return this.legacy.embed(body);
-    }
-    const { providerId, provider } = this.fixed!;
-    if (!provider.embedding) {
-      throw new Error(
-        `AI SDK provider "${providerId}" does not support embeddings.`,
-      );
-    }
-    const { embedMany } = await import("ai");
-
-    const modelId = String(body.model);
-    const model = provider.embedding(this.settings(provider.defaultBaseURL))(
-      modelId,
-    );
-    const inputs = Array.isArray(body.input) ? body.input : [body.input];
-    const values = inputs.map((input) =>
-      typeof input === "string" ? input : String(input),
-    );
-
-    try {
-      const result = await embedMany({
-        model,
-        values,
-        maxRetries: MAX_RETRIES,
-      });
-      return embedding({
-        data: result.embeddings,
-        model: modelId,
-        usage: {
-          prompt_tokens: result.usage?.tokens ?? 0,
-          total_tokens: result.usage?.tokens ?? 0,
-        },
-      });
-    } catch (error) {
-      throw formatAiSdkError(error);
-    }
+  embed(body: EmbeddingCreateParams): Promise<CreateEmbeddingResponse> {
+    return this.own.embed({
+      ...body,
+      model: this.modelName(String(body.model)),
+    });
   }
 
-  async rerank(body: RerankCreateParams): Promise<CreateRerankResponse> {
-    if (this.legacy) {
-      return this.legacy.rerank(body);
-    }
-    throw new Error("AI SDK provider does not support reranking.");
+  rerank(body: RerankCreateParams): Promise<CreateRerankResponse> {
+    return this.own.rerank(this.named(body));
   }
 
-  async list(): Promise<Model[]> {
-    return this.legacy ? this.legacy.list() : [];
+  list(): Promise<Model[]> {
+    return this.own.list();
   }
 }
