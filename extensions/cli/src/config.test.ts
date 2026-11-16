@@ -1,11 +1,14 @@
 import { AssistantUnrolled, ModelConfig } from "@nextcli/config-yaml";
+import { AiSdkApi } from "@nextcli/openai-adapters";
 import { describe, expect, test, vi, beforeEach } from "vitest";
 
 // Mock dependencies
 vi.mock("./auth/workos.js");
+vi.mock("./util/logger.js", () => ({ logger: { debug: vi.fn() } }));
 
 import type { AuthConfig } from "./auth/workos.js";
-import { getLlmApi, withCliAttribution } from "./config.js";
+import { createLlmApi, getLlmApi, withCliAttribution } from "./config.js";
+import { logger } from "./util/logger.js";
 
 describe("config", () => {
   let mockAuthConfig: AuthConfig;
@@ -46,6 +49,46 @@ describe("config", () => {
       expect(() => getLlmApi(assistant, mockAuthConfig)).toThrow(
         "No models with the chat role found in the configured assistant",
       );
+    });
+  });
+
+  describe("createLlmApi()", () => {
+    const bridge = {
+      provider: "openai",
+      model: "deepseek-v4-pro",
+      name: "Bridge",
+      apiBase: "http://127.0.0.1:8091/v1",
+      transport: "ai-sdk",
+    } as ModelConfig;
+
+    test("says which transport the chat model uses when the AI SDK is chosen", () => {
+      expect(createLlmApi(bridge, mockAuthConfig)).toBeInstanceOf(AiSdkApi);
+      expect(logger.debug).toHaveBeenCalledWith("Chat transport", {
+        model: "deepseek-v4-pro",
+        transport: "ai-sdk",
+      });
+
+      createLlmApi(
+        {
+          ...bridge,
+          provider: "oneprovider",
+          model: "claude-sonnet-5-5",
+          apiBase: undefined,
+        } as ModelConfig,
+        mockAuthConfig,
+      );
+      expect(logger.debug).toHaveBeenLastCalledWith("Chat transport", {
+        model: "claude-sonnet-5-5",
+        transport: "oneprovider's own adapter (no AI-SDK route for this model)",
+      });
+    });
+
+    test("says nothing when the provider's own adapter is chosen", () => {
+      createLlmApi(
+        { ...bridge, transport: undefined } as ModelConfig,
+        mockAuthConfig,
+      );
+      expect(logger.debug).not.toHaveBeenCalled();
     });
   });
 

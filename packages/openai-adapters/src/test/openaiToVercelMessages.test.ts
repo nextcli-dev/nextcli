@@ -31,8 +31,12 @@ describe("convertOpenAIMessagesToVercel", () => {
 
     expect(messages[0].content).toEqual([
       { type: "text", text: "Compare" },
-      { type: "image", image: new URL("https://x.test/a.png") },
-      { type: "image", image: "AAAA", mediaType: "image/jpeg" },
+      {
+        type: "file",
+        data: new URL("https://x.test/a.png"),
+        mediaType: "image",
+      },
+      { type: "file", data: "AAAA", mediaType: "image/jpeg" },
     ]);
   });
 

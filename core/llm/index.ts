@@ -1,6 +1,6 @@
 import { ModelRole } from "@nextcli/config-yaml";
 import { fetchwithRequestOptions } from "@nextcli/fetch";
-import { findLlmInfo } from "@nextcli/llm-info";
+import { findLlmInfo, isOneProviderBase } from "@nextcli/llm-info";
 import {
   BaseLlmApi,
   buildModelControlFields,
@@ -8,6 +8,7 @@ import {
   constructLlmApi,
   getContextOptions,
   getModelControls,
+  type LLMConfig,
 } from "@nextcli/openai-adapters";
 import Handlebars from "handlebars";
 
@@ -126,6 +127,11 @@ export abstract class BaseLLM implements ILLM {
   }
 
   supportsCompletions(): boolean {
+    // OneProvider serves chat only: /completions and /beta/completions 404,
+    // whatever provider name the config uses for it
+    if (isOneProviderBase(this.apiBase)) {
+      return false;
+    }
     if (["openai", "azure"].includes(this.providerName)) {
       if (
         this.apiBase?.includes("api.groq.com") ||
@@ -425,15 +431,21 @@ export abstract class BaseLLM implements ILLM {
     return LLMConfigurationStatuses.VALID;
   }
 
-  protected createOpenAiAdapter() {
-    return constructLlmApi({
+  /** The adapter config for this model; subclasses add their settings */
+  protected adapterConfig(): LLMConfig {
+    return {
       provider: this.providerName as any,
       apiKey: this.apiKey ?? "",
       apiBase: this.apiBase,
       requestOptions: this.requestOptions,
       env: this._llmOptions.env,
       useResponsesApi: this._llmOptions.useResponsesApi,
-    });
+      transport: this._llmOptions.transport,
+    } as LLMConfig;
+  }
+
+  protected createOpenAiAdapter() {
+    return constructLlmApi(this.adapterConfig());
   }
 
   listModels(): Promise<string[]> {

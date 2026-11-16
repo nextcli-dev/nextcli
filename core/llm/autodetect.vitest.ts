@@ -1,5 +1,6 @@
 import { describe, expect, it, test } from "vitest";
 import {
+  autodetectTemplateFunction,
   autodetectTemplateType,
   modelSupportsImages,
   modelSupportsNextEdit,
@@ -375,9 +376,27 @@ describe("modelSupportsImages", () => {
     );
   });
 
+  it("detects images through OneProvider by model", () => {
+    expect(
+      modelSupportsImages("oneprovider", "claude-sonnet-5-5", "", undefined),
+    ).toBe(true);
+    expect(
+      modelSupportsImages("oneprovider", "deepseek-v4-pro", "", undefined),
+    ).toBe(false);
+  });
+
   it("no longer matches retired-only patterns", () => {
     expect(
       modelSupportsImages("openai", "gpt-4-turbo", undefined, undefined),
     ).toBe(false);
   });
+});
+
+test("OneProvider formats chat itself: no prompt template", () => {
+  expect(autodetectTemplateFunction("deepseek-v4-pro", "oneprovider")).toBe(
+    null,
+  );
+  expect(autodetectTemplateFunction("claude-sonnet-5-5", "oneprovider")).toBe(
+    null,
+  );
 });

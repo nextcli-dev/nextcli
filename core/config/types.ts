@@ -525,6 +525,14 @@ declare global {
      */
     useResponsesApi?: boolean;
 
+    /**
+     * Which code sends chat requests: "ai-sdk" (the AI SDK) or "legacy"
+     * (the provider's own request code). It overrides NEXTCLI_USE_AI_SDK;
+     * without either, "legacy". Only OpenAI-compatible endpoints other than
+     * OpenAI's own use it.
+     */
+    transport?: "ai-sdk" | "legacy";
+
     // Embedding options
     embeddingId?: string;
     maxEmbeddingChunkSize?: number;

@@ -31,7 +31,13 @@ export function formatAiSdkError(error: unknown): unknown {
   const status = cause.statusCode ?? "error";
   const where = cause.url ? ` from ${cause.url}` : "";
   const body = cause.responseBody?.trim() || cause.message;
-  const formatted = new Error(`HTTP ${status}${where}\n\n${body}`);
-  (formatted as Error & { cause?: unknown }).cause = cause;
+  const formatted = new Error(`HTTP ${status}${where}\n\n${body}`) as Error & {
+    status?: number;
+    cause?: unknown;
+  };
+  // Callers decide on retries from `status`, as on the OpenAI SDK's errors:
+  // the CLI backs off on a 429 and gives up on any other 4xx
+  formatted.status = cause.statusCode;
+  formatted.cause = cause;
   return formatted;
 }

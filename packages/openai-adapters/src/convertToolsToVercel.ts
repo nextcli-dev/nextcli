@@ -5,53 +5,6 @@
 import type { ChatCompletionCreateParams } from "openai/resources/index.js";
 
 /**
- * Recursively transforms schemas to be OpenAI strict mode compatible:
- * - Adds additionalProperties: false to all object schemas
- * - Ensures all properties are listed in the required array
- */
-function makeOpenAIStrictCompatible(schema: any): any {
-  if (!schema || typeof schema !== "object") {
-    return schema;
-  }
-
-  const result = { ...schema };
-
-  if (result.type === "object") {
-    result.additionalProperties = false;
-
-    if (result.properties) {
-      const propertyKeys = Object.keys(result.properties);
-      result.required = propertyKeys;
-
-      result.properties = Object.fromEntries(
-        Object.entries(result.properties).map(([key, value]) => [
-          key,
-          makeOpenAIStrictCompatible(value),
-        ]),
-      );
-    }
-  }
-
-  if (result.items) {
-    result.items = makeOpenAIStrictCompatible(result.items);
-  }
-
-  if (result.anyOf) {
-    result.anyOf = result.anyOf.map(makeOpenAIStrictCompatible);
-  }
-
-  if (result.oneOf) {
-    result.oneOf = result.oneOf.map(makeOpenAIStrictCompatible);
-  }
-
-  if (result.allOf) {
-    result.allOf = result.allOf.map(makeOpenAIStrictCompatible);
-  }
-
-  return result;
-}
-
-/**
  * Ensures a top-level schema is valid for OpenAI function parameters.
  * OpenAI requires function parameters to have type: "object".
  */
@@ -94,12 +47,15 @@ export async function convertToolsToVercelFormat(
   const vercelTools: Record<string, any> = {};
   for (const tool of openaiTools) {
     if (tool.type === "function") {
-      const originalParams = tool.function.parameters;
-      const validSchema = ensureValidFunctionSchema(originalParams);
-      const processedSchema = makeOpenAIStrictCompatible(validSchema);
+      // The schema goes as the caller wrote it, as the providers' own
+      // adapters send it: making every property required would make the
+      // model fill optional parameters
       vercelTools[tool.function.name] = {
         description: tool.function.description,
-        inputSchema: aiJsonSchema(processedSchema),
+        inputSchema: aiJsonSchema(
+          ensureValidFunctionSchema(tool.function.parameters),
+        ),
+        ...(tool.function.strict != null && { strict: tool.function.strict }),
       };
     }
   }

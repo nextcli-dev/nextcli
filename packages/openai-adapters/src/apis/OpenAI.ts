@@ -33,6 +33,26 @@ import {
   toResponsesParams,
 } from "./openaiResponses.js";
 
+/**
+ * The sampling parameters a Chat Completions request keeps for a model,
+ * wherever it is served: reasoning models (o-series, GPT-5 and later) reject
+ * values other than their defaults, and Claude through a gateway keeps
+ * Anthropic's limits. Both transports use it (AiSdk.ts).
+ */
+export function chatSamplingParams(
+  model: string,
+  body: { temperature?: number | null; top_p?: number | null },
+): { temperature?: number; top_p?: number } {
+  if (isResponsesModel(model)) {
+    return {};
+  }
+  const { temperature, topP } = filterAnthropicSamplingParams(model, {
+    temperature: body.temperature ?? undefined,
+    topP: body.top_p ?? undefined,
+  });
+  return { temperature, top_p: topP };
+}
+
 export class OpenAIApi implements BaseLlmApi {
   openai: OpenAI;
   apiBase: string = "https://api.openai.com/v1/";
@@ -69,20 +89,9 @@ export class OpenAIApi implements BaseLlmApi {
       body.max_tokens = undefined;
     }
 
-    // Reasoning models (o-series, GPT-5 and later) reject temperature and top_p
-    // other than their defaults, wherever they are served
-    if (isResponsesModel(body.model)) {
-      body.temperature = undefined;
-      body.top_p = undefined;
-    }
-
-    // Claude models served through OpenAI-compatible gateways keep Anthropic's limits
-    const sampling = filterAnthropicSamplingParams(body.model, {
-      temperature: body.temperature ?? undefined,
-      topP: body.top_p ?? undefined,
-    });
+    const sampling = chatSamplingParams(body.model, body);
     body.temperature = sampling.temperature;
-    body.top_p = sampling.topP;
+    body.top_p = sampling.top_p;
 
     // o-series models - only apply for official OpenAI API
     const isOfficialOpenAIAPI = this.apiBase === "https://api.openai.com/v1/";

@@ -112,6 +112,28 @@ export function promptTokensWithCache(
   );
 }
 
+/**
+ * The OpenAI finish reason for Claude's stop_reason. The CLI reads "length"
+ * to say a reply ran out of output tokens, and "tool_calls" ends a turn
+ * that calls tools.
+ */
+export function anthropicFinishReason(
+  stopReason: string | null | undefined,
+): "stop" | "length" | "tool_calls" | "content_filter" {
+  switch (stopReason) {
+    case "max_tokens":
+    case "model_context_window_exceeded":
+      return "length";
+    case "tool_use":
+      return "tool_calls";
+    case "refusal":
+      return "content_filter";
+    default:
+      // end_turn, stop_sequence, pause_turn
+      return "stop";
+  }
+}
+
 export class AnthropicApi implements BaseLlmApi {
   apiBase: string = "https://api.anthropic.com/v1/";
 
@@ -504,7 +526,7 @@ export class AnthropicApi implements BaseLlmApi {
       choices: [
         {
           logprobs: null,
-          finish_reason: "stop",
+          finish_reason: anthropicFinishReason(completion.stop_reason),
           message: {
             role: "assistant",
             // Newer models often put an (empty) thinking block first
@@ -525,6 +547,7 @@ export class AnthropicApi implements BaseLlmApi {
   async *handleStreamResponse(response: any, model: string) {
     let lastToolUseId: string | undefined;
     let lastToolUseName: string | undefined;
+    let stopReason: string | null | undefined;
 
     const usage: CompletionUsage = {
       completion_tokens: 0,
@@ -546,6 +569,7 @@ export class AnthropicApi implements BaseLlmApi {
           ) {
             yield chatChunkFromDelta({
               model,
+              finish_reason: null,
               delta: {
                 reasoning_details: [
                   {
@@ -578,13 +602,18 @@ export class AnthropicApi implements BaseLlmApi {
         case "message_delta":
           const deltaEvent = rawEvent as RawMessageDeltaEvent;
           usage.completion_tokens = deltaEvent.usage?.output_tokens ?? 0;
+          stopReason = deltaEvent.delta?.stop_reason ?? stopReason;
           break;
         case "content_block_delta":
           // https://docs.anthropic.com/en/api/messages-streaming#delta-types
           const blockDeltaEvent = rawEvent as RawContentBlockDeltaEvent;
           const reasoningDelta = this.reasoningFromDelta(blockDeltaEvent);
           if (reasoningDelta) {
-            yield chatChunkFromDelta({ model, delta: reasoningDelta });
+            yield chatChunkFromDelta({
+              model,
+              delta: reasoningDelta,
+              finish_reason: null,
+            });
             break;
           }
           switch (blockDeltaEvent.delta.type) {
@@ -592,6 +621,7 @@ export class AnthropicApi implements BaseLlmApi {
               yield chatChunk({
                 content: blockDeltaEvent.delta.text,
                 model,
+                finish_reason: null,
               });
               break;
             case "input_json_delta":
@@ -600,6 +630,7 @@ export class AnthropicApi implements BaseLlmApi {
               }
               yield chatChunkFromDelta({
                 model,
+                finish_reason: null,
                 delta: {
                   tool_calls: [
                     {
@@ -626,6 +657,12 @@ export class AnthropicApi implements BaseLlmApi {
       }
     }
 
+    // The reason comes once, at the end, as OpenAI streams it
+    yield chatChunkFromDelta({
+      model,
+      delta: {},
+      finish_reason: anthropicFinishReason(stopReason),
+    });
     yield usageChatChunk({
       model,
       usage: {

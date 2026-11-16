@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { AnthropicApi, AnthropicReasoningControls } from "./Anthropic.js";
 import {
@@ -340,5 +340,99 @@ describe("AnthropicApi usage", () => {
         cache_write_tokens: 10,
       },
     });
+  });
+});
+
+// The CLI reads "length" to say a reply ran out of output tokens
+describe("AnthropicApi finish reasons", () => {
+  async function finishReasons(stopReason: string, blocks: unknown[] = []) {
+    const reasons: (string | null)[] = [];
+    for await (const chunk of api.handleStreamResponse(
+      sseResponse([
+        { type: "message_start", message: { usage: { input_tokens: 5 } } },
+        ...blocks,
+        {
+          type: "message_delta",
+          delta: { stop_reason: stopReason },
+          usage: { output_tokens: 7 },
+        },
+        { type: "message_stop" },
+      ]),
+      "claude-x",
+    )) {
+      if (chunk.choices.length > 0) {
+        reasons.push(chunk.choices[0].finish_reason);
+      }
+    }
+    return reasons;
+  }
+
+  const text = [
+    {
+      type: "content_block_start",
+      index: 0,
+      content_block: { type: "text", text: "" },
+    },
+    {
+      type: "content_block_delta",
+      index: 0,
+      delta: { type: "text_delta", text: "Partial" },
+    },
+    { type: "content_block_stop", index: 0 },
+  ];
+
+  it("reports a reply cut off at max_tokens as length, once, at the end", async () => {
+    expect(await finishReasons("max_tokens", text)).toEqual([null, "length"]);
+  });
+
+  it("reports tool use as tool_calls, with every chunk before it unfinished", async () => {
+    const tool = [
+      {
+        type: "content_block_start",
+        index: 0,
+        content_block: {
+          type: "tool_use",
+          id: "toolu_1",
+          name: "read",
+          input: {},
+        },
+      },
+      {
+        type: "content_block_delta",
+        index: 0,
+        delta: { type: "input_json_delta", partial_json: "{}" },
+      },
+      { type: "content_block_stop", index: 0 },
+    ];
+    expect(await finishReasons("tool_use", tool)).toEqual([null, "tool_calls"]);
+  });
+
+  it("reports an ordinary end as stop", async () => {
+    expect(await finishReasons("end_turn", text)).toEqual([null, "stop"]);
+  });
+
+  it("reports a non-streamed reply cut off at max_tokens as length", async () => {
+    const response = {
+      status: 200,
+      json: async () => ({
+        id: "msg_1",
+        content: [{ type: "text", text: "Partial" }],
+        stop_reason: "max_tokens",
+        usage: { input_tokens: 5, output_tokens: 7 },
+      }),
+    };
+    const nonStreaming = new AnthropicApi({
+      provider: "anthropic",
+      apiKey: "k",
+    });
+    const fetchSpy = vi
+      .spyOn(await import("../util.js"), "customFetch")
+      .mockReturnValue((async () => response) as any);
+    const completion = await nonStreaming.chatCompletionNonStream(
+      { model: "claude-x", messages: [{ role: "user", content: "Hi" }] },
+      new AbortController().signal,
+    );
+    fetchSpy.mockRestore();
+    expect(completion.choices[0].finish_reason).toBe("length");
   });
 });

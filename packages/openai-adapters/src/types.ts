@@ -21,6 +21,11 @@ export const RequestOptionsSchema = z.object({
 export const BaseConfig = z.object({
   provider: z.string(),
   requestOptions: RequestOptionsSchema.optional(),
+  /**
+   * Which code sends chat requests; it overrides NEXTCLI_USE_AI_SDK, and
+   * endpoints without AI-SDK routes ignore it (transport.ts)
+   */
+  transport: z.enum(["ai-sdk", "legacy"]).optional(),
 });
 
 export const BasePlusConfig = BaseConfig.extend({
@@ -216,6 +221,10 @@ export type AnthropicConfig = z.infer<typeof AnthropicConfigSchema>;
 export const OneProviderConfigSchema = OpenAIConfigSchema.extend({
   provider: z.literal("oneprovider"),
   apiKey: z.string(),
+  /** Prompt caching for Claude (apis/AnthropicCachingStrategies.ts) */
+  cachingStrategy: z
+    .enum(["none", "systemOnly", "systemAndTools", "optimized"])
+    .optional(),
 });
 export type OneProviderConfig = z.infer<typeof OneProviderConfigSchema>;
 

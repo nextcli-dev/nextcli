@@ -25,7 +25,8 @@ export function chatChunk(options: {
           content: options.content,
           role: "assistant",
         },
-        finish_reason: options.finish_reason ?? "stop",
+        finish_reason:
+          options.finish_reason === undefined ? "stop" : options.finish_reason,
         index: 0,
         logprobs: null,
       },
@@ -64,7 +65,8 @@ export function chatChunkFromDelta(options: {
     choices: [
       {
         delta: options.delta,
-        finish_reason: options.finish_reason ?? "stop",
+        finish_reason:
+          options.finish_reason === undefined ? "stop" : options.finish_reason,
         index: 0,
         logprobs: null,
       },
@@ -88,7 +90,8 @@ export function chatCompletion(options: {
   return {
     choices: [
       {
-        finish_reason: options.finish_reason ?? "stop",
+        finish_reason:
+          options.finish_reason === undefined ? "stop" : options.finish_reason,
         index: options.index ?? 0,
         logprobs: null,
         message: {
@@ -171,7 +174,14 @@ export function aiSdkFetch(
     if (init?.signal?.aborted) {
       throw init.signal.reason ?? new DOMException("Aborted", "AbortError");
     }
-    if (response instanceof Response) {
+    // A web response as it is. Decided by the body too: where the global
+    // Response is node-fetch's (some test setups), instanceof alone would
+    // pass a Node stream on
+    if (
+      response instanceof Response &&
+      (response.body === null ||
+        typeof (response.body as any).getReader === "function")
+    ) {
       return response;
     }
     const headers = new Headers();

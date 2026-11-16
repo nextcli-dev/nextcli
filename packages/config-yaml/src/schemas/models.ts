@@ -193,6 +193,13 @@ const baseModelFields = {
   promptTemplates: promptTemplatesSchema.optional(),
   useLegacyCompletionsEndpoint: z.boolean().optional(),
   useResponsesApi: z.boolean().optional(),
+  /**
+   * Which code sends chat requests: "ai-sdk" (the AI SDK) or "legacy" (the
+   * provider's own request code). It overrides NEXTCLI_USE_AI_SDK; without
+   * either, "legacy". Only OpenAI-compatible endpoints other than OpenAI's
+   * own use it (packages/openai-adapters/src/transport.ts).
+   */
+  transport: z.enum(["ai-sdk", "legacy"]).optional(),
   env: z
     .record(z.string(), z.union([z.string(), z.boolean(), z.number()]))
     .optional(),

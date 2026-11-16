@@ -4,6 +4,7 @@ import {
 } from "@continuedev/sdk/dist/api/dist/index.js";
 import { AssistantUnrolled, ModelConfig } from "@nextcli/config-yaml";
 import {
+  AiSdkApi,
   BaseLlmApi,
   constructLlmApi,
   LLMConfig,
@@ -11,6 +12,7 @@ import {
 
 import { AuthConfig } from "./auth/workos.js";
 import { env } from "./env.js";
+import { logger } from "./util/logger.js";
 import { getUniqueId } from "./util/uniqueId.js";
 import { getVersion } from "./version.js";
 
@@ -71,9 +73,20 @@ export function createLlmApi(
     apiBase: model.apiBase,
     requestOptions: withCliAttribution(model),
     env: model.env,
+    transport: model.transport,
   };
 
-  return constructLlmApi(config) ?? null;
+  const api = constructLlmApi(config) ?? null;
+  if (api instanceof AiSdkApi) {
+    // The AI SDK was chosen; say whether this model's chat uses it
+    logger.debug("Chat transport", {
+      model: model.model,
+      transport: api.routeFor(model.model)
+        ? "ai-sdk"
+        : `${model.provider}'s own adapter (no AI-SDK route for this model)`,
+    });
+  }
+  return api;
 }
 
 export function getLlmApi(

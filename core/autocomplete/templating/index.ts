@@ -18,18 +18,33 @@ import { AutocompleteSnippet } from "../snippets/types";
 import {
   AutocompleteTemplate,
   getTemplateForModel,
+  holeFillerTemplate,
 } from "./AutocompleteTemplate";
 import { getSnippets } from "./filtering";
 import { formatSnippets } from "./formatting";
 import { getStopTokens } from "./getStopTokens";
 
-function getTemplate(helper: HelperVars): AutocompleteTemplate {
+/**
+ * The prompt follows the endpoint the request goes to, not the model name.
+ * An endpoint that serves neither FIM nor raw completions (OneProvider,
+ * Groq, DeepSeek through a gateway) gets the prompt as a chat message, where
+ * a model's FIM tokens would arrive as plain text: it gets the hole-filler
+ * prompt instead. FIM and raw-completion endpoints (local servers included)
+ * keep the template chosen by model name.
+ */
+function getTemplate(
+  helper: HelperVars,
+  llm: ILLM | undefined,
+): AutocompleteTemplate {
   if (helper.options.template) {
     return {
       template: helper.options.template,
       completionOptions: {},
       compilePrefixSuffix: undefined,
     };
+  }
+  if (llm && !llm.supportsFim() && !llm.supportsCompletions()) {
+    return holeFillerTemplate;
   }
   return getTemplateForModel(helper.modelName);
 }
@@ -59,10 +74,12 @@ function preparePromptContext({
   snippetPayload,
   workspaceDirs,
   helper,
+  llm,
 }: {
   snippetPayload: SnippetPayload;
   workspaceDirs: string[];
   helper: HelperVars;
+  llm?: ILLM;
 }): {
   prefix: string;
   suffix: string;
@@ -81,8 +98,10 @@ function preparePromptContext({
 
   const reponame = getUriPathBasename(workspaceDirs[0] ?? "myproject");
 
-  const { template, compilePrefixSuffix, completionOptions } =
-    getTemplate(helper);
+  const { template, compilePrefixSuffix, completionOptions } = getTemplate(
+    helper,
+    llm,
+  );
 
   const snippets = getSnippets(helper, snippetPayload);
 
@@ -233,7 +252,7 @@ export function renderPromptWithTokenLimit({
     compilePrefixSuffix,
     completionOptions,
     snippets,
-  } = preparePromptContext({ snippetPayload, workspaceDirs, helper });
+  } = preparePromptContext({ snippetPayload, workspaceDirs, helper, llm });
 
   // We'll mutate prefix/suffix during pruning, so copy them.
   let prefix = initialPrefix;

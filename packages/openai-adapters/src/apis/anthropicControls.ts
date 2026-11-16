@@ -127,7 +127,7 @@ export function anthropicControlParams(
         ? DEFAULT_THINKING_BUDGET
         : undefined);
     if (requested) {
-      // budget_tokens must be at least 1024 and below max_tokens
+      // Older models: budget_tokens must be at least 1024 and below max_tokens
       const budgetTokens = Math.max(
         MIN_THINKING_BUDGET,
         Math.min(requested, maxTokens - MIN_THINKING_BUDGET),

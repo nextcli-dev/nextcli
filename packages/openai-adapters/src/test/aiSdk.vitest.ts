@@ -10,24 +10,10 @@ vi.mock("@nextcli/fetch", async (importOriginal) => ({
 import { fetchwithRequestOptions } from "@nextcli/fetch";
 
 import { AiSdkApi } from "../apis/AiSdk.js";
+import { constructLlmApi } from "../index.js";
 import { aiSdkFetch } from "../util.js";
 
 const mockFetch = vi.mocked(fetchwithRequestOptions);
-
-/** A node-fetch response, as fetchwithRequestOptions returns */
-function sse(events: object[]): any {
-  const text = events
-    .map(
-      (event) =>
-        `event: ${(event as any).type}\ndata: ${JSON.stringify(event)}\n\n`,
-    )
-    .join("");
-  // Real responses stream Buffers
-  return new NodeFetchResponse(Readable.from([Buffer.from(text)]), {
-    status: 200,
-    headers: { "content-type": "text/event-stream" },
-  });
-}
 
 /** An OpenAI Chat Completions stream, as fetchwithRequestOptions returns */
 function chatSse(chunks: object[]): any {
@@ -38,71 +24,30 @@ function chatSse(chunks: object[]): any {
           `data: ${JSON.stringify({ id: "c1", object: "chat.completion.chunk", created: 0, model: "m", ...chunk })}\n\n`,
       )
       .join("") + "data: [DONE]\n\n";
+  // Real responses stream Buffers
   return new NodeFetchResponse(Readable.from([Buffer.from(text)]), {
     status: 200,
     headers: { "content-type": "text/event-stream" },
   });
 }
 
-const CLAUDE_STREAM = [
+const REPLY = [
+  { choices: [{ index: 0, delta: { role: "assistant", content: "Hi." } }] },
+  { choices: [{ index: 0, delta: {}, finish_reason: "stop" }] },
   {
-    type: "message_start",
-    message: {
-      id: "msg_1",
-      type: "message",
-      role: "assistant",
-      model: "claude-sonnet-5-5",
-      content: [],
-      stop_reason: null,
-      usage: {
-        input_tokens: 10,
-        cache_read_input_tokens: 80,
-        cache_creation_input_tokens: 10,
-        output_tokens: 1,
-      },
-    },
+    choices: [],
+    usage: { prompt_tokens: 12, completion_tokens: 3, total_tokens: 15 },
   },
-  {
-    type: "content_block_start",
-    index: 0,
-    content_block: { type: "thinking", thinking: "", signature: "" },
-  },
-  {
-    type: "content_block_delta",
-    index: 0,
-    delta: { type: "thinking_delta", thinking: "Let me check." },
-  },
-  {
-    type: "content_block_delta",
-    index: 0,
-    delta: { type: "signature_delta", signature: "sig-1" },
-  },
-  { type: "content_block_stop", index: 0 },
-  {
-    type: "content_block_start",
-    index: 1,
-    content_block: { type: "text", text: "" },
-  },
-  {
-    type: "content_block_delta",
-    index: 1,
-    delta: { type: "text_delta", text: "Done." },
-  },
-  { type: "content_block_stop", index: 1 },
-  {
-    type: "message_delta",
-    delta: { stop_reason: "end_turn", stop_sequence: null },
-    usage: { output_tokens: 20 },
-  },
-  { type: "message_stop" },
 ];
 
-const ENV = [
-  "ANTHROPIC_API_KEY",
-  "ANTHROPIC_BASE_URL",
-  "OPENAI_API_KEY",
-  "OPENAI_BASE_URL",
-];
+function errorResponse(status: number, headers: Record<string, string> = {}) {
+  return new NodeFetchResponse(
+    JSON.stringify({ error: { type: "not_found_error", message: "failed" } }),
+    { status, headers: { "content-type": "application/json", ...headers } },
+  ) as any;
+}
+
+const ENV = ["OPENAI_API_KEY", "OPENAI_BASE_URL"];
 let savedEnv: Record<string, string | undefined>;
 
 beforeEach(() => {
@@ -117,12 +62,15 @@ afterEach(() => {
   }
 });
 
-function claude(config: Partial<{ apiKey: string; apiBase: string }> = {}) {
-  return new AiSdkApi({
-    provider: "ai-sdk",
-    model: "anthropic/claude-sonnet-5-5",
+/** An OpenAI-compatible gateway on the AI SDK transport */
+function gateway(config: Record<string, unknown> = {}) {
+  return constructLlmApi({
+    provider: "openai",
+    apiKey: "k",
+    apiBase: "https://gateway.example/v1",
+    transport: "ai-sdk",
     ...config,
-  } as any);
+  } as any)!;
 }
 
 async function drain(stream: AsyncIterable<any>) {
@@ -137,156 +85,50 @@ function lastRequest() {
   return { url: String(url), headers, body: JSON.parse(String(init?.body)) };
 }
 
+function ask(
+  api: any,
+  model = "deepseek-v4-pro",
+  signal = new AbortController().signal,
+) {
+  return drain(
+    api.chatCompletionStream(
+      { model, messages: [{ role: "user", content: "hi" }], stream: true },
+      signal,
+    ),
+  );
+}
+
 describe("AiSdkApi", () => {
   it("goes through fetchwithRequestOptions, with the request options", async () => {
-    mockFetch.mockResolvedValue(sse(CLAUDE_STREAM));
+    mockFetch.mockResolvedValue(chatSse(REPLY));
     const requestOptions = { proxy: "http://proxy:3128", timeout: 5 };
-    const api = new AiSdkApi({
-      provider: "ai-sdk",
-      model: "anthropic/claude-sonnet-5-5",
-      apiKey: "k",
-      requestOptions,
-    } as any);
 
-    await drain(
-      api.chatCompletionStream(
-        {
-          model: "claude-sonnet-5-5",
-          messages: [{ role: "user", content: "hi" }],
-          stream: true,
-        },
-        new AbortController().signal,
-      ),
-    );
+    await ask(gateway({ requestOptions }));
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(mockFetch.mock.calls[0][2]).toEqual(requestOptions);
   });
 
-  it("uses the configured key and the provider's own host, never the environment's", async () => {
-    process.env.ANTHROPIC_API_KEY = "env-key";
-    process.env.ANTHROPIC_BASE_URL = "https://elsewhere.example/v1";
-    mockFetch.mockResolvedValue(sse(CLAUDE_STREAM));
-
-    await drain(
-      claude({ apiKey: "config-key" }).chatCompletionStream(
-        {
-          model: "claude-sonnet-5-5",
-          messages: [{ role: "user", content: "hi" }],
-          stream: true,
-        },
-        new AbortController().signal,
-      ),
-    );
-
-    const { url, headers } = lastRequest();
-    expect(url).toBe("https://api.anthropic.com/v1/messages");
-    expect(headers.get("x-api-key")).toBe("config-key");
-  });
-
-  it("sends no environment key when the config has none", async () => {
+  it("sends no environment key or host when the config has none", async () => {
     process.env.OPENAI_API_KEY = "env-key";
     process.env.OPENAI_BASE_URL = "https://elsewhere.example/v1";
-    mockFetch.mockResolvedValue(
-      new NodeFetchResponse(JSON.stringify({ error: { message: "no key" } }), {
-        status: 401,
-        headers: { "content-type": "application/json" },
-      }),
-    );
-    const api = new AiSdkApi({
-      provider: "ai-sdk",
-      model: "openai/gpt-5.5",
-      apiBase: "http://127.0.0.1:8091/v1",
-    } as any);
+    mockFetch.mockResolvedValue(chatSse(REPLY));
 
-    await expect(
-      drain(
-        api.chatCompletionStream(
-          {
-            model: "gpt-5.5",
-            messages: [{ role: "user", content: "hi" }],
-            stream: true,
-          },
-          new AbortController().signal,
-        ),
-      ),
-    ).rejects.toThrow();
+    await ask(
+      gateway({ apiKey: undefined, apiBase: "http://127.0.0.1:8091/v1" }),
+    );
 
     const { url, headers } = lastRequest();
-    expect(url.startsWith("http://127.0.0.1:8091/v1/")).toBe(true);
+    expect(url).toBe("http://127.0.0.1:8091/v1/chat/completions");
     expect(headers.get("authorization") ?? "").not.toContain("env-key");
   });
 
-  it("streams Claude's reasoning with its signature, and sends it back as a thinking block", async () => {
-    mockFetch.mockResolvedValue(sse(CLAUDE_STREAM));
-    const chunks = await drain(
-      claude({ apiKey: "k" }).chatCompletionStream(
-        {
-          model: "claude-sonnet-5-5",
-          messages: [{ role: "user", content: "hi" }],
-          stream: true,
-        },
-        new AbortController().signal,
-      ),
-    );
-
-    const completion = await (
-      await import("../aiSdkCompletion.js")
-    ).collectChatCompletion(
-      (async function* () {
-        yield* chunks;
-      })(),
-      "claude-sonnet-5-5",
-    );
-    const message = completion.choices[0].message as any;
-    expect(message.content).toBe("Done.");
-    expect(message.reasoning_details).toEqual([
-      {
-        type: "reasoning.text",
-        text: "Let me check.",
-        signature: "sig-1",
-        index: 0,
-      },
-    ]);
-    // Cached tokens count inside prompt_tokens, and are listed apart
-    expect(completion.usage).toMatchObject({
-      prompt_tokens: 100,
-      completion_tokens: 20,
-      prompt_tokens_details: { cache_read_tokens: 80, cache_write_tokens: 10 },
-    });
-    expect(completion.choices[0].finish_reason).toBe("stop");
-
-    mockFetch.mockResolvedValue(sse(CLAUDE_STREAM));
-    await drain(
-      claude({ apiKey: "k" }).chatCompletionStream(
-        {
-          model: "claude-sonnet-5-5",
-          messages: [
-            { role: "system", content: "Be brief." },
-            { role: "user", content: "hi" },
-            message,
-            { role: "user", content: "and now?" },
-          ],
-          stream: true,
-        },
-        new AbortController().signal,
-      ),
-    );
-    const { body } = lastRequest();
-    expect(body.system).toEqual([{ type: "text", text: "Be brief." }]);
-    expect(body.messages[1].content[0]).toEqual({
-      type: "thinking",
-      thinking: "Let me check.",
-      signature: "sig-1",
-    });
-  });
-
   it("sends user images", async () => {
-    mockFetch.mockResolvedValue(sse(CLAUDE_STREAM));
+    mockFetch.mockResolvedValue(chatSse(REPLY));
     await drain(
-      claude({ apiKey: "k" }).chatCompletionStream(
+      gateway().chatCompletionStream(
         {
-          model: "claude-sonnet-5-5",
+          model: "deepseek-v4-pro",
           messages: [
             {
               role: "user",
@@ -305,13 +147,13 @@ describe("AiSdkApi", () => {
       ),
     );
 
-    expect(lastRequest().body.messages[0].content[1]).toMatchObject({
-      type: "image",
-      source: { type: "base64", media_type: "image/png", data: "iVBORw0KGgo=" },
+    expect(lastRequest().body.messages[0].content[1]).toEqual({
+      type: "image_url",
+      image_url: { url: "data:image/png;base64,iVBORw0KGgo=" },
     });
   });
 
-  it("streams OpenRouter's reasoning_details as they came, and sends them back", async () => {
+  it("streams a gateway's reasoning_details as they came, and sends them back", async () => {
     const details = [
       { type: "reasoning.text", text: "Hm.", signature: "sig-or", index: 0 },
     ];
@@ -329,19 +171,10 @@ describe("AiSdkApi", () => {
             },
           ],
         },
-        { choices: [{ index: 0, delta: { content: "Hi." } }] },
-        { choices: [{ index: 0, delta: {}, finish_reason: "stop" }] },
-        {
-          choices: [],
-          usage: { prompt_tokens: 12, completion_tokens: 3, total_tokens: 15 },
-        },
+        ...REPLY,
       ]),
     );
-    const api = new AiSdkApi({
-      provider: "ai-sdk",
-      model: "openrouter/anthropic/claude-sonnet-5.5",
-      apiKey: "k",
-    } as any);
+    const api = gateway();
 
     const completion = await api.chatCompletionNonStream(
       {
@@ -351,7 +184,7 @@ describe("AiSdkApi", () => {
       new AbortController().signal,
     );
     const first = lastRequest();
-    expect(first.url).toBe("https://openrouter.ai/api/v1/chat/completions");
+    expect(first.url).toBe("https://gateway.example/v1/chat/completions");
     expect(first.body.stream_options).toEqual({ include_usage: true });
     const message = completion.choices[0].message as any;
     expect(message).toMatchObject({
@@ -361,9 +194,7 @@ describe("AiSdkApi", () => {
     });
     expect(completion.usage).toMatchObject({ prompt_tokens: 12 });
 
-    mockFetch.mockResolvedValue(
-      chatSse([{ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] }]),
-    );
+    mockFetch.mockResolvedValue(chatSse(REPLY));
     await api.chatCompletionNonStream(
       {
         model: "anthropic/claude-sonnet-5.5",
@@ -386,15 +217,15 @@ describe("AiSdkApi", () => {
   it("rejects a cancelled call instead of returning a finished answer", async () => {
     const controller = new AbortController();
     mockFetch.mockImplementation(async () => {
-      const response = sse(CLAUDE_STREAM);
+      const response = chatSse(REPLY);
       controller.abort();
       return response;
     });
 
     await expect(
-      claude({ apiKey: "k" }).chatCompletionNonStream(
+      gateway().chatCompletionNonStream(
         {
-          model: "claude-sonnet-5-5",
+          model: "deepseek-v4-pro",
           messages: [{ role: "user", content: "hi" }],
         },
         controller.signal,
@@ -403,34 +234,77 @@ describe("AiSdkApi", () => {
   });
 
   it("reports an HTTP error with its status and URL", async () => {
-    mockFetch.mockResolvedValue(
-      new NodeFetchResponse(
-        JSON.stringify({
-          error: { type: "not_found_error", message: "Not found" },
-        }),
-        { status: 404, headers: { "content-type": "application/json" } },
-      ),
-    );
+    mockFetch.mockResolvedValue(errorResponse(404));
 
-    await expect(
-      drain(
-        claude({
-          apiKey: "k",
-          apiBase: "https://api.oneprovider.dev/v1",
-        }).chatCompletionStream(
-          {
-            model: "claude-sonnet-5-5",
-            messages: [{ role: "user", content: "hi" }],
-            stream: true,
-          },
-          new AbortController().signal,
-        ),
-      ),
-    ).rejects.toThrow(
-      /^HTTP 404 from https:\/\/api\.oneprovider\.dev\/v1\/messages\n\n.*not_found_error/s,
+    await expect(ask(gateway())).rejects.toThrow(
+      /^HTTP 404 from https:\/\/gateway\.example\/v1\/chat\/completions\n\n.*not_found_error/s,
     );
     // A 404 is not retried
     expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  // The CLI's retry rules read `status` (exponentialBackoff.ts)
+  it("keeps the HTTP status on the error", async () => {
+    mockFetch.mockResolvedValue(errorResponse(400));
+    await expect(ask(gateway())).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("keeps the status of a rate limit that outlasts the SDK's retries", async () => {
+    // retry-after-ms: 0 makes the SDK's own two retries immediate
+    mockFetch.mockImplementation(async () =>
+      errorResponse(429, { "retry-after-ms": "0" }),
+    );
+    await expect(ask(gateway())).rejects.toMatchObject({
+      status: 429,
+      message: expect.stringMatching(/^HTTP 429 from /),
+    });
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('provider: "ai-sdk"', () => {
+  it("is the vendor's config on the AI SDK transport, without the vendor in the model", async () => {
+    mockFetch.mockResolvedValue(chatSse(REPLY));
+    const api = constructLlmApi({
+      provider: "ai-sdk",
+      model: "openai/deepseek-v4-pro",
+      apiKey: "k",
+      apiBase: "http://127.0.0.1:8091/v1",
+    } as any);
+    expect(api).toBeInstanceOf(AiSdkApi);
+
+    await ask(api, "openai/deepseek-v4-pro");
+
+    const { url, headers, body } = lastRequest();
+    expect(url).toBe("http://127.0.0.1:8091/v1/chat/completions");
+    // The compatible provider's client header: the AI SDK sent it
+    expect(headers.get("user-agent")).toContain("ai-sdk");
+    expect(body.model).toBe("deepseek-v4-pro");
+  });
+
+  it("sends a model without a route through the vendor's own adapter", async () => {
+    mockFetch.mockResolvedValue(errorResponse(400));
+    const api = constructLlmApi({
+      provider: "ai-sdk",
+      model: "anthropic/claude-sonnet-5-5",
+      apiKey: "k",
+    } as any)!;
+
+    await expect(ask(api, "anthropic/claude-sonnet-5-5")).rejects.toThrow();
+
+    const { url, headers, body } = lastRequest();
+    expect(url).toBe("https://api.anthropic.com/v1/messages");
+    expect(headers.get("x-api-key")).toBe("k");
+    expect(body.model).toBe("claude-sonnet-5-5");
+  });
+
+  it("rejects an unknown vendor or a model without one", () => {
+    expect(() =>
+      constructLlmApi({ provider: "ai-sdk", model: "acme/m" } as any),
+    ).toThrow(/Unknown AI SDK provider: "acme"/);
+    expect(() =>
+      constructLlmApi({ provider: "ai-sdk", model: "gpt-5.5" } as any),
+    ).toThrow(/<provider>\/<model>/);
   });
 });
 

@@ -1,4 +1,18 @@
+import { vendorCatalogProvider } from "@nextcli/llm-info";
+
 import { ModelDescription } from "..";
+
+/** The tool rule for each vendor OneProvider serves, by models.dev id */
+const ONEPROVIDER_VENDORS: Record<string, string> = {
+  anthropic: "anthropic",
+  openai: "openai",
+  deepseek: "deepseek",
+  moonshotai: "moonshot",
+  google: "gemini",
+  xai: "xAI",
+  zai: "zAI",
+  mistral: "mistral",
+};
 
 export const PROVIDER_TOOL_SUPPORT: Record<string, (model: string) => boolean> =
   {
@@ -246,6 +260,13 @@ export const PROVIDER_TOOL_SUPPORT: Record<string, (model: string) => boolean> =
       // deepseek-chat / deepseek-reasoner / deepseek-coder are retired;
       // current API models are deepseek-v4-* and deepseek-flash.
       return !!lower.match(/^deepseek-v[4-9]/) || lower === "deepseek-flash";
+    },
+    // OneProvider serves the vendors' own models under their own ids (a
+    // -thinking suffix aside): the model's own vendor's rule decides
+    oneprovider: (model) => {
+      const name = model.replace(/-thinking$/i, "");
+      const vendor = ONEPROVIDER_VENDORS[vendorCatalogProvider(name) ?? ""];
+      return !!vendor && !!PROVIDER_TOOL_SUPPORT[vendor]?.(name);
     },
     watsonx: (model) => {
       if (model.toLowerCase().includes("guard")) {

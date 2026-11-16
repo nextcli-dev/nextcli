@@ -40,7 +40,8 @@ function isDeepSeek(model: string): boolean {
   return baseModelName(model).startsWith("deepseek");
 }
 
-function isOfficialOpenAI(apiBase: string | undefined): boolean {
+/** No API base, or OpenAI's own (with or without the trailing slash) */
+export function isOfficialOpenAI(apiBase: string | undefined): boolean {
   return !apiBase || apiBase.replace(/\/?$/, "/") === OPENAI_API_BASE;
 }
 

@@ -23,6 +23,7 @@ import {
   type EnvironmentReport,
 } from "./projectEnv.js";
 import { addCommonOptions, mergeParentOptions } from "./shared-options.js";
+import { routeAiSdkWarningsToLog } from "./util/aiSdkWarnings.js";
 import { post } from "./util/apiClient.js";
 import { markUnhandledError } from "./util/errorState.js";
 import { gracefulExit } from "./util/exit.js";
@@ -126,6 +127,8 @@ async function reportUnhandledErrorToApi(error: Error): Promise<void> {
     );
   }
 }
+
+routeAiSdkWarningsToLog();
 
 // Add global error handlers to prevent uncaught errors from crashing the process
 process.on("unhandledRejection", (reason, promise) => {
