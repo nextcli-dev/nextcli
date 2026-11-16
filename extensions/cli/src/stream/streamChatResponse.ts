@@ -57,6 +57,7 @@ import {
   continueAfterResponse,
   endCall,
   readCallEnd,
+  taskToKeep,
   TurnState,
 } from "./turnContinuation.js";
 
@@ -415,7 +416,10 @@ export async function streamChatResponse(
 
   let fullResponse = "";
   let finalResponse = "";
-  const turn: TurnState = { compacted: false, askedForAnswer: false };
+  const turn: TurnState = { askedForAnswer: false };
+  // A headless run repeats its prompt after a compaction (see taskToKeep)
+  const task =
+    isHeadless && !isCompacting ? taskToKeep(chatHistory, model) : undefined;
 
   // The final answer must still fit under --max-cost, with room to be written
   const budget = new AgentLoopBudget(() =>
@@ -452,8 +456,8 @@ export async function streamChatResponse(
         model.chatOptions?.toolOverrides,
       );
 
-      // Pre-API auto-compaction checkpoint (now includes tools)
-      const preCompactionResult = await handlePreApiCompaction(chatHistory, {
+      // A compaction below leaves a history that ends with a user turn
+      const compaction = {
         model,
         llmApi,
         isCompacting,
@@ -461,11 +465,16 @@ export async function streamChatResponse(
         callbacks,
         systemMessage,
         tools,
-      });
-      chatHistory = preCompactionResult.chatHistory;
-      if (preCompactionResult.wasCompacted) {
-        turn.compacted = true;
-      }
+        task,
+      };
+
+      // Pre-API auto-compaction checkpoint (now includes tools)
+      chatHistory = (
+        await handlePreApiCompaction(chatHistory, {
+          ...compaction,
+          finalAnswerPrompt: wrapUp && wrapUpMessage(wrapUp),
+        })
+      ).chatHistory;
 
       logger.debug("Tools prepared", {
         toolCount: tools.length,
@@ -547,44 +556,20 @@ export async function streamChatResponse(
       }
 
       // After tool execution, validate that we haven't exceeded context limit
-      const postToolResult = await handlePostToolValidation(
-        toolCalls,
-        chatHistory,
-        {
-          model,
-          llmApi,
-          isCompacting,
-          isHeadless,
-          callbacks,
-          systemMessage,
-          tools,
-        },
-      );
-      chatHistory = postToolResult.chatHistory;
-      if (postToolResult.wasCompacted) {
-        turn.compacted = true;
-      }
+      chatHistory = (
+        await handlePostToolValidation(toolCalls, chatHistory, compaction)
+      ).chatHistory;
 
       // Normal auto-compaction check at 80% threshold
-      const compactionResult = await handleNormalAutoCompaction(
-        chatHistory,
-        shouldContinue,
-        {
-          model,
-          llmApi,
-          isCompacting,
-          isHeadless,
-          callbacks,
-          systemMessage,
-          tools,
-        },
-      );
-      chatHistory = compactionResult.chatHistory;
-      if (compactionResult.wasCompacted) {
-        turn.compacted = true;
-      }
+      chatHistory = (
+        await handleNormalAutoCompaction(
+          chatHistory,
+          shouldContinue,
+          compaction,
+        )
+      ).chatHistory;
 
-      // Stop unless tools ran, compaction ran, or a missing answer is asked for
+      // Stop unless tools ran or a missing answer is asked for
       const next = continueAfterResponse(turn, {
         shouldContinue,
         content,

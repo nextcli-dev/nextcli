@@ -10,6 +10,7 @@ import { validateContextLength } from "../util/tokenizer.js";
 
 import { handleAutoCompaction } from "./streamChatResponse.autoCompaction.js";
 import { StreamCallbacks } from "./streamChatResponse.types.js";
+import { resumeAfterCompaction } from "./turnContinuation.js";
 
 export interface CompactionHelperOptions {
   model: ModelConfig;
@@ -19,6 +20,10 @@ export interface CompactionHelperOptions {
   callbacks?: StreamCallbacks;
   systemMessage: string;
   tools?: ChatCompletionTool[];
+  /** The run's prompt, repeated after a compaction (see taskToKeep) */
+  task?: string;
+  /** A last call's request for its answer, asked again after a compaction */
+  finalAnswerPrompt?: string;
 }
 
 /**
@@ -56,14 +61,22 @@ export async function handlePreApiCompaction(
   if (wasCompacted) {
     logger.debug("Pre-API compaction occurred, updating chat history");
     const chatHistorySvc = services.chatHistory;
+    let compacted = [...preCompactHistory];
     if (
       typeof chatHistorySvc?.isReady === "function" &&
       chatHistorySvc.isReady()
     ) {
       chatHistorySvc.setHistory(preCompactHistory);
-      return { chatHistory: chatHistorySvc.getHistory(), wasCompacted: true };
+      compacted = chatHistorySvc.getHistory();
     }
-    return { chatHistory: [...preCompactHistory], wasCompacted: true };
+    return {
+      chatHistory: resumeAfterCompaction(
+        compacted,
+        options.task,
+        options.finalAnswerPrompt,
+      ),
+      wasCompacted: true,
+    };
   }
 
   return { chatHistory, wasCompacted: false };
@@ -138,6 +151,7 @@ export async function handlePostToolValidation(
         // Fallback: use the compacted history directly when service unavailable
         chatHistory = compactedHistory;
       }
+      chatHistory = resumeAfterCompaction(chatHistory, options.task);
 
       // Verify compaction brought us under the limit
       const postCompactionValidation = validateContextLength({
@@ -222,15 +236,15 @@ export async function handleNormalAutoCompaction(
 
   if (wasCompacted) {
     // Use the service to update history if available, otherwise use local copy
+    let compacted = updatedChatHistory;
     if (chatHistorySvc && typeof chatHistorySvc.setHistory === "function") {
       chatHistorySvc.setHistory(updatedChatHistory);
-      return {
-        chatHistory: chatHistorySvc.getHistory(),
-        wasCompacted: true,
-      };
+      compacted = chatHistorySvc.getHistory();
     }
-    // Fallback: return the compacted history directly when service unavailable
-    return { chatHistory: updatedChatHistory, wasCompacted: true };
+    return {
+      chatHistory: resumeAfterCompaction(compacted, options.task),
+      wasCompacted: true,
+    };
   }
 
   return { chatHistory, wasCompacted: false };

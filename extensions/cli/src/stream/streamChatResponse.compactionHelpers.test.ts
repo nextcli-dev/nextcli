@@ -10,7 +10,9 @@ import { ToolCall } from "../tools/index.js";
 import {
   handleNormalAutoCompaction,
   handlePostToolValidation,
+  handlePreApiCompaction,
 } from "./streamChatResponse.compactionHelpers.js";
+import { COMPACTION_CONTINUE_PROMPT } from "./turnContinuation.js";
 
 // A history is over the limit while it holds this message. The summary that
 // replaces it is under, so each check below decides from the history it gets.
@@ -82,29 +84,42 @@ describe("compaction helpers", () => {
   const toolCalls = [
     { id: "1", name: "Read", arguments: {}, argumentsStr: "{}" },
   ] as unknown as ToolCall[];
-  const options = (isCompacting: boolean) => ({
+  const options = (isCompacting: boolean, task?: string) => ({
     model: { name: "m", model: "m", provider: "openai" } as ModelConfig,
     llmApi: {} as BaseLlmApi,
     isCompacting,
     isHeadless: true,
     systemMessage: "System message",
+    task,
   });
 
   async function runBoth(
     chatHistory: ChatHistoryItem[],
     isCompacting: boolean,
+    task?: string,
   ) {
     return [
       await handlePostToolValidation(
         toolCalls,
         chatHistory,
-        options(isCompacting),
+        options(isCompacting, task),
       ),
       await handleNormalAutoCompaction(
         chatHistory,
         true,
-        options(isCompacting),
+        options(isCompacting, task),
       ),
+    ];
+  }
+
+  /** The summary, then the user turns added after it */
+  function summaryThen(...userTurns: string[]): ChatHistoryItem[] {
+    return [
+      ...summary,
+      ...userTurns.map((content) => ({
+        message: { role: "user" as const, content },
+        contextItems: [],
+      })),
     ];
   }
 
@@ -119,11 +134,48 @@ describe("compaction helpers", () => {
     expect(compactChatHistory).not.toHaveBeenCalled();
   });
 
-  it("compact a normal turn over the limit into the summary", async () => {
+  it("compact a normal turn over the limit into the summary and a user turn", async () => {
+    // A run calling tools needs a user turn to answer: after the summary
+    // alone, AI review run 43834678832 kept reading files and never answered
     for (const result of await runBoth(longHistory, false)) {
-      expect(result).toEqual({ chatHistory: summary, wasCompacted: true });
+      expect(result).toEqual({
+        chatHistory: summaryThen(COMPACTION_CONTINUE_PROMPT),
+        wasCompacted: true,
+      });
     }
     expect(compactChatHistory).toHaveBeenCalledTimes(2);
+    // The summary they compacted into is left as it was
+    expect(summary).toHaveLength(1);
+  });
+
+  it("repeat the run's prompt in the user turn", async () => {
+    for (const result of await runBoth(longHistory, false, "Review it")) {
+      expect(result.chatHistory).toEqual(
+        summaryThen(
+          `${COMPACTION_CONTINUE_PROMPT} The task, as first given:\n\nReview it`,
+        ),
+      );
+    }
+  });
+
+  it("compact before a call into the summary and a user turn", async () => {
+    const result = await handlePreApiCompaction(longHistory, options(false));
+
+    expect(result).toEqual({
+      chatHistory: summaryThen(COMPACTION_CONTINUE_PROMPT),
+      wasCompacted: true,
+    });
+  });
+
+  it("ask a last call for its answer again after compacting before it", async () => {
+    const result = await handlePreApiCompaction(longHistory, {
+      ...options(false),
+      finalAnswerPrompt: "Give your final answer now.",
+    });
+
+    expect(result.chatHistory).toEqual(
+      summaryThen(COMPACTION_CONTINUE_PROMPT, "Give your final answer now."),
+    );
   });
 
   it("leave a normal turn under the limit as it is", async () => {
