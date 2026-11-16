@@ -704,6 +704,11 @@ export interface LLMOptions {
 
   useLegacyCompletionsEndpoint?: boolean;
   useResponsesApi?: boolean;
+  /**
+   * Which code sends chat requests: "ai-sdk" or "legacy" (the provider's own
+   * request code). Providers that can't use the AI SDK ignore it.
+   */
+  transport?: "ai-sdk" | "legacy";
 
   // Embedding options
   embeddingId?: string;
@@ -1779,6 +1784,7 @@ export interface JSONModelDescription {
   aiGatewaySlug?: string;
   useLegacyCompletionsEndpoint?: boolean;
   useResponsesApi?: boolean;
+  transport?: "ai-sdk" | "legacy";
   deploymentId?: string;
   isFromAutoDetect?: boolean;
 }

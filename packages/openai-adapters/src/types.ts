@@ -221,6 +221,10 @@ export type AnthropicConfig = z.infer<typeof AnthropicConfigSchema>;
 export const OneProviderConfigSchema = OpenAIConfigSchema.extend({
   provider: z.literal("oneprovider"),
   apiKey: z.string(),
+  /** Prompt caching for Claude (apis/AnthropicCachingStrategies.ts) */
+  cachingStrategy: z
+    .enum(["none", "systemOnly", "systemAndTools", "optimized"])
+    .optional(),
 });
 export type OneProviderConfig = z.infer<typeof OneProviderConfigSchema>;
 

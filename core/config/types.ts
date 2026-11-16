@@ -525,6 +525,12 @@ declare global {
      */
     useResponsesApi?: boolean;
 
+    /**
+     * Which code sends chat requests: "ai-sdk" or "legacy" (the provider's
+     * own request code). Providers that can't use the AI SDK ignore it.
+     */
+    transport?: "ai-sdk" | "legacy";
+
     // Embedding options
     embeddingId?: string;
     maxEmbeddingChunkSize?: number;

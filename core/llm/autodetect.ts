@@ -66,6 +66,7 @@ const PROVIDER_HANDLES_TEMPLATING: string[] = [
   "openrouter",
   "clawrouter",
   "deepseek",
+  "oneprovider",
   "xAI",
   "minimax",
   "groq",
@@ -112,6 +113,7 @@ const PROVIDER_HANDLES_TEMPLATING: string[] = [
 
 const PROVIDER_SUPPORTS_IMAGES: string[] = [
   "openai",
+  "oneprovider",
   "ollama",
   "lemonade",
   "cohere",

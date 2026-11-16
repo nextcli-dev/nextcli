@@ -71,6 +71,7 @@ export function createLlmApi(
     apiBase: model.apiBase,
     requestOptions: withCliAttribution(model),
     env: model.env,
+    transport: model.transport,
   };
 
   return constructLlmApi(config) ?? null;

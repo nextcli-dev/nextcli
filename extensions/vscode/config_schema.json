@@ -212,6 +212,7 @@
             "ncompass",
             "cloudflare",
             "deepseek",
+            "oneprovider",
             "azure",
             "msty",
             "watsonx",
@@ -478,6 +479,11 @@
           "title": "Deployment",
           "description": "Azure OpenAI deployment",
           "type": "string"
+        },
+        "transport": {
+          "title": "Transport",
+          "description": "Which code sends chat requests: \"ai-sdk\" or \"legacy\" (the provider's own request code). Providers that can't use the AI SDK ignore it.",
+          "enum": ["ai-sdk", "legacy"]
         },
         "capabilities": {
           "type": "object",

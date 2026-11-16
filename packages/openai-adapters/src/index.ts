@@ -217,6 +217,7 @@ export type {
   AskSageToolCall,
   AskSageToolChoice,
   LLMConfig,
+  OneProviderConfig,
 } from "./types.js";
 
 export {

@@ -134,6 +134,8 @@ The `models` section defines the language models used in your configuration. Mod
     - `key`: Path to the client certificate key file.
     - `passphrase`: Optional passphrase for the client certificate key file.
 
+- `transport`: Experimental. `ai-sdk` sends chat requests through the AI SDK, `legacy` through the provider's own request code (the default). It applies to OpenAI-compatible endpoints other than OpenAI's own (`openai` with an `apiBase`, a bridge or gateway), `deepseek` with an `apiBase`, `oneprovider`, and `anthropic` in the CLI. Other providers ignore it. The `NEXTCLI_USE_AI_SDK=1` environment variable turns it on for every model that doesn't set it.
+
 - `autocompleteOptions`: If the model includes role `autocomplete`, these settings apply for tab autocompletion:
 
   - `disable`: If `true`, disables autocomplete for this model.

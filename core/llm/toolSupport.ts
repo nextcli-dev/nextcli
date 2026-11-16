@@ -247,6 +247,20 @@ export const PROVIDER_TOOL_SUPPORT: Record<string, (model: string) => boolean> =
       // current API models are deepseek-v4-* and deepseek-flash.
       return !!lower.match(/^deepseek-v[4-9]/) || lower === "deepseek-flash";
     },
+    // OneProvider serves the vendors' own models, under their own ids
+    // (a -thinking suffix aside): each vendor's rule decides
+    oneprovider: (model) =>
+      [
+        "anthropic",
+        "openai",
+        "deepseek",
+        "moonshot",
+        "gemini",
+        "xAI",
+        "zAI",
+      ].some((vendor) =>
+        PROVIDER_TOOL_SUPPORT[vendor]?.(model.replace(/-thinking$/i, "")),
+      ),
     watsonx: (model) => {
       if (model.toLowerCase().includes("guard")) {
         return false;

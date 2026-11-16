@@ -193,6 +193,11 @@ const baseModelFields = {
   promptTemplates: promptTemplatesSchema.optional(),
   useLegacyCompletionsEndpoint: z.boolean().optional(),
   useResponsesApi: z.boolean().optional(),
+  /**
+   * Which code sends chat requests: "ai-sdk" or "legacy" (the provider's own
+   * request code). Providers that can't use the AI SDK ignore it.
+   */
+  transport: z.enum(["ai-sdk", "legacy"]).optional(),
   env: z
     .record(z.string(), z.union([z.string(), z.boolean(), z.number()]))
     .optional(),

@@ -8,6 +8,7 @@ import {
   constructLlmApi,
   getContextOptions,
   getModelControls,
+  type LLMConfig,
 } from "@nextcli/openai-adapters";
 import Handlebars from "handlebars";
 
@@ -430,15 +431,21 @@ export abstract class BaseLLM implements ILLM {
     return LLMConfigurationStatuses.VALID;
   }
 
-  protected createOpenAiAdapter() {
-    return constructLlmApi({
+  /** The adapter config for this model; subclasses add their settings */
+  protected adapterConfig(): LLMConfig {
+    return {
       provider: this.providerName as any,
       apiKey: this.apiKey ?? "",
       apiBase: this.apiBase,
       requestOptions: this.requestOptions,
       env: this._llmOptions.env,
       useResponsesApi: this._llmOptions.useResponsesApi,
-    });
+      transport: this._llmOptions.transport,
+    } as LLMConfig;
+  }
+
+  protected createOpenAiAdapter() {
+    return constructLlmApi(this.adapterConfig());
   }
 
   listModels(): Promise<string[]> {
