@@ -133,13 +133,21 @@ export abstract class BaseLLM implements ILLM {
     if (isOneProviderBase(this.apiBase)) {
       return false;
     }
+    // The model config's choice, else the provider's default: providers
+    // whose API has no legacy completions endpoint set it to false
+    const useLegacyCompletionsEndpoint =
+      this._llmOptions.useLegacyCompletionsEndpoint ??
+      (this.constructor as typeof BaseLLM).defaultOptions
+        ?.useLegacyCompletionsEndpoint;
+    if (useLegacyCompletionsEndpoint === false) {
+      return false;
+    }
     if (["openai", "azure"].includes(this.providerName)) {
       if (
         this.apiBase?.includes("api.groq.com") ||
         this.apiBase?.includes("api.mistral.ai") ||
         this.apiBase?.includes(":1337") ||
-        this.apiBase?.includes("integrate.api.nvidia.com") ||
-        this._llmOptions.useLegacyCompletionsEndpoint?.valueOf() === false
+        this.apiBase?.includes("integrate.api.nvidia.com")
       ) {
         // Jan + Groq + Mistral don't support completions : (
         // Seems to be going out of style...
