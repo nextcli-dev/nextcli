@@ -705,8 +705,10 @@ export interface LLMOptions {
   useLegacyCompletionsEndpoint?: boolean;
   useResponsesApi?: boolean;
   /**
-   * Which code sends chat requests: "ai-sdk" or "legacy" (the provider's own
-   * request code). Providers that can't use the AI SDK ignore it.
+   * Which code sends chat requests: "ai-sdk" (the AI SDK) or "legacy" (the
+   * provider's own request code). It overrides NEXTCLI_USE_AI_SDK; without
+   * either, "legacy". Only OpenAI-compatible endpoints other than OpenAI's
+   * own use it (packages/openai-adapters/src/transport.ts).
    */
   transport?: "ai-sdk" | "legacy";
 

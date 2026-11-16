@@ -22,8 +22,8 @@ export const BaseConfig = z.object({
   provider: z.string(),
   requestOptions: RequestOptionsSchema.optional(),
   /**
-   * Which code sends chat requests (transport.ts). Providers without
-   * AI-SDK routes ignore it.
+   * Which code sends chat requests; it overrides NEXTCLI_USE_AI_SDK, and
+   * endpoints without AI-SDK routes ignore it (transport.ts)
    */
   transport: z.enum(["ai-sdk", "legacy"]).optional(),
 });

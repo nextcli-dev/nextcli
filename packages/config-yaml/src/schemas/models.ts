@@ -194,8 +194,10 @@ const baseModelFields = {
   useLegacyCompletionsEndpoint: z.boolean().optional(),
   useResponsesApi: z.boolean().optional(),
   /**
-   * Which code sends chat requests: "ai-sdk" or "legacy" (the provider's own
-   * request code). Providers that can't use the AI SDK ignore it.
+   * Which code sends chat requests: "ai-sdk" (the AI SDK) or "legacy" (the
+   * provider's own request code). It overrides NEXTCLI_USE_AI_SDK; without
+   * either, "legacy". Only OpenAI-compatible endpoints other than OpenAI's
+   * own use it (packages/openai-adapters/src/transport.ts).
    */
   transport: z.enum(["ai-sdk", "legacy"]).optional(),
   env: z
