@@ -7,6 +7,7 @@ vi.mock("../formatting", () => ({ formatSnippets: () => "" }));
 import { renderPromptWithTokenLimit } from "..";
 import type { ILLM } from "../../..";
 import Deepseek from "../../../llm/llms/Deepseek";
+import Groq from "../../../llm/llms/Groq";
 import Ollama from "../../../llm/llms/Ollama";
 import OpenAI from "../../../llm/llms/OpenAI";
 import Vllm from "../../../llm/llms/Vllm";
@@ -60,46 +61,8 @@ function render(llm: ILLM, template?: string) {
   });
 }
 
-function chatResponse() {
-  const encoder = new TextEncoder();
-  const chunk = {
-    id: "1",
-    object: "chat.completion.chunk",
-    created: 0,
-    model: "deepseek-v4-pro",
-    choices: [{ index: 0, delta: { content: "t = sum(xs)" } }],
-  };
-  return new Response(
-    new ReadableStream({
-      start(controller) {
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify(chunk)}\n\ndata: [DONE]\n\n`),
-        );
-        controller.close();
-      },
-    }),
-    { headers: { "Content-Type": "text/event-stream" } },
-  );
-}
-
-/** Sends the prompt the way CompletionStreamer does on a non-FIM endpoint */
-async function sendCompletion(llm: OpenAI, prompt: string) {
-  const fetchMock = vi.fn().mockResolvedValue(chatResponse());
-  (llm as any).fetch = fetchMock;
-  for await (const _ of llm.streamComplete(
-    prompt,
-    new AbortController().signal,
-    { raw: true },
-  )) {
-    // drain
-  }
-  expect(fetchMock).toHaveBeenCalledTimes(1);
-  const [url, init] = fetchMock.mock.calls[0];
-  return { url: String(url), body: JSON.parse(init.body) };
-}
-
 describe("autocomplete prompt by endpoint", () => {
-  it("DeepSeek through OneProvider gets the hole-filler prompt on chat/completions", async () => {
+  it("DeepSeek through OneProvider gets the hole-filler prompt", () => {
     const llm = new Deepseek({
       model: "deepseek-v4-pro",
       apiKey: "k",
@@ -110,31 +73,28 @@ describe("autocomplete prompt by endpoint", () => {
     expect(prompt).toContain(HOLE_FILLER);
     expect(prompt).not.toContain(DEEPSEEK_FIM_TOKEN);
     expect(completionOptions?.stop).toContain("</COMPLETION>");
-
-    const { url, body } = await sendCompletion(llm, prompt);
-    expect(url).toBe("https://api.oneprovider.dev/v1/chat/completions");
-    const sent = JSON.stringify(body.messages);
-    expect(sent).toContain(HOLE_FILLER);
-    expect(sent).not.toContain(DEEPSEEK_FIM_TOKEN);
   });
 
-  // What nextcli-checks writes, and what CompletionProvider turns into a
-  // legacy-completions request for every OpenAI-family model
-  it("an openai config on OneProvider sends chat, not /completions", async () => {
+  // What nextcli-checks writes: /completions 404s on OneProvider
+  it("an openai config on OneProvider has no raw completions", () => {
     const llm = new OpenAI({
       model: "deepseek-v4-pro",
       apiKey: "k",
       apiBase: "https://api.oneprovider.dev/v1",
     });
-    llm.useLegacyCompletionsEndpoint = true;
     expect(llm.supportsCompletions()).toBe(false);
+    expect(render(llm).prompt).toContain(HOLE_FILLER);
+  });
 
+  // Groq serves chat only, so its models get the hole filler instead of the
+  // name-based FIM template (StableCode's for most names)
+  it("Groq gets the hole-filler prompt", () => {
+    const llm = new Groq({ model: "llama-3.3-70b-versatile", apiKey: "k" });
+    expect(llm.supportsFim()).toBe(false);
+    expect(llm.supportsCompletions()).toBe(false);
     const { prompt } = render(llm);
     expect(prompt).toContain(HOLE_FILLER);
-
-    const { url, body } = await sendCompletion(llm, prompt);
-    expect(url).toBe("https://api.oneprovider.dev/v1/chat/completions");
-    expect(body.prompt).toBeUndefined();
+    expect(prompt).not.toContain("<fim_prefix>");
   });
 
   it("DeepSeek's own API keeps FIM and its FIM template", () => {

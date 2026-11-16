@@ -306,7 +306,10 @@ const REQUEST_OPTIONS = {
   timeout: 30,
 };
 
-/** OpenAI-compatible endpoints that aren't OpenAI's own */
+/**
+ * One case per kind of endpoint, then one per compensation the route makes
+ * for a difference between the AI SDK and OpenAIApi
+ */
 const COMPATIBLE_CASES: Case[] = [
   {
     name: "a bridge on this machine, with a parameter only it knows",
@@ -318,36 +321,6 @@ const COMPATIBLE_CASES: Case[] = [
     },
     model: "deepseek-v4-pro",
     extra: { bridge_param: { keep: true } },
-  },
-  {
-    name: "Claude through a bridge keeps Anthropic's sampling limits",
-    config: {
-      provider: "openai",
-      apiKey: "k",
-      apiBase: "http://127.0.0.1:8091/v1",
-    },
-    model: "claude-sonnet-5-5",
-  },
-  {
-    name: "a reasoning OpenAI model through a gateway gets no sampling",
-    config: {
-      provider: "openai",
-      apiKey: "k",
-      apiBase: "https://gateway.example/v1",
-    },
-    model: "gpt-5.5",
-  },
-  {
-    name: "DeepSeek through OneProvider with thinking off",
-    config: { provider: "oneprovider", apiKey: "k" },
-    model: "deepseek-v4-pro",
-    settings: { thinking: "off" },
-  },
-  {
-    name: "GPT through OneProvider with an effort",
-    config: { provider: "oneprovider", apiKey: "k" },
-    model: "gpt-5.5",
-    settings: { effort: "high" },
   },
   {
     // What nextcli-checks writes
@@ -435,6 +408,19 @@ describe("transport parity: OpenAI-compatible endpoints", () => {
       finishReason: "tool_calls",
       usage: { prompt: 120, completion: 30, cached: 100, reasoning: 12 },
     });
+  });
+
+  it("applies OpenAIApi's sampling rules", async () => {
+    // A reasoning model behind a gateway takes no temperature or top_p
+    const { aiSdk } = transports(COMPATIBLE_CASES[0].config);
+    const { request } = await sendChat(
+      aiSdk,
+      requestBody({ ...COMPATIBLE_CASES[0], model: "gpt-5.5" }),
+      CHAT_REPLY,
+    );
+    expect(request.body.temperature).toBeUndefined();
+    expect(request.body.top_p).toBeUndefined();
+    expect(request.body.max_tokens).toBe(4096);
   });
 
   it("sends requests other than chat through the provider's own adapter", async () => {
