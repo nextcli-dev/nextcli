@@ -112,7 +112,9 @@ function refreshChatHistoryFromService(
   return chatHistory;
 }
 
-// Starts one model call. A run already past its limit throws instead of calling.
+// Starts one model call. A run already past its turn, token or cost limit
+// throws instead of calling; past its --max-time deadline it still makes the
+// final call.
 function applyTurnLimit(
   budget: AgentLoopBudget,
   chatHistory: ChatHistoryItem[],
@@ -440,7 +442,8 @@ export async function streamChatResponse(
       logger.debug("Starting conversation iteration");
 
       // At a limit, the next call is the last one and has no tools. A run
-      // already over the limit throws instead of spending another call.
+      // already over its turn, token or cost limit throws instead of spending
+      // another call; past its --max-time deadline it still makes the final one.
       let wrapUp: LimitWrapUp | undefined;
       ({ wrapUp, chatHistory } = applyTurnLimit(budget, chatHistory));
 
