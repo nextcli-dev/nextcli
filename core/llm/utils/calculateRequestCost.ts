@@ -8,7 +8,6 @@ import {
   isMakerCatalog,
   resolveCatalog,
   vendorCatalogProvider,
-  type CatalogPriceRoute,
   type PriceSource,
 } from "@nextcli/llm-info";
 
@@ -64,34 +63,6 @@ const LOCAL_MODEL_SERVERS = new Set([
   "vllm",
 ]);
 
-interface PriceRoute extends CatalogPriceRoute {
-  normalizedProvider: string;
-  host: string | undefined;
-  /** A host on this machine: a local server or a bridge */
-  thisMachine: boolean;
-  oneProvider: boolean;
-}
-
-/**
- * Where a request's prices come from: resolveCatalog's price route in
- * @nextcli/llm-info (which catalog, which id, how it is labelled), where
- * every host is special-cased, plus the provider and host kind
- */
-function priceRoute(
-  provider: string,
-  model: string,
-  apiBase: string | undefined,
-): PriceRoute {
-  const route = resolveCatalog({ provider, model, apiBase });
-  return {
-    ...route.price,
-    normalizedProvider: provider.toLowerCase(),
-    host: hostOf(apiBase),
-    thisMachine: route.host === "this-machine",
-    oneProvider: route.host === "oneprovider",
-  };
-}
-
 /**
  * A warning for a model the catalog lists at $0, which means its price is
  * unknown: the model is priced like an unlisted one instead of as free, so
@@ -102,12 +73,12 @@ export function unknownZeroPriceWarning(
   model: string,
   apiBase?: string,
 ): string | undefined {
-  const route = priceRoute(provider, model, apiBase);
-  if (!hasUnknownZeroPrice(route.catalogProvider, route.model)) {
+  const { price } = resolveCatalog({ provider, model, apiBase });
+  if (!hasUnknownZeroPrice(price.catalogProvider, price.model)) {
     return undefined;
   }
   return (
-    `the models.dev catalog lists ${model} (${route.catalogProvider}) at $0, ` +
+    `the models.dev catalog lists ${model} (${price.catalogProvider}) at $0, ` +
     "which means its price is unknown, not that it is free. It is priced " +
     "as an estimate, or at the CLI's flat fallback rate when nothing else " +
     "knows it, so --max-cost still counts it."
@@ -158,7 +129,7 @@ function generalEstimate(
  * OpenRouter's price for the name. Both are estimates.
  */
 function bridgeFloor(
-  route: PriceRoute,
+  provider: string,
   model: string,
   usage: Usage,
   options: RequestCostOptions,
@@ -167,9 +138,7 @@ function bridgeFloor(
   // the model's own vendor comes first
   const vendor =
     vendorCatalogProvider(model) ??
-    (isMakerCatalog(route.normalizedProvider)
-      ? route.normalizedProvider
-      : undefined);
+    (isMakerCatalog(provider) ? provider : undefined);
   const vendorRates = ratesFromCatalog(findCatalogCost(vendor, model));
   if (vendorRates) {
     return fromCatalog(
@@ -184,20 +153,21 @@ function bridgeFloor(
 }
 
 /**
- * Prices one request:
+ * Prices one request, by resolveCatalog's route in @nextcli/llm-info:
  *
- * 1. A host on this machine (localhost, 127.x, host.docker.internal): a
- *    local model server has no price; any other provider is a bridge, priced
- *    at a floor (bridgeFloor).
- * 2. OneProvider (provider or host): its own price table, exact.
- * 3. The catalog of the route: an official API host's (api.groq.com,
+ * 1. A local model server on this machine (localhost, 127.x,
+ *    host.docker.internal) or on its local default (no API base): no price.
+ * 2. Any other provider on this machine is a bridge, priced at a floor
+ *    (bridgeFloor).
+ * 3. OneProvider (provider or host): its own price table, exact.
+ * 4. The catalog of the route: an official API host's (api.groq.com,
  *    openrouter.ai) under any provider name, else the configured provider's
  *    own. A maker's list price (Anthropic, OpenAI) is exact on the maker's
  *    API and estimated on any other host; other providers' prices are
  *    catalog. OpenRouter's routing variants (:nitro, :floor, ...) are
  *    estimated.
- * 4. With `estimateUnknown`, the general price (OpenRouter's for the name):
- *    estimated. Not for local model servers on their local default.
+ * 5. With `estimateUnknown`, the general price (OpenRouter's for the name):
+ *    estimated.
  *
  * A catalog price of $0 means the price is unknown (unknownZeroPriceWarning)
  * and counts as no price, except OpenRouter's `:free` ids. A fast request
@@ -210,43 +180,45 @@ export function calculateRequestCost(
   usage: Usage,
   options: RequestCostOptions = {},
 ): CostBreakdown | null {
-  const route = priceRoute(provider, model, options.apiBase);
-  const localServer = LOCAL_MODEL_SERVERS.has(route.normalizedProvider);
-  if (route.thisMachine) {
-    return localServer ? null : bridgeFloor(route, model, usage, options);
-  }
-
-  if (route.oneProvider) {
-    const rates = findOneproviderRates(model);
-    if (rates) {
-      const { cost, breakdown } = priceWithHostRates(model, rates, usage);
-      return { cost, breakdown, priced: options.fast ? "estimated" : "exact" };
-    }
-  } else {
-    const fastRates = options.fast
-      ? ratesFromCatalog(
-          findCatalogFastCost(route.catalogProvider, route.model),
-        )
-      : undefined;
-    if (fastRates) {
-      return fromCatalog(model, fastRates, usage, route.source, "fast mode");
-    }
-    const rates = ratesFromCatalog(
-      findCatalogCost(route.catalogProvider, route.model),
-    );
-    if (rates) {
-      // A fast request without a known fast price: the standard price
-      return fromCatalog(
-        model,
-        rates,
-        usage,
-        options.fast ? "estimated" : route.source,
-      );
-    }
-  }
-
-  if (localServer && !route.host) {
+  const route = resolveCatalog({ provider, model, apiBase: options.apiBase });
+  const normalizedProvider = provider.toLowerCase();
+  if (
+    LOCAL_MODEL_SERVERS.has(normalizedProvider) &&
+    (route.host === "this-machine" || !hostOf(options.apiBase))
+  ) {
     return null;
   }
-  return generalEstimate(route.model, usage, options);
+  if (route.host === "this-machine") {
+    return bridgeFloor(normalizedProvider, model, usage, options);
+  }
+
+  if (route.host === "oneprovider") {
+    const rates = findOneproviderRates(model);
+    if (!rates) {
+      return generalEstimate(model, usage, options);
+    }
+    const { cost, breakdown } = priceWithHostRates(model, rates, usage);
+    return { cost, breakdown, priced: options.fast ? "estimated" : "exact" };
+  }
+
+  const { price } = route;
+  const fastRates = options.fast
+    ? ratesFromCatalog(findCatalogFastCost(price.catalogProvider, price.model))
+    : undefined;
+  if (fastRates) {
+    return fromCatalog(model, fastRates, usage, price.source, "fast mode");
+  }
+  const rates = ratesFromCatalog(
+    findCatalogCost(price.catalogProvider, price.model),
+  );
+  if (rates) {
+    // A fast request without a known fast price: the standard price
+    return fromCatalog(
+      model,
+      rates,
+      usage,
+      options.fast ? "estimated" : price.source,
+    );
+  }
+  return generalEstimate(price.model, usage, options);
 }

@@ -12,9 +12,12 @@ import { ONEPROVIDER_RATES } from "./oneproviderRates";
 export interface HostRates {
   input: number;
   output: number;
-  /** Price of cached prompt tokens. When absent, they cost the input price. */
+  /** Price of cached prompt tokens. When absent, they are billed as input. */
   cachedInput?: number;
-  /** Price of prompt tokens written to the cache. When absent, the input price. */
+  /**
+   * Price of prompt tokens written to the cache. When absent, they are
+   * billed as input.
+   */
   cacheWrite?: number;
   /** Higher prices once the prompt is longer than `above` tokens */
   tiers?: Array<Omit<HostRates, "tiers"> & { above: number }>;
@@ -70,8 +73,18 @@ function ratesForPrompt(rates: HostRates, promptTokens: number): HostRates {
   return tier ? { ...rates, ...tier } : rates;
 }
 
-function describe(tokens: number, label: string, price: number): string {
-  return `${label}: ${tokens.toLocaleString()} tokens × $${price}/MTok = $${((tokens / 1_000_000) * price).toFixed(6)}`;
+/**
+ * The prompt tokens billed at a cache rate, at most `room`: none when the
+ * host lists no rate for them, so they stay input tokens
+ */
+function atCacheRate(
+  tokens: number | undefined,
+  rate: number | undefined,
+  room: number,
+): { tokens: number; rate: number } {
+  return rate === undefined
+    ? { tokens: 0, rate: 0 }
+    : { tokens: Math.min(tokens ?? 0, room), rate };
 }
 
 /**
@@ -84,45 +97,36 @@ export function priceWithHostRates(
   usage: Usage,
 ): { cost: number; breakdown: string } {
   const rates = ratesForPrompt(hostRates, usage.promptTokens);
-  const cachedTokens =
-    rates.cachedInput === undefined
-      ? 0
-      : Math.min(
-          usage.promptTokensDetails?.cachedTokens ?? 0,
-          usage.promptTokens,
-        );
-  const cacheWriteTokens =
-    rates.cacheWrite === undefined
-      ? 0
-      : Math.min(
-          usage.promptTokensDetails?.cacheWriteTokens ?? 0,
-          usage.promptTokens - cachedTokens,
-        );
-  // Zero tokens are counted at a rate the host doesn't list
-  const cachedRate = rates.cachedInput ?? 0;
-  const cacheWriteRate = rates.cacheWrite ?? 0;
-  const uncachedTokens = usage.promptTokens - cachedTokens - cacheWriteTokens;
-  const inputCost = (uncachedTokens / 1_000_000) * rates.input;
-  const cachedCost = (cachedTokens / 1_000_000) * cachedRate;
-  const cacheWriteCost = (cacheWriteTokens / 1_000_000) * cacheWriteRate;
-  const outputCost = (usage.completionTokens / 1_000_000) * rates.output;
-
-  const parts: string[] = [];
-  if (uncachedTokens > 0) {
-    parts.push(describe(uncachedTokens, "Input", rates.input));
-  }
-  if (cachedTokens > 0) {
-    parts.push(describe(cachedTokens, "Cached Input", cachedRate));
-  }
-  if (cacheWriteTokens > 0) {
-    parts.push(describe(cacheWriteTokens, "Cache Write", cacheWriteRate));
-  }
-  if (usage.completionTokens > 0) {
-    parts.push(describe(usage.completionTokens, "Output", rates.output));
-  }
-  const cost = inputCost + cachedCost + cacheWriteCost + outputCost;
-  let breakdown = `Model: ${model}\n${parts.join("\n")}`;
-  if (parts.length > 1) {
+  const details = usage.promptTokensDetails;
+  const cached = atCacheRate(
+    details?.cachedTokens,
+    rates.cachedInput,
+    usage.promptTokens,
+  );
+  const cacheWrite = atCacheRate(
+    details?.cacheWriteTokens,
+    rates.cacheWrite,
+    usage.promptTokens - cached.tokens,
+  );
+  const uncachedTokens = usage.promptTokens - cached.tokens - cacheWrite.tokens;
+  const parts = (
+    [
+      ["Input", uncachedTokens, rates.input],
+      ["Cached Input", cached.tokens, cached.rate],
+      ["Cache Write", cacheWrite.tokens, cacheWrite.rate],
+      ["Output", usage.completionTokens, rates.output],
+    ] as const
+  ).filter(([, tokens]) => tokens > 0);
+  const cost = parts.reduce(
+    (sum, [, tokens, rate]) => sum + (tokens / 1_000_000) * rate,
+    0,
+  );
+  const lines = parts.map(
+    ([label, tokens, rate]) =>
+      `${label}: ${tokens.toLocaleString()} tokens × $${rate}/MTok = $${((tokens / 1_000_000) * rate).toFixed(6)}`,
+  );
+  let breakdown = `Model: ${model}\n${lines.join("\n")}`;
+  if (lines.length > 1) {
     breakdown += `\nTotal: $${cost.toFixed(6)}`;
   }
   return { cost, breakdown };

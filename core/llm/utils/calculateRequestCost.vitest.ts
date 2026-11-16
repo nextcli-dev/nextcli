@@ -410,6 +410,24 @@ describe("calculateRequestCost by host", () => {
     expect(result?.cost).toBeCloseTo(1.32, 6);
   });
 
+  it("bills cache writes at the input price when the host lists none", () => {
+    const { cost, breakdown } = priceWithHostRates(
+      "m",
+      { input: 2, output: 8, cachedInput: 0.5 },
+      {
+        promptTokens: 1_000_000,
+        completionTokens: 0,
+        promptTokensDetails: {
+          cachedTokens: 200_000,
+          cacheWriteTokens: 300_000,
+        },
+      },
+    );
+    // 800K input tokens at $2, the 300K cache writes among them; 200K at $0.50
+    expect(cost).toBeCloseTo(0.8 * 2 + 0.2 * 0.5, 6);
+    expect(breakdown).not.toContain("Cache Write");
+  });
+
   // Prices from the models.dev snapshot (npm run sync-models) are read from
   // it here, so a new snapshot doesn't need new numbers in these tests
   const openRouterDeepSeek = findCatalogCost(
