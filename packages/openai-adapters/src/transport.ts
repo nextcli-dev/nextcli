@@ -45,7 +45,10 @@ export function aiSdkRoute({
         : { factory: "anthropic" };
     case "openai":
       // A custom endpoint (a bridge, vLLM, a gateway such as OneProvider)
-      // takes the request as it is; OpenAI's own API comes later
+      // takes the request as it is. OpenAI's own API keeps its adapter: the
+      // AI SDK's Responses requests refer to earlier reasoning by stored id
+      // unless store is off, where the adapter sends it whole, and send
+      // tools with strict: false where the adapter sends null
       return isOfficialOpenAI(apiBase)
         ? undefined
         : { factory: "openai-compatible" };
