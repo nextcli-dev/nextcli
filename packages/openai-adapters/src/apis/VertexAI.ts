@@ -23,7 +23,7 @@ import {
   FimCreateParamsStreaming,
   RerankCreateParams,
 } from "./base.js";
-import { GeminiApi } from "./Gemini.js";
+import { GeminiApi, geminiChatCompletion } from "./Gemini.js";
 import { OpenAIApi } from "./OpenAI.js";
 
 export class VertexAIApi implements BaseLlmApi {
@@ -220,11 +220,13 @@ export class VertexAIApi implements BaseLlmApi {
     };
   }
 
-  private convertGeminiBody(
-    oaiBody: ChatCompletionCreateParams,
-    isV1API: boolean,
-  ): object {
-    return this.geminiInstance._convertBody(oaiBody, isV1API, false);
+  /**
+   * Vertex's v1 API takes the system instruction and tools (the streaming
+   * path sends them through @google/genai); `isV1API` is for the Gemini
+   * API's old v1, which didn't
+   */
+  private convertGeminiBody(oaiBody: ChatCompletionCreateParams): object {
+    return this.geminiInstance._convertBody(oaiBody, false, false);
   }
 
   async chatCompletionNonStream(
@@ -254,10 +256,7 @@ export class VertexAIApi implements BaseLlmApi {
         url = this.buildUrl(
           `publishers/google/models/${body.model}:generateContent`,
         );
-        requestBody = this.convertGeminiBody(
-          body,
-          url.toString().includes("/v1/"),
-        );
+        requestBody = this.convertGeminiBody(body);
         break;
       case "mistral":
         url = this.buildUrl(
@@ -295,10 +294,7 @@ export class VertexAIApi implements BaseLlmApi {
           model: body.model,
         });
       case "gemini":
-        return chatCompletion({
-          content: data.candidates?.[0]?.content?.parts?.[0]?.text || "",
-          model: body.model,
-        });
+        return geminiChatCompletion(data, body.model);
       case "mistral":
         return chatCompletion({
           content: data.choices?.[0]?.message?.content || "",

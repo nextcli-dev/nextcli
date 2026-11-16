@@ -23,6 +23,7 @@ import { GeminiConfig } from "../types.js";
 import {
   chatChunk,
   chatChunkFromDelta,
+  chatCompletion,
   customFetch,
   embedding,
   usageChatChunk,
@@ -101,6 +102,49 @@ export function geminiThinkingConfig(
     }
   }
   return Object.keys(config).length > 0 ? config : undefined;
+}
+
+/**
+ * A non-streamed generateContent response as a Chat Completions response:
+ * the answer's text (not thought summaries), its function calls with their
+ * thought signatures (as processStreamResponse yields them), and usage
+ */
+export function geminiChatCompletion(data: any, model: string): ChatCompletion {
+  const parts: any[] = data?.candidates?.[0]?.content?.parts ?? [];
+  const content = parts
+    .filter((part) => part.text !== undefined && !part.thought)
+    .map((part) => part.text)
+    .join("");
+  const toolCalls = parts
+    .filter((part) => part.functionCall)
+    .map((part) => ({
+      id: part.functionCall.id ?? uuidv4(),
+      type: "function" as const,
+      function: {
+        name: part.functionCall.name ?? "",
+        arguments: JSON.stringify(part.functionCall.args ?? {}),
+      },
+      ...(part.thoughtSignature && {
+        extra_content: {
+          google: { thought_signature: part.thoughtSignature },
+        },
+      }),
+    }));
+  const usage = data?.usageMetadata;
+  const completion = chatCompletion({
+    content,
+    model,
+    finish_reason: toolCalls.length > 0 ? "tool_calls" : "stop",
+    usage: usage && {
+      prompt_tokens: usage.promptTokenCount || 0,
+      completion_tokens: usage.candidatesTokenCount || 0,
+      total_tokens: usage.totalTokenCount || 0,
+    },
+  });
+  if (toolCalls.length > 0) {
+    completion.choices[0].message.tool_calls = toolCalls;
+  }
+  return completion;
 }
 
 export class GeminiApi implements BaseLlmApi {
