@@ -5,7 +5,6 @@ import { getSessionUsage } from "../session.js";
 import {
   AgentLoopBudget,
   checkAgentLoopLimits,
-  checkTimeLimit,
   configureAgentLoopLimits,
   getAgentLoopLimits,
   getLimitReached,
@@ -110,9 +109,13 @@ describe("the --max-cost reserve", () => {
 });
 
 describe("--max-time", () => {
+  // When the limits were set, in milliseconds since the epoch
+  let setAt: number;
+
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["Date"] });
     resetAgentLoopLimits();
+    setAt = Date.now();
     configureAgentLoopLimits({ maxTime: "1000" });
   });
 
@@ -121,7 +124,25 @@ describe("--max-time", () => {
     resetAgentLoopLimits();
   });
 
-  const after = (seconds: number) => Date.now() + seconds * 1000;
+  /** The time this many seconds after the limits were set */
+  const after = (seconds: number) => setAt + seconds * 1000;
+
+  /**
+   * What the next turn of a run gets, when the run starts `start` seconds
+   * after the limits were set and its turns take these many seconds
+   */
+  function nextTurnAfter(start: number, ...turnSeconds: number[]) {
+    let elapsed = start;
+    vi.setSystemTime(after(elapsed));
+    const budget = new AgentLoopBudget();
+    let wrapUp = budget.nextTurn();
+    for (const seconds of turnSeconds) {
+      elapsed += seconds;
+      vi.setSystemTime(after(elapsed));
+      wrapUp = budget.nextTurn();
+    }
+    return wrapUp;
+  }
 
   it("counts from when the limits are set", () => {
     expect(getAgentLoopLimits()).toMatchObject({
@@ -132,32 +153,33 @@ describe("--max-time", () => {
 
   it("goes on while the time left covers a turn like the last and the answer", () => {
     // 300 left: a 150-second turn and the 100 seconds kept for the answer
-    expect(
-      checkTimeLimit(getAgentLoopLimits(), 150, after(700)),
-    ).toBeUndefined();
+    expect(nextTurnAfter(550, 150)).toBeUndefined();
   });
 
   it("wraps up when it doesn't", () => {
-    expect(checkTimeLimit(getAgentLoopLimits(), 250, after(700))).toEqual({
+    // 300 left: less than a 250-second turn and the 100 kept
+    expect(nextTurnAfter(450, 250)).toEqual({
       limit: "time",
       description: "time limit of 1000 seconds (--max-time)",
     });
-    // The first turn has no last turn: only the tenth for the answer is kept
-    expect(checkTimeLimit(getAgentLoopLimits(), 0, after(901))).toMatchObject({
-      limit: "time",
-    });
+    expect(getLimitReached()).toBe("time");
+  });
+
+  it("keeps only the tenth for the answer before the first turn", () => {
+    expect(nextTurnAfter(899)).toBeUndefined();
+    expect(nextTurnAfter(901)).toMatchObject({ limit: "time" });
   });
 
   it("still makes the final call past the deadline", () => {
-    expect(
-      checkTimeLimit(getAgentLoopLimits(), 10, after(1200)),
-    ).not.toHaveProperty("stop");
+    const wrapUp = nextTurnAfter(1190, 10);
+    expect(wrapUp).toMatchObject({ limit: "time" });
+    expect(wrapUp).not.toHaveProperty("stop");
   });
 
   it("is off without the flag", () => {
     resetAgentLoopLimits();
     configureAgentLoopLimits({});
-    expect(checkTimeLimit(getAgentLoopLimits(), 0, after(1e6))).toBeUndefined();
+    expect(nextTurnAfter(1e6, 500)).toBeUndefined();
   });
 
   it("rejects a time that isn't a positive number", () => {
@@ -167,14 +189,9 @@ describe("--max-time", () => {
   });
 
   it("times each turn of a run from one call to the next", () => {
-    const budget = new AgentLoopBudget();
-    expect(budget.nextTurn()).toBeUndefined();
-    vi.setSystemTime(after(400));
-    expect(budget.nextTurn()).toBeUndefined();
-    // 200 left after another 400-second turn: less than 400 plus the 100 kept
-    vi.setSystemTime(after(400));
-    expect(budget.nextTurn()).toMatchObject({ limit: "time" });
-    expect(getLimitReached()).toBe("time");
+    // 200 left after two 400-second turns: less than 400 plus the 100 kept
+    expect(nextTurnAfter(0, 400)).toBeUndefined();
+    expect(nextTurnAfter(0, 400, 400)).toMatchObject({ limit: "time" });
   });
 
   it("doesn't time a compaction's call", () => {

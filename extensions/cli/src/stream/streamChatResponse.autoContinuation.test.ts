@@ -27,9 +27,6 @@ vi.mock("../session.js", () => ({
 vi.mock("../util/tokenizer.js", () => ({
   countChatHistoryItemTokens: vi.fn(() => 100),
   countTotalInputTokens: vi.fn(() => 100),
-  getModelContextLimit: vi.fn(
-    (model) => model.defaultCompletionOptions.contextLength,
-  ),
   validateContextLength: vi.fn(() => ({ isValid: true })),
 }));
 
@@ -128,14 +125,6 @@ describe("streamChatResponse - compaction checks", () => {
     );
   }
 
-  /** The options the pre-call compaction check got on its first call */
-  async function preCallOptions() {
-    const { handlePreApiCompaction } = await import(
-      "./streamChatResponse.compactionHelpers.js"
-    );
-    return vi.mocked(handlePreApiCompaction).mock.calls[0][1];
-  }
-
   beforeEach(async () => {
     vi.clearAllMocks();
     const { services } = await import("../services/index.js");
@@ -154,29 +143,26 @@ describe("streamChatResponse - compaction checks", () => {
     resetAgentLoopLimits();
   });
 
-  it("gives a headless run's prompt to the compaction checks", async () => {
-    const { services } = await import("../services/index.js");
-    vi.mocked(services.toolPermissions.isHeadless).mockReturnValue(true);
-
-    await run(answering());
-
-    expect((await preCallOptions()).task).toBe(prompt);
-  });
-
-  it("gives them no prompt outside a headless run", async () => {
-    await run(answering());
-
-    expect((await preCallOptions()).task).toBeUndefined();
-  });
-
-  it("gives a last call's request for its answer to the pre-call check", async () => {
+  it("doesn't compact before a run's final call", async () => {
+    // The limit left room for one call: a summary would be a second one, and
+    // the request for the answer would go into it
     configureAgentLoopLimits({ maxTurns: "1" });
-
-    await run(answering());
-
-    expect((await preCallOptions()).finalAnswerPrompt).toContain(
-      "Stop working now",
+    const { handlePreApiCompaction } = await import(
+      "./streamChatResponse.compactionHelpers.js"
     );
+    vi.mocked(handlePreApiCompaction).mockImplementation((history) =>
+      Promise.resolve({ chatHistory: history, wasCompacted: true }),
+    );
+    const { services } = await import("../services/index.js");
+    const llmApi = answering();
+
+    await run(llmApi);
+
+    expect(handlePreApiCompaction).not.toHaveBeenCalled();
+    expect(llmApi.chatCompletionStream).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(services.chatHistory.addUserMessage).mock.calls).toEqual([
+      [expect.stringContaining("Stop working now")],
+    ]);
   });
 
   it("takes the answer after a pre-call compaction without asking again", async () => {

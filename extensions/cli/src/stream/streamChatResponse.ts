@@ -57,7 +57,6 @@ import {
   continueAfterResponse,
   endCall,
   readCallEnd,
-  taskToKeep,
   TurnState,
 } from "./turnContinuation.js";
 
@@ -419,9 +418,6 @@ export async function streamChatResponse(
   let fullResponse = "";
   let finalResponse = "";
   const turn: TurnState = { askedForAnswer: false };
-  // A headless run repeats its prompt after a compaction (see taskToKeep)
-  const task =
-    isHeadless && !isCompacting ? taskToKeep(chatHistory, model) : undefined;
 
   // The final answer must still fit under --max-cost, with room to be written
   const budget = new AgentLoopBudget(
@@ -473,16 +469,16 @@ export async function streamChatResponse(
         callbacks,
         systemMessage,
         tools,
-        task,
       };
 
-      // Pre-API auto-compaction checkpoint (now includes tools)
-      chatHistory = (
-        await handlePreApiCompaction(chatHistory, {
-          ...compaction,
-          finalAnswerPrompt: wrapUp && wrapUpMessage(wrapUp),
-        })
-      ).chatHistory;
+      // Pre-API auto-compaction checkpoint (now includes tools). Not before
+      // a run's last call: the limit left room for that call only, and the
+      // request for the answer would go into the summary. processStreaming-
+      // Response prunes a history that doesn't fit.
+      if (!wrapUp) {
+        chatHistory = (await handlePreApiCompaction(chatHistory, compaction))
+          .chatHistory;
+      }
 
       logger.debug("Tools prepared", {
         toolCount: tools.length,

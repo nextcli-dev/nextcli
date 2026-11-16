@@ -282,7 +282,7 @@ export function checkAgentLoopLimits(
  * stopped short: past the deadline the final call is still made. The caller's
  * own timeout should leave it a margin.
  */
-export function checkTimeLimit(
+function checkTimeLimit(
   limits: AgentLoopLimits,
   lastTurnSeconds: number,
   now = Date.now(),

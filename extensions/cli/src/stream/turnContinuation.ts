@@ -1,11 +1,6 @@
-import type { ModelConfig } from "@nextcli/config-yaml";
 import type { ChatHistoryItem } from "core/index.js";
 
 import { logger } from "../util/logger.js";
-import {
-  countChatHistoryItemTokens,
-  getModelContextLimit,
-} from "../util/tokenizer.js";
 
 import { addUserMessage } from "./streamChatResponse.helpers.js";
 
@@ -86,66 +81,18 @@ export function outputCapMessage(): string | undefined {
 export const COMPACTION_CONTINUE_PROMPT =
   "Continue from where the summary above leaves off. Don't redo work it lists as done.";
 
-// A run keeps its prompt through a compaction only when the prompt is at most
-// this share of the context window, so repeating it can't refill the window
-const MAX_KEPT_TASK_SHARE = 0.25;
-
-/**
- * The prompt a headless run was started with, to repeat word for word after
- * a compaction: a summary paraphrases the task and can lose its answer
- * format. Undefined when the prompt is too large to repeat.
- */
-export function taskToKeep(
-  chatHistory: ChatHistoryItem[],
-  model: ModelConfig,
-): string | undefined {
-  const prompt = chatHistory.findLast((item) => item.message.role === "user");
-  if (!prompt) {
-    return undefined;
-  }
-  const { content } = prompt.message;
-  const text =
-    typeof content === "string"
-      ? content
-      : content
-          .flatMap((part) => (part.type === "text" ? [part.text] : []))
-          .join("\n");
-  if (!text.trim()) {
-    return undefined;
-  }
-  const tokens = countChatHistoryItemTokens(
-    { message: { role: "user", content: text }, contextItems: [] },
-    model,
-  );
-  return tokens <= getModelContextLimit(model) * MAX_KEPT_TASK_SHARE
-    ? text
-    : undefined;
-}
-
 /**
  * After a compaction the history ends with the summary, an assistant
  * message. Without a user turn after it, a run that was calling tools went on
  * calling them with no thinking and never answered (AI review run
- * 43834678832). The user turn repeats the run's task when there is one, and
- * a last call's request for its answer, which went into the summary.
+ * 43834678832).
  */
 export function resumeAfterCompaction(
   chatHistory: ChatHistoryItem[],
-  task: string | undefined,
-  finalAnswerPrompt?: string,
 ): ChatHistoryItem[] {
-  logger.debug("Continuing after compaction", { keepsTask: !!task });
+  logger.debug("Continuing after compaction");
   // A copy: without the history service, addUserMessage appends in place
-  let history = addUserMessage(
-    [...chatHistory],
-    task
-      ? `${COMPACTION_CONTINUE_PROMPT} The task, as first given:\n\n${task}`
-      : COMPACTION_CONTINUE_PROMPT,
-  );
-  if (finalAnswerPrompt) {
-    history = addUserMessage(history, finalAnswerPrompt);
-  }
-  return history;
+  return addUserMessage([...chatHistory], COMPACTION_CONTINUE_PROMPT);
 }
 
 /** What one turn of the agent loop carries into the next. */
