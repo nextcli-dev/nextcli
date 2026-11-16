@@ -1,0 +1,481 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`model controls of popular models > match the reviewed snapshot 1`] = `
+{
+  "anthropic claude-haiku-5-5": {
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ],
+    "experimental": false,
+    "fast": false,
+    "maxContextLength": 1000000,
+    "thinkingModes": [
+      "off",
+      "hidden",
+      "shown",
+    ],
+  },
+  "anthropic claude-opus-4-8": {
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ],
+    "experimental": false,
+    "fast": true,
+    "maxContextLength": 1000000,
+    "thinkingModes": [
+      "off",
+      "hidden",
+      "shown",
+    ],
+  },
+  "anthropic claude-opus-5-5": {
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ],
+    "experimental": false,
+    "fast": true,
+    "maxContextLength": 1000000,
+    "thinkingModes": [
+      "hidden",
+      "shown",
+    ],
+  },
+  "anthropic claude-sonnet-4-5": {
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+    ],
+    "experimental": false,
+    "fast": false,
+    "maxContextLength": 200000,
+    "thinkingModes": [
+      "off",
+      "hidden",
+      "shown",
+    ],
+  },
+  "anthropic claude-sonnet-5-5": {
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ],
+    "experimental": false,
+    "fast": false,
+    "maxContextLength": 1000000,
+    "thinkingModes": [
+      "off",
+      "hidden",
+      "shown",
+    ],
+  },
+  "azure claude-fable-5": {
+    "efforts": [],
+    "experimental": false,
+    "fast": false,
+    "maxContextLength": 1000000,
+    "thinkingModes": [],
+  },
+  "azure gpt-5.5": {
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+    ],
+    "experimental": false,
+    "fast": false,
+    "maxContextLength": 922000,
+    "thinkingModes": [
+      "off",
+      "hidden",
+    ],
+  },
+  "bedrock us.anthropic.claude-opus-5-5-v1:0": {
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ],
+    "experimental": false,
+    "fast": false,
+    "maxContextLength": 1000000,
+    "thinkingModes": [
+      "hidden",
+      "shown",
+    ],
+  },
+  "deepseek deepseek-v4-flash": {
+    "efforts": [],
+    "experimental": false,
+    "fast": false,
+    "maxContextLength": 1048576,
+    "thinkingModes": [
+      "off",
+      "hidden",
+      "shown",
+    ],
+  },
+  "deepseek deepseek-v4-pro": {
+    "efforts": [],
+    "experimental": false,
+    "fast": false,
+    "maxContextLength": 1048576,
+    "thinkingModes": [
+      "off",
+      "hidden",
+      "shown",
+    ],
+  },
+  "gemini gemini-3.1-pro": {
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+    ],
+    "experimental": false,
+    "fast": false,
+    "maxContextLength": 1048576,
+    "thinkingModes": [
+      "hidden",
+      "shown",
+    ],
+  },
+  "gemini gemini-3.5-flash": {
+    "efforts": [
+      "minimal",
+      "low",
+      "medium",
+      "high",
+    ],
+    "experimental": false,
+    "fast": false,
+    "maxContextLength": 1048576,
+    "thinkingModes": [
+      "hidden",
+      "shown",
+    ],
+  },
+  "groq openai/gpt-oss-120b": {
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+    ],
+    "experimental": false,
+    "fast": false,
+    "maxContextLength": 131072,
+    "thinkingModes": [
+      "hidden",
+      "shown",
+    ],
+  },
+  "mistral mistral-large": {
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+    ],
+    "experimental": false,
+    "fast": false,
+    "maxContextLength": 1048576,
+    "thinkingModes": [
+      "hidden",
+      "shown",
+    ],
+  },
+  "moonshot kimi-k3": {
+    "efforts": [
+      "low",
+      "high",
+      "max",
+    ],
+    "experimental": false,
+    "fast": false,
+    "maxContextLength": 1048576,
+    "thinkingModes": [
+      "off",
+      "hidden",
+      "shown",
+    ],
+  },
+  "oneprovider claude-opus-5-5": {
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ],
+    "experimental": false,
+    "fast": true,
+    "maxContextLength": 1000000,
+    "thinkingModes": [
+      "hidden",
+      "shown",
+    ],
+  },
+  "oneprovider claude-sonnet-5-5-thinking": {
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ],
+    "experimental": false,
+    "fast": false,
+    "maxContextLength": 1000000,
+    "thinkingModes": [
+      "hidden",
+      "shown",
+    ],
+  },
+  "oneprovider deepseek-v4-pro": {
+    "efforts": [],
+    "experimental": false,
+    "fast": false,
+    "maxContextLength": 1048576,
+    "thinkingModes": [
+      "off",
+      "hidden",
+      "shown",
+    ],
+  },
+  "oneprovider gpt-5.5": {
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+    ],
+    "experimental": false,
+    "fast": false,
+    "maxContextLength": 922000,
+    "thinkingModes": [
+      "hidden",
+      "shown",
+    ],
+  },
+  "openai deepseek-v4-pro @ http://127.0.0.1:8091/v1": {
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+    ],
+    "experimental": true,
+    "fast": false,
+    "maxContextLength": null,
+    "thinkingModes": [
+      "hidden",
+      "shown",
+    ],
+  },
+  "openai gpt-4.1": {
+    "efforts": [],
+    "experimental": false,
+    "fast": true,
+    "maxContextLength": 1047576,
+    "thinkingModes": [],
+  },
+  "openai gpt-4o-2024-08-06": {
+    "efforts": [],
+    "experimental": false,
+    "fast": true,
+    "maxContextLength": 128000,
+    "thinkingModes": [],
+  },
+  "openai gpt-5-pro": {
+    "efforts": [
+      "high",
+    ],
+    "experimental": false,
+    "fast": false,
+    "maxContextLength": 272000,
+    "thinkingModes": [
+      "hidden",
+      "shown",
+    ],
+  },
+  "openai gpt-5.4-mini": {
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+    ],
+    "experimental": false,
+    "fast": true,
+    "maxContextLength": 272000,
+    "thinkingModes": [
+      "off",
+      "hidden",
+      "shown",
+    ],
+  },
+  "openai gpt-5.5": {
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+    ],
+    "experimental": false,
+    "fast": true,
+    "maxContextLength": 922000,
+    "thinkingModes": [
+      "off",
+      "hidden",
+      "shown",
+    ],
+  },
+  "openai gpt-6-sol": {
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ],
+    "experimental": false,
+    "fast": true,
+    "maxContextLength": 922000,
+    "thinkingModes": [
+      "off",
+      "hidden",
+      "shown",
+    ],
+  },
+  "openai gpt-6.1-terra": {
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ],
+    "experimental": false,
+    "fast": true,
+    "maxContextLength": 922000,
+    "thinkingModes": [
+      "hidden",
+      "shown",
+    ],
+  },
+  "openai llama-3.3-70b-versatile @ https://api.groq.com/openai/v1": {
+    "efforts": [],
+    "experimental": false,
+    "fast": false,
+    "maxContextLength": 131072,
+    "thinkingModes": [],
+  },
+  "openai o3": {
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+    ],
+    "experimental": false,
+    "fast": true,
+    "maxContextLength": 200000,
+    "thinkingModes": [
+      "hidden",
+      "shown",
+    ],
+  },
+  "openrouter anthropic/claude-sonnet-4.5": {
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+    ],
+    "experimental": false,
+    "fast": false,
+    "maxContextLength": 1000000,
+    "thinkingModes": [
+      "off",
+      "hidden",
+      "shown",
+    ],
+  },
+  "openrouter deepseek/deepseek-v4-pro": {
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+    ],
+    "experimental": true,
+    "fast": false,
+    "maxContextLength": 1048576,
+    "thinkingModes": [
+      "off",
+      "hidden",
+      "shown",
+    ],
+  },
+  "openrouter google/gemini-3.5-flash": {
+    "efforts": [
+      "minimal",
+      "low",
+      "medium",
+      "high",
+    ],
+    "experimental": false,
+    "fast": false,
+    "maxContextLength": 1048576,
+    "thinkingModes": [
+      "hidden",
+      "shown",
+    ],
+  },
+  "xAI grok-4.5": {
+    "efforts": [
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+    ],
+    "experimental": false,
+    "fast": false,
+    "maxContextLength": 500000,
+    "thinkingModes": [
+      "hidden",
+      "shown",
+    ],
+  },
+  "xAI grok-4.7": {
+    "efforts": [
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+    ],
+    "experimental": false,
+    "fast": false,
+    "maxContextLength": 500000,
+    "thinkingModes": [
+      "hidden",
+      "shown",
+    ],
+  },
+}
+`;

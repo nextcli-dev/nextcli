@@ -218,16 +218,19 @@ export function getContextOptions(
   );
 }
 
+/** Whether requests to the model ask for its fast or priority mode */
+export function fastModeOn(model: ModelConfig): boolean {
+  return !!getModelSettings(model).fast && getModelControlsFor(model).fast;
+}
+
 /** Short label for the status bar, for example "claude-opus-5-5 · High" */
 export function modelStatusLabel(model: ModelConfig): string {
-  const settings = getModelSettings(model);
-  const controls = getModelControlsFor(model);
   const parts = [model.name || model.model];
   const effort = effectiveEffort(model);
   if (effort) {
     parts.push(effortLabel(effort));
   }
-  if (settings.fast && controls.fast) {
+  if (fastModeOn(model)) {
     parts.push("Fast");
   }
   if (readStoredSettings(model).thinking === "off") {

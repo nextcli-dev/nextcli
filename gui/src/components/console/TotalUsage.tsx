@@ -1,7 +1,7 @@
-import { calculateRequestCost } from "core/llm/utils/calculateRequestCost";
 import React, { useMemo, useState } from "react";
 import { LLMLog } from "../../hooks/useLLMLog";
 import useTotalUsage from "../../hooks/useTotalUsage";
+import { interactionCost } from "../../util/interactionCost";
 
 interface TotalUsageProps {
   llmLog: LLMLog;
@@ -30,20 +30,9 @@ const CostChart: React.FC<{ llmLog: LLMLog }> = ({ llmLog }) => {
     llmLog.order.forEach((id, index) => {
       const interaction = llmLog.interactions.get(id);
 
-      // Calculate cost for this interaction if we have the necessary data
-      if (
-        interaction?.end?.usage &&
-        interaction.start?.provider &&
-        interaction.start?.options?.model
-      ) {
-        const costBreakdown = calculateRequestCost(
-          interaction.start.provider,
-          interaction.start.options.model,
-          interaction.end.usage,
-        );
-        if (costBreakdown) {
-          cumulativeCost += costBreakdown.cost;
-        }
+      const costBreakdown = interactionCost(interaction);
+      if (costBreakdown) {
+        cumulativeCost += costBreakdown.cost;
       }
 
       dataPoints.push({ interaction: index + 1, cost: cumulativeCost });

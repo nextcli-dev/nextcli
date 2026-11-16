@@ -1,163 +1,132 @@
+import {
+  longestListedBase,
+  variantSuffix,
+  type CatalogCost,
+} from "@nextcli/llm-info";
+
 import type { Usage } from "../../..";
 
 import { ONEPROVIDER_RATES } from "./oneproviderRates";
-import { OPENROUTER_RATES } from "./openrouterRates";
 
 /** Prices in US dollars per million tokens */
 export interface HostRates {
   input: number;
   output: number;
-  /** Price of cached prompt tokens. When absent, they cost the input price. */
+  /** Price of cached prompt tokens. When absent, they are billed as input. */
   cachedInput?: number;
+  /**
+   * Price of prompt tokens written to the cache. When absent, they are
+   * billed as input.
+   */
+  cacheWrite?: number;
+  /** Higher prices once the prompt is longer than `above` tokens */
+  tiers?: Array<Omit<HostRates, "tiers"> & { above: number }>;
 }
 
 // Suffixes a host adds to a listed model without changing its price: dated
-// snapshots and the thinking, preview and effort variants. Anything else (for
-// example "-pro" after "gpt-5.5") is a different model and must not match.
-const VARIANT_SUFFIX =
-  /^(?:-(?:\d{4}(?:-\d{2}){0,2}|\d{6,8}|thinking|preview|low|high|tiered))+$/;
-
-function sortedByLength(keys: string[]): string[] {
-  return [...keys].sort((a, b) => b.length - a.length);
-}
-
-function findRates(
-  table: Record<string, HostRates>,
-  keys: string[],
-  model: string,
-): HostRates | undefined {
-  if (table[model]) {
-    return table[model];
-  }
-  const key = keys.find(
-    (candidate) =>
-      model.startsWith(candidate) &&
-      VARIANT_SUFFIX.test(model.slice(candidate.length)),
-  );
-  return key ? table[key] : undefined;
-}
-
-const ONEPROVIDER_KEYS = sortedByLength(Object.keys(ONEPROVIDER_RATES));
+// snapshots, the thinking and preview variants, and OneProvider's effort
+// suffixes. Anything else (for example "-pro" after "gpt-5.5") is a
+// different model and must not match.
+const VARIANT_SUFFIX = variantSuffix(["low", "high", "tiered"]);
 
 /** Rates for a model called through oneprovider.dev */
 export function findOneproviderRates(model: string): HostRates | undefined {
   const name = model.toLowerCase().split("/").pop() ?? "";
-  return findRates(ONEPROVIDER_RATES, ONEPROVIDER_KEYS, name);
+  const key = ONEPROVIDER_RATES[name]
+    ? name
+    : longestListedBase(name, Object.keys(ONEPROVIDER_RATES), VARIANT_SUFFIX);
+  return key ? ONEPROVIDER_RATES[key] : undefined;
 }
-
-/** Rates for an OpenRouter model id, such as "deepseek/deepseek-v4-pro" */
-export function findOpenRouterRates(model: string): HostRates | undefined {
-  return OPENROUTER_RATES[model.toLowerCase()];
-}
-
-function normalizeModelName(model: string): string {
-  return (model.toLowerCase().split("/").pop() ?? "").replace(/\./g, "-");
-}
-
-let openRouterByName: Record<string, HostRates> | undefined;
-let openRouterNameKeys: string[] = [];
 
 /**
- * Estimates rates for a model on a host without its own price table, from
- * the OpenRouter price of the model with the same name. Names are compared
- * without the vendor prefix and with "." as "-", so "claude-opus-5-5" finds
- * "anthropic/claude-opus-5.5". When several vendors list the same name, the
- * highest input price wins, so the estimate errs high.
+ * Rates from a models.dev catalog price in @nextcli/llm-info (npm run
+ * sync-models): a provider's own price, its fast price or the general price
  */
-export function estimateRatesFromOpenRouter(
-  model: string,
+export function ratesFromCatalog(
+  cost: CatalogCost | undefined,
 ): HostRates | undefined {
-  if (!openRouterByName) {
-    openRouterByName = {};
-    for (const [id, rates] of Object.entries(OPENROUTER_RATES)) {
-      if (id.includes(":")) {
-        continue; // :free, :batch and similar are priced differently
-      }
-      const name = normalizeModelName(id);
-      const current = openRouterByName[name];
-      if (!current || rates.input > current.input) {
-        openRouterByName[name] = rates;
-      }
-    }
-    openRouterNameKeys = sortedByLength(Object.keys(openRouterByName));
-  }
-  return findRates(
-    openRouterByName,
-    openRouterNameKeys,
-    normalizeModelName(model),
-  );
-}
-
-export function hostOf(apiBase: string | undefined): string | undefined {
-  if (!apiBase) {
+  if (!cost) {
     return undefined;
   }
-  try {
-    return new URL(apiBase).hostname.toLowerCase();
-  } catch {
-    return undefined;
-  }
+  return {
+    input: cost.input,
+    output: cost.output,
+    ...(cost.cacheRead !== undefined && { cachedInput: cost.cacheRead }),
+    ...(cost.cacheWrite !== undefined && { cacheWrite: cost.cacheWrite }),
+    ...(cost.tiers && {
+      tiers: cost.tiers.map((tier) => ({
+        above: tier.above,
+        input: tier.input,
+        output: tier.output,
+        ...(tier.cacheRead !== undefined && { cachedInput: tier.cacheRead }),
+        ...(tier.cacheWrite !== undefined && { cacheWrite: tier.cacheWrite }),
+      })),
+    }),
+  };
 }
 
-export function isHostOrSubdomain(host: string, domain: string): boolean {
-  return host === domain || host.endsWith(`.${domain}`);
+/** The rates for the prompt's length: the highest tier it passes, if any */
+function ratesForPrompt(rates: HostRates, promptTokens: number): HostRates {
+  const tier = [...(rates.tiers ?? [])]
+    .sort((a, b) => b.above - a.above)
+    .find((candidate) => promptTokens > candidate.above);
+  return tier ? { ...rates, ...tier } : rates;
 }
 
-/** Hosts on the user's machine or network, where calls cost nothing */
-export function isLocalHost(host: string): boolean {
-  return (
-    host === "localhost" ||
-    host.endsWith(".local") ||
-    host.endsWith(".localhost") ||
-    host === "0.0.0.0" ||
-    host === "[::1]" ||
-    /^127\./.test(host) ||
-    /^10\./.test(host) ||
-    /^192\.168\./.test(host) ||
-    /^172\.(1[6-9]|2\d|3[01])\./.test(host)
-  );
+/**
+ * The prompt tokens billed at a cache rate, at most `room`: none when the
+ * host lists no rate for them, so they stay input tokens
+ */
+function atCacheRate(
+  tokens: number | undefined,
+  rate: number | undefined,
+  room: number,
+): { tokens: number; rate: number } {
+  return rate === undefined
+    ? { tokens: 0, rate: 0 }
+    : { tokens: Math.min(tokens ?? 0, room), rate };
 }
 
 /**
  * Prices a request with OpenAI-style usage, where the prompt token count
- * includes cached tokens.
+ * includes cached tokens: cache reads and writes are parts of it.
  */
 export function priceWithHostRates(
   model: string,
-  rates: HostRates,
+  hostRates: HostRates,
   usage: Usage,
 ): { cost: number; breakdown: string } {
-  const cachedTokens =
-    rates.cachedInput === undefined
-      ? 0
-      : Math.min(
-          usage.promptTokensDetails?.cachedTokens ?? 0,
-          usage.promptTokens,
-        );
-  const uncachedTokens = usage.promptTokens - cachedTokens;
-  const inputCost = (uncachedTokens / 1_000_000) * rates.input;
-  const cachedCost = (cachedTokens / 1_000_000) * (rates.cachedInput ?? 0);
-  const outputCost = (usage.completionTokens / 1_000_000) * rates.output;
-
-  const parts: string[] = [];
-  if (uncachedTokens > 0) {
-    parts.push(
-      `Input: ${uncachedTokens.toLocaleString()} tokens × $${rates.input}/MTok = $${inputCost.toFixed(6)}`,
-    );
-  }
-  if (cachedTokens > 0) {
-    parts.push(
-      `Cached Input: ${cachedTokens.toLocaleString()} tokens × $${rates.cachedInput}/MTok = $${cachedCost.toFixed(6)}`,
-    );
-  }
-  if (usage.completionTokens > 0) {
-    parts.push(
-      `Output: ${usage.completionTokens.toLocaleString()} tokens × $${rates.output}/MTok = $${outputCost.toFixed(6)}`,
-    );
-  }
-  const cost = inputCost + cachedCost + outputCost;
-  let breakdown = `Model: ${model}\n${parts.join("\n")}`;
-  if (parts.length > 1) {
+  const rates = ratesForPrompt(hostRates, usage.promptTokens);
+  const details = usage.promptTokensDetails;
+  const cached = atCacheRate(
+    details?.cachedTokens,
+    rates.cachedInput,
+    usage.promptTokens,
+  );
+  const cacheWrite = atCacheRate(
+    details?.cacheWriteTokens,
+    rates.cacheWrite,
+    usage.promptTokens - cached.tokens,
+  );
+  const uncachedTokens = usage.promptTokens - cached.tokens - cacheWrite.tokens;
+  const parts = (
+    [
+      ["Input", uncachedTokens, rates.input],
+      ["Cached Input", cached.tokens, cached.rate],
+      ["Cache Write", cacheWrite.tokens, cacheWrite.rate],
+      ["Output", usage.completionTokens, rates.output],
+    ] as const
+  ).filter(([, tokens]) => tokens > 0);
+  const cost = parts.reduce(
+    (sum, [, tokens, rate]) => sum + (tokens / 1_000_000) * rate,
+    0,
+  );
+  const lines = parts.map(
+    ([label, tokens, rate]) =>
+      `${label}: ${tokens.toLocaleString()} tokens × $${rate}/MTok = $${((tokens / 1_000_000) * rate).toFixed(6)}`,
+  );
+  let breakdown = `Model: ${model}\n${lines.join("\n")}`;
+  if (lines.length > 1) {
     breakdown += `\nTotal: $${cost.toFixed(6)}`;
   }
   return { cost, breakdown };

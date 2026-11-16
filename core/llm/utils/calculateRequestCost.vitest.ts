@@ -1,8 +1,20 @@
 import { describe, expect, it } from "vitest";
 
+import {
+  CATALOG_SYNCED_AT,
+  findCatalogCost,
+  findCatalogFastCost,
+  findGeneralCost,
+} from "@nextcli/llm-info";
+
 import type { Usage } from "../..";
 
-import { calculateRequestCost, CostBreakdown } from "./calculateRequestCost";
+import {
+  calculateRequestCost,
+  CostBreakdown,
+  unknownZeroPriceWarning,
+} from "./calculateRequestCost";
+import { priceWithHostRates } from "./rates/hostRates";
 
 interface TestCase {
   provider: string;
@@ -119,70 +131,51 @@ describe("calculateRequestCost", () => {
       expectedCost: 0.0035,
       description: "Claude Haiku 4.5 basic usage",
     },
-    // Anthropic Claude 3.5 Sonnet
+    // Claude Sonnet 4.5: $3 in, $15 out, cache reads $0.30, writes $3.75
     {
       provider: "anthropic",
-      model: "claude-3-5-sonnet-20241022",
+      model: "claude-sonnet-4-5",
       promptTokens: 1000,
       completionTokens: 500,
       expectedCost: 0.0105,
-      description: "Claude 3.5 Sonnet basic usage",
+      description: "Claude Sonnet 4.5 basic usage",
     },
     {
       provider: "anthropic",
-      model: "claude-3-5-sonnet-20241022",
+      model: "claude-sonnet-4-5",
       promptTokens: 3000,
       completionTokens: 500,
       cachedTokens: 2000,
       expectedCost: 0.0111,
-      description: "Claude 3.5 Sonnet with cache reads",
+      description: "Claude Sonnet 4.5 with cache reads",
     },
     {
       provider: "anthropic",
-      model: "claude-3-5-sonnet-20241022",
+      model: "claude-sonnet-4-5",
       promptTokens: 1300,
       completionTokens: 500,
       cacheWriteTokens: 300,
       expectedCost: 0.011625,
-      description: "Claude 3.5 Sonnet with cache writes",
+      description: "Claude Sonnet 4.5 with cache writes",
     },
     {
       provider: "anthropic",
-      model: "claude-3-5-sonnet-20240620",
+      model: "claude-sonnet-4-5-20250929",
       promptTokens: 1000,
       completionTokens: 500,
       expectedCost: 0.0105,
-      description: "Claude 3.5 Sonnet (older version)",
+      description: "Claude Sonnet 4.5 dated snapshot",
     },
 
-    // Anthropic Claude 3.5 Haiku
+    // Retired models the catalog no longer lists have no list price; with
+    // estimateUnknown they get the general price instead of a family's
     {
       provider: "anthropic",
-      model: "claude-3-5-haiku-20241022",
+      model: "claude-3-5-sonnet-20241022",
       promptTokens: 1000,
       completionTokens: 500,
-      expectedCost: 0.0028,
-      description: "Claude 3.5 Haiku",
-    },
-
-    // Anthropic Claude 3 Haiku (legacy)
-    {
-      provider: "anthropic",
-      model: "claude-3-haiku-20240307",
-      promptTokens: 1000,
-      completionTokens: 500,
-      expectedCost: 0.000875,
-      description: "Claude 3 Haiku legacy",
-    },
-
-    // Anthropic Claude 3 Opus
-    {
-      provider: "anthropic",
-      model: "claude-3-opus-20240229",
-      promptTokens: 1000,
-      completionTokens: 500,
-      expectedCost: 0.0525,
-      description: "Claude 3 Opus",
+      expectedCost: null,
+      description: "A retired Claude has no list price",
     },
 
     // Anthropic Claude Opus 4.5
@@ -268,7 +261,7 @@ describe("calculateRequestCost", () => {
     // Edge cases
     {
       provider: "anthropic",
-      model: "claude-3-5-sonnet-20241022",
+      model: "claude-sonnet-4-5",
       promptTokens: 0,
       completionTokens: 0,
       expectedCost: 0,
@@ -276,7 +269,7 @@ describe("calculateRequestCost", () => {
     },
     {
       provider: "anthropic",
-      model: "claude-3-5-sonnet-20241022",
+      model: "claude-sonnet-4-5",
       promptTokens: 1000,
       completionTokens: 0,
       expectedCost: 0.003,
@@ -284,7 +277,7 @@ describe("calculateRequestCost", () => {
     },
     {
       provider: "anthropic",
-      model: "claude-3-5-sonnet-20241022",
+      model: "claude-sonnet-4-5",
       promptTokens: 0,
       completionTokens: 500,
       expectedCost: 0.0075,
@@ -294,7 +287,7 @@ describe("calculateRequestCost", () => {
     // Case insensitivity
     {
       provider: "ANTHROPIC",
-      model: "claude-3-5-sonnet-20241022",
+      model: "claude-sonnet-4-5",
       promptTokens: 1000,
       completionTokens: 500,
       expectedCost: 0.0105,
@@ -417,14 +410,42 @@ describe("calculateRequestCost by host", () => {
     expect(result?.cost).toBeCloseTo(1.32, 6);
   });
 
+  it("bills cache writes at the input price when the host lists none", () => {
+    const { cost, breakdown } = priceWithHostRates(
+      "m",
+      { input: 2, output: 8, cachedInput: 0.5 },
+      {
+        promptTokens: 1_000_000,
+        completionTokens: 0,
+        promptTokensDetails: {
+          cachedTokens: 200_000,
+          cacheWriteTokens: 300_000,
+        },
+      },
+    );
+    // 800K input tokens at $2, the 300K cache writes among them; 200K at $0.50
+    expect(cost).toBeCloseTo(0.8 * 2 + 0.2 * 0.5, 6);
+    expect(breakdown).not.toContain("Cache Write");
+  });
+
+  // Prices from the models.dev snapshot (npm run sync-models) are read from
+  // it here, so a new snapshot doesn't need new numbers in these tests
+  const openRouterDeepSeek = findCatalogCost(
+    "openrouter",
+    "deepseek/deepseek-v4-pro",
+  )!;
+
   it("prices OpenRouter models from its catalog", () => {
     const result = calculateRequestCost(
       "openrouter",
       "deepseek/deepseek-v4-pro",
       usage,
     );
-    expect(result?.cost).toBeCloseTo(0.3583 + 0.7165, 6);
-    expect(result?.priced).toBe("exact");
+    expect(result?.cost).toBeCloseTo(
+      openRouterDeepSeek.input + openRouterDeepSeek.output,
+      6,
+    );
+    expect(result?.priced).toBe("catalog");
   });
 
   it("recognizes OpenRouter by its host", () => {
@@ -447,7 +468,8 @@ describe("calculateRequestCost by host", () => {
       ...deepseek,
       estimateUnknown: true,
     });
-    expect(estimate?.cost).toBeCloseTo(0.3583 + 0.7165, 6);
+    const general = findGeneralCost("deepseek-v4-pro")!;
+    expect(estimate?.cost).toBeCloseTo(general.input + general.output, 6);
     expect(estimate?.priced).toBe("estimated");
   });
 
@@ -463,13 +485,310 @@ describe("calculateRequestCost by host", () => {
     expect(dotted?.priced).toBe("estimated");
   });
 
-  it("never estimates for local hosts", () => {
+  it("never estimates for a local model server on this machine", () => {
+    for (const [provider, apiBase] of [
+      ["ollama", "http://localhost:11434"],
+      ["ollama", undefined],
+      ["vllm", "http://127.0.0.1:8000/v1"],
+      ["lmstudio", "http://localhost:1234/v1"],
+    ]) {
+      expect(
+        calculateRequestCost(provider!, "deepseek-v4-pro", usage, {
+          apiBase,
+          estimateUnknown: true,
+        }),
+        `${provider} ${apiBase}`,
+      ).toBeNull();
+    }
+  });
+
+  it("estimates a local server's provider on a public host", () => {
+    // ollama.com serves paid models through the same provider
     expect(
       calculateRequestCost("ollama", "deepseek-v4-pro", usage, {
-        apiBase: "http://localhost:11434",
+        apiBase: "https://ollama.com",
         estimateUnknown: true,
+      })?.priced,
+    ).toBe("estimated");
+  });
+
+  it("marks a maker's list price estimated on any host but the maker's", () => {
+    const gateway = {
+      apiBase: "https://openpaths.io/v1",
+      estimateUnknown: true,
+    };
+    const listPrice = calculateRequestCost("openai", "gpt-4o", usage);
+    expect(listPrice?.priced).toBe("exact");
+    const onGateway = calculateRequestCost("openai", "gpt-4o", usage, gateway);
+    expect(onGateway?.priced).toBe("estimated");
+    expect(onGateway?.cost).toBeCloseTo(listPrice!.cost, 6);
+    expect(
+      calculateRequestCost("anthropic", "claude-sonnet-5-5", usage, {
+        apiBase: "https://llm-proxy.example.com",
+      })?.priced,
+    ).toBe("estimated");
+    // The makers' own APIs stay exact
+    expect(
+      calculateRequestCost("openai", "gpt-4o", usage, {
+        apiBase: "https://api.openai.com/v1",
+      })?.priced,
+    ).toBe("exact");
+    expect(
+      calculateRequestCost("anthropic", "claude-sonnet-5-5", usage, {
+        apiBase: "https://api.anthropic.com/v1",
+      })?.priced,
+    ).toBe("exact");
+  });
+
+  it("bills a fast request at the fast price", () => {
+    const fast = findCatalogFastCost("openai", "gpt-5.5")!;
+    const result = calculateRequestCost("openai", "gpt-5.5", usage, {
+      fast: true,
+    });
+    expect(result?.cost).toBeCloseTo(fast.input + fast.output, 6);
+    // The maker's own price on the maker's API
+    expect(result?.priced).toBe("exact");
+    expect(result!.cost).toBeGreaterThan(
+      calculateRequestCost("openai", "gpt-5.5", usage)!.cost,
+    );
+    // Claude's fast mode too
+    const claudeFast = findCatalogFastCost("anthropic", "claude-opus-5-5")!;
+    expect(
+      calculateRequestCost("anthropic", "claude-opus-5-5", usage, {
+        fast: true,
+      })?.cost,
+    ).toBeCloseTo(claudeFast.input + claudeFast.output, 6);
+  });
+
+  it("marks a fast request estimated when its fast price isn't known", () => {
+    const result = calculateRequestCost("oneprovider", "gpt-5.5", usage, {
+      fast: true,
+    });
+    expect(result?.priced).toBe("estimated");
+  });
+
+  it("prices a provider's models from its own catalog entry", () => {
+    const deepseek = findCatalogCost("deepseek", "deepseek-v4-pro")!;
+    const result = calculateRequestCost("deepseek", "deepseek-v4-pro", usage);
+    expect(result?.cost).toBeCloseTo(deepseek.input + deepseek.output, 6);
+    expect(result?.priced).toBe("catalog");
+    // Provider names are matched without case (xAI, zAI)
+    expect(calculateRequestCost("xai", "grok-4.7", usage)?.priced).toBe(
+      "catalog",
+    );
+  });
+
+  it("prices provider oneprovider from its table without an API base", () => {
+    const result = calculateRequestCost(
+      "oneprovider",
+      "deepseek-v4-pro",
+      usage,
+    );
+    expect(result?.cost).toBeCloseTo(1.32 + 3.96, 6);
+    expect(result?.priced).toBe("exact");
+  });
+
+  it("gives a custom gateway on a public host the general price", () => {
+    const general = findGeneralCost("deepseek-v4-pro")!;
+    const result = calculateRequestCost("openai", "deepseek-v4-pro", usage, {
+      apiBase: "https://openpaths.io/v1",
+      estimateUnknown: true,
+    });
+    expect(result?.cost).toBeCloseTo(general.input + general.output, 6);
+    expect(result?.priced).toBe("estimated");
+  });
+
+  it("prices private-network hosts like any other host", () => {
+    for (const apiBase of [
+      "http://10.0.0.5:4000/v1",
+      "http://172.20.1.2:8000/v1",
+      "http://192.168.1.20:11434/v1",
+      "http://gpu-box.local:8091/v1",
+    ]) {
+      expect(
+        calculateRequestCost("openai", "deepseek-v4-pro", usage, {
+          apiBase,
+          estimateUnknown: true,
+        })?.priced,
+        apiBase,
+      ).toBe("estimated");
+    }
+    // A local server's provider too: the machine isn't this one
+    expect(
+      calculateRequestCost("ollama", "deepseek-v4-pro", usage, {
+        apiBase: "http://192.168.1.20:11434",
+        estimateUnknown: true,
+      })?.priced,
+    ).toBe("estimated");
+    expect(
+      calculateRequestCost("anthropic", "claude-sonnet-5-5", usage, {
+        apiBase: "http://10.0.0.5:4000",
+      })?.priced,
+    ).toBe("estimated");
+  });
+
+  // Below every long-context tier: 100K prompt tokens, 1M output tokens
+  const short: Usage = { promptTokens: 100_000, completionTokens: 1_000_000 };
+  const price = (rates: { input: number; output: number }) =>
+    rates.input / 10 + rates.output;
+
+  it("prices a bridge on this machine at a floor for a model it knows", () => {
+    // NextCLI can't see which provider a bridge forwards to: a known name is
+    // priced at its maker's list price, as an estimate
+    const bridge = {
+      apiBase: "http://127.0.0.1:8091/v1",
+      estimateUnknown: true,
+    };
+    const opus = findCatalogCost("anthropic", "claude-opus-5-5")!;
+    for (const provider of ["openai", "anthropic"]) {
+      expect(
+        calculateRequestCost(provider, "claude-opus-5-5", short, bridge),
+        provider,
+      ).toMatchObject({
+        cost: expect.closeTo(price(opus), 6),
+        priced: "estimated",
+      });
+    }
+    const deepseek = findCatalogCost("deepseek", "deepseek-v4-pro")!;
+    expect(
+      calculateRequestCost("openai", "deepseek-v4-pro", short, {
+        ...bridge,
+        apiBase: "http://host.containers.internal:8091/v1",
+      }),
+    ).toMatchObject({
+      cost: expect.closeTo(price(deepseek), 6),
+      priced: "estimated",
+    });
+    // An unknown name has no price; the CLI then charges its fallback
+    expect(
+      calculateRequestCost("openai", "my-private-model", short, bridge),
+    ).toBeNull();
+    // A local model server on this machine stays unpriced
+    expect(
+      calculateRequestCost("ollama", "deepseek-v4-pro", short, {
+        ...bridge,
+        apiBase: "http://[::ffff:127.0.0.1]:11434",
       }),
     ).toBeNull();
+  });
+
+  it("prices each OpenAI model from its own row, never a family prefix", () => {
+    // Before, gpt-5-pro matched gpt-5's row and gpt-4.1 matched gpt-4's
+    for (const model of [
+      "gpt-5-pro",
+      "gpt-5.2-pro",
+      "o3-pro",
+      "gpt-4.1",
+      "gpt-4.1-mini",
+      "gpt-4.1-nano",
+      "gpt-5.6",
+    ]) {
+      const listed = findCatalogCost("openai", model)!;
+      expect(calculateRequestCost("openai", model, short), model).toMatchObject(
+        {
+          cost: expect.closeTo(price(listed), 6),
+          priced: "exact",
+        },
+      );
+    }
+    // A 60K-token prompt with 4K output on gpt-5-pro: about $1.38, not $0.07
+    expect(
+      calculateRequestCost("openai", "gpt-5-pro", {
+        promptTokens: 60_000,
+        completionTokens: 4_000,
+      })?.cost,
+    ).toBeCloseTo(1.38, 2);
+  });
+
+  it("prices gpt-4.1-mini from its own rows with and without fast mode", () => {
+    const standard = findCatalogCost("openai", "gpt-4.1-mini")!;
+    const fast = findCatalogFastCost("openai", "gpt-4.1-mini")!;
+    expect(
+      calculateRequestCost("openai", "gpt-4.1-mini", short)?.cost,
+    ).toBeCloseTo(price(standard), 6);
+    expect(
+      calculateRequestCost("openai", "gpt-4.1-mini", short, { fast: true })
+        ?.cost,
+    ).toBeCloseTo(price(fast), 6);
+  });
+
+  it("estimates OpenRouter's routing variants from the base model", () => {
+    const sonnet = findCatalogCost(
+      "openrouter",
+      "anthropic/claude-sonnet-4.5",
+    )!;
+    for (const suffix of [":nitro", ":floor", ":online", ":exacto"]) {
+      expect(
+        calculateRequestCost(
+          "openrouter",
+          `anthropic/claude-sonnet-4.5${suffix}`,
+          short,
+        ),
+        suffix,
+      ).toMatchObject({
+        cost: expect.closeTo(price(sonnet), 6),
+        priced: "estimated",
+      });
+    }
+  });
+
+  it("carries the catalog's date on catalog prices", () => {
+    expect(
+      calculateRequestCost("deepseek", "deepseek-v4-pro", usage)?.catalogDate,
+    ).toBe(CATALOG_SYNCED_AT);
+    // OneProvider's own table isn't the catalog
+    expect(
+      calculateRequestCost("oneprovider", "deepseek-v4-pro", usage)
+        ?.catalogDate,
+    ).toBeUndefined();
+  });
+
+  it("never prices a model at the catalog's $0 placeholder", () => {
+    // Groq's allam-2-7b is listed at $0, which means unknown
+    const result = calculateRequestCost("groq", "allam-2-7b", usage, {
+      estimateUnknown: true,
+    });
+    expect(result?.cost ?? null).not.toBe(0);
+    expect(result?.priced ?? "estimated").toBe("estimated");
+    expect(unknownZeroPriceWarning("groq", "allam-2-7b")).toMatch(
+      /allam-2-7b \(groq\) at \$0.*unknown, not that it is free/,
+    );
+    // OpenRouter's :free ids stay free, with no warning
+    const free = calculateRequestCost(
+      "openrouter",
+      "google/gemma-4-31b-it:free",
+      usage,
+    );
+    expect(free).toMatchObject({ cost: 0, priced: "catalog" });
+    expect(
+      unknownZeroPriceWarning("openrouter", "google/gemma-4-31b-it:free"),
+    ).toBeUndefined();
+    expect(
+      unknownZeroPriceWarning("groq", "openai/gpt-oss-120b"),
+    ).toBeUndefined();
+  });
+
+  it("prices Groq by its host under any provider name", () => {
+    const groq = findCatalogCost("groq", "openai/gpt-oss-120b")!;
+    for (const provider of ["openai", "groq"]) {
+      expect(
+        calculateRequestCost(provider, "openai/gpt-oss-120b", usage, {
+          apiBase: "https://api.groq.com/openai/v1",
+          estimateUnknown: true,
+        }),
+        provider,
+      ).toMatchObject({
+        cost: expect.closeTo(groq.input + groq.output, 6),
+        priced: "catalog",
+      });
+    }
+    expect(
+      unknownZeroPriceWarning(
+        "openai",
+        "allam-2-7b",
+        "https://api.groq.com/openai/v1",
+      ),
+    ).toBeDefined();
   });
 
   it("returns null when no table knows the model", () => {
@@ -478,5 +797,33 @@ describe("calculateRequestCost by host", () => {
         estimateUnknown: true,
       }),
     ).toBeNull();
+  });
+});
+
+describe("priceWithHostRates", () => {
+  const rates = {
+    input: 2,
+    output: 10,
+    cachedInput: 0.2,
+    cacheWrite: 2.5,
+    tiers: [{ above: 200_000, input: 4, output: 15, cachedInput: 0.4 }],
+  };
+
+  it("bills cache reads and writes as parts of the prompt", () => {
+    const { cost } = priceWithHostRates("m", rates, {
+      promptTokens: 100_000,
+      completionTokens: 10_000,
+      promptTokensDetails: { cachedTokens: 60_000, cacheWriteTokens: 20_000 },
+    });
+    // 20K uncached, 60K cache reads, 20K cache writes, 10K output
+    expect(cost).toBeCloseTo(0.04 + 0.012 + 0.05 + 0.1, 6);
+  });
+
+  it("uses the long-context tier once the prompt passes it", () => {
+    const { cost } = priceWithHostRates("m", rates, {
+      promptTokens: 300_000,
+      completionTokens: 0,
+    });
+    expect(cost).toBeCloseTo(1.2, 6);
   });
 });

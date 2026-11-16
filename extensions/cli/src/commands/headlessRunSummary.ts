@@ -3,6 +3,7 @@ import { getSessionUsage } from "../session.js";
 import { AgentLoopLimitError } from "../stream/agentLoopLimitError.js";
 import {
   getAgentLoopLimits,
+  getCatalogDate,
   getLimitReached,
   getPriceSource,
 } from "../stream/agentLoopLimits.js";
@@ -95,7 +96,9 @@ export function writeHeadlessRunSummary(
   const priced = getPriceSource() ?? null;
   const maxCost = getAgentLoopLimits().maxCostUsd;
 
-  if (maxCost && priced && priced !== "exact") {
+  // A catalog price is the host's own list price; only a borrowed or flat
+  // price makes the limit an estimate
+  if (maxCost && (priced === "estimated" || priced === "fallback")) {
     safeStderr(
       `Warning: this model has no exact price for its host (priced: ${priced}), so the --max-cost limit of $${maxCost} is applied to an estimated cost.` +
         "\n",
@@ -137,6 +140,8 @@ function runUsage(usageAtStart: UsageSnapshot) {
   return {
     cost: Number((usage.totalCost - usageAtStart.totalCost).toFixed(6)),
     priced: getPriceSource() ?? null,
+    // How old the models.dev prices are, when a price came from them
+    ...(getCatalogDate() && { catalogDate: getCatalogDate() }),
     promptTokens: usage.promptTokens - usageAtStart.promptTokens,
     completionTokens: usage.completionTokens - usageAtStart.completionTokens,
   };

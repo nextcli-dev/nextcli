@@ -104,6 +104,16 @@ describe("writeHeadlessRunSummary", () => {
     });
   });
 
+  it("reports the catalog's date when a price came from it", () => {
+    recordPriceSource("catalog", "2026-11-15");
+    writeHeadlessRunSummary(start, "json");
+
+    expect(summaryLine().usage).toMatchObject({
+      priced: "catalog",
+      catalogDate: "2026-11-15",
+    });
+  });
+
   it("reports the limit that ended the run", () => {
     configureAgentLoopLimits({ maxTurns: "1" });
     new AgentLoopBudget().nextTurn();
@@ -127,6 +137,25 @@ describe("writeHeadlessRunSummary", () => {
     writeHeadlessRunSummary(start, "json");
 
     expect(stderr[0]).toMatch(/--max-cost limit of \$1 .*estimated cost/);
+    expect(summaryLine().usage.priced).toBe("estimated");
+  });
+
+  it("doesn't warn for the host's own catalog price", () => {
+    configureAgentLoopLimits({ maxCost: "1" });
+    recordPriceSource("exact");
+    recordPriceSource("catalog");
+    writeHeadlessRunSummary(start, "json");
+
+    // Only the summary line, no warning
+    expect(stderr.filter((line) => line.startsWith("Warning:"))).toEqual([]);
+    expect(summaryLine().usage.priced).toBe("catalog");
+  });
+
+  it("ranks a catalog price above an estimate", () => {
+    recordPriceSource("estimated");
+    recordPriceSource("catalog");
+    writeHeadlessRunSummary(start, "json");
+
     expect(summaryLine().usage.priced).toBe("estimated");
   });
 

@@ -1,515 +1,178 @@
+import {
+  CATALOG_SYNCED_AT,
+  findCatalogCost,
+  findCatalogFastCost,
+  findGeneralCost,
+  hasUnknownZeroPrice,
+  hostOf,
+  isMakerCatalog,
+  resolveCatalog,
+  vendorCatalogProvider,
+  type PriceSource,
+} from "@nextcli/llm-info";
+
 import { Usage } from "../..";
 
 import {
-  estimateRatesFromOpenRouter,
   findOneproviderRates,
-  findOpenRouterRates,
-  hostOf,
-  isHostOrSubdomain,
-  isLocalHost,
   priceWithHostRates,
+  ratesFromCatalog,
 } from "./rates/hostRates";
 import type { HostRates } from "./rates/hostRates";
 
-/**
- * exact: from the price table of the host or model maker.
- * estimated: from OpenRouter's price for a model with the same name, because
- * the host has no price table.
- */
-export type PriceSource = "exact" | "estimated";
+export type { PriceSource };
 
 export interface CostBreakdown {
   cost: number;
   breakdown: string;
   priced?: PriceSource;
+  /** The catalog snapshot's date, when the price came from it */
+  catalogDate?: string;
 }
 
 export interface RequestCostOptions {
   /** The model's API base URL. Hosts with their own prices are matched on it. */
   apiBase?: string;
   /**
-   * Estimate unknown models from OpenRouter prices instead of returning null.
-   * Never applied to local hosts.
+   * Price models nothing else prices with the general price (OpenRouter's,
+   * for a model of the same name) instead of returning null. Never applied
+   * to local model servers.
    */
   estimateUnknown?: boolean;
-}
-
-interface AnthropicRates {
-  input: number;
-  output: number;
-  cacheWrite: number;
-  cacheRead: number;
-}
-
-interface AnthropicPricing extends AnthropicRates {
-  longPrompt?: AnthropicRates & { thresholdTokens: number };
-}
-
-function calculateAnthropicCost(
-  model: string,
-  usage: Usage,
-): CostBreakdown | null {
-  // Normalize model name to handle various formats
-  const normalizedModel = model.toLowerCase();
-
-  // Define pricing per million tokens (MTok) by model family prefix.
-  // Source: platform.claude.com/docs/en/about-claude/pricing (checked 2026-11-01)
-  const pricing: Record<string, AnthropicPricing> = {
-    // Claude Fable 5.1
-    "claude-fable-5-1": {
-      input: 10,
-      output: 50,
-      cacheWrite: 12.5,
-      cacheRead: 0.25,
-    },
-
-    // Claude Fable 5
-    "claude-fable-5": {
-      input: 10,
-      output: 50,
-      cacheWrite: 12.5,
-      cacheRead: 1,
-    },
-
-    // Claude Opus 5.5
-    "claude-opus-5-5": {
-      input: 4,
-      output: 20,
-      cacheWrite: 5,
-      cacheRead: 0.2,
-    },
-
-    // Claude Opus 5, 4.8 and 4.7
-    "claude-opus-5": {
-      input: 5,
-      output: 25,
-      cacheWrite: 6.25,
-      cacheRead: 0.5,
-    },
-    "claude-opus-4-8": {
-      input: 5,
-      output: 25,
-      cacheWrite: 6.25,
-      cacheRead: 0.5,
-    },
-    "claude-opus-4-7": {
-      input: 5,
-      output: 25,
-      cacheWrite: 6.25,
-      cacheRead: 0.5,
-    },
-
-    // Claude Sonnet 5.5
-    "claude-sonnet-5-5": {
-      input: 2,
-      output: 10,
-      cacheWrite: 2.5,
-      cacheRead: 0.1,
-    },
-
-    // Claude Sonnet 5
-    "claude-sonnet-5": {
-      input: 2,
-      output: 10,
-      cacheWrite: 2.5,
-      cacheRead: 0.2,
-    },
-
-    // Claude Haiku 5.5: prompts over 100K tokens (cache reads and writes included) pay the higher prices
-    "claude-haiku-5-5": {
-      input: 0.1,
-      output: 0.5,
-      cacheWrite: 0.125,
-      cacheRead: 0.01,
-      longPrompt: {
-        thresholdTokens: 100_000,
-        input: 0.5,
-        output: 2.5,
-        cacheWrite: 0.625,
-        cacheRead: 0.05,
-      },
-    },
-
-    // Claude Sonnet 4.6
-    "claude-sonnet-4-6": {
-      input: 3,
-      output: 15,
-      cacheWrite: 3.75,
-      cacheRead: 0.3,
-    },
-
-    // Claude Opus 4.6
-    "claude-opus-4-6": {
-      input: 5,
-      output: 25,
-      cacheWrite: 6.25,
-      cacheRead: 0.5,
-    },
-
-    // Claude Opus 4.5 (previous generation)
-    "claude-opus-4-5": {
-      input: 5,
-      output: 25,
-      cacheWrite: 6.25,
-      cacheRead: 0.5,
-    },
-
-    // Claude Sonnet 4.5
-    "claude-sonnet-4-5": {
-      input: 3,
-      output: 15,
-      cacheWrite: 3.75,
-      cacheRead: 0.3,
-    },
-
-    // Claude Haiku 4.5
-    "claude-haiku-4-5": {
-      input: 1,
-      output: 5,
-      cacheWrite: 1.25,
-      cacheRead: 0.1,
-    },
-
-    // Claude Opus 4 (legacy)
-    "claude-3-opus": {
-      input: 15,
-      output: 75,
-      cacheWrite: 18.75,
-      cacheRead: 1.5,
-    },
-
-    // Claude Sonnet 4 (optimal balance)
-    "claude-3-5-sonnet": {
-      input: 3,
-      output: 15,
-      cacheWrite: 3.75,
-      cacheRead: 0.3,
-    },
-
-    // Claude Haiku 3.5 (fastest, most cost-effective)
-    "claude-3-5-haiku": {
-      input: 0.8,
-      output: 4,
-      cacheWrite: 1,
-      cacheRead: 0.08,
-    },
-
-    // Legacy Claude 3 Haiku
-    "claude-3-haiku": {
-      input: 0.25,
-      output: 1.25,
-      cacheWrite: 0.3,
-      cacheRead: 0.03,
-    },
-  };
-
-  // Sort keys by length (longest first) to match most specific patterns first
-  const sortedKeys = Object.keys(pricing).sort((a, b) => b.length - a.length);
-
-  let basePricing: AnthropicPricing | null = null;
-  for (const prefix of sortedKeys) {
-    if (normalizedModel.startsWith(prefix)) {
-      basePricing = pricing[prefix];
-      break;
-    }
-  }
-
-  if (!basePricing) {
-    return null; // Unknown model
-  }
-
-  // promptTokens counts every input token, cached ones included, as every
-  // adapter reports it; the cache reads and writes are parts of it
-  const cacheReadTokens = usage.promptTokensDetails?.cachedTokens ?? 0;
-  const cacheWriteTokens = usage.promptTokensDetails?.cacheWriteTokens ?? 0;
-  const uncachedTokens = Math.max(
-    0,
-    usage.promptTokens - cacheReadTokens - cacheWriteTokens,
-  );
-  const modelPricing =
-    basePricing.longPrompt &&
-    usage.promptTokens > basePricing.longPrompt.thresholdTokens
-      ? basePricing.longPrompt
-      : basePricing;
-
-  // Calculate costs
-  const inputCost = (uncachedTokens / 1_000_000) * modelPricing.input;
-  const outputCost = (usage.completionTokens / 1_000_000) * modelPricing.output;
-
-  // Build breakdown components
-  const breakdownParts: string[] = [];
-
-  // Input tokens breakdown
-  if (uncachedTokens > 0) {
-    breakdownParts.push(
-      `Input: ${uncachedTokens.toLocaleString()} tokens × $${modelPricing.input}/MTok = $${inputCost.toFixed(6)}`,
-    );
-  }
-
-  // Output tokens breakdown
-  if (usage.completionTokens > 0) {
-    breakdownParts.push(
-      `Output: ${usage.completionTokens.toLocaleString()} tokens × $${modelPricing.output}/MTok = $${outputCost.toFixed(6)}`,
-    );
-  }
-
-  // Handle prompt caching costs if available
-  let cacheCost = 0;
-  if (usage.promptTokensDetails) {
-    const { cachedTokens, cacheWriteTokens } = usage.promptTokensDetails;
-
-    if (cacheWriteTokens && cacheWriteTokens > 0) {
-      const cacheWriteCost =
-        (cacheWriteTokens / 1_000_000) * modelPricing.cacheWrite;
-      cacheCost += cacheWriteCost;
-      breakdownParts.push(
-        `Cache Write: ${cacheWriteTokens.toLocaleString()} tokens × $${modelPricing.cacheWrite}/MTok = $${cacheWriteCost.toFixed(6)}`,
-      );
-    }
-
-    if (cachedTokens && cachedTokens > 0) {
-      const cacheReadCost = (cachedTokens / 1_000_000) * modelPricing.cacheRead;
-      cacheCost += cacheReadCost;
-      breakdownParts.push(
-        `Cache Read: ${cachedTokens.toLocaleString()} tokens × $${modelPricing.cacheRead}/MTok = $${cacheReadCost.toFixed(6)}`,
-      );
-    }
-  }
-
-  const totalCost = inputCost + outputCost + cacheCost;
-
-  // Build final breakdown string
-  let breakdown = `Model: ${model}\n`;
-  breakdown += breakdownParts.join("\n");
-  if (breakdownParts.length > 1) {
-    breakdown += `\nTotal: $${totalCost.toFixed(6)}`;
-  }
-
-  return {
-    cost: totalCost,
-    breakdown,
-  };
-}
-
-interface OpenAIRates {
-  input: number;
-  output: number;
-  cachedInput?: number;
-}
-
-interface OpenAIPricing extends OpenAIRates {
-  // Prices for requests with more than OPENAI_LONG_CONTEXT_TOKENS input tokens
-  longContext?: OpenAIRates;
-}
-
-const OPENAI_LONG_CONTEXT_TOKENS = 272_000;
-
-function calculateOpenAICost(
-  model: string,
-  usage: Usage,
-): CostBreakdown | null {
-  // Normalize model name
-  const normalizedModel = model.toLowerCase();
-
-  // Define pricing per million tokens (MTok) by model family prefix.
-  // Source: developers.openai.com/api/docs/pricing, Standard tier (checked 2026-11-01)
-  const pricing: Record<string, OpenAIPricing> = {
-    // GPT-6 models
-    "gpt-6.1-sol": {
-      input: 2,
-      cachedInput: 0.1,
-      output: 10,
-      longContext: { input: 4, cachedInput: 0.2, output: 15 },
-    },
-    "gpt-6.1-terra": {
-      input: 1,
-      cachedInput: 0.05,
-      output: 5,
-      longContext: { input: 2, cachedInput: 0.1, output: 7.5 },
-    },
-    "gpt-6-sol": {
-      input: 2,
-      cachedInput: 0.2,
-      output: 10,
-      longContext: { input: 4, cachedInput: 0.4, output: 15 },
-    },
-    "gpt-6-luna": {
-      input: 0.1,
-      cachedInput: 0.01,
-      output: 0.5,
-      longContext: { input: 0.2, cachedInput: 0.02, output: 0.75 },
-    },
-    "gpt-6-astra": {
-      input: 10,
-      cachedInput: 1,
-      output: 50,
-      longContext: { input: 20, cachedInput: 2, output: 75 },
-    },
-
-    // GPT-5 models (most specific first)
-    "gpt-5.6-sol": {
-      input: 4,
-      cachedInput: 0.4,
-      output: 20,
-      longContext: { input: 8, cachedInput: 0.8, output: 30 },
-    },
-    "gpt-5.6-terra": {
-      input: 2,
-      cachedInput: 0.2,
-      output: 12,
-      longContext: { input: 4, cachedInput: 0.4, output: 18 },
-    },
-    "gpt-5.6-luna": {
-      input: 0.2,
-      cachedInput: 0.02,
-      output: 1.2,
-      longContext: { input: 0.4, cachedInput: 0.04, output: 1.8 },
-    },
-    "gpt-5.5-pro": {
-      input: 30,
-      output: 180,
-      longContext: { input: 60, output: 270 },
-    },
-    "gpt-5.5": {
-      input: 5,
-      cachedInput: 0.5,
-      output: 30,
-      longContext: { input: 10, cachedInput: 1, output: 45 },
-    },
-    "gpt-5.4-pro": {
-      input: 30,
-      output: 180,
-      longContext: { input: 60, output: 270 },
-    },
-    "gpt-5.4-mini": { input: 0.75, cachedInput: 0.075, output: 4.5 },
-    "gpt-5.4-nano": { input: 0.2, cachedInput: 0.02, output: 1.25 },
-    "gpt-5.4": {
-      input: 2.5,
-      cachedInput: 0.25,
-      output: 15,
-      longContext: { input: 5, cachedInput: 0.5, output: 22.5 },
-    },
-    "gpt-5.3-codex": { input: 1.75, cachedInput: 0.175, output: 14 },
-    "gpt-5.2": { input: 1.75, cachedInput: 0.175, output: 14 },
-    "gpt-5.1": { input: 1.25, cachedInput: 0.125, output: 10 },
-    "gpt-5-mini": { input: 0.25, cachedInput: 0.025, output: 2 },
-    "gpt-5-nano": { input: 0.05, cachedInput: 0.005, output: 0.4 },
-    "gpt-5": { input: 1.25, cachedInput: 0.125, output: 10 },
-
-    // o-series
-    o3: { input: 2, cachedInput: 0.5, output: 8 },
-
-    // GPT-4o models (most specific first)
-    "gpt-4o-mini": { input: 0.15, output: 0.6 },
-    "gpt-4o": { input: 2.5, output: 10 },
-
-    // GPT-4 Turbo models
-    "gpt-4-turbo": { input: 10, output: 30 },
-
-    // GPT-3.5 Turbo models (most specific first)
-    "gpt-3.5-turbo-0125": { input: 0.5, output: 1.5 },
-    "gpt-3.5-turbo-1106": { input: 1, output: 2 },
-    "gpt-3.5-turbo": { input: 1.5, output: 2 },
-
-    // Base GPT-4 (fallback for other gpt-4 variants)
-    "gpt-4": { input: 30, output: 60 },
-  };
-
-  // Sort keys by length (longest first) to match most specific patterns first
-  const sortedKeys = Object.keys(pricing).sort((a, b) => b.length - a.length);
-
-  let basePricing: OpenAIPricing | null = null;
-  for (const prefix of sortedKeys) {
-    if (normalizedModel.startsWith(prefix)) {
-      basePricing = pricing[prefix];
-      break;
-    }
-  }
-
-  if (!basePricing) {
-    return null; // Unknown model
-  }
-
-  const modelPricing =
-    basePricing.longContext && usage.promptTokens > OPENAI_LONG_CONTEXT_TOKENS
-      ? basePricing.longContext
-      : basePricing;
-
-  // OpenAI's prompt token count includes cached tokens, which are billed at the cached rate
-  const cachedTokens =
-    modelPricing.cachedInput === undefined
-      ? 0
-      : Math.min(
-          usage.promptTokensDetails?.cachedTokens ?? 0,
-          usage.promptTokens,
-        );
-  const uncachedTokens = usage.promptTokens - cachedTokens;
-
-  // Calculate costs
-  const inputCost = (uncachedTokens / 1_000_000) * modelPricing.input;
-  const cachedCost =
-    (cachedTokens / 1_000_000) * (modelPricing.cachedInput ?? 0);
-  const outputCost = (usage.completionTokens / 1_000_000) * modelPricing.output;
-
-  // Build breakdown components
-  const breakdownParts: string[] = [];
-
-  if (uncachedTokens > 0) {
-    breakdownParts.push(
-      `Input: ${uncachedTokens.toLocaleString()} tokens × $${modelPricing.input}/MTok = $${inputCost.toFixed(6)}`,
-    );
-  }
-
-  if (cachedTokens > 0) {
-    breakdownParts.push(
-      `Cached Input: ${cachedTokens.toLocaleString()} tokens × $${modelPricing.cachedInput}/MTok = $${cachedCost.toFixed(6)}`,
-    );
-  }
-
-  if (usage.completionTokens > 0) {
-    breakdownParts.push(
-      `Output: ${usage.completionTokens.toLocaleString()} tokens × $${modelPricing.output}/MTok = $${outputCost.toFixed(6)}`,
-    );
-  }
-
-  const totalCost = inputCost + cachedCost + outputCost;
-
-  // Build final breakdown string
-  let breakdown = `Model: ${model}\n`;
-  breakdown += breakdownParts.join("\n");
-  if (breakdownParts.length > 1) {
-    breakdown += `\nTotal: $${totalCost.toFixed(6)}`;
-  }
-
-  return {
-    cost: totalCost,
-    breakdown,
-  };
-}
-
-function calculateMakerCost(
-  provider: string,
-  model: string,
-  usage: Usage,
-): CostBreakdown | null {
-  switch (provider) {
-    case "anthropic":
-      return calculateAnthropicCost(model, usage);
-    case "openai":
-      return calculateOpenAICost(model, usage);
-    default:
-      return null;
-  }
+  /** The request was sent in the model's fast or priority mode */
+  fast?: boolean;
 }
 
 /**
- * Prices one request. Hosts that resell models at their own prices are
- * checked first, because the same model costs different amounts on each:
+ * Servers that run models on the user's own hardware. On this machine, or
+ * without an apiBase (their local default), calls to them have no price.
+ */
+const LOCAL_MODEL_SERVERS = new Set([
+  "docker",
+  "huggingface-tei",
+  "huggingface-tgi",
+  "lemonade",
+  "llama.cpp",
+  "llamacpp",
+  "llamafile",
+  "llamastack",
+  "lmstudio",
+  "msty",
+  "ollama",
+  "text-gen-webui",
+  "vllm",
+]);
+
+/**
+ * A warning for a model the catalog lists at $0, which means its price is
+ * unknown: the model is priced like an unlisted one instead of as free, so
+ * cost limits still count it. Undefined for any other model.
+ */
+export function unknownZeroPriceWarning(
+  provider: string,
+  model: string,
+  apiBase?: string,
+): string | undefined {
+  const { price } = resolveCatalog({ provider, model, apiBase });
+  if (!hasUnknownZeroPrice(price.catalogProvider, price.model)) {
+    return undefined;
+  }
+  return (
+    `the models.dev catalog lists ${model} (${price.catalogProvider}) at $0, ` +
+    "which means its price is unknown, not that it is free. It is priced " +
+    "as an estimate, or at the CLI's flat fallback rate when nothing else " +
+    "knows it, so --max-cost still counts it."
+  );
+}
+
+function fromCatalog(
+  model: string,
+  rates: HostRates,
+  usage: Usage,
+  priced: PriceSource,
+  note?: string,
+): CostBreakdown {
+  const { cost, breakdown } = priceWithHostRates(model, rates, usage);
+  return {
+    cost,
+    breakdown: note ? `${breakdown}\n(${note})` : breakdown,
+    priced,
+    catalogDate: CATALOG_SYNCED_AT,
+  };
+}
+
+/** OpenRouter's price for a model of the same name, with `estimateUnknown` */
+function generalEstimate(
+  model: string,
+  usage: Usage,
+  options: RequestCostOptions,
+): CostBreakdown | null {
+  if (!options.estimateUnknown) {
+    return null;
+  }
+  const rates = ratesFromCatalog(findGeneralCost(model));
+  return rates
+    ? fromCatalog(
+        model,
+        rates,
+        usage,
+        "estimated",
+        "estimated from OpenRouter prices",
+      )
+    : null;
+}
+
+/**
+ * A bridge on this machine: NextCLI can't see where it forwards, so a model
+ * it knows by name is priced at its vendor's list price as a floor (the
+ * vendor from the name, else the anthropic or openai provider), or else at
+ * OpenRouter's price for the name. Both are estimates.
+ */
+function bridgeFloor(
+  provider: string,
+  model: string,
+  usage: Usage,
+  options: RequestCostOptions,
+): CostBreakdown | null {
+  // A bridge's provider is often just the protocol it speaks (openai), so
+  // the model's own vendor comes first
+  const vendor =
+    vendorCatalogProvider(model) ??
+    (isMakerCatalog(provider) ? provider : undefined);
+  const vendorRates = ratesFromCatalog(findCatalogCost(vendor, model));
+  if (vendorRates) {
+    return fromCatalog(
+      model,
+      vendorRates,
+      usage,
+      "estimated",
+      `estimated from ${vendor}'s list price; the bridge's upstream isn't known`,
+    );
+  }
+  return generalEstimate(model, usage, options);
+}
+
+/**
+ * Prices one request, by resolveCatalog's route in @nextcli/llm-info:
  *
- * 1. oneprovider.dev, by its price table
- * 2. OpenRouter (provider or host), by its catalog
- * 3. Anthropic and OpenAI, by their list prices
- * 4. with `estimateUnknown`, OpenRouter's price for a model of the same name
+ * 1. A local model server on this machine (localhost, 127.x,
+ *    host.docker.internal) or on its local default (no API base): no price.
+ * 2. Any other provider on this machine is a bridge, priced at a floor
+ *    (bridgeFloor).
+ * 3. OneProvider (provider or host): its own price table, exact.
+ * 4. The catalog of the route: an official API host's (api.groq.com,
+ *    openrouter.ai) under any provider name, else the configured provider's
+ *    own. A maker's list price (Anthropic, OpenAI) is exact on the maker's
+ *    API and estimated on any other host; other providers' prices are
+ *    catalog. OpenRouter's routing variants (:nitro, :floor, ...) are
+ *    estimated.
+ * 5. With `estimateUnknown`, the general price (OpenRouter's for the name):
+ *    estimated.
+ *
+ * A catalog price of $0 means the price is unknown (unknownZeroPriceWarning)
+ * and counts as no price, except OpenRouter's `:free` ids. A fast request
+ * uses the catalog's fast price; without one, the standard price is used and
+ * marked estimated.
  */
 export function calculateRequestCost(
   provider: string,
@@ -517,38 +180,45 @@ export function calculateRequestCost(
   usage: Usage,
   options: RequestCostOptions = {},
 ): CostBreakdown | null {
+  const route = resolveCatalog({ provider, model, apiBase: options.apiBase });
   const normalizedProvider = provider.toLowerCase();
-  const host = hostOf(options.apiBase);
-
-  let exactRates: HostRates | undefined;
-  if (host && isHostOrSubdomain(host, "oneprovider.dev")) {
-    exactRates = findOneproviderRates(model);
-  } else if (
-    normalizedProvider === "openrouter" ||
-    (host && isHostOrSubdomain(host, "openrouter.ai"))
+  if (
+    LOCAL_MODEL_SERVERS.has(normalizedProvider) &&
+    (route.host === "this-machine" || !hostOf(options.apiBase))
   ) {
-    exactRates = findOpenRouterRates(model);
-  } else {
-    const makerCost = calculateMakerCost(normalizedProvider, model, usage);
-    if (makerCost) {
-      return { ...makerCost, priced: "exact" };
-    }
+    return null;
   }
-  if (exactRates) {
-    return { ...priceWithHostRates(model, exactRates, usage), priced: "exact" };
+  if (route.host === "this-machine") {
+    return bridgeFloor(normalizedProvider, model, usage, options);
   }
 
-  if (!options.estimateUnknown || (host && isLocalHost(host))) {
-    return null;
+  if (route.host === "oneprovider") {
+    const rates = findOneproviderRates(model);
+    if (!rates) {
+      return generalEstimate(model, usage, options);
+    }
+    const { cost, breakdown } = priceWithHostRates(model, rates, usage);
+    return { cost, breakdown, priced: options.fast ? "estimated" : "exact" };
   }
-  const estimatedRates = estimateRatesFromOpenRouter(model);
-  if (!estimatedRates) {
-    return null;
+
+  const { price } = route;
+  const fastRates = options.fast
+    ? ratesFromCatalog(findCatalogFastCost(price.catalogProvider, price.model))
+    : undefined;
+  if (fastRates) {
+    return fromCatalog(model, fastRates, usage, price.source, "fast mode");
   }
-  const estimate = priceWithHostRates(model, estimatedRates, usage);
-  return {
-    cost: estimate.cost,
-    breakdown: `${estimate.breakdown}\n(estimated from OpenRouter prices)`,
-    priced: "estimated",
-  };
+  const rates = ratesFromCatalog(
+    findCatalogCost(price.catalogProvider, price.model),
+  );
+  if (rates) {
+    // A fast request without a known fast price: the standard price
+    return fromCatalog(
+      model,
+      rates,
+      usage,
+      options.fast ? "estimated" : price.source,
+    );
+  }
+  return generalEstimate(price.model, usage, options);
 }

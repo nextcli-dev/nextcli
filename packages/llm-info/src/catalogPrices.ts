@@ -1,0 +1,100 @@
+import {
+  findCatalogModel,
+  longestListedBase,
+  type CatalogMatch,
+} from "./catalog.js";
+import type { CatalogCost } from "./catalogTypes.js";
+import { CATALOG } from "./generated/catalog.js";
+
+/**
+ * A $0 input and output price that stands for an unknown price, not a free
+ * model: models.dev lists $0 for models whose price it doesn't know (Groq's
+ * allam-2-7b, most NVIDIA entries). Only OpenRouter's `:free` ids are free.
+ */
+function zeroMeansUnknown(match: CatalogMatch): boolean {
+  const cost = match.model.cost;
+  return (
+    !!cost &&
+    cost.input === 0 &&
+    cost.output === 0 &&
+    !(match.provider === "openrouter" && match.id.endsWith(":free"))
+  );
+}
+
+/**
+ * A provider's own price for a model, from the catalog. A $0 price the
+ * catalog uses for an unknown price is no price.
+ */
+export function findCatalogCost(
+  catalogProvider: string | undefined,
+  model: string,
+): CatalogCost | undefined {
+  const match = findCatalogModel(catalogProvider, model);
+  return match && !zeroMeansUnknown(match) ? match.model.cost : undefined;
+}
+
+/**
+ * Whether the catalog lists the model at $0 for an unknown price, so it is
+ * priced like an unlisted model (findCatalogCost gives no price)
+ */
+export function hasUnknownZeroPrice(
+  catalogProvider: string | undefined,
+  model: string,
+): boolean {
+  const match = findCatalogModel(catalogProvider, model);
+  return !!match && zeroMeansUnknown(match);
+}
+
+/** A provider's price for the model's fast or priority mode, if it has one */
+export function findCatalogFastCost(
+  catalogProvider: string | undefined,
+  model: string,
+): CatalogCost | undefined {
+  return findCatalogModel(catalogProvider, model)?.model.fast?.cost;
+}
+
+/** "deepseek/deepseek-v4.1-pro" -> "deepseek-v4-1-pro" */
+function nameKey(model: string): string {
+  const slash = model.lastIndexOf("/");
+  return (slash === -1 ? model : model.slice(slash + 1))
+    .toLowerCase()
+    .replace(/\./g, "-");
+}
+
+let generalPrices: Map<string, CatalogCost> | undefined;
+
+/** OpenRouter's prices by model name, the highest when vendors share one */
+function generalPriceIndex(): Map<string, CatalogCost> {
+  if (!generalPrices) {
+    generalPrices = new Map();
+    for (const [id, model] of Object.entries(CATALOG.openrouter ?? {})) {
+      // :free, :batch and similar are priced differently, and a free price
+      // must never stand for a paid model
+      if (id.includes(":") || !model.cost || model.cost.input <= 0) continue;
+      const key = nameKey(id);
+      const current = generalPrices.get(key);
+      if (!current || model.cost.input > current.input) {
+        generalPrices.set(key, model.cost);
+      }
+    }
+  }
+  return generalPrices;
+}
+
+/**
+ * A general price for a model on a host without its own prices (a custom
+ * gateway, a provider the catalog doesn't price): what
+ * OpenRouter charges for a model of the same name. Names are compared
+ * without the vendor prefix and with "." as "-", so "claude-opus-5-5" finds
+ * "anthropic/claude-opus-5.5". When several vendors list the name, the
+ * highest input price wins, so the estimate errs high. Free variants are
+ * never used.
+ */
+export function findGeneralCost(model: string): CatalogCost | undefined {
+  const index = generalPriceIndex();
+  const key = nameKey(model);
+  // Dated snapshots and thinking, preview or latest variants share their
+  // model's price
+  const base = index.has(key) ? key : longestListedBase(key, index.keys());
+  return base ? index.get(base) : undefined;
+}

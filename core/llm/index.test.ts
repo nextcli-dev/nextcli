@@ -6,7 +6,7 @@ import {
   Tool,
 } from "..";
 
-import { allModelProviders } from "@nextcli/llm-info";
+import { allModelProviders, findLlmInfo } from "@nextcli/llm-info";
 import { LlmInfo } from "@nextcli/llm-info/dist/types";
 import { BaseLLM } from ".";
 import { DEFAULT_CONTEXT_LENGTH } from "./constants";
@@ -265,6 +265,18 @@ describe("BaseLLM", () => {
       expect(llmRequestHook).toHaveBeenCalledWith("m", expect.any(String));
     });
 
+    it("logs fast as not sent for a model without a fast mode", async () => {
+      // A saved Fast setting stays on after a model loses its fast mode; the
+      // usage view prices from the log, so it must not see a fast request
+      const logger = new LLMLogger();
+      const items: LLMInteractionItem[] = [];
+      logger.onLogItem((item) => items.push(item));
+      const llm = new CaptureLLM({ model: "m", logger });
+      await drain(llm, { fast: true });
+      const start = items.find((i) => i.kind === "startChat");
+      expect(start).toMatchObject({ options: { fast: false } });
+    });
+
     it("logs startChat once on the prompt-template path", async () => {
       class TemplateLLM extends BaseLLM {
         static providerName = "mock";
@@ -310,10 +322,15 @@ describe("BaseLLM", () => {
       }
       const testContextLength = (llmInfo: LlmInfo) => () => {
         const llm = new LLMClass({ model: llmInfo.model, apiKey: "test-key" });
+        // The table's row, with the limits it leaves out filled from the
+        // models.dev catalog and its context capped at the input limit
+        const expected = findLlmInfo(
+          llmInfo.model,
+          modelProvider.id,
+        )?.contextLength;
+        expect(llm.contextLength).toEqual(expected ?? DEFAULT_CONTEXT_LENGTH);
         if (llmInfo.contextLength) {
-          expect(llm.contextLength).toEqual(llmInfo.contextLength);
-        } else {
-          expect(llm.contextLength).toEqual(DEFAULT_CONTEXT_LENGTH);
+          expect(llm.contextLength).toBeLessThanOrEqual(llmInfo.contextLength);
         }
       };
       describe(`${modelProvider.id}`, () => {

@@ -2,12 +2,16 @@
 /* eslint-disable max-lines */
 
 import type { ChatHistoryItem, ToolStatus, Usage } from "core/index.js";
-import { calculateRequestCost } from "core/llm/utils/calculateRequestCost.js";
+import {
+  calculateRequestCost,
+  unknownZeroPriceWarning,
+} from "core/llm/utils/calculateRequestCost.js";
 import { ContinueError, ContinueErrorReason } from "core/util/errors.js";
 import { ChatCompletionToolMessageParam } from "openai/resources/chat/completions.mjs";
 
 import { ToolPermissionServiceState } from "src/services/ToolPermissionService.js";
 
+import { safeStderr } from "../init.js";
 import { checkToolPermission } from "../permissions/permissionChecker.js";
 import { toolPermissionManager } from "../permissions/permissionManager.js";
 import {
@@ -32,6 +36,7 @@ import { ToolInterruptedError } from "../tools/toolInterruptedError.js";
 import { PreprocessedToolCall, ToolCall } from "../tools/types.js";
 import { traceEvent } from "../trace/trace.js";
 import { logger } from "../util/logger.js";
+import { fastModeOn } from "../util/modelSettings.js";
 import { getModelMaxTokens } from "../util/tokenizer.js";
 import {
   parseEnvNumber,
@@ -356,32 +361,6 @@ export function processToolCallDelta(
   }
 }
 
-// Providers that run models on the user's machine, where calls cost nothing
-const LOCAL_PROVIDERS = new Set([
-  "ollama",
-  "lmstudio",
-  "llamafile",
-  "llama.cpp",
-  "llamacpp",
-  "msty",
-]);
-
-// Providers whose own price tables calculateRequestCost knows
-const PRICED_PROVIDERS = new Set(["anthropic", "openai", "openrouter"]);
-
-// Helper function to detect provider from model name
-function detectProvider(modelName: string): string {
-  const normalized = modelName.toLowerCase();
-  if (normalized.includes("gpt") || normalized.includes("openai")) {
-    return "openai";
-  }
-  if (normalized.includes("claude") || normalized.includes("anthropic")) {
-    return "anthropic";
-  }
-  // Default to anthropic for backward compatibility
-  return "anthropic";
-}
-
 // Simple fallback cost calculation for unknown models
 function calculateFallbackCost(
   inputTokens: number,
@@ -391,23 +370,59 @@ function calculateFallbackCost(
   return (inputTokens * 1 + outputTokens * 2) / 1_000_000;
 }
 
-/** Prices one request the same way the run's cost is tracked */
+const warnedUnknownPrices = new Set<string>();
+
+/**
+ * Warns once per model per run when the catalog lists the model at $0,
+ * which means its price is unknown: on stderr in headless runs, in the chat
+ * otherwise. The cost is then estimated, so --max-cost still counts it.
+ */
+export function warnUnknownZeroPrice(
+  model: any,
+  isHeadless: boolean,
+  callbacks?: StreamCallbacks,
+): void {
+  const provider = String(model.provider ?? "");
+  const key = `${provider}\n${model.model}\n${model.apiBase ?? ""}`;
+  if (warnedUnknownPrices.has(key)) return;
+  const warning = unknownZeroPriceWarning(provider, model.model, model.apiBase);
+  if (!warning) return;
+  warnedUnknownPrices.add(key);
+  logger.warn(warning);
+  if (isHeadless) {
+    safeStderr(`Warning: ${warning}\n`);
+  } else {
+    callbacks?.onSystemMessage?.(`Warning: ${warning}`);
+  }
+}
+
+/** Forgets the models already warned about, for tests */
+export function forgetUnknownPriceWarnings(): void {
+  warnedUnknownPrices.clear();
+}
+
+/**
+ * Prices one request the same way the run's cost is tracked: by the
+ * configured provider and host (calculateRequestCost lists the order),
+ * else at the flat fallback rate, so a price is never zero
+ */
 export function priceRequest(
   model: any,
   usage: Usage,
-): { cost: number; priced: PriceSource } {
-  const configuredProvider = String(model.provider ?? "").toLowerCase();
-  const provider = PRICED_PROVIDERS.has(configuredProvider)
-    ? configuredProvider
-    : detectProvider(model.model);
-  const costBreakdown = calculateRequestCost(provider, model.model, usage, {
-    apiBase: model.apiBase,
-    estimateUnknown: !LOCAL_PROVIDERS.has(configuredProvider),
-  });
+): { cost: number; priced: PriceSource; catalogDate?: string } {
+  const costBreakdown = calculateRequestCost(
+    String(model.provider ?? ""),
+    model.model,
+    usage,
+    { apiBase: model.apiBase, estimateUnknown: true, fast: fastModeOn(model) },
+  );
   if (costBreakdown) {
     return {
       cost: costBreakdown.cost,
       priced: costBreakdown.priced ?? "exact",
+      ...(costBreakdown.catalogDate && {
+        catalogDate: costBreakdown.catalogDate,
+      }),
     };
   }
   return {
@@ -549,6 +564,7 @@ export function recordStreamTelemetry(options: {
   // Calculate cost using comprehensive pricing that includes caching
   let cost: number;
   let priced: PriceSource;
+  let catalogDate: string | undefined;
   let usage: Usage;
 
   if (fullUsage) {
@@ -568,7 +584,7 @@ export function recordStreamTelemetry(options: {
         : undefined,
     };
 
-    ({ cost, priced } = priceRequest(model, usage));
+    ({ cost, priced, catalogDate } = priceRequest(model, usage));
   } else {
     // Fallback when fullUsage not available
     usage = {
@@ -578,7 +594,7 @@ export function recordStreamTelemetry(options: {
     cost = calculateFallbackCost(inputTokens, outputTokens);
     priced = "fallback";
   }
-  recordPriceSource(priced);
+  recordPriceSource(priced, catalogDate);
 
   // Use tokens from fullUsage if available, otherwise use the passed params
   const actualInputTokens = fullUsage?.prompt_tokens ?? inputTokens;

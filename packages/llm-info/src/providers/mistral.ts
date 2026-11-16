@@ -2,7 +2,7 @@ import { ModelProvider } from "../types.js";
 
 export const Mistral: ModelProvider = {
   models: [
-    // Context limits for these are left unset until confirmed from docs.mistral.ai
+    // Limits these rows leave out come from the models.dev catalog
     {
       model: "mistral-large-4",
       displayName: "Mistral Large 4",
@@ -26,7 +26,6 @@ export const Mistral: ModelProvider = {
     {
       model: "mistral-large-latest",
       displayName: "Mistral Large",
-      contextLength: 32768,
       description:
         "Flagship model ideal for complex tasks requiring large reasoning capabilities or highly specialized tasks like synthetic text generation, code generation, RAG, or agents.",
       regex: /mistral-large/i,
@@ -35,7 +34,6 @@ export const Mistral: ModelProvider = {
     {
       model: "mistral-medium-latest",
       displayName: "Mistral Medium",
-      contextLength: 32768,
       description:
         "Ideal for intermediate tasks requiring moderate reasoning such as data extraction, document summarization, email writing, job descriptions, or product descriptions. (Note: Will be deprecated in the coming months)",
       regex: /mistral-medium/i,
@@ -43,7 +41,6 @@ export const Mistral: ModelProvider = {
     {
       model: "mistral-small-latest",
       displayName: "Mistral Small",
-      contextLength: 32768,
       description:
         "Suitable for simple tasks that can be done in bulk like classification, customer support, or text generation.",
       regex: /mistral-small/i,
@@ -103,7 +100,6 @@ export const Mistral: ModelProvider = {
     {
       model: "codestral-latest",
       displayName: "Codestral",
-      contextLength: 32768,
       description:
         "Cutting-edge generative model specifically designed and optimized for code generation tasks, including fill-in-the-middle and code completion.",
       regex: /codestral/i,
