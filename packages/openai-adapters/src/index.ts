@@ -24,6 +24,7 @@ import { WatsonXApi } from "./apis/WatsonX.js";
 import { BaseLlmApi } from "./apis/base.js";
 import { OneProviderApi } from "./apis/OneProvider.js";
 import { LLMConfig, OpenAIConfigSchema } from "./types.js";
+import { selectTransport } from "./transport.js";
 import { appendPathToUrlIfNotPresent } from "./util/appendPathToUrl.js";
 
 function openAICompatible(
@@ -63,36 +64,20 @@ function isHuggingFaceOpenAICompatible(url: string): boolean {
   return openAIPatterns.some((pattern) => normalizedUrl.includes(pattern));
 }
 
-function createAiSdkApiForProvider(
-  config: LLMConfig & { model?: string },
-  provider: string,
-): AiSdkApi | undefined {
-  if (!config.model) {
-    return undefined;
+/**
+ * The API for a model config. Chat requests go through the AI SDK when
+ * transport.ts selects it, and through the provider's own adapter otherwise.
+ */
+export function constructLlmApi(config: LLMConfig): BaseLlmApi | undefined {
+  const own = constructOwnLlmApi(config);
+  if (own && selectTransport(config) === "ai-sdk") {
+    return new AiSdkApi(config, own);
   }
-  return new AiSdkApi({
-    provider: "ai-sdk",
-    model: `${provider}/${config.model}`,
-    apiKey: config.apiKey,
-    apiBase: config.apiBase,
-    requestOptions: config.requestOptions,
-  });
+  return own;
 }
 
-export function constructLlmApi(config: LLMConfig): BaseLlmApi | undefined {
-  // NEXTCLI_USE_AI_SDK wins; CONTINUE_USE_AI_SDK is the old name, still read
-  if (process.env.NEXTCLI_USE_AI_SDK ?? process.env.CONTINUE_USE_AI_SDK) {
-    if (["openai", "anthropic"].includes(config.provider)) {
-      const aiSdkApi = createAiSdkApiForProvider(
-        config as LLMConfig & { model?: string },
-        config.provider,
-      );
-      if (aiSdkApi) {
-        return aiSdkApi;
-      }
-    }
-  }
-
+/** The provider's own adapter, in apis/ */
+function constructOwnLlmApi(config: LLMConfig): BaseLlmApi | undefined {
   switch (config.provider) {
     case "openai":
       return new OpenAIApi(config);
@@ -286,6 +271,8 @@ export type {
 export { geminiThinkingConfig } from "./apis/Gemini.js";
 export { ONEPROVIDER_API_BASE } from "./apis/OneProvider.js";
 export { supportsFimEndpoint } from "./fimEndpoints.js";
+export { aiSdkRoute, selectTransport } from "./transport.js";
+export type { AiSdkRoute, Transport } from "./transport.js";
 export { resolveModelProfile } from "./modelProfile.js";
 export type { ModelProfile } from "./modelProfile.js";
 export { OPENROUTER_HEADERS } from "./apis/OpenRouter.js";

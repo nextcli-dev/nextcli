@@ -230,6 +230,15 @@ export function convertOpenAIMessagesToVercel(
         }
         const details = (msg as { reasoning_details?: unknown })
           .reasoning_details;
+        const compatible: Record<string, unknown> = {};
+        if (Array.isArray(details) && details.length > 0) {
+          compatible.reasoning_details = details;
+        }
+        // The compatible provider writes `content: null` for a tool-call
+        // message without text; gateways get the caller's "" as before
+        if (msg.content === "" && msg.tool_calls?.length) {
+          compatible.content = "";
+        }
         vercelMessages.push({
           role: "assistant",
           content:
@@ -237,12 +246,9 @@ export function convertOpenAIMessagesToVercel(
             (parts.length === 1 && parts[0].type === "text")
               ? text
               : parts,
-          ...(Array.isArray(details) &&
-            details.length > 0 && {
-              providerOptions: {
-                openaiCompatible: { reasoning_details: details },
-              },
-            }),
+          ...(Object.keys(compatible).length > 0 && {
+            providerOptions: { openaiCompatible: compatible },
+          }),
         });
         break;
       }

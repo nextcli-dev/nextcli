@@ -21,6 +21,11 @@ export const RequestOptionsSchema = z.object({
 export const BaseConfig = z.object({
   provider: z.string(),
   requestOptions: RequestOptionsSchema.optional(),
+  /**
+   * Which code sends chat requests (transport.ts). Providers without
+   * AI-SDK routes ignore it.
+   */
+  transport: z.enum(["ai-sdk", "legacy"]).optional(),
 });
 
 export const BasePlusConfig = BaseConfig.extend({

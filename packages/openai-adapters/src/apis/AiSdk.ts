@@ -17,8 +17,9 @@ import {
   Model,
 } from "openai/resources/index";
 import { formatAiSdkError } from "../aiSdkErrors.js";
-import { AiSdkConfig } from "../types.js";
-import { aiSdkFetch, embedding } from "../util.js";
+import { aiSdkRoute, type AiSdkRoute } from "../transport.js";
+import { AiSdkConfig, LLMConfig } from "../types.js";
+import { addEmptyReasoningContent, aiSdkFetch, embedding } from "../util.js";
 import { filterAnthropicSamplingParams } from "./AnthropicUtils.js";
 import {
   BaseLlmApi,
@@ -26,6 +27,9 @@ import {
   FimCreateParamsStreaming,
   RerankCreateParams,
 } from "./base.js";
+import { DEEPSEEK_API_BASE } from "./DeepSeek.js";
+import { ONEPROVIDER_API_BASE } from "./OneProvider.js";
+import { chatSamplingParams } from "./OpenAI.js";
 
 interface ProviderSettings {
   apiKey: string;
@@ -58,10 +62,12 @@ function openAICompatible(name: string) {
 }
 
 /**
- * Every provider gets an explicit key, base URL and fetch. Left unset, the
- * AI SDK providers would read ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL,
- * OPENAI_API_KEY, OPENAI_BASE_URL and the like from the environment, and so
- * send a key the config never named, or send requests to another host.
+ * The providers of `provider: "ai-sdk"` configs, whose model is
+ * `<provider>/<model>`. Every provider gets an explicit key, base URL and
+ * fetch. Left unset, the AI SDK providers would read ANTHROPIC_API_KEY,
+ * ANTHROPIC_BASE_URL, OPENAI_API_KEY, OPENAI_BASE_URL and the like from the
+ * environment, and so send a key the config never named, or send requests
+ * to another host.
  */
 const PROVIDERS: Record<string, AiSdkProvider> = {
   openai: {
@@ -98,25 +104,114 @@ const PROVIDERS: Record<string, AiSdkProvider> = {
   },
 };
 
+/** The default host of each provider with AI-SDK routes */
+const DEFAULT_BASES: Record<string, string> = {
+  openai: "https://api.openai.com/v1",
+  oneprovider: ONEPROVIDER_API_BASE,
+  deepseek: DEEPSEEK_API_BASE,
+};
+
+/**
+ * The providerOptions key of OpenAI-compatible routes. The compatible
+ * provider also reads messages' and parts' fields under this key.
+ */
+const COMPATIBLE = "openaiCompatible";
+
+/**
+ * Chat Completions fields that become AI SDK call settings. Every other
+ * field (reasoning_effort, thinking, service_tier, parallel_tool_calls, a
+ * gateway's own parameters) goes into the request body as it is, as the
+ * provider's own adapter sends it. nextcli_* fields are read by the request
+ * code and never sent.
+ */
+const CALL_FIELDS = new Set([
+  "model",
+  "messages",
+  "stream",
+  "stream_options",
+  "max_tokens",
+  "temperature",
+  "top_p",
+  "frequency_penalty",
+  "presence_penalty",
+  "stop",
+  "seed",
+  "tools",
+  "tool_choice",
+]);
+
+function bodyFields(body: object): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(body).filter(
+      ([key, value]) =>
+        value !== undefined &&
+        !CALL_FIELDS.has(key) &&
+        !key.startsWith("nextcli_"),
+    ),
+  );
+}
+
+/** The fields of a chat request that decide its AI SDK call */
+type ChatRequest = {
+  model: string;
+  temperature?: number | null;
+  top_p?: number | null;
+};
+
+/** One chat request as an AI SDK call */
+interface ChatCall {
+  model: any;
+  modelId: string;
+  /** The provider name the tool choice rules use */
+  toolChoiceProvider: string;
+  temperature?: number;
+  topP?: number;
+  providerOptions?: Record<string, Record<string, unknown>>;
+  /** See AiSdkProvider.reasoningDetails */
+  reasoningDetails?: boolean;
+}
+
 /** Retries for a failed request (429 and 5xx), as the OpenAI SDK does */
 const MAX_RETRIES = 2;
 
+/**
+ * Sends chat requests through the AI SDK.
+ *
+ * - A `provider: "ai-sdk"` config names its provider in the model,
+ *   `<provider>/<model>`.
+ * - Any other config is a provider's normal config (transport.ts chose the
+ *   AI SDK for it), together with that provider's own adapter. Each request
+ *   takes its model's route (transport.ts aiSdkRoute); a model without one,
+ *   and every request that isn't chat (completions, FIM, embeddings, rerank,
+ *   listing models), goes to the provider's own adapter.
+ */
 export class AiSdkApi implements BaseLlmApi {
-  private config: AiSdkConfig;
-  private providerId: string;
-  private modelId: string;
-  private provider: AiSdkProvider;
+  private config: AiSdkConfig | LLMConfig;
+  private legacy?: BaseLlmApi;
+  /** For `provider: "ai-sdk"` configs */
+  private fixed?: {
+    providerId: string;
+    modelId: string;
+    provider: AiSdkProvider;
+  };
 
-  constructor(config: AiSdkConfig) {
+  constructor(config: AiSdkConfig | LLMConfig, legacy?: BaseLlmApi) {
     this.config = config;
+    this.legacy = legacy;
+    if (config.provider !== "ai-sdk") {
+      if (!legacy) {
+        throw new Error(
+          `The AI SDK transport for "${config.provider}" needs that provider's own adapter.`,
+        );
+      }
+      return;
+    }
     if (!config.model) {
       throw new Error(
         "AI SDK provider requires a model in the format '<provider>/<model>' (e.g., 'openai/gpt-4o')",
       );
     }
     const [providerId, ...modelParts] = config.model.split("/");
-    this.providerId = providerId;
-    this.modelId = modelParts.join("/");
     const provider = PROVIDERS[providerId];
     if (!provider) {
       throw new Error(
@@ -124,43 +219,98 @@ export class AiSdkApi implements BaseLlmApi {
           `Supported providers: ${Object.keys(PROVIDERS).join(", ")}.`,
       );
     }
-    this.provider = provider;
+    this.fixed = { providerId, modelId: modelParts.join("/"), provider };
   }
 
-  private settings(): ProviderSettings {
+  private settings(defaultBaseURL: string): ProviderSettings {
     return {
       apiKey: this.config.apiKey ?? "",
-      baseURL: this.config.apiBase || this.provider.defaultBaseURL,
+      baseURL: this.config.apiBase || defaultBaseURL,
       fetch: aiSdkFetch(this.config.requestOptions),
     };
   }
 
-  private samplingParams(body: {
-    temperature?: number | null;
-    top_p?: number | null;
-  }): { temperature?: number; topP?: number } {
-    const params = {
-      temperature: body.temperature ?? undefined,
-      topP: body.top_p ?? undefined,
-    };
-    if (this.providerId !== "anthropic") {
-      return params;
+  /** The AI SDK call for a request, or undefined for the own adapter */
+  private chatCall(body: ChatRequest): ChatCall | undefined {
+    if (this.fixed) {
+      return this.fixedCall(body);
     }
-    const { temperature, topP } = filterAnthropicSamplingParams(
-      this.modelId,
-      params,
-    );
-    return { temperature, topP };
+    const route = aiSdkRoute({
+      provider: this.config.provider,
+      model: body.model,
+      apiBase: this.config.apiBase,
+    });
+    if (!route) {
+      return undefined;
+    }
+    switch (route.factory) {
+      case "openai-compatible":
+        return this.compatibleCall(body, route);
+      default:
+        return undefined;
+    }
+  }
+
+  private fixedCall(body: ChatRequest): ChatCall {
+    const { providerId, modelId: fixedModel, provider } = this.fixed!;
+    const modelId = fixedModel || body.model;
+    let temperature = body.temperature ?? undefined;
+    let topP = body.top_p ?? undefined;
+    if (providerId === "anthropic") {
+      ({ temperature, topP } = filterAnthropicSamplingParams(modelId, {
+        temperature,
+        topP,
+      }));
+    }
+    return {
+      model: provider.create(this.settings(provider.defaultBaseURL))(modelId),
+      modelId,
+      toolChoiceProvider: providerId,
+      temperature,
+      topP,
+      reasoningDetails: provider.reasoningDetails,
+    };
+  }
+
+  /**
+   * A Chat Completions endpoint that isn't OpenAI's own: a bridge, a local
+   * server, a gateway. The request is what OpenAIApi sends: the body's own
+   * fields pass through, and only the sampling rules apply.
+   */
+  private compatibleCall(body: ChatRequest, route: AiSdkRoute): ChatCall {
+    const provider = createOpenAICompatible({
+      name: COMPATIBLE,
+      includeUsage: true,
+      ...this.settings(DEFAULT_BASES[this.config.provider]),
+      ...(route.emptyReasoningContent && {
+        transformRequestBody: (args: Record<string, any>) =>
+          addEmptyReasoningContent(args as { messages: { role: string }[] }),
+      }),
+    });
+    const sampling = chatSamplingParams(body.model, body);
+    return {
+      model: provider.chatModel(body.model),
+      modelId: body.model,
+      toolChoiceProvider: this.config.provider,
+      temperature: sampling.temperature,
+      topP: sampling.top_p,
+      providerOptions: { [COMPATIBLE]: bodyFields(body) },
+      // A gateway's reasoning_details pass through as they came
+      reasoningDetails: true,
+    };
   }
 
   async chatCompletionNonStream(
     body: ChatCompletionCreateParamsNonStreaming,
     signal: AbortSignal,
   ): Promise<ChatCompletion> {
+    if (this.legacy && !this.chatCall(body)) {
+      return this.legacy.chatCompletionNonStream(body, signal);
+    }
     const { collectChatCompletion } = await import("../aiSdkCompletion.js");
     return collectChatCompletion(
       this.chatCompletionStream({ ...body, stream: true }, signal),
-      this.modelId || body.model,
+      this.fixed?.modelId || body.model,
     );
   }
 
@@ -168,6 +318,12 @@ export class AiSdkApi implements BaseLlmApi {
     body: ChatCompletionCreateParamsStreaming,
     signal: AbortSignal,
   ): AsyncGenerator<ChatCompletionChunk> {
+    const call = this.chatCall(body);
+    if (!call) {
+      yield* this.legacy!.chatCompletionStream(body, signal);
+      return;
+    }
+
     const { streamText } = await import("ai");
     const { convertOpenAIMessagesToVercel } = await import(
       "../openaiToVercelMessages.js"
@@ -183,15 +339,17 @@ export class AiSdkApi implements BaseLlmApi {
     const { instructions, messages } = convertOpenAIMessagesToVercel(
       body.messages,
     );
-    const modelId = this.modelId || body.model;
-    const model = this.provider.create(this.settings())(modelId);
     const tools = await convertToolsToVercelFormat(body.tools);
 
     const result = streamText({
-      model,
+      model: call.model,
       instructions,
       messages: messages as any,
-      ...this.samplingParams(body),
+      temperature: call.temperature,
+      topP: call.topP,
+      frequencyPenalty: body.frequency_penalty ?? undefined,
+      presencePenalty: body.presence_penalty ?? undefined,
+      seed: body.seed ?? undefined,
       maxOutputTokens: body.max_tokens ?? undefined,
       stopSequences: body.stop
         ? Array.isArray(body.stop)
@@ -200,60 +358,78 @@ export class AiSdkApi implements BaseLlmApi {
         : undefined,
       tools,
       toolChoice: convertToolChoiceToVercel(body.tool_choice, {
-        provider: this.providerId,
-        model: modelId,
+        provider: call.toolChoiceProvider,
+        model: call.modelId,
       }),
+      providerOptions: call.providerOptions as any,
       maxRetries: MAX_RETRIES,
       abortSignal: signal,
-      includeRawChunks: this.provider.reasoningDetails,
+      includeRawChunks: call.reasoningDetails,
       // Errors come through the stream as error parts, which the converter
       // throws; don't also print them
       onError: () => {},
     });
 
     yield* convertVercelStream(result.stream as any, {
-      model: modelId,
-      reasoningDetailsFromRaw: this.provider.reasoningDetails,
+      model: call.modelId,
+      reasoningDetailsFromRaw: call.reasoningDetails,
     });
   }
 
   async completionNonStream(
-    _body: CompletionCreateParamsNonStreaming,
-    _signal: AbortSignal,
+    body: CompletionCreateParamsNonStreaming,
+    signal: AbortSignal,
   ): Promise<Completion> {
+    if (this.legacy) {
+      return this.legacy.completionNonStream(body, signal);
+    }
     throw new Error(
       "AI SDK provider does not support legacy completions API. Use chat completions instead.",
     );
   }
 
   async *completionStream(
-    _body: CompletionCreateParamsStreaming,
-    _signal: AbortSignal,
+    body: CompletionCreateParamsStreaming,
+    signal: AbortSignal,
   ): AsyncGenerator<Completion> {
+    if (this.legacy) {
+      yield* this.legacy.completionStream(body, signal);
+      return;
+    }
     throw new Error(
       "AI SDK provider does not support legacy completions API. Use chat completions instead.",
     );
   }
 
   async *fimStream(
-    _body: FimCreateParamsStreaming,
-    _signal: AbortSignal,
+    body: FimCreateParamsStreaming,
+    signal: AbortSignal,
   ): AsyncGenerator<ChatCompletionChunk> {
+    if (this.legacy) {
+      yield* this.legacy.fimStream(body, signal);
+      return;
+    }
     throw new Error(
       "AI SDK provider does not support fill-in-the-middle (FIM) completions.",
     );
   }
 
   async embed(body: EmbeddingCreateParams): Promise<CreateEmbeddingResponse> {
-    if (!this.provider.embedding) {
+    if (this.legacy) {
+      return this.legacy.embed(body);
+    }
+    const { providerId, provider } = this.fixed!;
+    if (!provider.embedding) {
       throw new Error(
-        `AI SDK provider "${this.providerId}" does not support embeddings.`,
+        `AI SDK provider "${providerId}" does not support embeddings.`,
       );
     }
     const { embedMany } = await import("ai");
 
     const modelId = String(body.model);
-    const model = this.provider.embedding(this.settings())(modelId);
+    const model = provider.embedding(this.settings(provider.defaultBaseURL))(
+      modelId,
+    );
     const inputs = Array.isArray(body.input) ? body.input : [body.input];
     const values = inputs.map((input) =>
       typeof input === "string" ? input : String(input),
@@ -278,11 +454,14 @@ export class AiSdkApi implements BaseLlmApi {
     }
   }
 
-  async rerank(_body: RerankCreateParams): Promise<CreateRerankResponse> {
+  async rerank(body: RerankCreateParams): Promise<CreateRerankResponse> {
+    if (this.legacy) {
+      return this.legacy.rerank(body);
+    }
     throw new Error("AI SDK provider does not support reranking.");
   }
 
   async list(): Promise<Model[]> {
-    return [];
+    return this.legacy ? this.legacy.list() : [];
   }
 }
