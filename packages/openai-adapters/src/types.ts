@@ -21,11 +21,6 @@ export const RequestOptionsSchema = z.object({
 export const BaseConfig = z.object({
   provider: z.string(),
   requestOptions: RequestOptionsSchema.optional(),
-  /**
-   * Which code sends chat requests; it overrides NEXTCLI_USE_AI_SDK, and
-   * endpoints without AI-SDK routes ignore it (transport.ts)
-   */
-  transport: z.enum(["ai-sdk", "legacy"]).optional(),
 });
 
 export const BasePlusConfig = BaseConfig.extend({
@@ -262,13 +257,6 @@ export const VertexAIConfigSchema = BasePlusConfig.extend({
 });
 export type VertexAIConfig = z.infer<typeof VertexAIConfigSchema>;
 
-export const AiSdkConfigSchema = BasePlusConfig.extend({
-  provider: z.literal("ai-sdk"),
-  model: z.string(),
-  providerOptions: z.record(z.unknown()).optional(),
-});
-export type AiSdkConfig = z.infer<typeof AiSdkConfigSchema>;
-
 // Discriminated union
 export const LLMConfigSchema = z.discriminatedUnion("provider", [
   OpenAIConfigSchema,
@@ -289,6 +277,5 @@ export const LLMConfigSchema = z.discriminatedUnion("provider", [
   LlamastackConfigSchema,
   CometAPIConfigSchema,
   AskSageConfigSchema,
-  AiSdkConfigSchema,
 ]);
 export type LLMConfig = z.infer<typeof LLMConfigSchema>;

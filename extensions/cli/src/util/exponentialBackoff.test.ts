@@ -199,7 +199,7 @@ describe("exponentialBackoff utilities", () => {
       expect(isUnfinishedStreamError(new SyntaxError("bug"))).toBe(false);
     });
 
-    it("reads the AI SDK's statusCode as well as status", () => {
+    it("reads statusCode as well as status", () => {
       expect(
         isUnfinishedStreamError({ statusCode: 400, message: "bad request" }),
       ).toBe(false);

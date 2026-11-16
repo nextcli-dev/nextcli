@@ -1,6 +1,5 @@
 import { RequestOptions } from "@nextcli/config-types";
 import { fetchwithRequestOptions, patchedFetch } from "@nextcli/fetch";
-import { Readable } from "node:stream";
 import {
   ChatCompletionChunk,
   CompletionUsage,
@@ -154,54 +153,6 @@ export function model(options: { id: string; owned_by?: string }): Model {
     created: Date.now(),
     owned_by: options.owned_by ?? "organization-owner",
   };
-}
-
-/**
- * The fetch every AI-SDK provider gets. It goes through customFetch, so the
- * request options (proxy, noProxy, CA bundle, client certificate, timeout,
- * headers, extra body properties) and the proxy environment variables apply
- * whether or not the model sets request options. AI-SDK reads the response
- * body as a web stream, so node-fetch responses are converted, and the 499
- * response fetchwithRequestOptions returns for an aborted request becomes the
- * AbortError AI-SDK expects.
- */
-export function aiSdkFetch(
-  requestOptions: RequestOptions | undefined,
-): typeof fetch {
-  const inner = customFetch(requestOptions);
-  return async (input, init) => {
-    const response: any = await inner(input, init as any);
-    if (init?.signal?.aborted) {
-      throw init.signal.reason ?? new DOMException("Aborted", "AbortError");
-    }
-    // A web response as it is. Decided by the body too: where the global
-    // Response is node-fetch's (some test setups), instanceof alone would
-    // pass a Node stream on
-    if (
-      response instanceof Response &&
-      (response.body === null ||
-        typeof (response.body as any).getReader === "function")
-    ) {
-      return response;
-    }
-    const headers = new Headers();
-    response.headers?.forEach((value: string, key: string) =>
-      headers.append(key, value),
-    );
-    const body =
-      response.body && !isNullBodyStatus(response.status)
-        ? (Readable.toWeb(response.body) as ReadableStream<Uint8Array>)
-        : null;
-    return new Response(body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers,
-    });
-  };
-}
-
-function isNullBodyStatus(status: number): boolean {
-  return status === 101 || status === 204 || status === 205 || status === 304;
 }
 
 export function customFetch(

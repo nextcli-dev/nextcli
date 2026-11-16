@@ -37,7 +37,7 @@ import {
  * The sampling parameters a Chat Completions request keeps for a model,
  * wherever it is served: reasoning models (o-series, GPT-5 and later) reject
  * values other than their defaults, and Claude through a gateway keeps
- * Anthropic's limits. Both transports use it (AiSdk.ts).
+ * Anthropic's limits.
  */
 export function chatSamplingParams(
   model: string,

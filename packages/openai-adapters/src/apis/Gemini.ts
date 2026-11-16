@@ -111,8 +111,8 @@ export class GeminiApi implements BaseLlmApi {
 
   constructor(protected config: GeminiConfig) {
     this.apiBase = config.apiBase ?? this.apiBase;
-    // Create GoogleGenAI with native fetch to avoid pollution
-    // from Vercel AI SDK packages that can break stream handling
+    // Create GoogleGenAI with native fetch, in case another module
+    // replaced the global one (util/nativeFetch.ts)
     this.genAI = withNativeFetch(
       () =>
         new GoogleGenAI({

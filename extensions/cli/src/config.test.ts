@@ -1,14 +1,11 @@
 import { AssistantUnrolled, ModelConfig } from "@nextcli/config-yaml";
-import { AiSdkApi } from "@nextcli/openai-adapters";
 import { describe, expect, test, vi, beforeEach } from "vitest";
 
 // Mock dependencies
 vi.mock("./auth/workos.js");
-vi.mock("./util/logger.js", () => ({ logger: { debug: vi.fn() } }));
 
 import type { AuthConfig } from "./auth/workos.js";
 import { createLlmApi, getLlmApi, withCliAttribution } from "./config.js";
-import { logger } from "./util/logger.js";
 
 describe("config", () => {
   let mockAuthConfig: AuthConfig;
@@ -53,42 +50,25 @@ describe("config", () => {
   });
 
   describe("createLlmApi()", () => {
-    const bridge = {
-      provider: "openai",
-      model: "deepseek-v4-pro",
-      name: "Bridge",
-      apiBase: "http://127.0.0.1:8091/v1",
-      transport: "ai-sdk",
-    } as ModelConfig;
-
-    test("says which transport the chat model uses when the AI SDK is chosen", () => {
-      expect(createLlmApi(bridge, mockAuthConfig)).toBeInstanceOf(AiSdkApi);
-      expect(logger.debug).toHaveBeenCalledWith("Chat transport", {
-        model: "deepseek-v4-pro",
-        transport: "ai-sdk",
-      });
-
-      createLlmApi(
-        {
-          ...bridge,
-          provider: "oneprovider",
-          model: "claude-sonnet-5-5",
-          apiBase: undefined,
-        } as ModelConfig,
-        mockAuthConfig,
+    test("names the config that replaces the removed ai-sdk provider", () => {
+      const old = {
+        provider: "ai-sdk",
+        model: "openai/gpt-4o",
+        name: "Old",
+      } as ModelConfig;
+      expect(() => createLlmApi(old, mockAuthConfig)).toThrow(
+        'provider "ai-sdk" was removed; use provider "openai" with model "gpt-4o"',
       );
-      expect(logger.debug).toHaveBeenLastCalledWith("Chat transport", {
-        model: "claude-sonnet-5-5",
-        transport: "oneprovider's own adapter (no AI-SDK route for this model)",
-      });
     });
 
-    test("says nothing when the provider's own adapter is chosen", () => {
-      createLlmApi(
-        { ...bridge, transport: undefined } as ModelConfig,
-        mockAuthConfig,
-      );
-      expect(logger.debug).not.toHaveBeenCalled();
+    test("builds the provider's adapter for a bridge", () => {
+      const bridge = {
+        provider: "openai",
+        model: "deepseek-v4-pro",
+        name: "Bridge",
+        apiBase: "http://127.0.0.1:8091/v1",
+      } as ModelConfig;
+      expect(createLlmApi(bridge, mockAuthConfig)).not.toBeNull();
     });
   });
 

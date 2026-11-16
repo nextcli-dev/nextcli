@@ -480,11 +480,6 @@
           "description": "Azure OpenAI deployment",
           "type": "string"
         },
-        "transport": {
-          "title": "Transport",
-          "description": "Experimental. Which code sends chat requests: \"ai-sdk\" (the AI SDK) or \"legacy\" (the provider's own request code). It overrides NEXTCLI_USE_AI_SDK; without either, \"legacy\". Only OpenAI-compatible endpoints other than OpenAI's own use it.",
-          "enum": ["ai-sdk", "legacy"]
-        },
         "capabilities": {
           "type": "object",
           "description": "We will attempt to automatically detect the capabilities of the model based on its title and provider, but this may not always be accurate. You can override the model's capabilities here.",

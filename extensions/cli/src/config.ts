@@ -4,7 +4,6 @@ import {
 } from "@continuedev/sdk/dist/api/dist/index.js";
 import { AssistantUnrolled, ModelConfig } from "@nextcli/config-yaml";
 import {
-  AiSdkApi,
   BaseLlmApi,
   constructLlmApi,
   LLMConfig,
@@ -12,7 +11,6 @@ import {
 
 import { AuthConfig } from "./auth/workos.js";
 import { env } from "./env.js";
-import { logger } from "./util/logger.js";
 import { getUniqueId } from "./util/uniqueId.js";
 import { getVersion } from "./version.js";
 
@@ -59,6 +57,32 @@ export function withCliAttribution(
   };
 }
 
+/** The vendors a `provider: "ai-sdk"` model named, and their providers */
+const AI_SDK_VENDORS: Record<string, string> = {
+  openai: "openai",
+  anthropic: "anthropic",
+  google: "gemini",
+  xai: "xAI",
+  deepseek: "deepseek",
+  openrouter: "openrouter",
+  clawrouter: "clawrouter",
+};
+
+/**
+ * `provider: "ai-sdk"` named its vendor in the model (`openai/gpt-4o`). It
+ * went with the AI-SDK transport; the error names the config that replaces
+ * it.
+ */
+function removedAiSdkProvider(model: string): Error {
+  const [vendor, ...rest] = model.split("/");
+  const provider = AI_SDK_VENDORS[vendor];
+  const replacement =
+    provider && rest.length > 0
+      ? `provider "${provider}" with model "${rest.join("/")}"`
+      : "the model vendor's own provider";
+  return new Error(`provider "ai-sdk" was removed; use ${replacement}`);
+}
+
 /**
  * Creates an LLM API instance from a ModelConfig and auth configuration
  */
@@ -66,27 +90,18 @@ export function createLlmApi(
   model: ModelConfig,
   _authConfig: AuthConfig,
 ): BaseLlmApi | null {
+  if (model.provider === "ai-sdk") {
+    throw removedAiSdkProvider(model.model);
+  }
   const config: LLMConfig = {
     provider: model.provider as any,
-    model: model.model,
     apiKey: model.apiKey,
     apiBase: model.apiBase,
     requestOptions: withCliAttribution(model),
     env: model.env,
-    transport: model.transport,
   };
 
-  const api = constructLlmApi(config) ?? null;
-  if (api instanceof AiSdkApi) {
-    // The AI SDK was chosen; say whether this model's chat uses it
-    logger.debug("Chat transport", {
-      model: model.model,
-      transport: api.routeFor(model.model)
-        ? "ai-sdk"
-        : `${model.provider}'s own adapter (no AI-SDK route for this model)`,
-    });
-  }
-  return api;
+  return constructLlmApi(config) ?? null;
 }
 
 export function getLlmApi(

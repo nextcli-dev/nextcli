@@ -440,7 +440,6 @@ export abstract class BaseLLM implements ILLM {
       requestOptions: this.requestOptions,
       env: this._llmOptions.env,
       useResponsesApi: this._llmOptions.useResponsesApi,
-      transport: this._llmOptions.transport,
     } as LLMConfig;
   }
 

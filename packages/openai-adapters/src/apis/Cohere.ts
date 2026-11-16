@@ -24,9 +24,9 @@ import {
 } from "./base.js";
 
 /**
- * Cohere's v1 API (core's Cohere class uses v2; this adapter moves to v2
- * with the AI-SDK transport). The trailing slash matters: without it
- * `new URL("chat", ".../v1")` resolves to `/chat` and drops the version.
+ * Cohere's v1 API (core's Cohere class uses v2). The trailing slash
+ * matters: without it `new URL("chat", ".../v1")` resolves to `/chat` and
+ * drops the version.
  */
 export class CohereApi implements BaseLlmApi {
   apiBase: string = "https://api.cohere.com/v1/";
