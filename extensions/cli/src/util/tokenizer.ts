@@ -5,7 +5,7 @@ import { encode } from "gpt-tokenizer";
 import type { ChatCompletionTool } from "openai/resources/chat/completions.mjs";
 
 import { logger } from "./logger.js";
-import { getModelSettings } from "./modelSettings.js";
+import { getModelControlsFor, getModelSettings } from "./modelSettings.js";
 
 const DEFAULT_MAX_TOKENS_RATIO = 0.35;
 const MAX_MAX_TOKENS = 64_000;
@@ -13,17 +13,41 @@ const MAX_MAX_TOKENS = 64_000;
 export const DEFAULT_CONTEXT_LENGTH = 200_000;
 
 /**
+ * The model's window from the models.dev catalog, capped at the default. A
+ * smaller window is the model's real limit. A larger one (1M for some Claude
+ * and DeepSeek models) is chosen in the config or the model menu: by
+ * default, compaction runs at the same point, and the prices that rise above
+ * 200K tokens aren't reached.
+ */
+function catalogContextLimit(model: ModelConfig): number | undefined {
+  const limit = getModelControlsFor(model).maxContextLength;
+  return limit === undefined
+    ? undefined
+    : Math.min(limit, DEFAULT_CONTEXT_LENGTH);
+}
+
+/**
+ * The context window before any model-menu choice: the config's
+ * (`defaultCompletionOptions.contextLength`, then `contextLength`), else the
+ * catalog's, else the default
+ */
+export function configuredContextLimit(model: ModelConfig): number {
+  return (
+    model.defaultCompletionOptions?.contextLength ??
+    model.contextLength ??
+    catalogContextLimit(model) ??
+    DEFAULT_CONTEXT_LENGTH
+  );
+}
+
+/**
  * Get the context length limit for a model
- * @param modelName The model name
+ * @param model The model config
  * @returns The context length limit in tokens
  */
 export function getModelContextLimit(model: ModelConfig): number {
   // A window chosen in the model menu takes precedence over the config
-  return (
-    getModelSettings(model).contextLength ??
-    model.defaultCompletionOptions?.contextLength ??
-    DEFAULT_CONTEXT_LENGTH
-  );
+  return getModelSettings(model).contextLength ?? configuredContextLimit(model);
 }
 
 export function getModelMaxTokens(model: ModelConfig): number {

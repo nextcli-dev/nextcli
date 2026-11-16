@@ -14,7 +14,7 @@ import {
   thinkingLabel,
   updateModelSettings,
 } from "../util/modelSettings.js";
-import { DEFAULT_CONTEXT_LENGTH } from "../util/tokenizer.js";
+import { configuredContextLimit } from "../util/tokenizer.js";
 
 import { ModelSelector } from "./ModelSelector.js";
 import { Selector, SelectorOption } from "./Selector.js";
@@ -78,10 +78,9 @@ function buildRows(model: ModelConfig | null): MenuRow[] {
       opensSubmenu: false,
     });
   }
-  const contextOptions = getContextOptions(model, DEFAULT_CONTEXT_LENGTH);
+  const configured = configuredContextLimit(model);
+  const contextOptions = getContextOptions(model, configured);
   if (contextOptions.length > 1) {
-    const configured =
-      model.defaultCompletionOptions?.contextLength ?? DEFAULT_CONTEXT_LENGTH;
     rows.push({
       id: "context",
       name: "Context",
@@ -130,15 +129,11 @@ function missingThinkingModes(model: ModelConfig): string {
 }
 
 function contextOptions(model: ModelConfig): SelectorOption[] {
-  return getContextOptions(model, DEFAULT_CONTEXT_LENGTH).map((tokens) => ({
-    id: String(tokens),
-    name: formatContextLength(tokens),
-  }));
-}
-
-function configuredContext(model: ModelConfig): number {
-  return (
-    model.defaultCompletionOptions?.contextLength ?? DEFAULT_CONTEXT_LENGTH
+  return getContextOptions(model, configuredContextLimit(model)).map(
+    (tokens) => ({
+      id: String(tokens),
+      name: formatContextLength(tokens),
+    }),
   );
 }
 
@@ -158,7 +153,7 @@ export function ModelMenu({ onSelectModel, onCancel }: ModelMenuProps) {
   const settings = model ? getModelSettings(model) : undefined;
   const currentEffort = settings?.effort ?? "default";
   const currentContext = model
-    ? String(settings?.contextLength ?? configuredContext(model))
+    ? String(settings?.contextLength ?? configuredContextLimit(model))
     : "";
 
   const openSubmenu = (
@@ -237,7 +232,7 @@ export function ModelMenu({ onSelectModel, onCancel }: ModelMenuProps) {
           const tokens = Number(option.id);
           updateModelSettings(model, {
             contextLength:
-              tokens === configuredContext(model) ? undefined : tokens,
+              tokens === configuredContextLimit(model) ? undefined : tokens,
           });
           backToMain();
         }}
