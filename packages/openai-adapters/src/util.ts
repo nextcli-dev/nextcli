@@ -25,7 +25,8 @@ export function chatChunk(options: {
           content: options.content,
           role: "assistant",
         },
-        finish_reason: options.finish_reason ?? "stop",
+        finish_reason:
+          options.finish_reason === undefined ? "stop" : options.finish_reason,
         index: 0,
         logprobs: null,
       },
@@ -64,7 +65,8 @@ export function chatChunkFromDelta(options: {
     choices: [
       {
         delta: options.delta,
-        finish_reason: options.finish_reason ?? "stop",
+        finish_reason:
+          options.finish_reason === undefined ? "stop" : options.finish_reason,
         index: 0,
         logprobs: null,
       },
@@ -88,7 +90,8 @@ export function chatCompletion(options: {
   return {
     choices: [
       {
-        finish_reason: options.finish_reason ?? "stop",
+        finish_reason:
+          options.finish_reason === undefined ? "stop" : options.finish_reason,
         index: options.index ?? 0,
         logprobs: null,
         message: {
