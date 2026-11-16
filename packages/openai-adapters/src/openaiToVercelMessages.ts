@@ -3,7 +3,7 @@
  *
  * - System messages are returned separately: AI SDK 7 takes them as
  *   `instructions` and rejects system messages in `messages`.
- * - User images (`image_url`, a web URL or a data URL) become image parts.
+ * - User images (`image_url`, a web URL or a data URL) become file parts.
  * - Assistant reasoning comes back as reasoning parts, from the fields the
  *   stream converter (vercelStreamConverter.ts) and the native adapters fill:
  *   `reasoning_details` items carry Claude's signatures and redacted thinking
@@ -53,16 +53,21 @@ function textOf(content: unknown): string {
     .join("");
 }
 
+/**
+ * An image as a file part (AI SDK 7 deprecates the `image` part). Without a
+ * known subtype the media type is the top-level `image`, and the provider
+ * detects the subtype from the bytes.
+ */
 function imagePart(url: string): Record<string, unknown> {
   const dataUrl = /^data:([^;,]+)?(;base64)?,(.*)$/s.exec(url);
   if (dataUrl) {
     return {
-      type: "image",
-      image: dataUrl[3],
-      ...(dataUrl[1] && { mediaType: dataUrl[1] }),
+      type: "file",
+      data: dataUrl[3],
+      mediaType: dataUrl[1] || "image",
     };
   }
-  return { type: "image", image: new URL(url) };
+  return { type: "file", data: new URL(url), mediaType: "image" };
 }
 
 function userContent(content: unknown): string | Array<any> {

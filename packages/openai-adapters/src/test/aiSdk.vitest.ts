@@ -432,6 +432,58 @@ describe("AiSdkApi", () => {
     // A 404 is not retried
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
+
+  // The CLI's retry rules read `status` (exponentialBackoff.ts)
+  it("keeps the HTTP status on the error", async () => {
+    mockFetch.mockResolvedValue(
+      new NodeFetchResponse(JSON.stringify({ error: { message: "bad" } }), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    await expect(
+      drain(
+        claude({ apiKey: "k" }).chatCompletionStream(
+          {
+            model: "claude-sonnet-5-5",
+            messages: [{ role: "user", content: "hi" }],
+            stream: true,
+          },
+          new AbortController().signal,
+        ),
+      ),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("keeps the status of a rate limit that outlasts the SDK's retries", async () => {
+    // retry-after-ms: 0 makes the SDK's own two retries immediate
+    mockFetch.mockImplementation(
+      async () =>
+        new NodeFetchResponse(JSON.stringify({ error: { message: "slow" } }), {
+          status: 429,
+          headers: {
+            "content-type": "application/json",
+            "retry-after-ms": "0",
+          },
+        }) as any,
+    );
+    await expect(
+      drain(
+        claude({ apiKey: "k" }).chatCompletionStream(
+          {
+            model: "claude-sonnet-5-5",
+            messages: [{ role: "user", content: "hi" }],
+            stream: true,
+          },
+          new AbortController().signal,
+        ),
+      ),
+    ).rejects.toMatchObject({
+      status: 429,
+      message: expect.stringMatching(/^HTTP 429 from /),
+    });
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+  });
 });
 
 describe("aiSdkFetch", () => {
