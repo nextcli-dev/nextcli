@@ -32,13 +32,10 @@ class OneProvider extends OpenAI {
     this.supportsReasoningContentField = !claude;
   }
 
-  supportsFim(): boolean {
-    return false;
-  }
-
   /**
    * Claude prompt caching only when the model config asks for it, as core's
-   * Anthropic class does; the adapter would otherwise always cache
+   * Anthropic class does. This differs on purpose from the CLI, where the
+   * adapter's default caches every request (decided 2026-11-15).
    */
   protected adapterConfig(): OneProviderConfig {
     const caching =

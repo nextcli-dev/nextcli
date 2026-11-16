@@ -299,6 +299,14 @@ describe("PROVIDER_TOOL_SUPPORT", () => {
       expect(supportsFn("deepseek-chat")).toBe(false);
       expect(supportsFn("text-embedding-3-small")).toBe(false);
     });
+
+    // OpenAI's rule accepts these for self-hosted OpenAI-compatible servers;
+    // they aren't OpenAI's models, so they don't count on OneProvider
+    it("uses only the model's own vendor rule", () => {
+      expect(PROVIDER_TOOL_SUPPORT["openai"]("gemma-3-27b")).toBe(true);
+      expect(supportsFn("gemma-3-27b")).toBe(false);
+      expect(supportsFn("exaone-4.0")).toBe(false);
+    });
   });
 
   describe("moonshot", () => {
