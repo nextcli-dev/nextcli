@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Regenerates packages/llm-info/src/generated/catalog.ts from the models.dev
-// catalog (https://models.dev/api.json): context and output limits,
-// capabilities, reasoning options, fast mode and prices, per provider.
+// catalog (https://models.dev/api.json): limits, reasoning efforts, image
+// input, fast mode and prices, per provider. Only fields NextCLI reads are
+// written; add one in the same change as the code that reads it.
 //
 //   npm run sync-models                 # download the catalog
 //   npm run sync-models -- api.json     # use a saved copy
@@ -86,34 +87,20 @@ function trimModel(model) {
   // Some entries give 0 for an unknown limit
   if (isNumber(limit.context) && limit.context > 0) out.context = limit.context;
   if (isNumber(limit.input) && limit.input > 0) out.input = limit.input;
-  if (isNumber(limit.output) && limit.output > 0) out.output = limit.output;
   if (model.reasoning) out.reasoning = true;
   for (const option of model.reasoning_options ?? []) {
     if (option.type === "effort" && Array.isArray(option.values)) {
       out.efforts = option.values;
-    } else if (option.type === "toggle") {
-      out.toggle = true;
-    } else if (option.type === "budget_tokens") {
-      out.budget = {
-        ...(isNumber(option.min) && { min: option.min }),
-        ...(isNumber(option.max) && { max: option.max }),
-      };
     }
   }
-  if (model.tool_call) out.tools = true;
   const inputs = model.modalities?.input ?? [];
   if (inputs.includes("image")) out.images = true;
-  if (model.temperature === false) out.temperature = false;
-  if (typeof model.interleaved?.field === "string") {
-    out.interleaved = model.interleaved.field;
-  }
+  // The request fields that turn fast mode on are the API rules' business
+  // (modelControls.ts); the catalog says whether there is one, and its price
   const fast = model.experimental?.modes?.fast;
   if (fast?.provider) {
-    out.fast = {
-      ...(fast.provider.body && { body: fast.provider.body }),
-      ...(fast.provider.headers && { headers: fast.provider.headers }),
-      ...(trimCost(fast.cost) && { cost: trimCost(fast.cost) }),
-    };
+    const fastCost = trimCost(fast.cost);
+    out.fast = fastCost ? { cost: fastCost } : {};
   }
   const cost = trimCost(model.cost);
   if (cost) {
@@ -127,12 +114,6 @@ function trimModel(model) {
     out.cost = cost;
   }
   if (model.status === "deprecated") out.deprecated = true;
-  if (
-    typeof model.canonical_model_id === "string" &&
-    model.canonical_model_id !== model.id
-  ) {
-    out.canonical = model.canonical_model_id;
-  }
   return out;
 }
 

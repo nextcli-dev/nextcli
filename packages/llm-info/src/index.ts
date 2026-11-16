@@ -29,7 +29,6 @@ export {
   catalogPromptLimit,
   catalogProviderFor,
   findCatalogModel,
-  findCatalogModelsByCanonical,
   variantSuffix,
 } from "./catalog.js";
 export {

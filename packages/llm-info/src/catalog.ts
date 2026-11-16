@@ -214,19 +214,3 @@ export function catalogPromptLimit(model: CatalogModel): number | undefined {
   }
   return model.input ?? model.context;
 }
-
-/** Every provider's entries for the model, by its vendor's canonical id */
-export function findCatalogModelsByCanonical(
-  canonical: string,
-): CatalogMatch[] {
-  const key = normalize(canonical);
-  const matches: CatalogMatch[] = [];
-  for (const [provider, models] of Object.entries(CATALOG)) {
-    for (const [id, model] of Object.entries(models)) {
-      if (model.canonical && normalize(model.canonical) === key) {
-        matches.push({ provider, id, model });
-      }
-    }
-  }
-  return matches;
-}

@@ -22,33 +22,17 @@ export interface CatalogModel {
   context?: number;
   /** Longest prompt, when it is shorter than the context window */
   input?: number;
-  /** Longest output */
-  output?: number;
   reasoning?: true;
   /**
    * Reasoning effort values the API takes, lowest first. "none" means
    * reasoning can be turned off through the effort.
    */
   efforts?: string[];
-  /** Reasoning can be switched on and off */
-  toggle?: true;
-  /** A thinking budget, in tokens */
-  budget?: { min?: number; max?: number };
-  tools?: true;
+  /** Takes image input */
   images?: true;
-  /** False when the API rejects `temperature` */
-  temperature?: false;
-  /** The message field reasoning is sent back in, e.g. reasoning_content */
-  interleaved?: string;
-  /** A fast mode: the request fields that turn it on, and its prices */
-  fast?: {
-    body?: Record<string, unknown>;
-    headers?: Record<string, string>;
-    cost?: CatalogRates;
-  };
+  /** The model has a fast or priority mode, with its prices when known */
+  fast?: { cost?: CatalogRates };
   cost?: CatalogCost;
   /** The vendor deprecated the model */
   deprecated?: true;
-  /** The vendor's own id, when this provider names the model differently */
-  canonical?: string;
 }
