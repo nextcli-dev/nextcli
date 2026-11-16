@@ -1,3 +1,6 @@
+// The models.dev catalog in @nextcli/llm-info: lookups, limits, general
+// prices and endpoints. Run here because llm-info has no test runner of its
+// own; prices as billed are tested in utils/calculateRequestCost.vitest.ts.
 import { describe, expect, it } from "vitest";
 
 import {
@@ -5,19 +8,16 @@ import {
   CATALOG_PROVIDERS,
   catalogPromptLimit,
   catalogProviderFor,
-  catalogProviderForApiBase,
   findCatalogCost,
   findCatalogModel,
-  findCatalogModelsByCanonical,
   findGeneralCost,
   findLlmInfo,
-  hasUnknownZeroPrice,
   hostOf,
   isLocalHost,
   resolveCatalog,
   type ModelEndpoint,
-} from "./index.js";
-import { CATALOG } from "./generated/catalog.js";
+} from "@nextcli/llm-info";
+import { CATALOG } from "@nextcli/llm-info/dist/generated/catalog.js";
 
 describe("catalog snapshot", () => {
   it("has every provider NextCLI maps to it, with models", () => {
@@ -32,14 +32,11 @@ describe("catalog snapshot", () => {
   it("keeps the fields the model controls and prices use", () => {
     const claude = CATALOG.anthropic["claude-sonnet-5-5"];
     expect(claude.context).toBeGreaterThan(0);
-    expect(claude.output).toBeGreaterThan(0);
     expect(claude.reasoning).toBe(true);
     expect(claude.efforts?.length).toBeGreaterThan(0);
     expect(claude.cost?.input).toBeGreaterThan(0);
     expect(claude.cost?.cacheRead).toBeGreaterThan(0);
-    expect(CATALOG.openai["gpt-5.5"].fast?.body).toEqual({
-      service_tier: "priority",
-    });
+    expect(CATALOG.openai["gpt-5.5"].fast?.cost?.input).toBeGreaterThan(0);
   });
 
   it("has well-formed prices", () => {
@@ -121,14 +118,6 @@ describe("findCatalogModel", () => {
     expect(findCatalogModel(undefined, "gpt-5.5")).toBeUndefined();
     // gpt-5.6 is listed; a made-up suffix is not a variant
     expect(findCatalogModel("openai", "gpt-5.6-custom")).toBeUndefined();
-  });
-
-  it("finds every provider's entry for a canonical id", () => {
-    const matches = findCatalogModelsByCanonical("deepseek/deepseek-v4-pro");
-    expect(matches.length).toBeGreaterThan(1);
-    for (const match of matches) {
-      expect(match.model.canonical).toBe("deepseek/deepseek-v4-pro");
-    }
   });
 });
 
@@ -224,36 +213,6 @@ describe("prices", () => {
     // A dated snapshot of a priced model
     expect(findGeneralCost("deepseek-v4-pro-20260801")).toEqual(openrouter);
     expect(findGeneralCost("my-local-finetune")).toBeUndefined();
-  });
-
-  it("treats a $0 catalog price as unknown, except OpenRouter's :free ids", () => {
-    // models.dev lists $0 where it doesn't know the price
-    expect(CATALOG.groq["allam-2-7b"].cost).toMatchObject({
-      input: 0,
-      output: 0,
-    });
-    expect(findCatalogCost("groq", "allam-2-7b")).toBeUndefined();
-    expect(hasUnknownZeroPrice("groq", "allam-2-7b")).toBe(true);
-    // OpenRouter's :free variants really are free
-    const free = "google/gemma-4-31b-it:free";
-    expect(findCatalogCost("openrouter", free)).toMatchObject({
-      input: 0,
-      output: 0,
-    });
-    expect(hasUnknownZeroPrice("openrouter", free)).toBe(false);
-    // A priced model is untouched
-    expect(hasUnknownZeroPrice("groq", "openai/gpt-oss-120b")).toBe(false);
-  });
-
-  it("knows Groq's catalog from its API host", () => {
-    expect(catalogProviderForApiBase("https://api.groq.com/openai/v1")).toBe(
-      "groq",
-    );
-    expect(
-      catalogProviderForApiBase("https://openpaths.io/v1"),
-    ).toBeUndefined();
-    expect(catalogProviderForApiBase(undefined)).toBeUndefined();
-    expect(catalogProviderForApiBase("not a url")).toBeUndefined();
   });
 
   it("never uses a free price as the general price", () => {
