@@ -1,5 +1,4 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
-import { AnthropicLanguageModel } from "@ai-sdk/anthropic/internal";
 import { createDeepSeek } from "@ai-sdk/deepseek";
 import { createGoogle } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
@@ -17,16 +16,10 @@ import {
   EmbeddingCreateParams,
   Model,
 } from "openai/resources/index";
-import {
-  AI_SDK_CACHING,
-  anthropicCallSettings,
-  anthropicPrompt,
-} from "../aiSdkAnthropic.js";
 import { formatAiSdkError } from "../aiSdkErrors.js";
 import { aiSdkRoute, type AiSdkRoute } from "../transport.js";
 import { AiSdkConfig, LLMConfig } from "../types.js";
 import { addEmptyReasoningContent, aiSdkFetch, embedding } from "../util.js";
-import type { CachingStrategyName } from "./AnthropicCachingStrategies.js";
 import { filterAnthropicSamplingParams } from "./AnthropicUtils.js";
 import {
   BaseLlmApi,
@@ -111,11 +104,8 @@ const PROVIDERS: Record<string, AiSdkProvider> = {
   },
 };
 
-const ANTHROPIC_BASE = "https://api.anthropic.com/v1";
-
 /** The default host of each provider with AI-SDK routes */
 const DEFAULT_BASES: Record<string, string> = {
-  anthropic: ANTHROPIC_BASE,
   openai: "https://api.openai.com/v1",
   oneprovider: ONEPROVIDER_API_BASE,
   deepseek: DEEPSEEK_API_BASE,
@@ -199,40 +189,6 @@ function withoutDefaultToolChoice(
     delete args.tool_choice;
   }
   return args;
-}
-
-/**
- * A Claude model, as createAnthropic builds it, with the settings the
- * Anthropic adapter's requests need:
- * - The adapter never sends tools' `strict`. With strict tools allowed, the
- *   provider would turn on the structured-outputs beta for every request
- *   with tools.
- * - The adapter keeps a top_p of 0.95 to 1 while Claude thinks, which the
- *   API accepts and the provider would otherwise drop.
- * - A tool choice the caller didn't make is left out
- *   (withoutDefaultToolChoice).
- */
-function anthropicModel(
-  modelId: string,
-  settings: ProviderSettings,
-  toolChoice: unknown,
-) {
-  return new AnthropicLanguageModel(modelId, {
-    provider: "anthropic.messages",
-    baseURL: settings.baseURL.replace(/\/+$/, ""),
-    headers: () => ({
-      "anthropic-version": "2023-06-01",
-      "x-api-key": settings.apiKey,
-    }),
-    fetch: settings.fetch,
-    supportedUrls: () => ({
-      "image/*": [/^https?:\/\/.*$/],
-      "application/pdf": [/^https?:\/\/.*$/],
-    }),
-    supportsStrictTools: false,
-    supportsTemperatureAndTopPWithThinking: true,
-    transformRequestBody: (args) => withoutDefaultToolChoice(args, toolChoice),
-  });
 }
 
 /** One chat request as an AI SDK call */
@@ -323,8 +279,6 @@ export class AiSdkApi implements BaseLlmApi {
     switch (route.factory) {
       case "openai-compatible":
         return this.compatibleCall(body, route);
-      case "anthropic":
-        return this.anthropicCall(body);
       default:
         return undefined;
     }
@@ -377,49 +331,6 @@ export class AiSdkApi implements BaseLlmApi {
       providerOptions: { [COMPATIBLE]: bodyFields(body) },
       // A gateway's reasoning_details pass through as they came
       reasoningDetails: true,
-    };
-  }
-
-  /**
-   * Claude on Anthropic's API, a proxy, or OneProvider's Messages endpoint.
-   * The request is what AnthropicApi sends (aiSdkAnthropic.ts). A caching
-   * strategy the route doesn't apply keeps the own adapter.
-   */
-  private anthropicCall(body: ChatRequest): ChatCall | undefined {
-    const caching =
-      (this.config as { cachingStrategy?: CachingStrategyName })
-        .cachingStrategy ?? "systemAndTools";
-    if (!AI_SDK_CACHING.includes(caching)) {
-      return undefined;
-    }
-    const { providerOptions, toolNames, ...settings } = anthropicCallSettings(
-      body as Parameters<typeof anthropicCallSettings>[0],
-      caching,
-    );
-    return {
-      model: anthropicModel(
-        body.model,
-        this.settings(DEFAULT_BASES[this.config.provider] ?? ANTHROPIC_BASE),
-        settings.toolChoice,
-      ),
-      modelId: body.model,
-      toolChoiceProvider: "anthropic",
-      settings,
-      providerOptions,
-      prompt: ({ instructions, messages, tools }) =>
-        anthropicPrompt(
-          {
-            instructions,
-            messages,
-            tools:
-              tools &&
-              toolNames &&
-              Object.fromEntries(
-                Object.entries(tools).filter(([name]) => toolNames.has(name)),
-              ),
-          },
-          caching,
-        ),
     };
   }
 

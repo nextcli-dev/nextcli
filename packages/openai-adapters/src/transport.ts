@@ -1,6 +1,5 @@
 import { hostOf, isClaude } from "@nextcli/llm-info";
 
-import { isAzureAnthropicEndpoint } from "./apis/AnthropicUtils.js";
 import { isOfficialOpenAI } from "./modelProfile.js";
 
 /**
@@ -10,7 +9,7 @@ import { isOfficialOpenAI } from "./modelProfile.js";
 export type Transport = "ai-sdk" | "legacy";
 
 /** The AI SDK provider that builds a route's requests */
-export type AiSdkFactory = "openai-compatible" | "anthropic" | "openai";
+export type AiSdkFactory = "openai-compatible";
 
 export interface AiSdkRoute {
   factory: AiSdkFactory;
@@ -37,12 +36,6 @@ export function aiSdkRoute({
   apiBase?: string;
 }): AiSdkRoute | undefined {
   switch (provider) {
-    case "anthropic":
-      // Azure's Anthropic endpoints keep the adapter: Cognitive Services
-      // takes the key in its own header, and neither is in the parity tests
-      return isAzureAnthropicEndpoint(apiBase)
-        ? undefined
-        : { factory: "anthropic" };
     case "openai":
       // A custom endpoint (a bridge, vLLM, a gateway such as OneProvider)
       // takes the request as it is. OpenAI's own API keeps its adapter: the
@@ -55,8 +48,8 @@ export function aiSdkRoute({
         ? undefined
         : { factory: "openai-compatible" };
     case "oneprovider":
-      // Claude goes through OneProvider's Anthropic Messages API
-      return { factory: isClaude(model) ? "anthropic" : "openai-compatible" };
+      // Claude keeps the Anthropic adapter (OneProvider's Messages API)
+      return isClaude(model) ? undefined : { factory: "openai-compatible" };
     case "deepseek":
       // DeepSeek through a gateway; DeepSeek's own API, with its FIM, stays
       return apiBase && hostOf(apiBase) !== "api.deepseek.com"
@@ -68,12 +61,7 @@ export function aiSdkRoute({
 }
 
 /** Providers with at least one AI-SDK route */
-const MIGRATED_PROVIDERS = new Set([
-  "anthropic",
-  "openai",
-  "oneprovider",
-  "deepseek",
-]);
+const MIGRATED_PROVIDERS = new Set(["openai", "oneprovider", "deepseek"]);
 
 /** An environment flag: set, and not empty, "0" or "false" */
 function envFlag(value: string | undefined): boolean {
