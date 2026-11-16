@@ -1,4 +1,5 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
+import { AnthropicLanguageModel } from "@ai-sdk/anthropic/internal";
 import { createDeepSeek } from "@ai-sdk/deepseek";
 import { createGoogle } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
@@ -16,10 +17,16 @@ import {
   EmbeddingCreateParams,
   Model,
 } from "openai/resources/index";
+import {
+  AI_SDK_CACHING,
+  anthropicCallSettings,
+  anthropicPrompt,
+} from "../aiSdkAnthropic.js";
 import { formatAiSdkError } from "../aiSdkErrors.js";
 import { aiSdkRoute, type AiSdkRoute } from "../transport.js";
 import { AiSdkConfig, LLMConfig } from "../types.js";
 import { addEmptyReasoningContent, aiSdkFetch, embedding } from "../util.js";
+import type { CachingStrategyName } from "./AnthropicCachingStrategies.js";
 import { filterAnthropicSamplingParams } from "./AnthropicUtils.js";
 import {
   BaseLlmApi,
@@ -104,8 +111,11 @@ const PROVIDERS: Record<string, AiSdkProvider> = {
   },
 };
 
+const ANTHROPIC_BASE = "https://api.anthropic.com/v1";
+
 /** The default host of each provider with AI-SDK routes */
 const DEFAULT_BASES: Record<string, string> = {
+  anthropic: ANTHROPIC_BASE,
   openai: "https://api.openai.com/v1",
   oneprovider: ONEPROVIDER_API_BASE,
   deepseek: DEEPSEEK_API_BASE,
@@ -158,17 +168,61 @@ type ChatRequest = {
   top_p?: number | null;
 };
 
+/** The converted prompt, which a route can adjust before the call */
+interface Prompt {
+  instructions?: any;
+  messages: any[];
+  tools?: Record<string, any>;
+}
+
+/** Call settings a route decides; the body's own are used otherwise */
+interface CallSettings {
+  temperature?: number;
+  topP?: number;
+  topK?: number;
+  maxOutputTokens?: number;
+  stopSequences?: string[];
+  toolChoice?: any;
+}
+
+/**
+ * A Claude model, as createAnthropic builds it, with the two settings the
+ * Anthropic adapter's requests need:
+ * - The adapter never sends tools' `strict`. With strict tools allowed, the
+ *   provider would turn on the structured-outputs beta for every request
+ *   with tools.
+ * - The adapter keeps a top_p of 0.95 to 1 while Claude thinks, which the
+ *   API accepts and the provider would otherwise drop.
+ */
+function anthropicModel(modelId: string, settings: ProviderSettings) {
+  return new AnthropicLanguageModel(modelId, {
+    provider: "anthropic.messages",
+    baseURL: settings.baseURL.replace(/\/+$/, ""),
+    headers: () => ({
+      "anthropic-version": "2023-06-01",
+      "x-api-key": settings.apiKey,
+    }),
+    fetch: settings.fetch,
+    supportedUrls: () => ({
+      "image/*": [/^https?:\/\/.*$/],
+      "application/pdf": [/^https?:\/\/.*$/],
+    }),
+    supportsStrictTools: false,
+    supportsTemperatureAndTopPWithThinking: true,
+  });
+}
+
 /** One chat request as an AI SDK call */
 interface ChatCall {
   model: any;
   modelId: string;
   /** The provider name the tool choice rules use */
   toolChoiceProvider: string;
-  temperature?: number;
-  topP?: number;
+  settings: CallSettings;
   providerOptions?: Record<string, Record<string, unknown>>;
   /** See AiSdkProvider.reasoningDetails */
   reasoningDetails?: boolean;
+  prompt?: (prompt: Prompt) => Prompt;
 }
 
 /** Retries for a failed request (429 and 5xx), as the OpenAI SDK does */
@@ -246,6 +300,8 @@ export class AiSdkApi implements BaseLlmApi {
     switch (route.factory) {
       case "openai-compatible":
         return this.compatibleCall(body, route);
+      case "anthropic":
+        return this.anthropicCall(body);
       default:
         return undefined;
     }
@@ -266,8 +322,7 @@ export class AiSdkApi implements BaseLlmApi {
       model: provider.create(this.settings(provider.defaultBaseURL))(modelId),
       modelId,
       toolChoiceProvider: providerId,
-      temperature,
-      topP,
+      settings: { temperature, topP },
       reasoningDetails: provider.reasoningDetails,
     };
   }
@@ -292,11 +347,52 @@ export class AiSdkApi implements BaseLlmApi {
       model: provider.chatModel(body.model),
       modelId: body.model,
       toolChoiceProvider: this.config.provider,
-      temperature: sampling.temperature,
-      topP: sampling.top_p,
+      settings: { temperature: sampling.temperature, topP: sampling.top_p },
       providerOptions: { [COMPATIBLE]: bodyFields(body) },
       // A gateway's reasoning_details pass through as they came
       reasoningDetails: true,
+    };
+  }
+
+  /**
+   * Claude on Anthropic's API, a proxy, or OneProvider's Messages endpoint.
+   * The request is what AnthropicApi sends (aiSdkAnthropic.ts). A caching
+   * strategy the route doesn't apply keeps the own adapter.
+   */
+  private anthropicCall(body: ChatRequest): ChatCall | undefined {
+    const caching =
+      (this.config as { cachingStrategy?: CachingStrategyName })
+        .cachingStrategy ?? "systemAndTools";
+    if (!AI_SDK_CACHING.includes(caching)) {
+      return undefined;
+    }
+    const { providerOptions, toolNames, ...settings } = anthropicCallSettings(
+      body as Parameters<typeof anthropicCallSettings>[0],
+      caching,
+    );
+    return {
+      model: anthropicModel(
+        body.model,
+        this.settings(DEFAULT_BASES[this.config.provider] ?? ANTHROPIC_BASE),
+      ),
+      modelId: body.model,
+      toolChoiceProvider: "anthropic",
+      settings,
+      providerOptions,
+      prompt: ({ instructions, messages, tools }) =>
+        anthropicPrompt(
+          {
+            instructions,
+            messages,
+            tools:
+              tools &&
+              toolNames &&
+              Object.fromEntries(
+                Object.entries(tools).filter(([name]) => toolNames.has(name)),
+              ),
+          },
+          caching,
+        ),
     };
   }
 
@@ -336,17 +432,20 @@ export class AiSdkApi implements BaseLlmApi {
       "../convertToolChoiceToVercel.js"
     );
 
-    const { instructions, messages } = convertOpenAIMessagesToVercel(
-      body.messages,
-    );
-    const tools = await convertToolsToVercelFormat(body.tools);
+    const converted = convertOpenAIMessagesToVercel(body.messages);
+    let prompt: Prompt = {
+      instructions: converted.instructions,
+      messages: converted.messages,
+      tools: await convertToolsToVercelFormat(body.tools),
+    };
+    if (call.prompt) {
+      prompt = call.prompt(prompt);
+    }
 
     const result = streamText({
       model: call.model,
-      instructions,
-      messages: messages as any,
-      temperature: call.temperature,
-      topP: call.topP,
+      instructions: prompt.instructions,
+      messages: prompt.messages,
       frequencyPenalty: body.frequency_penalty ?? undefined,
       presencePenalty: body.presence_penalty ?? undefined,
       seed: body.seed ?? undefined,
@@ -356,11 +455,12 @@ export class AiSdkApi implements BaseLlmApi {
           ? body.stop
           : [body.stop]
         : undefined,
-      tools,
+      tools: prompt.tools,
       toolChoice: convertToolChoiceToVercel(body.tool_choice, {
         provider: call.toolChoiceProvider,
         model: call.modelId,
       }),
+      ...call.settings,
       providerOptions: call.providerOptions as any,
       maxRetries: MAX_RETRIES,
       abortSignal: signal,

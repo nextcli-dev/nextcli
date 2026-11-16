@@ -112,6 +112,11 @@ export function promptTokensWithCache(
   );
 }
 
+/** max_tokens for a request that sets none (the API requires one) */
+export function anthropicDefaultMaxTokens(model: string): number {
+  return model.includes("haiku") ? 8192 : 32_000;
+}
+
 export class AnthropicApi implements BaseLlmApi {
   apiBase: string = "https://api.anthropic.com/v1/";
 
@@ -142,13 +147,6 @@ export class AnthropicApi implements BaseLlmApi {
     }
 
     return result;
-  }
-
-  private maxTokensForModel(model: string): number {
-    if (model.includes("haiku")) {
-      return 8192;
-    }
-    return 32_000;
   }
 
   /**
@@ -233,7 +231,7 @@ export class AnthropicApi implements BaseLlmApi {
       AnthropicReasoningControls;
     const params = this.convertControls(
       controls,
-      oaiBody.max_tokens ?? this.maxTokensForModel(oaiBody.model),
+      oaiBody.max_tokens ?? anthropicDefaultMaxTokens(oaiBody.model),
     );
     const thinking = params.thinking;
     let toolChoice = openAiToolChoiceToAnthropicToolChoice(

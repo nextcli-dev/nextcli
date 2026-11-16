@@ -59,10 +59,26 @@ describe("aiSdkRoute", () => {
     }
   });
 
-  it("routes OneProvider by model: Claude elsewhere, the rest compatible", () => {
+  it("routes OneProvider by model: Claude to Messages, the rest compatible", () => {
     expect(
       aiSdkRoute({ provider: "oneprovider", model: "deepseek-v4-pro" }),
     ).toEqual({ factory: "openai-compatible" });
+    expect(
+      aiSdkRoute({ provider: "oneprovider", model: "claude-opus-5-5" }),
+    ).toEqual({ factory: "anthropic" });
+  });
+
+  it("sends Claude through the Anthropic provider, except on Azure", () => {
+    expect(
+      aiSdkRoute({ provider: "anthropic", model: "claude-sonnet-5-5" }),
+    ).toEqual({ factory: "anthropic" });
+    expect(
+      aiSdkRoute({
+        provider: "anthropic",
+        model: "claude-sonnet-5-5",
+        apiBase: "https://claude.services.ai.azure.com/anthropic/v1",
+      }),
+    ).toBeUndefined();
   });
 
   it("fills empty reasoning_content for DeepSeek on a gateway only", () => {
