@@ -183,7 +183,9 @@ describe.skipIf(process.platform === "win32")(
       });
       const backgroundPid = Number(result.trim().split("\n")[0]);
 
-      expect(Date.now() - start).toBeLessThan(2000);
+      // Unfixed, this waits for the 30s sleep; fixed, it takes the shell's exit
+      // plus OUTPUT_DRAIN_MS. Wide margin: loaded CI runners took >2s here.
+      expect(Date.now() - start).toBeLessThan(10_000);
       expect(result).toContain("started");
       expect(isAlive(backgroundPid)).toBe(true);
 
