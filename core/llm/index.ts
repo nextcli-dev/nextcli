@@ -1,6 +1,6 @@
 import { ModelRole } from "@nextcli/config-yaml";
 import { fetchwithRequestOptions } from "@nextcli/fetch";
-import { findLlmInfo } from "@nextcli/llm-info";
+import { findLlmInfo, isOneProviderBase } from "@nextcli/llm-info";
 import {
   BaseLlmApi,
   buildModelControlFields,
@@ -126,6 +126,11 @@ export abstract class BaseLLM implements ILLM {
   }
 
   supportsCompletions(): boolean {
+    // OneProvider serves chat only: /completions and /beta/completions 404,
+    // whatever provider name the config uses for it
+    if (isOneProviderBase(this.apiBase)) {
+      return false;
+    }
     if (["openai", "azure"].includes(this.providerName)) {
       if (
         this.apiBase?.includes("api.groq.com") ||

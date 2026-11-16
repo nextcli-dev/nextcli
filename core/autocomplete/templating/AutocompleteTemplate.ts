@@ -417,7 +417,7 @@ Fill in the blank to complete the code block. Your response should include only 
   completionOptions: { stop: ["\n"] },
 };
 
-const holeFillerTemplate: AutocompleteTemplate = {
+export const holeFillerTemplate: AutocompleteTemplate = {
   template: (prefix: string, suffix: string) => {
     // From https://github.com/VictorTaelin/AI-scripts
     const SYSTEM_MSG = `You are a HOLE FILLER. You are provided with a file containing holes, formatted as '{{HOLE_NAME}}'. Your TASK is to complete with a string to replace this hole with, inside a <COMPLETION/> XML tag, including context-aware indentation, if needed.  All completions MUST be truthful, accurate, well-written and correct.
