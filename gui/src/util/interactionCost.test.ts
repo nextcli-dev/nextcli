@@ -29,40 +29,15 @@ function interaction(
 }
 
 describe("interactionCost", () => {
-  it("prices by the host the request went to, as the CLI does", () => {
-    // An openai provider pointed at OneProvider: OneProvider's own price
-    const cost = interactionCost(
-      interaction({ apiBase: "https://api.oneprovider.dev/v1" }),
-    );
-    expect(cost?.cost).toBeCloseTo(1.32 + 3.96, 6);
-    expect(cost?.priced).toBe("exact");
-  });
-
-  it("marks a GPT model on a gateway estimated", () => {
+  // Prices themselves are tested in core (calculateRequestCost.vitest.ts)
+  it("prices by the host the request went to", () => {
+    const gpt = { options: { model: "gpt-4o" } };
+    expect(interactionCost(interaction(gpt))?.priced).toBe("exact");
     expect(
       interactionCost(
-        interaction({
-          options: { model: "gpt-4o" },
-          apiBase: "https://openpaths.io/v1",
-        }),
+        interaction({ ...gpt, apiBase: "https://openpaths.io/v1" }),
       )?.priced,
     ).toBe("estimated");
-  });
-
-  it("prices a known model behind a local bridge as an estimate", () => {
-    // The bridge's upstream isn't visible: its vendor's list price is a floor
-    expect(
-      interactionCost(interaction({ apiBase: "http://127.0.0.1:8091/v1" }))
-        ?.priced,
-    ).toBe("estimated");
-    expect(
-      interactionCost(
-        interaction({
-          options: { model: "my-private-model" },
-          apiBase: "http://127.0.0.1:8091/v1",
-        }),
-      ),
-    ).toBeNull();
   });
 
   it("prices fast mode only when the request sent it", () => {
