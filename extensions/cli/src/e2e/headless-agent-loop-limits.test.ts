@@ -85,4 +85,67 @@ describe("E2E: agent loop limits", () => {
     const summary = JSON.parse(result.stderr.trim().split("\n").pop()!);
     expect(summary).toMatchObject({ status: "limit", limit: "turns" });
   }, 40000);
+
+  // A slow model: each response takes 3 seconds. With --max-time 10 the run
+  // has no time for another turn like that and the answer after one or two
+  // calls (two or three with a fast start), so the next call is the final
+  // answer, without tools. The range leaves room for a slow CI machine.
+  it("gives a final answer before --max-time runs out", async () => {
+    mockServer = await setupMockLLMTest(context, {
+      customHandler: (req: http.IncomingMessage, res: http.ServerResponse) => {
+        let body = "";
+        req.on("data", (chunk) => {
+          body += chunk;
+        });
+        req.on("end", () => {
+          if (req.method !== "POST" || req.url !== "/chat/completions") {
+            res.writeHead(404);
+            res.end("Not found");
+            return;
+          }
+          requestCount++;
+          const request = JSON.parse(body);
+          requestBodies.push(request);
+          setTimeout(() => {
+            res.writeHead(200, { "Content-Type": "text/event-stream" });
+            res.write(
+              request.tools?.length
+                ? `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_${requestCount}","type":"function","function":{"name":"List","arguments":"{\\"dirpath\\":\\".\\"}"}}]},"index":0}]}\n\n`
+                : `data: {"choices":[{"delta":{"content":"Partial answer"},"index":0}]}\n\n`,
+            );
+            res.write(
+              `data: {"usage":{"prompt_tokens":10,"completion_tokens":20}}\n\n`,
+            );
+            res.write(`data: [DONE]\n\n`);
+            res.end();
+          }, 3000);
+        });
+      },
+    });
+
+    const result = await runCLI(context, {
+      args: [
+        "-p",
+        "--auto",
+        "--max-time",
+        "10",
+        "--format",
+        "json",
+        "--config",
+        context.configPath,
+        "List the files",
+      ],
+      timeout: 30000,
+      expectError: true,
+    });
+
+    expect(requestCount).toBeGreaterThanOrEqual(2);
+    expect(requestCount).toBeLessThanOrEqual(3);
+    expect(requestBodies[0].tools?.length).toBeGreaterThan(0);
+    expect(requestBodies.at(-1).tools ?? []).toHaveLength(0);
+    expect(result.exitCode).toBe(3);
+    expect(result.stdout).toContain("Partial answer");
+    const summary = JSON.parse(result.stderr.trim().split("\n").pop()!);
+    expect(summary).toMatchObject({ status: "limit", limit: "time" });
+  }, 40000);
 });

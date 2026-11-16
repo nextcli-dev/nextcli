@@ -1,10 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getSessionUsage } from "../session.js";
 
 import {
+  AgentLoopBudget,
   checkAgentLoopLimits,
+  checkTimeLimit,
   configureAgentLoopLimits,
+  getAgentLoopLimits,
+  getLimitReached,
   resetAgentLoopLimits,
 } from "./agentLoopLimits.js";
 import {
@@ -102,5 +106,79 @@ describe("the --max-cost reserve", () => {
         () => 0.01,
       ),
     ).toMatchObject({ limit: "cost", stop: true });
+  });
+});
+
+describe("--max-time", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    resetAgentLoopLimits();
+    configureAgentLoopLimits({ maxTime: "1000" });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    resetAgentLoopLimits();
+  });
+
+  const after = (seconds: number) => Date.now() + seconds * 1000;
+
+  it("counts from when the limits are set", () => {
+    expect(getAgentLoopLimits()).toMatchObject({
+      maxSeconds: 1000,
+      deadline: after(1000),
+    });
+  });
+
+  it("goes on while the time left covers a turn like the last and the answer", () => {
+    // 300 left: a 150-second turn and the 100 seconds kept for the answer
+    expect(
+      checkTimeLimit(getAgentLoopLimits(), 150, after(700)),
+    ).toBeUndefined();
+  });
+
+  it("wraps up when it doesn't", () => {
+    expect(checkTimeLimit(getAgentLoopLimits(), 250, after(700))).toEqual({
+      limit: "time",
+      description: "time limit of 1000 seconds (--max-time)",
+    });
+    // The first turn has no last turn: only the tenth for the answer is kept
+    expect(checkTimeLimit(getAgentLoopLimits(), 0, after(901))).toMatchObject({
+      limit: "time",
+    });
+  });
+
+  it("still makes the final call past the deadline", () => {
+    expect(
+      checkTimeLimit(getAgentLoopLimits(), 10, after(1200)),
+    ).not.toHaveProperty("stop");
+  });
+
+  it("is off without the flag", () => {
+    resetAgentLoopLimits();
+    configureAgentLoopLimits({});
+    expect(checkTimeLimit(getAgentLoopLimits(), 0, after(1e6))).toBeUndefined();
+  });
+
+  it("rejects a time that isn't a positive number", () => {
+    expect(() => configureAgentLoopLimits({ maxTime: "soon" })).toThrow(
+      /--max-time/,
+    );
+  });
+
+  it("times each turn of a run from one call to the next", () => {
+    const budget = new AgentLoopBudget();
+    expect(budget.nextTurn()).toBeUndefined();
+    vi.setSystemTime(after(400));
+    expect(budget.nextTurn()).toBeUndefined();
+    // 200 left after another 400-second turn: less than 400 plus the 100 kept
+    vi.setSystemTime(after(400));
+    expect(budget.nextTurn()).toMatchObject({ limit: "time" });
+    expect(getLimitReached()).toBe("time");
+  });
+
+  it("doesn't time a compaction's call", () => {
+    vi.setSystemTime(after(950));
+    expect(new AgentLoopBudget(undefined, false).nextTurn()).toBeUndefined();
   });
 });

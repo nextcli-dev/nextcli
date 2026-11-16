@@ -215,6 +215,33 @@ describe("streamChatResponse - agent loop limits", () => {
     expect(getLimitReached()).toBe("turns");
   });
 
+  it("wraps up before --max-time runs out", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      configureAgentLoopLimits({ maxTime: "100" });
+      const stream = vi
+        .mocked(llmApi.chatCompletionStream)
+        .getMockImplementation()!;
+      vi.mocked(llmApi.chatCompletionStream).mockImplementation(
+        (...args: Parameters<typeof stream>) => {
+          // Each call takes 40 seconds
+          vi.setSystemTime(Date.now() + 40_000);
+          return stream(...args);
+        },
+      );
+
+      // Before the third call 20 seconds are left: less than another
+      // 40-second turn and the 10 seconds kept for the answer
+      await expect(run()).resolves.toBe("Final answer");
+      expect(modelCalls).toBe(3);
+      expect(callsWithoutTools).toBe(1);
+      expect(wrapUpPrompt()).toMatch(/--max-time/);
+      expect(getLimitReached()).toBe("time");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("stops at the default limit of 100 model calls", async () => {
     await expect(run()).resolves.toBe("Final answer");
     expect(modelCalls).toBe(100);

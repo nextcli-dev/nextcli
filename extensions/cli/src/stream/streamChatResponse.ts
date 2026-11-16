@@ -422,8 +422,13 @@ export async function streamChatResponse(
     isHeadless && !isCompacting ? taskToKeep(chatHistory, model) : undefined;
 
   // The final answer must still fit under --max-cost, with room to be written
-  const budget = new AgentLoopBudget(() =>
-    estimateFinalCallCost(model, countTotalInputTokens({ chatHistory, model })),
+  const budget = new AgentLoopBudget(
+    () =>
+      estimateFinalCallCost(
+        model,
+        countTotalInputTokens({ chatHistory, model }),
+      ),
+    !isCompacting,
   );
 
   // Aborted on exit, so an interrupted turn never starts another tool (#12701)
