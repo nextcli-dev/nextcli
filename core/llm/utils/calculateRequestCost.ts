@@ -1,14 +1,15 @@
 import {
   CATALOG_SYNCED_AT,
-  catalogProviderFor,
   findCatalogCost,
   findCatalogFastCost,
   findGeneralCost,
   hasUnknownZeroPrice,
   hostOf,
-  isHostOrSubdomain,
+  isMakerCatalog,
   resolveCatalog,
   vendorCatalogProvider,
+  type CatalogPriceRoute,
+  type PriceSource,
 } from "@nextcli/llm-info";
 
 import { Usage } from "../..";
@@ -20,16 +21,7 @@ import {
 } from "./rates/hostRates";
 import type { HostRates } from "./rates/hostRates";
 
-/**
- * exact: the price the host bills: OneProvider's own table, or a maker's
- * list price (from the models.dev catalog) on the maker's own API.
- * catalog: the provider's own price, from the models.dev catalog snapshot.
- * estimated: a price for a host that may charge differently: a maker's list
- * price on another host, OpenRouter's price for a model of the same name, a
- * routed OpenRouter variant, or the standard price of a fast request whose
- * fast price isn't known.
- */
-export type PriceSource = "exact" | "catalog" | "estimated";
+export type { PriceSource };
 
 export interface CostBreakdown {
   cost: number;
@@ -72,65 +64,31 @@ const LOCAL_MODEL_SERVERS = new Set([
   "vllm",
 ]);
 
-/** The makers' own APIs, where their list prices are what is billed */
-const MAKER_HOSTS: Record<string, string> = {
-  anthropic: "api.anthropic.com",
-  openai: "api.openai.com",
-};
-
-/**
- * OpenRouter's routing variants (fastest, cheapest, web search, tool-call
- * accuracy) of a listed model: priced like the model, but not exactly
- */
-const OPENROUTER_ROUTING = /:(?:nitro|floor|online|exacto)$/;
-
-interface PriceRoute {
+interface PriceRoute extends CatalogPriceRoute {
   normalizedProvider: string;
   host: string | undefined;
   /** A host on this machine: a local server or a bridge */
   thisMachine: boolean;
   oneProvider: boolean;
-  /** The catalog the model's prices come from, if any */
-  catalogProvider: string | undefined;
-  /** The id to price: an OpenRouter routing variant's base model */
-  model: string;
-  /** How a catalog price on this route is labelled */
-  source: PriceSource;
 }
 
 /**
- * Where a request's prices come from. The host kind (this machine,
- * OneProvider, an official API host such as api.groq.com or openrouter.ai)
- * is resolveCatalog's answer in @nextcli/llm-info, shared with the model
- * menus. A configured provider brings its own catalog for prices even on a
- * custom host, where a maker's list price becomes an estimate.
+ * Where a request's prices come from: resolveCatalog's price route in
+ * @nextcli/llm-info (which catalog, which id, how it is labelled), where
+ * every host is special-cased, plus the provider and host kind
  */
 function priceRoute(
   provider: string,
   model: string,
   apiBase: string | undefined,
 ): PriceRoute {
-  const normalizedProvider = provider.toLowerCase();
-  const host = hostOf(apiBase);
   const route = resolveCatalog({ provider, model, apiBase });
-  const oneProvider = route.host === "oneprovider";
-  const catalogProvider = oneProvider
-    ? undefined
-    : (route.hostCatalog ?? catalogProviderFor(provider));
-  const makerHost = MAKER_HOSTS[catalogProvider ?? ""];
-  const offMakerHost =
-    !!makerHost && !!host && !isHostOrSubdomain(host, makerHost);
-  const routed =
-    catalogProvider === "openrouter" && OPENROUTER_ROUTING.test(model);
   return {
-    normalizedProvider,
-    host,
+    ...route.price,
+    normalizedProvider: provider.toLowerCase(),
+    host: hostOf(apiBase),
     thisMachine: route.host === "this-machine",
-    oneProvider,
-    catalogProvider,
-    model: routed ? model.replace(OPENROUTER_ROUTING, "") : model,
-    source:
-      offMakerHost || routed ? "estimated" : makerHost ? "exact" : "catalog",
+    oneProvider: route.host === "oneprovider",
   };
 }
 
@@ -209,7 +167,7 @@ function bridgeFloor(
   // the model's own vendor comes first
   const vendor =
     vendorCatalogProvider(model) ??
-    (MAKER_HOSTS[route.normalizedProvider]
+    (isMakerCatalog(route.normalizedProvider)
       ? route.normalizedProvider
       : undefined);
   const vendorRates = ratesFromCatalog(findCatalogCost(vendor, model));

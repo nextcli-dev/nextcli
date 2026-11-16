@@ -29,6 +29,7 @@ export {
   catalogPromptLimit,
   catalogProviderFor,
   findCatalogModel,
+  longestListedBase,
   variantSuffix,
 } from "./catalog.js";
 export {
@@ -39,13 +40,19 @@ export {
   isClaude,
   isHostOrSubdomain,
   isLocalHost,
+  isMakerCatalog,
   isOneProviderBase,
   resolveCatalog,
   vendorCatalogMatch,
   vendorCatalogProvider,
   withoutThinkingSuffix,
 } from "./endpoint.js";
-export type { CatalogRoute, ModelEndpoint } from "./endpoint.js";
+export type {
+  CatalogPriceRoute,
+  CatalogRoute,
+  ModelEndpoint,
+  PriceSource,
+} from "./endpoint.js";
 export {
   findCatalogCost,
   findCatalogFastCost,

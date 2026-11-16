@@ -1,8 +1,8 @@
 /**
- * Which models.dev catalog describes a model on a given endpoint. The model
- * menus (openai-adapters' modelProfile), the default limits (findLlmInfo)
- * and the prices (core's calculateRequestCost) all ask resolveCatalog, so
- * they agree.
+ * Which models.dev catalog describes a model on a given endpoint, and which
+ * one prices it. The model menus (openai-adapters' modelProfile), the
+ * default limits (findLlmInfo) and the prices (core's calculateRequestCost)
+ * all ask resolveCatalog, so every host is special-cased here only.
  */
 
 import {
@@ -71,6 +71,23 @@ export function isOneProviderBase(apiBase: string | undefined): boolean {
   const host = hostOf(apiBase);
   return !!host && isHostOrSubdomain(host, "oneprovider.dev");
 }
+
+/** The makers' own APIs, where their list prices are what is billed */
+const MAKER_HOSTS: Readonly<Record<string, string>> = {
+  anthropic: "api.anthropic.com",
+  openai: "api.openai.com",
+};
+
+/** Whether a models.dev provider is a maker selling on its own API */
+export function isMakerCatalog(catalogProvider: string | undefined): boolean {
+  return !!catalogProvider && Object.hasOwn(MAKER_HOSTS, catalogProvider);
+}
+
+/**
+ * OpenRouter's routing variants (fastest, cheapest, web search, tool-call
+ * accuracy) of a listed model: priced like the model, but not exactly
+ */
+const OPENROUTER_ROUTING = /:(?:nitro|floor|online|exacto)$/;
 
 const OPENAI_API_BASE = "https://api.openai.com/v1/";
 
@@ -153,6 +170,31 @@ export interface ModelEndpoint {
   apiBase?: string;
 }
 
+/**
+ * How a price is labelled. exact: what the host bills (OneProvider's own
+ * table, or a maker's list price on the maker's own API). catalog: the
+ * provider's own price, from the models.dev snapshot. estimated: a price for
+ * a host that may charge differently (a maker's list price on another host,
+ * OpenRouter's price for a model of the same name, a routed OpenRouter
+ * variant, or the standard price of a fast request whose fast price isn't
+ * known).
+ */
+export type PriceSource = "exact" | "catalog" | "estimated";
+
+export interface CatalogPriceRoute {
+  /**
+   * The catalog with the model's prices: the official host's, else the
+   * configured provider's own, also on a custom host, where a maker's list
+   * price becomes an estimate. None for OneProvider, which has its own
+   * price table.
+   */
+  catalogProvider?: string;
+  /** The id to price: an OpenRouter routing variant's base model */
+  model: string;
+  /** How a catalog price on this route is labelled */
+  source: PriceSource;
+}
+
 export interface CatalogRoute {
   /**
    * What the API base is: this machine (a local server or a bridge),
@@ -168,6 +210,31 @@ export interface CatalogRoute {
   match?: CatalogMatch;
   /** A OneProvider `-thinking` id: the base model with thinking always on */
   thinkingAlwaysOn: boolean;
+  /**
+   * Where the prices come from. Unlike the limits, a custom `openai` host
+   * keeps OpenAI's catalog here, as an estimate.
+   */
+  price: CatalogPriceRoute;
+}
+
+function priceRouteFor(
+  provider: string,
+  model: string,
+  host: string | undefined,
+  hostCatalog: string | undefined,
+): CatalogPriceRoute {
+  const catalogProvider = hostCatalog ?? catalogProviderFor(provider);
+  const makerHost = MAKER_HOSTS[catalogProvider ?? ""];
+  const offMakerHost =
+    !!makerHost && !!host && !isHostOrSubdomain(host, makerHost);
+  const routed =
+    catalogProvider === "openrouter" && OPENROUTER_ROUTING.test(model);
+  return {
+    catalogProvider,
+    model: routed ? model.replace(OPENROUTER_ROUTING, "") : model,
+    source:
+      offMakerHost || routed ? "estimated" : makerHost ? "exact" : "catalog",
+  };
 }
 
 /**
@@ -181,6 +248,10 @@ export interface CatalogRoute {
  *   bridge, vLLM, a gateway) gets none, so its limits come from the config
  * - any other provider: its own catalog, if it has one
  * - Claude on Bedrock or an Anthropic proxy falls back to Anthropic's entry
+ *
+ * Prices (`price`) come from the host's catalog, else the provider's own:
+ * a maker's list price is exact on the maker's API and estimated on any
+ * other host, and OpenRouter's routing variants are estimated.
  */
 export function resolveCatalog({
   provider,
@@ -210,6 +281,8 @@ export function resolveCatalog({
       catalogProvider,
       match: findCatalogModel(catalogProvider, name),
       thinkingAlwaysOn,
+      // Priced from OneProvider's own table
+      price: { model, source: "exact" },
     };
   }
 
@@ -235,5 +308,6 @@ export function resolveCatalog({
     catalogProvider,
     match,
     thinkingAlwaysOn: false,
+    price: priceRouteFor(provider, model, host, hostCatalog),
   };
 }

@@ -306,6 +306,39 @@ describe("resolveCatalog", () => {
     ).toContain("max");
   });
 
+  it("prices a custom openai host from OpenAI's catalog, as an estimate", () => {
+    // No catalog limits for a custom host, but OpenAI's list prices
+    const gateway = resolveCatalog({
+      provider: "openai",
+      model: "gpt-5.5",
+      apiBase: "https://openpaths.io/v1",
+    });
+    expect(gateway.catalogProvider).toBeUndefined();
+    expect(gateway.price).toEqual({
+      catalogProvider: "openai",
+      model: "gpt-5.5",
+      source: "estimated",
+    });
+    expect(
+      resolveCatalog({ provider: "openai", model: "gpt-5.5" }).price.source,
+    ).toBe("exact");
+    expect(
+      resolveCatalog({ provider: "deepseek", model: "deepseek-v4-pro" }).price
+        .source,
+    ).toBe("catalog");
+    // An OpenRouter routing variant is priced from its base model
+    expect(
+      resolveCatalog({
+        provider: "openrouter",
+        model: "deepseek/deepseek-v4-pro:nitro",
+      }).price,
+    ).toEqual({
+      catalogProvider: "openrouter",
+      model: "deepseek/deepseek-v4-pro",
+      source: "estimated",
+    });
+  });
+
   it("counts only this machine as local, containers included", () => {
     for (const host of [
       "localhost",

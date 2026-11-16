@@ -71,6 +71,29 @@ export function variantSuffix(extra: readonly string[] = []): RegExp {
 
 const VARIANT_SUFFIX = variantSuffix();
 
+/**
+ * The longest of `keys` that `name` extends by variant suffixes only
+ * (gpt-5.5-2026-04-23 finds gpt-5.5), if any. A different model, such as
+ * gpt-5.5-pro, doesn't match gpt-5.5.
+ */
+export function longestListedBase(
+  name: string,
+  keys: Iterable<string>,
+  suffix: RegExp = VARIANT_SUFFIX,
+): string | undefined {
+  let base: string | undefined;
+  for (const key of keys) {
+    if (
+      (!base || key.length > base.length) &&
+      name.startsWith(key) &&
+      suffix.test(name.slice(key.length))
+    ) {
+      base = key;
+    }
+  }
+  return base;
+}
+
 /** A dated snapshot suffix: -2024-08-06, -20250514, or Mistral's -2512 */
 const DATE_SUFFIX = /-(?:\d{4}(?:-\d{2}){0,2}|\d{6,8})$/;
 
@@ -170,16 +193,7 @@ export function findCatalogModel(
   }
   for (const candidate of candidates) {
     // A dated variant of a listed id: the most specific listed id
-    let base: string | undefined;
-    for (const key of index.keys()) {
-      if (
-        candidate.startsWith(key) &&
-        VARIANT_SUFFIX.test(candidate.slice(key.length)) &&
-        (!base || key.length > base.length)
-      ) {
-        base = key;
-      }
-    }
+    const base = longestListedBase(candidate, index.keys());
     if (base) return found(index.get(base));
 
     // Listed variants of the id: the best ranked, then the newest

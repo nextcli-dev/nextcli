@@ -1,6 +1,6 @@
 import {
   findCatalogModel,
-  variantSuffix,
+  longestListedBase,
   type CatalogMatch,
 } from "./catalog.js";
 import type { CatalogCost } from "./catalogTypes.js";
@@ -61,10 +61,6 @@ function nameKey(model: string): string {
     .replace(/\./g, "-");
 }
 
-// Dated snapshots and thinking, preview or latest variants share their
-// model's price
-const VARIANT_SUFFIX = variantSuffix();
-
 let generalPrices: Map<string, CatalogCost> | undefined;
 
 /** OpenRouter's prices by model name, the highest when vendors share one */
@@ -97,17 +93,8 @@ function generalPriceIndex(): Map<string, CatalogCost> {
 export function findGeneralCost(model: string): CatalogCost | undefined {
   const index = generalPriceIndex();
   const key = nameKey(model);
-  const exact = index.get(key);
-  if (exact) return exact;
-  let best: { key: string; cost: CatalogCost } | undefined;
-  for (const [candidate, cost] of index) {
-    if (
-      key.startsWith(candidate) &&
-      VARIANT_SUFFIX.test(key.slice(candidate.length)) &&
-      (!best || candidate.length > best.key.length)
-    ) {
-      best = { key: candidate, cost };
-    }
-  }
-  return best?.cost;
+  // Dated snapshots and thinking, preview or latest variants share their
+  // model's price
+  const base = index.has(key) ? key : longestListedBase(key, index.keys());
+  return base ? index.get(base) : undefined;
 }

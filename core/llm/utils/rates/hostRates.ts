@@ -1,4 +1,8 @@
-import { variantSuffix, type CatalogCost } from "@nextcli/llm-info";
+import {
+  longestListedBase,
+  variantSuffix,
+  type CatalogCost,
+} from "@nextcli/llm-info";
 
 import type { Usage } from "../../..";
 
@@ -22,32 +26,13 @@ export interface HostRates {
 // different model and must not match.
 const VARIANT_SUFFIX = variantSuffix(["low", "high", "tiered"]);
 
-function sortedByLength(keys: string[]): string[] {
-  return [...keys].sort((a, b) => b.length - a.length);
-}
-
-function findRates(
-  table: Record<string, HostRates>,
-  keys: string[],
-  model: string,
-): HostRates | undefined {
-  if (table[model]) {
-    return table[model];
-  }
-  const key = keys.find(
-    (candidate) =>
-      model.startsWith(candidate) &&
-      VARIANT_SUFFIX.test(model.slice(candidate.length)),
-  );
-  return key ? table[key] : undefined;
-}
-
-const ONEPROVIDER_KEYS = sortedByLength(Object.keys(ONEPROVIDER_RATES));
-
 /** Rates for a model called through oneprovider.dev */
 export function findOneproviderRates(model: string): HostRates | undefined {
   const name = model.toLowerCase().split("/").pop() ?? "";
-  return findRates(ONEPROVIDER_RATES, ONEPROVIDER_KEYS, name);
+  const key = ONEPROVIDER_RATES[name]
+    ? name
+    : longestListedBase(name, Object.keys(ONEPROVIDER_RATES), VARIANT_SUFFIX);
+  return key ? ONEPROVIDER_RATES[key] : undefined;
 }
 
 /**
