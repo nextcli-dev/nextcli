@@ -186,15 +186,37 @@ interface CallSettings {
 }
 
 /**
- * A Claude model, as createAnthropic builds it, with the two settings the
+ * The AI SDK sends `tool_choice: auto` whenever there are tools. The
+ * providers' own adapters send none unless the caller chose one, and some
+ * servers treat an explicit "auto" differently from the default (vLLM
+ * needs a flag for it), so a choice the caller didn't make is left out.
+ */
+function withoutDefaultToolChoice(
+  args: Record<string, any>,
+  callerChoice: unknown,
+): Record<string, any> {
+  if (callerChoice === undefined) {
+    delete args.tool_choice;
+  }
+  return args;
+}
+
+/**
+ * A Claude model, as createAnthropic builds it, with the settings the
  * Anthropic adapter's requests need:
  * - The adapter never sends tools' `strict`. With strict tools allowed, the
  *   provider would turn on the structured-outputs beta for every request
  *   with tools.
  * - The adapter keeps a top_p of 0.95 to 1 while Claude thinks, which the
  *   API accepts and the provider would otherwise drop.
+ * - A tool choice the caller didn't make is left out
+ *   (withoutDefaultToolChoice).
  */
-function anthropicModel(modelId: string, settings: ProviderSettings) {
+function anthropicModel(
+  modelId: string,
+  settings: ProviderSettings,
+  toolChoice: unknown,
+) {
   return new AnthropicLanguageModel(modelId, {
     provider: "anthropic.messages",
     baseURL: settings.baseURL.replace(/\/+$/, ""),
@@ -209,6 +231,7 @@ function anthropicModel(modelId: string, settings: ProviderSettings) {
     }),
     supportsStrictTools: false,
     supportsTemperatureAndTopPWithThinking: true,
+    transformRequestBody: (args) => withoutDefaultToolChoice(args, toolChoice),
   });
 }
 
@@ -333,14 +356,17 @@ export class AiSdkApi implements BaseLlmApi {
    * fields pass through, and only the sampling rules apply.
    */
   private compatibleCall(body: ChatRequest, route: AiSdkRoute): ChatCall {
+    const toolChoiceSet = (body as { tool_choice?: unknown }).tool_choice;
     const provider = createOpenAICompatible({
       name: COMPATIBLE,
       includeUsage: true,
       ...this.settings(DEFAULT_BASES[this.config.provider]),
-      ...(route.emptyReasoningContent && {
-        transformRequestBody: (args: Record<string, any>) =>
-          addEmptyReasoningContent(args as { messages: { role: string }[] }),
-      }),
+      transformRequestBody: (args: Record<string, any>) => {
+        withoutDefaultToolChoice(args, toolChoiceSet);
+        return route.emptyReasoningContent
+          ? addEmptyReasoningContent(args as { messages: { role: string }[] })
+          : args;
+      },
     });
     const sampling = chatSamplingParams(body.model, body);
     return {
@@ -374,6 +400,7 @@ export class AiSdkApi implements BaseLlmApi {
       model: anthropicModel(
         body.model,
         this.settings(DEFAULT_BASES[this.config.provider] ?? ANTHROPIC_BASE),
+        settings.toolChoice,
       ),
       modelId: body.model,
       toolChoiceProvider: "anthropic",

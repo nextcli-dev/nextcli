@@ -171,7 +171,14 @@ export function aiSdkFetch(
     if (init?.signal?.aborted) {
       throw init.signal.reason ?? new DOMException("Aborted", "AbortError");
     }
-    if (response instanceof Response) {
+    // A web response as it is. Decided by the body too: where the global
+    // Response is node-fetch's (some test setups), instanceof alone would
+    // pass a Node stream on
+    if (
+      response instanceof Response &&
+      (response.body === null ||
+        typeof (response.body as any).getReader === "function")
+    ) {
       return response;
     }
     const headers = new Headers();

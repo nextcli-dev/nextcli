@@ -500,6 +500,28 @@ const COMPATIBLE_CASES: Case[] = [
     settings: { thinking: "off" },
   },
   {
+    // Core sends tools without a tool_choice
+    name: "tools without a tool choice",
+    config: {
+      provider: "openai",
+      apiKey: "k",
+      apiBase: "http://127.0.0.1:8091/v1",
+    },
+    model: "deepseek-v4-pro",
+    extra: { tool_choice: undefined },
+  },
+  {
+    // Core sends reasoning_content: "" on assistant messages for DeepSeek
+    name: "an empty reasoning_content the caller sent stays",
+    config: { provider: "oneprovider", apiKey: "k" },
+    model: "deepseek-v4-pro",
+    messages: CONVERSATION.map((message) =>
+      message.role === "assistant" && message.reasoning_content === undefined
+        ? { ...message, reasoning_content: "" }
+        : message,
+    ),
+  },
+  {
     name: "provider deepseek on a gateway fills empty reasoning_content",
     config: {
       provider: "deepseek",
@@ -680,6 +702,12 @@ const CLAUDE_CASES: Case[] = (
       extra: {
         tool_choice: { type: "function", function: { name: "read_file" } },
       },
+    },
+    {
+      name: "tools without a tool choice",
+      config: { provider: "anthropic", apiKey: "k" },
+      model: "claude-sonnet-5-5",
+      extra: { tool_choice: undefined },
     },
     {
       name: "a proxy in front of Anthropic",

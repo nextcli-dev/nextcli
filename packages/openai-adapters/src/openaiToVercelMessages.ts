@@ -239,6 +239,12 @@ export function convertOpenAIMessagesToVercel(
         if (msg.content === "" && msg.tool_calls?.length) {
           compatible.content = "";
         }
+        // An empty reasoning_content goes back as sent: DeepSeek and Kimi
+        // reject earlier assistant messages without the field, so callers
+        // send "" (core's openaiTypeConverters, addEmptyReasoningContent)
+        if ((msg as { reasoning_content?: unknown }).reasoning_content === "") {
+          compatible.reasoning_content = "";
+        }
         vercelMessages.push({
           role: "assistant",
           content:
