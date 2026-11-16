@@ -1,6 +1,6 @@
 import { ChatCompletionCreateParams } from "openai/resources/index";
 
-import { OPENROUTER_HEADERS } from "@nextcli/openai-adapters";
+import { OPENROUTER_HEADERS, type LLMConfig } from "@nextcli/openai-adapters";
 
 import { LLMOptions } from "../../index.js";
 import { osModelsEditPrompt } from "../templates/edit.js";
@@ -31,6 +31,22 @@ class OpenRouter extends OpenAI {
         },
       },
     });
+  }
+
+  /**
+   * Claude prompt caching only when the model config asks for it, as core's
+   * Anthropic and OneProvider classes do. The adapter caches every Claude
+   * request by default, which the CLI keeps.
+   */
+  protected adapterConfig(): LLMConfig {
+    const caching =
+      this.cacheBehavior?.cacheSystemMessage ||
+      this.cacheBehavior?.cacheConversation ||
+      this.completionOptions.promptCaching;
+    return {
+      ...super.adapterConfig(),
+      cachingStrategy: caching ? "systemAndTools" : "none",
+    } as LLMConfig;
   }
 
   private isAnthropicModel(model?: string): boolean {

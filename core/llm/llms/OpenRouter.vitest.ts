@@ -234,3 +234,39 @@ describe("OpenRouter Anthropic Caching", () => {
     expect(modifiedBody.messages).toEqual(body.messages);
   });
 });
+
+describe("OpenRouter caching through the adapter", () => {
+  const body = (): ChatCompletionCreateParams => ({
+    model: "anthropic/claude-sonnet-4.5",
+    messages: [
+      { role: "system", content: "You are helpful." },
+      { role: "user", content: "Hello" },
+    ],
+    tools: [
+      {
+        type: "function",
+        function: { name: "read_file", parameters: { type: "object" } },
+      },
+    ],
+  });
+
+  // What the adapter sends after core's own changes
+  function sent(options: object = {}) {
+    const llm = new OpenRouter({
+      model: "anthropic/claude-sonnet-4.5",
+      apiKey: "test-key",
+      ...options,
+    }) as any;
+    return llm.openaiAdapter.modifyChatBody(llm.modifyChatBody(body()));
+  }
+
+  it("caches Claude prompts only when the model asks for it", () => {
+    expect(JSON.stringify(sent())).not.toContain("cache_control");
+    expect(
+      JSON.stringify(sent({ cacheBehavior: { cacheSystemMessage: true } })),
+    ).toContain("cache_control");
+    expect(
+      JSON.stringify(sent({ completionOptions: { promptCaching: true } })),
+    ).toContain("cache_control");
+  });
+});
