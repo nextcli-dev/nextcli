@@ -106,15 +106,21 @@ export async function getAllAvailableTools(
     throw new Error("Model service is not initialized");
   }
 
-  const { provider, name, model, capabilities } = modelState.model;
+  const { provider, name, model, capabilities, apiBase } = modelState.model;
 
-  const isCapable = isModelCapable(provider, name, model, capabilities);
+  const isCapable = isModelCapable(
+    provider,
+    name,
+    model,
+    capabilities,
+    apiBase,
+  );
   if (isCapable) {
     tools.push(multiEditTool);
   } else {
     tools.push(editTool);
     logger.debug(
-      "Excluded Edit tool for capable model - MultiEdit will be used instead",
+      "Excluded the MultiEdit tool: the model isn't known to be capable, so Edit is used",
     );
   }
 

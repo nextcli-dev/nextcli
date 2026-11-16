@@ -36,6 +36,7 @@ export {
   baseModelName,
   CATALOG_HOSTS,
   catalogProviderForApiBase,
+  catalogToolSupport,
   hostOf,
   isClaude,
   isHostOrSubdomain,

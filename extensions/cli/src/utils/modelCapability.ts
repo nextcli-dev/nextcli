@@ -1,3 +1,4 @@
+import { catalogToolSupport } from "@nextcli/openai-adapters";
 import {
   isRecommendedAgentModel,
   PROVIDER_TOOL_SUPPORT,
@@ -36,19 +37,28 @@ const GENERIC_ENDPOINT_PROVIDERS = new Set([
  * Determines if a model is recommended for use with `cn`.
  *
  * In order: the config (`capabilities: [tool_use]`) decides; then the
- * provider tool-support rules shared with the IDE extensions (a "no" is final
- * for a real model id on a catalog provider, e.g. openrouter's
- * moonshotai/kimi-k2:free); then the recommended agent models and the name
- * patterns.
+ * models.dev catalog of the model's endpoint, for a model id it lists (a
+ * "no" is final); then the provider tool-support rules shared with the IDE
+ * extensions (a "no" is final for a real model id on a catalog provider,
+ * e.g. openrouter's moonshotai/kimi-k2:free); then the recommended agent
+ * models and the name patterns.
  */
 export function isModelCapable(
   provider: string,
   name: string,
   model?: string,
   capabilities?: string[],
+  apiBase?: string,
 ): boolean {
   if (capabilities?.includes("tool_use")) {
     return true;
+  }
+
+  if (model) {
+    const fromCatalog = catalogToolSupport({ provider, model, apiBase });
+    if (fromCatalog !== undefined) {
+      return fromCatalog;
+    }
   }
 
   const providerRule = PROVIDER_TOOL_SUPPORT[provider];

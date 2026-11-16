@@ -8,6 +8,7 @@ import {
   CATALOG_PROVIDERS,
   catalogPromptLimit,
   catalogProviderFor,
+  catalogToolSupport,
   findCatalogCost,
   findCatalogModel,
   findGeneralCost,
@@ -360,6 +361,45 @@ describe("resolveCatalog", () => {
       "api.openai.com",
     ]) {
       expect(isLocalHost(host), host).toBe(false);
+    }
+  });
+});
+
+describe("catalogToolSupport", () => {
+  it("says what the endpoint's catalog says about tools", () => {
+    const cases: Array<[ModelEndpoint, boolean | undefined]> = [
+      [{ provider: "groq", model: "llama-3.3-70b-versatile" }, true],
+      [
+        { provider: "groq", model: "meta-llama/llama-prompt-guard-2-22m" },
+        false,
+      ],
+      // An official host's catalog, under any provider name
+      [
+        {
+          provider: "openai",
+          model: "meta-llama/llama-prompt-guard-2-22m",
+          apiBase: "https://api.groq.com/openai/v1",
+        },
+        false,
+      ],
+      // OneProvider's ids, through the vendor's own catalog
+      [{ provider: "oneprovider", model: "claude-sonnet-5-5-thinking" }, true],
+      // Not listed: the caller's own rules decide
+      [
+        {
+          provider: "openai",
+          model: "llama-3.3-70b-versatile",
+          apiBase: "http://localhost:8091/v1",
+        },
+        undefined,
+      ],
+      [{ provider: "ollama", model: "qwen3:8b" }, undefined],
+      [{ provider: "groq", model: "not-a-model" }, undefined],
+    ];
+    for (const [endpoint, expected] of cases) {
+      expect(catalogToolSupport(endpoint), JSON.stringify(endpoint)).toBe(
+        expected,
+      );
     }
   });
 });

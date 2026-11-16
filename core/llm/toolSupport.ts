@@ -1,4 +1,4 @@
-import { vendorCatalogProvider } from "@nextcli/llm-info";
+import { catalogToolSupport, vendorCatalogProvider } from "@nextcli/llm-info";
 
 import { ModelDescription } from "..";
 
@@ -504,9 +504,23 @@ export function isRecommendedAgentModel(modelName: string): boolean {
   }
   return false;
 }
+/**
+ * Whether a model gets tools natively, in order: the config's capabilities,
+ * the endpoint's models.dev catalog for a model it lists, then the
+ * provider's rule above
+ */
 export function modelSupportsNativeTools(modelDescription: ModelDescription) {
   if (modelDescription.capabilities?.tools !== undefined) {
     return modelDescription.capabilities.tools;
+  }
+
+  const fromCatalog = catalogToolSupport({
+    provider: modelDescription.provider,
+    model: modelDescription.model,
+    apiBase: modelDescription.apiBase,
+  });
+  if (fromCatalog !== undefined) {
+    return fromCatalog;
   }
 
   const providerSupport = PROVIDER_TOOL_SUPPORT[modelDescription.provider];

@@ -46,6 +46,7 @@ const IntroMessage: React.FC<IntroMessageProps> = ({
           model.name,
           model.model,
           model.capabilities,
+          model.apiBase,
         )
       : true; // Default to true if model not loaded yet
 
@@ -56,6 +57,7 @@ const IntroMessage: React.FC<IntroMessageProps> = ({
     model?.name,
     model?.model,
     model?.capabilities,
+    model?.apiBase,
   ]);
 
   // Render helper components

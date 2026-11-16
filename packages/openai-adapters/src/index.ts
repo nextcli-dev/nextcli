@@ -254,6 +254,8 @@ export type {
 export { geminiThinkingConfig } from "./apis/Gemini.js";
 export { ONEPROVIDER_API_BASE } from "./apis/OneProvider.js";
 export { supportsFimEndpoint } from "./fimEndpoints.js";
+// The CLI reads the catalog through this package
+export { catalogToolSupport } from "@nextcli/llm-info";
 export { resolveModelProfile } from "./modelProfile.js";
 export type { ModelProfile } from "./modelProfile.js";
 export { OPENROUTER_HEADERS } from "./apis/OpenRouter.js";

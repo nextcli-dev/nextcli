@@ -236,4 +236,43 @@ describe("isModelCapable", () => {
       expect(isModelCapable("openai", "CogVLM2", "cogvlm2-video")).toBe(false);
     });
   });
+
+  describe("The models.dev catalog", () => {
+    const guard = "meta-llama/llama-prompt-guard-2-22m";
+
+    test("should let the endpoint's catalog say no over the name", () => {
+      expect(isModelCapable("groq", "Llama Guard", guard)).toBe(false);
+      // Groq's catalog under the openai provider, by its host
+      expect(
+        isModelCapable(
+          "openai",
+          "Llama Guard",
+          guard,
+          undefined,
+          "https://api.groq.com/openai/v1",
+        ),
+      ).toBe(false);
+    });
+
+    test("should take a model the catalog says takes tools", () => {
+      // No rule or name pattern knows Mercury
+      expect(isModelCapable("inception", "Mercury", "mercury-3")).toBe(true);
+    });
+
+    test("should let the config's tool_use win over the catalog", () => {
+      expect(isModelCapable("groq", "Llama Guard", guard, ["tool_use"])).toBe(
+        true,
+      );
+    });
+
+    test("should leave a bridge's model to the rules and names", () => {
+      const bridge = "http://127.0.0.1:8091/v1";
+      expect(
+        isModelCapable("openai", "Llama Guard", guard, undefined, bridge),
+      ).toBe(true);
+      expect(
+        isModelCapable("openai", "Mercury", "mercury-3", undefined, bridge),
+      ).toBe(false);
+    });
+  });
 });
