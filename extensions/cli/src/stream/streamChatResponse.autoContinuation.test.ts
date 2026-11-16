@@ -1,10 +1,13 @@
 import { ModelConfig } from "@nextcli/config-yaml";
 import { BaseLlmApi } from "@nextcli/openai-adapters";
-import type { ChatHistoryItem } from "core/index.js";
 import { convertToUnifiedHistory } from "core/util/messageConversion.js";
 import type { ChatCompletionChunk } from "openai/resources/chat/completions.mjs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  configureAgentLoopLimits,
+  resetAgentLoopLimits,
+} from "./agentLoopLimits.js";
 import { streamChatResponse } from "./streamChatResponse.js";
 import { EMPTY_ANSWER_PROMPT, requireFinalAnswer } from "./turnContinuation.js";
 
@@ -23,6 +26,7 @@ vi.mock("../session.js", () => ({
 
 vi.mock("../util/tokenizer.js", () => ({
   countChatHistoryItemTokens: vi.fn(() => 100),
+  countTotalInputTokens: vi.fn(() => 100),
   validateContextLength: vi.fn(() => ({ isValid: true })),
 }));
 
@@ -81,7 +85,7 @@ vi.mock("./streamChatResponse.compactionHelpers.js", () => ({
   ),
 }));
 
-describe("streamChatResponse - auto-continuation after compaction", () => {
+describe("streamChatResponse - compaction checks", () => {
   const mockModel: ModelConfig = {
     provider: "openai",
     name: "gpt-4",
@@ -92,11 +96,7 @@ describe("streamChatResponse - auto-continuation after compaction", () => {
     },
   } as any;
 
-  let mockLlmApi: BaseLlmApi;
-  let mockAbortController: AbortController;
-  let chatHistory: ChatHistoryItem[];
-  let chunks: ChatCompletionChunk[];
-  let responseCount: number;
+  const prompt = "Review this pull request. Answer in JSON.";
 
   function contentChunk(content: string): ChatCompletionChunk {
     return {
@@ -104,220 +104,79 @@ describe("streamChatResponse - auto-continuation after compaction", () => {
       object: "chat.completion.chunk",
       created: Date.now(),
       model: "test-model",
-      choices: [
-        {
-          index: 0,
-          delta: { content },
-          finish_reason: null,
-        },
-      ],
+      choices: [{ index: 0, delta: { content }, finish_reason: null }],
     };
   }
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-    responseCount = 0;
-    chunks = [contentChunk("Initial response")];
-    chatHistory = convertToUnifiedHistory([{ role: "user", content: "Hello" }]);
-
-    mockLlmApi = {
+  function answering(): BaseLlmApi {
+    return {
       chatCompletionStream: vi.fn().mockImplementation(async function* () {
-        responseCount++;
-        for (const chunk of chunks) {
-          yield chunk;
-        }
+        yield contentChunk("done");
       }),
     } as unknown as BaseLlmApi;
+  }
 
-    mockAbortController = {
-      signal: { aborted: false },
-      abort: vi.fn(),
-    } as unknown as AbortController;
-  });
-
-  it("should automatically continue after compaction when no tool calls remain", async () => {
-    const { services } = await import("../services/index.js");
-    const { handleNormalAutoCompaction } = await import(
-      "./streamChatResponse.compactionHelpers.js"
-    );
-    const { logger } = await import("../util/logger.js");
-
-    // Track history modifications
-    const historyUpdates: string[] = [];
-    vi.mocked(services.chatHistory.addUserMessage).mockImplementation((msg) => {
-      historyUpdates.push(msg);
-      return {
-        message: { role: "user", content: msg },
-        contextItems: [],
-      };
-    });
-
-    // First call: compaction happens
-    // Second call (after continuation): no compaction
-    let compactionCallCount = 0;
-    vi.mocked(handleNormalAutoCompaction).mockImplementation(() => {
-      compactionCallCount++;
-      return Promise.resolve({
-        chatHistory,
-        wasCompacted: compactionCallCount === 1, // Only first call has compaction
-      });
-    });
-
-    // Simulate: first response completes (no tool calls), triggering auto-continue
-    let callCount = 0;
-    mockLlmApi.chatCompletionStream = vi
-      .fn()
-      .mockImplementation(async function* () {
-        callCount++;
-        if (callCount === 1) {
-          // First call: just content, no tool calls (shouldContinue = false)
-          yield contentChunk("First response");
-        } else if (callCount === 2) {
-          // Second call: after auto-continuation
-          yield contentChunk("Continued after compaction");
-        }
-      }) as any;
-
+  async function run(llmApi: BaseLlmApi) {
     await streamChatResponse(
-      chatHistory,
+      convertToUnifiedHistory([{ role: "user", content: prompt }]),
       mockModel,
-      mockLlmApi,
-      mockAbortController,
+      llmApi,
+      { signal: { aborted: false }, abort: vi.fn() } as any,
     );
+  }
 
-    // Verify "continue" message was added
-    expect(historyUpdates).toContain("continue");
-
-    // Verify logging occurred
-    expect(logger.debug).toHaveBeenCalledWith(
-      "Auto-compaction occurred during this turn - automatically continuing session",
-    );
-    expect(logger.debug).toHaveBeenCalledWith(
-      "Added continuation message after compaction",
-    );
-
-    // Verify the LLM was called multiple times (continuing the conversation)
-    expect(callCount).toBeGreaterThan(1);
-  });
-
-  it("should not auto-continue if compaction occurs with tool calls pending", async () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
     const { services } = await import("../services/index.js");
-    const { handleNormalAutoCompaction } = await import(
-      "./streamChatResponse.compactionHelpers.js"
-    );
+    vi.mocked(services.toolPermissions.isHeadless).mockReturnValue(false);
     const { handleToolCalls } = await import("./handleToolCalls.js");
-
-    const historyUpdates: string[] = [];
-    vi.mocked(services.chatHistory.addUserMessage).mockImplementation((msg) => {
-      historyUpdates.push(msg);
-      return {
-        message: { role: "user", content: msg },
-        contextItems: [],
-      };
-    });
-
-    // Compaction happens
-    vi.mocked(handleNormalAutoCompaction).mockResolvedValue({
-      chatHistory,
-      wasCompacted: true,
-    });
-
-    // But tool calls are still being processed (shouldContinue = true)
-    // This is simulated by having handleToolCalls return true (shouldReturn)
-    vi.mocked(handleToolCalls).mockResolvedValue(true);
-
-    // Mock tool calls in response
-    mockLlmApi.chatCompletionStream = vi
-      .fn()
-      .mockImplementation(async function* () {
-        yield {
-          id: "test",
-          object: "chat.completion.chunk",
-          created: Date.now(),
-          model: "test-model",
-          choices: [
-            {
-              index: 0,
-              delta: {
-                tool_calls: [
-                  {
-                    index: 0,
-                    id: "call_123",
-                    type: "function",
-                    function: {
-                      name: "ReadFile",
-                      arguments: '{"filepath": "/test"}',
-                    },
-                  },
-                ],
-              },
-              finish_reason: null,
-            },
-          ],
-        };
-      }) as any;
-
-    await streamChatResponse(
-      chatHistory,
-      mockModel,
-      mockLlmApi,
-      mockAbortController,
-    );
-
-    // Should NOT auto-continue because tool calls are pending
-    expect(historyUpdates).not.toContain("continue");
+    vi.mocked(handleToolCalls).mockResolvedValue(false);
   });
 
-  it("should not create infinite loops - flag is reset after continuation", async () => {
-    const { services } = await import("../services/index.js");
-    const { handleNormalAutoCompaction } = await import(
+  afterEach(async () => {
+    const { handlePreApiCompaction } = await import(
       "./streamChatResponse.compactionHelpers.js"
     );
-
-    const historyUpdates: string[] = [];
-    vi.mocked(services.chatHistory.addUserMessage).mockImplementation((msg) => {
-      historyUpdates.push(msg);
-      return {
-        message: { role: "user", content: msg },
-        contextItems: [],
-      };
-    });
-
-    // Track calls - compaction happens on 1st turn, then again on 2nd turn
-    let normalCompactionCallCount = 0;
-    vi.mocked(handleNormalAutoCompaction).mockImplementation(() => {
-      normalCompactionCallCount++;
-      // Compaction happens on first two calls
-      return Promise.resolve({
-        chatHistory,
-        wasCompacted: normalCompactionCallCount <= 1,
-      });
-    });
-
-    let streamCallCount = 0;
-    mockLlmApi.chatCompletionStream = vi
-      .fn()
-      .mockImplementation(async function* () {
-        streamCallCount++;
-        yield contentChunk(`Response ${streamCallCount}`);
-      }) as any;
-
-    await streamChatResponse(
-      chatHistory,
-      mockModel,
-      mockLlmApi,
-      mockAbortController,
+    vi.mocked(handlePreApiCompaction).mockImplementation((history) =>
+      Promise.resolve({ chatHistory: history, wasCompacted: false }),
     );
+    resetAgentLoopLimits();
+  });
 
-    // Should only add "continue" once
-    // The flag is reset after the first continuation
-    const continueCount = historyUpdates.filter(
-      (msg) => msg === "continue",
-    ).length;
-    expect(continueCount).toBeLessThanOrEqual(1);
+  it("doesn't compact before a run's final call", async () => {
+    // The limit left room for one call: a summary would be a second one, and
+    // the request for the answer would go into it
+    configureAgentLoopLimits({ maxTurns: "1" });
+    const { handlePreApiCompaction } = await import(
+      "./streamChatResponse.compactionHelpers.js"
+    );
+    vi.mocked(handlePreApiCompaction).mockImplementation((history) =>
+      Promise.resolve({ chatHistory: history, wasCompacted: true }),
+    );
+    const { services } = await import("../services/index.js");
+    const llmApi = answering();
 
-    // Should have called the LLM at least once
-    expect(streamCallCount).toBeGreaterThanOrEqual(1);
+    await run(llmApi);
+
+    expect(handlePreApiCompaction).not.toHaveBeenCalled();
+    expect(llmApi.chatCompletionStream).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(services.chatHistory.addUserMessage).mock.calls).toEqual([
+      [expect.stringContaining("Stop working now")],
+    ]);
+  });
+
+  it("takes the answer after a pre-call compaction without asking again", async () => {
+    const { handlePreApiCompaction } = await import(
+      "./streamChatResponse.compactionHelpers.js"
+    );
+    vi.mocked(handlePreApiCompaction).mockImplementation((history) =>
+      Promise.resolve({ chatHistory: history, wasCompacted: true }),
+    );
+    const llmApi = answering();
+
+    await run(llmApi);
+
+    expect(llmApi.chatCompletionStream).toHaveBeenCalledTimes(1);
   });
 });
 

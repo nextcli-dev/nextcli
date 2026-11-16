@@ -10,6 +10,7 @@ import { validateContextLength } from "../util/tokenizer.js";
 
 import { handleAutoCompaction } from "./streamChatResponse.autoCompaction.js";
 import { StreamCallbacks } from "./streamChatResponse.types.js";
+import { resumeAfterCompaction } from "./turnContinuation.js";
 
 export interface CompactionHelperOptions {
   model: ModelConfig;
@@ -19,6 +20,23 @@ export interface CompactionHelperOptions {
   callbacks?: StreamCallbacks;
   systemMessage: string;
   tools?: ChatCompletionTool[];
+}
+
+/**
+ * Makes a compacted history the conversation: writes it to the history
+ * service when there is one, then adds the user turn the next call answers.
+ */
+function commitCompacted(compacted: ChatHistoryItem[]): ChatHistoryItem[] {
+  const chatHistorySvc = services.chatHistory;
+  let base = compacted;
+  if (
+    typeof chatHistorySvc?.isReady === "function" &&
+    chatHistorySvc.isReady()
+  ) {
+    chatHistorySvc.setHistory(compacted);
+    base = chatHistorySvc.getHistory();
+  }
+  return resumeAfterCompaction(base);
 }
 
 /**
@@ -55,15 +73,10 @@ export async function handlePreApiCompaction(
 
   if (wasCompacted) {
     logger.debug("Pre-API compaction occurred, updating chat history");
-    const chatHistorySvc = services.chatHistory;
-    if (
-      typeof chatHistorySvc?.isReady === "function" &&
-      chatHistorySvc.isReady()
-    ) {
-      chatHistorySvc.setHistory(preCompactHistory);
-      return { chatHistory: chatHistorySvc.getHistory(), wasCompacted: true };
-    }
-    return { chatHistory: [...preCompactHistory], wasCompacted: true };
+    return {
+      chatHistory: commitCompacted(preCompactHistory),
+      wasCompacted: true,
+    };
   }
 
   return { chatHistory, wasCompacted: false };
@@ -130,14 +143,7 @@ export async function handlePostToolValidation(
       });
 
     if (wasCompacted) {
-      // Use the service to update history if available, otherwise use local copy
-      if (chatHistorySvc && typeof chatHistorySvc.setHistory === "function") {
-        chatHistorySvc.setHistory(compactedHistory);
-        chatHistory = chatHistorySvc.getHistory();
-      } else {
-        // Fallback: use the compacted history directly when service unavailable
-        chatHistory = compactedHistory;
-      }
+      chatHistory = commitCompacted(compactedHistory);
 
       // Verify compaction brought us under the limit
       const postCompactionValidation = validateContextLength({
@@ -221,16 +227,10 @@ export async function handleNormalAutoCompaction(
     });
 
   if (wasCompacted) {
-    // Use the service to update history if available, otherwise use local copy
-    if (chatHistorySvc && typeof chatHistorySvc.setHistory === "function") {
-      chatHistorySvc.setHistory(updatedChatHistory);
-      return {
-        chatHistory: chatHistorySvc.getHistory(),
-        wasCompacted: true,
-      };
-    }
-    // Fallback: return the compacted history directly when service unavailable
-    return { chatHistory: updatedChatHistory, wasCompacted: true };
+    return {
+      chatHistory: commitCompacted(updatedChatHistory),
+      wasCompacted: true,
+    };
   }
 
   return { chatHistory, wasCompacted: false };

@@ -71,10 +71,11 @@ These checks read the command text, so they are best-effort: a command can alway
 
 **`cn review`**: the review worker edits the changed files in a worktree, so it gets `Edit`, `MultiEdit` and `Write` plus the closed headless defaults. `--allow` flags are not passed to the worker.
 
-**Limits**: `--max-turns`, `--max-session-tokens` and `--max-cost` cap one run. When a run is about to reach a limit, the CLI makes one last model call without tools and asks for a final answer from what the model has found so far, so the run still ends with a result.
+**Limits**: `--max-turns`, `--max-session-tokens`, `--max-cost` and `--max-time` cap one run. When a run is about to reach a limit, the CLI makes one last model call without tools and asks for a final answer from what the model has found so far, so the run still ends with a result.
 
 - The last call is made when it is the last allowed call, or when the budget left is less than twice the last call, with a minimum reserve of 10% of the limit.
-- In headless mode, a run ended by a limit exits with code **3**. The answer is still on stdout. If the run is already over the limit, the CLI does not make another model call, and that also exits with code 3.
+- `--max-time <seconds>` caps how long `cn` runs, counted from its start. The last call is made when the time left is less than the last turn (its model call, tools and any compaction) plus 10% of the limit. Past the deadline the final call is still made, and one slow call can run past the limit, so a caller that kills `cn` at a timeout should pass a `--max-time` a minute or so shorter.
+- In headless mode, a run ended by a limit exits with code **3**. The answer is still on stdout. If the run is already over its turn, token or cost limit, the CLI does not make another model call, and that also exits with code 3.
 - With `--format json`, the last line on stderr summarizes the run. `priced` says how the cost was worked out: `exact` from the host's price table, `estimated` from OpenRouter's price for the same model, or `fallback` at $1 / $2 per million input / output tokens. When `--max-cost` is set and a price isn't exact, a warning line comes first.
 
 ```json

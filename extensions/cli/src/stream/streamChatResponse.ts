@@ -111,7 +111,9 @@ function refreshChatHistoryFromService(
   return chatHistory;
 }
 
-// Starts one model call. A run already past its limit throws instead of calling.
+// Starts one model call. A run already past its turn, token or cost limit
+// throws instead of calling; past its --max-time deadline it still makes the
+// final call.
 function applyTurnLimit(
   budget: AgentLoopBudget,
   chatHistory: ChatHistoryItem[],
@@ -415,11 +417,16 @@ export async function streamChatResponse(
 
   let fullResponse = "";
   let finalResponse = "";
-  const turn: TurnState = { compacted: false, askedForAnswer: false };
+  const turn: TurnState = { askedForAnswer: false };
 
   // The final answer must still fit under --max-cost, with room to be written
-  const budget = new AgentLoopBudget(() =>
-    estimateFinalCallCost(model, countTotalInputTokens({ chatHistory, model })),
+  const budget = new AgentLoopBudget(
+    () =>
+      estimateFinalCallCost(
+        model,
+        countTotalInputTokens({ chatHistory, model }),
+      ),
+    !isCompacting,
   );
 
   // Aborted on exit, so an interrupted turn never starts another tool (#12701)
@@ -431,7 +438,8 @@ export async function streamChatResponse(
       logger.debug("Starting conversation iteration");
 
       // At a limit, the next call is the last one and has no tools. A run
-      // already over the limit throws instead of spending another call.
+      // already over its turn, token or cost limit throws instead of spending
+      // another call; past its --max-time deadline it still makes the final one.
       let wrapUp: LimitWrapUp | undefined;
       ({ wrapUp, chatHistory } = applyTurnLimit(budget, chatHistory));
 
@@ -452,8 +460,8 @@ export async function streamChatResponse(
         model.chatOptions?.toolOverrides,
       );
 
-      // Pre-API auto-compaction checkpoint (now includes tools)
-      const preCompactionResult = await handlePreApiCompaction(chatHistory, {
+      // A compaction below leaves a history that ends with a user turn
+      const compaction = {
         model,
         llmApi,
         isCompacting,
@@ -461,10 +469,15 @@ export async function streamChatResponse(
         callbacks,
         systemMessage,
         tools,
-      });
-      chatHistory = preCompactionResult.chatHistory;
-      if (preCompactionResult.wasCompacted) {
-        turn.compacted = true;
+      };
+
+      // Pre-API auto-compaction checkpoint (now includes tools). Not before
+      // a run's last call: the limit left room for that call only, and the
+      // request for the answer would go into the summary. processStreaming-
+      // Response prunes a history that doesn't fit.
+      if (!wrapUp) {
+        chatHistory = (await handlePreApiCompaction(chatHistory, compaction))
+          .chatHistory;
       }
 
       logger.debug("Tools prepared", {
@@ -547,44 +560,20 @@ export async function streamChatResponse(
       }
 
       // After tool execution, validate that we haven't exceeded context limit
-      const postToolResult = await handlePostToolValidation(
-        toolCalls,
-        chatHistory,
-        {
-          model,
-          llmApi,
-          isCompacting,
-          isHeadless,
-          callbacks,
-          systemMessage,
-          tools,
-        },
-      );
-      chatHistory = postToolResult.chatHistory;
-      if (postToolResult.wasCompacted) {
-        turn.compacted = true;
-      }
+      chatHistory = (
+        await handlePostToolValidation(toolCalls, chatHistory, compaction)
+      ).chatHistory;
 
       // Normal auto-compaction check at 80% threshold
-      const compactionResult = await handleNormalAutoCompaction(
-        chatHistory,
-        shouldContinue,
-        {
-          model,
-          llmApi,
-          isCompacting,
-          isHeadless,
-          callbacks,
-          systemMessage,
-          tools,
-        },
-      );
-      chatHistory = compactionResult.chatHistory;
-      if (compactionResult.wasCompacted) {
-        turn.compacted = true;
-      }
+      chatHistory = (
+        await handleNormalAutoCompaction(
+          chatHistory,
+          shouldContinue,
+          compaction,
+        )
+      ).chatHistory;
 
-      // Stop unless tools ran, compaction ran, or a missing answer is asked for
+      // Stop unless tools ran or a missing answer is asked for
       const next = continueAfterResponse(turn, {
         shouldContinue,
         content,

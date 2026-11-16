@@ -150,6 +150,10 @@ export function addCommonOptions(command: Command): Command {
       "US dollars allowed in one run; near the limit the model gives a final answer (off by default)",
     )
     .option(
+      "--max-time <seconds>",
+      "Seconds cn may run; near the limit the model gives a final answer (off by default)",
+    )
+    .option(
       "--effort <level>",
       "Effort level for this run, for example low, medium or high (see the model menu)",
       parseEffortOption,
@@ -182,6 +186,7 @@ export function mergeParentOptions(parentCommand: Command, options: any): any {
     "maxTurns",
     "maxSessionTokens",
     "maxCost",
+    "maxTime",
     "effort",
   ];
 

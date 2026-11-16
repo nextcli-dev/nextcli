@@ -77,18 +77,34 @@ export function outputCapMessage(): string | undefined {
   return `The model used ${tokens} before writing an answer. Raise the output limit (maxTokens) for this model.`;
 }
 
+/** Sent after a compaction, so the next call answers a user turn */
+export const COMPACTION_CONTINUE_PROMPT =
+  "Continue from where the summary above leaves off. Don't redo work it lists as done.";
+
+/**
+ * After a compaction the history ends with the summary, an assistant
+ * message. Without a user turn after it, a run that was calling tools went on
+ * calling them with no thinking and never answered (AI review run
+ * 43834678832).
+ */
+export function resumeAfterCompaction(
+  chatHistory: ChatHistoryItem[],
+): ChatHistoryItem[] {
+  logger.debug("Continuing after compaction");
+  // A copy: without the history service, addUserMessage appends in place
+  return addUserMessage([...chatHistory], COMPACTION_CONTINUE_PROMPT);
+}
+
 /** What one turn of the agent loop carries into the next. */
 export interface TurnState {
-  /** Compaction ran during this turn */
-  compacted: boolean;
   /** The model was already asked for a missing answer */
   askedForAnswer: boolean;
 }
 
 /**
  * Decides whether the loop runs again after a model response with no tool
- * calls left to run. It runs again after compaction ("continue"), or once
- * when an answer is required and the model wrote nothing.
+ * calls left to run. It runs again once when an answer is required and the
+ * model wrote nothing.
  */
 export function continueAfterResponse(
   turn: TurnState,
@@ -101,15 +117,6 @@ export function continueAfterResponse(
   const { shouldContinue, content, chatHistory } = response;
   if (shouldContinue) {
     return { continue: true, chatHistory };
-  }
-  if (turn.compacted) {
-    turn.compacted = false;
-    logger.debug(
-      "Auto-compaction occurred during this turn - automatically continuing session",
-    );
-    const history = addUserMessage(chatHistory, "continue");
-    logger.debug("Added continuation message after compaction");
-    return { continue: true, chatHistory: history };
   }
   if (answerRequired && !content.trim() && !turn.askedForAnswer) {
     turn.askedForAnswer = true;

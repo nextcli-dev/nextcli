@@ -13,6 +13,10 @@ export interface AgentLoopLimits {
   maxSessionTokens?: number;
   /** Stop when this run has cost more than this many US dollars */
   maxCostUsd?: number;
+  /** Seconds this process may run, from when the limits were set (--max-time) */
+  maxSeconds?: number;
+  /** When --max-time runs out, in milliseconds since the epoch */
+  deadline?: number;
 }
 
 export const DEFAULT_AGENT_LOOP_LIMITS: AgentLoopLimits = {
@@ -22,7 +26,7 @@ export const DEFAULT_AGENT_LOOP_LIMITS: AgentLoopLimits = {
 
 let configuredLimits: AgentLoopLimits = { ...DEFAULT_AGENT_LOOP_LIMITS };
 
-export type AgentLoopLimitKind = "turns" | "tokens" | "cost";
+export type AgentLoopLimitKind = "turns" | "tokens" | "cost" | "time";
 
 /**
  * How a model call was priced: exact for the price the host bills (a maker's
@@ -91,7 +95,9 @@ export function configureAgentLoopLimits(options: {
   maxTurns?: string | number;
   maxSessionTokens?: string | number;
   maxCost?: string | number;
+  maxTime?: string | number;
 }): void {
+  const maxSeconds = parsePositiveNumber(options.maxTime, "--max-time");
   configuredLimits = {
     ...DEFAULT_AGENT_LOOP_LIMITS,
     maxTurns:
@@ -102,6 +108,8 @@ export function configureAgentLoopLimits(options: {
       "--max-session-tokens",
     ),
     maxCostUsd: parsePositiveNumber(options.maxCost, "--max-cost"),
+    maxSeconds,
+    deadline: maxSeconds ? Date.now() + maxSeconds * 1000 : undefined,
   };
 }
 
@@ -266,6 +274,32 @@ export function checkAgentLoopLimits(
   return undefined;
 }
 
+/**
+ * Decides whether the next model call must be the last one under --max-time:
+ * the time left wouldn't cover another turn as long as the last one (its
+ * model call, tools and any compaction) and then the final answer, for which
+ * a tenth of the limit is kept. Unlike tokens and dollars, time can't be
+ * stopped short: past the deadline the final call is still made. The caller's
+ * own timeout should leave it a margin.
+ */
+function checkTimeLimit(
+  limits: AgentLoopLimits,
+  lastTurnSeconds: number,
+  now = Date.now(),
+): LimitWrapUp | undefined {
+  if (!limits.maxSeconds || limits.deadline === undefined) {
+    return undefined;
+  }
+  const secondsLeft = (limits.deadline - now) / 1000;
+  if (secondsLeft >= lastTurnSeconds + limits.maxSeconds * 0.1) {
+    return undefined;
+  }
+  return {
+    limit: "time",
+    description: `time limit of ${limits.maxSeconds} seconds (--max-time)`,
+  };
+}
+
 function markLimitReached(limit: AgentLoopLimitKind): void {
   limitReached = limit;
 }
@@ -275,8 +309,13 @@ export class AgentLoopBudget {
   /**
    * @param estimateFinalCallCost what a final answer would cost now, in US
    * dollars. Only called when --max-cost is set.
+   * @param timed whether --max-time applies. A compaction's one call is not
+   * timed: a final-answer request there would become the summary.
    */
-  constructor(private readonly estimateFinalCallCost?: () => number) {}
+  constructor(
+    private readonly estimateFinalCallCost?: () => number,
+    private readonly timed = true,
+  ) {}
 
   private readonly limits = getAgentLoopLimits();
   private readonly tracksUsage = !!(
@@ -287,6 +326,7 @@ export class AgentLoopBudget {
     : undefined;
   private lastCall: UsageSnapshot | undefined;
   private turn = 0;
+  private lastTurnStartedAt: number | undefined;
 
   /**
    * Call before each model call. Returns the limit when this call must be
@@ -294,13 +334,23 @@ export class AgentLoopBudget {
    */
   nextTurn(): LimitWrapUp | undefined {
     this.turn++;
-    const wrapUp = checkAgentLoopLimits(
-      this.limits,
-      this.turn,
-      this.usageAtStart,
-      this.lastCall,
-      this.estimateFinalCallCost,
-    );
+    const now = Date.now();
+    const lastTurnSeconds =
+      this.lastTurnStartedAt === undefined
+        ? 0
+        : (now - this.lastTurnStartedAt) / 1000;
+    this.lastTurnStartedAt = now;
+    const wrapUp =
+      checkAgentLoopLimits(
+        this.limits,
+        this.turn,
+        this.usageAtStart,
+        this.lastCall,
+        this.estimateFinalCallCost,
+      ) ??
+      (this.timed
+        ? checkTimeLimit(this.limits, lastTurnSeconds, now)
+        : undefined);
     if (wrapUp) {
       markLimitReached(wrapUp.limit);
     }

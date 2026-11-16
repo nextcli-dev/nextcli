@@ -10,7 +10,9 @@ import { ToolCall } from "../tools/index.js";
 import {
   handleNormalAutoCompaction,
   handlePostToolValidation,
+  handlePreApiCompaction,
 } from "./streamChatResponse.compactionHelpers.js";
+import { COMPACTION_CONTINUE_PROMPT } from "./turnContinuation.js";
 
 // A history is over the limit while it holds this message. The summary that
 // replaces it is under, so each check below decides from the history it gets.
@@ -108,6 +110,15 @@ describe("compaction helpers", () => {
     ];
   }
 
+  // The summary, then the user turn the next call answers
+  const summaryAndContinue: ChatHistoryItem[] = [
+    ...summary,
+    {
+      message: { role: "user", content: COMPACTION_CONTINUE_PROMPT },
+      contextItems: [],
+    },
+  ];
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -119,11 +130,27 @@ describe("compaction helpers", () => {
     expect(compactChatHistory).not.toHaveBeenCalled();
   });
 
-  it("compact a normal turn over the limit into the summary", async () => {
+  it("compact a normal turn over the limit into the summary and a user turn", async () => {
+    // A run calling tools needs a user turn to answer: after the summary
+    // alone, AI review run 43834678832 kept reading files and never answered
     for (const result of await runBoth(longHistory, false)) {
-      expect(result).toEqual({ chatHistory: summary, wasCompacted: true });
+      expect(result).toEqual({
+        chatHistory: summaryAndContinue,
+        wasCompacted: true,
+      });
     }
     expect(compactChatHistory).toHaveBeenCalledTimes(2);
+    // The summary they compacted into is left as it was
+    expect(summary).toHaveLength(1);
+  });
+
+  it("compact before a call into the summary and a user turn", async () => {
+    const result = await handlePreApiCompaction(longHistory, options(false));
+
+    expect(result).toEqual({
+      chatHistory: summaryAndContinue,
+      wasCompacted: true,
+    });
   });
 
   it("leave a normal turn under the limit as it is", async () => {
