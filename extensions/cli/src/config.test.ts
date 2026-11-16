@@ -1,11 +1,10 @@
 import { AssistantUnrolled, ModelConfig } from "@nextcli/config-yaml";
+import { AiSdkApi } from "@nextcli/openai-adapters";
 import { describe, expect, test, vi, beforeEach } from "vitest";
 
 // Mock dependencies
 vi.mock("./auth/workos.js");
 vi.mock("./util/logger.js", () => ({ logger: { debug: vi.fn() } }));
-
-import { AiSdkApi } from "@nextcli/openai-adapters";
 
 import type { AuthConfig } from "./auth/workos.js";
 import { createLlmApi, getLlmApi, withCliAttribution } from "./config.js";
