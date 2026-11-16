@@ -83,7 +83,7 @@ The `models` section defines the language models used in your configuration. Mod
   - `tool_use`: Enables function/tool calling support (required for Agent mode)
   - `image_input`: Enables image upload and processing support
 
-  NextCLI automatically detects these capabilities for most models, but you can override this when using custom deployments or if autodetection isn't working correctly.
+  NextCLI detects these capabilities for most models. Tool support comes from the [models.dev](https://models.dev) catalog for a model it lists on your provider or host (a model it marks as taking no tools gets none), else from rules by provider and model name. Add a capability here for custom deployments, or when detection is wrong.
 
 - `maxStopWords`: Maximum number of stop words allowed, to avoid API errors with extensive lists.
 
@@ -102,7 +102,7 @@ The `models` section defines the language models used in your configuration. Mod
 
 - `defaultCompletionOptions`: Default completion options for model settings.
 
-  - `contextLength`: Maximum context length of the model, typically in tokens.
+  - `contextLength`: Maximum context length of the model, typically in tokens. The CLI compacts the conversation before it fills the window: a window chosen in the model menu, else this, else the model's top-level `contextLength`, else the window the models.dev catalog lists for the model (at most 200K tokens), else 200K.
   - `maxTokens`: Maximum number of tokens to generate in a completion.
   - `temperature`: Controls the randomness of the completion. Values range from `0.0` (deterministic) to `1.0` (random).
   - `topP`: The cumulative probability for nucleus sampling.
@@ -133,6 +133,15 @@ The `models` section defines the language models used in your configuration. Mod
     - `cert`: Path to the client certificate file.
     - `key`: Path to the client certificate key file.
     - `passphrase`: Optional passphrase for the client certificate key file.
+
+- `pricing`: What your host bills for the model, in US dollars per million tokens: `input` and `output`, and optionally `cacheRead` and `cacheWrite` (without them, cache tokens cost the input price). It takes precedence over every other price, the models.dev catalog's and fast mode's included, and the cost counts as exact, so `--max-cost` counts the model as billed.
+
+  ```yaml
+  pricing:
+    input: 0.5
+    output: 1.5
+    cacheRead: 0.05
+  ```
 
 - `autocompleteOptions`: If the model includes role `autocomplete`, these settings apply for tab autocompletion:
 

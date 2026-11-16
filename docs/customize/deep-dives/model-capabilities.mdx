@@ -26,12 +26,10 @@ NextCLI uses a two-tier system for determining model capabilities:
 
 ### How Automatic Detection Works (Default)
 
-NextCLI automatically detects capabilities based on your provider and model name. For example:
+NextCLI detects tool support in this order:
 
-- **OpenAI**: GPT-4 and GPT-3.5 Turbo models support tools
-- **Anthropic**: Claude 3.5+ models support both tools and images
-- **Ollama**: Most models support tools, vision models support images
-- **Google**: All Gemini models support function calling
+1. The [models.dev](https://models.dev) catalog, for a model it lists on your provider or host. A model it marks as taking no tools gets none.
+2. Rules by provider and model name, for models the catalog doesn't list: custom deployments, local servers, bridges. For example, most Ollama models support tools, and every Gemini model supports function calling.
 
 This works well for popular models, but may not cover custom deployments or newer models.
 
