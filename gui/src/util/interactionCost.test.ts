@@ -57,6 +57,14 @@ describe("interactionCost", () => {
     ).toBeGreaterThan(standard);
   });
 
+  it("prices by the model's configured pricing, which the start carries", () => {
+    const start = { pricing: { input: 0.5, output: 1.5 } };
+    expect(interactionCost(interaction(start))).toMatchObject({
+      cost: 2,
+      priced: "exact",
+    });
+  });
+
   it("returns null without usage", () => {
     expect(interactionCost({ results: [] })).toBeNull();
   });

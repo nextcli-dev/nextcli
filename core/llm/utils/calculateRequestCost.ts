@@ -11,7 +11,7 @@ import {
   type PriceSource,
 } from "@nextcli/llm-info";
 
-import { Usage } from "../..";
+import { ModelPricing, Usage } from "../..";
 
 import {
   findOneproviderRates,
@@ -41,6 +41,8 @@ export interface RequestCostOptions {
   estimateUnknown?: boolean;
   /** The request was sent in the model's fast or priority mode */
   fast?: boolean;
+  /** The model's configured prices, which win over every other price */
+  pricing?: ModelPricing;
 }
 
 /**
@@ -153,7 +155,8 @@ function bridgeFloor(
 }
 
 /**
- * Prices one request, by resolveCatalog's route in @nextcli/llm-info:
+ * Prices one request. The model's configured `pricing` wins, exact, fast
+ * mode included. Otherwise, by resolveCatalog's route in @nextcli/llm-info:
  *
  * 1. A local model server on this machine (localhost, 127.x,
  *    host.docker.internal) or on its local default (no API base): no price.
@@ -180,6 +183,14 @@ export function calculateRequestCost(
   usage: Usage,
   options: RequestCostOptions = {},
 ): CostBreakdown | null {
+  if (options.pricing) {
+    const { cost, breakdown } = priceWithHostRates(
+      model,
+      ratesFromCatalog(options.pricing)!,
+      usage,
+    );
+    return { cost, breakdown, priced: "exact" };
+  }
   const route = resolveCatalog({ provider, model, apiBase: options.apiBase });
   const normalizedProvider = provider.toLowerCase();
   if (

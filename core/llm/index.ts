@@ -27,6 +27,7 @@ import {
   MessageOption,
   ModelCapability,
   ModelInstaller,
+  ModelPricing,
   PromptLog,
   PromptTemplate,
   RequestOptions,
@@ -178,6 +179,7 @@ export abstract class BaseLLM implements ILLM {
   envSecretLocations?: Record<string, string>;
   apiBase?: string;
   onPremProxyUrl?: string | null;
+  pricing?: ModelPricing;
 
   cacheBehavior?: CacheBehavior;
   capabilities?: ModelCapability;
@@ -282,6 +284,7 @@ export abstract class BaseLLM implements ILLM {
     this.apiKeyLocation = options.apiKeyLocation;
     this.envSecretLocations = options.envSecretLocations;
     this.apiBase = options.apiBase;
+    this.pricing = options.pricing;
 
     this.onPremProxyUrl = options.onPremProxyUrl;
 
@@ -737,6 +740,7 @@ export abstract class BaseLLM implements ILLM {
         options: this.optionsAsSent(completionOptions),
         provider: this.providerName,
         apiBase: this.apiBase,
+        pricing: this.pricing,
       });
       if (this.llmRequestHook) {
         this.llmRequestHook(completionOptions.model, fimLog);
@@ -862,6 +866,7 @@ export abstract class BaseLLM implements ILLM {
         options: this.optionsAsSent(completionOptions),
         provider: this.providerName,
         apiBase: this.apiBase,
+        pricing: this.pricing,
       });
       if (this.llmRequestHook) {
         this.llmRequestHook(completionOptions.model, prompt);
@@ -996,6 +1001,7 @@ export abstract class BaseLLM implements ILLM {
         options: this.optionsAsSent(completionOptions),
         provider: this.providerName,
         apiBase: this.apiBase,
+        pricing: this.pricing,
       });
       if (this.llmRequestHook) {
         this.llmRequestHook(completionOptions.model, prompt);
@@ -1260,6 +1266,7 @@ export abstract class BaseLLM implements ILLM {
       options: this.optionsAsSent(options),
       provider: this.providerName,
       apiBase: this.apiBase,
+      pricing: this.pricing,
     });
     if (this.llmRequestHook) {
       this.llmRequestHook(options.model, prompt);

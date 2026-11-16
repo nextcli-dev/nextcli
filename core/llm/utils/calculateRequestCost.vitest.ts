@@ -827,3 +827,61 @@ describe("priceWithHostRates", () => {
     expect(cost).toBeCloseTo(1.2, 6);
   });
 });
+
+describe("calculateRequestCost with configured pricing", () => {
+  const pricing = { input: 0.5, output: 1.5, cacheRead: 0.05, cacheWrite: 0.6 };
+  // 1M prompt tokens: 600K uncached, 300K cache reads, 100K cache writes;
+  // 1M output tokens
+  const usage: Usage = {
+    promptTokens: 1_000_000,
+    completionTokens: 1_000_000,
+    promptTokensDetails: { cachedTokens: 300_000, cacheWriteTokens: 100_000 },
+  };
+  const expected = 0.3 + 0.015 + 0.06 + 1.5;
+
+  it("wins over every other price, as exact", () => {
+    const endpoints: Array<[string, string, string | undefined]> = [
+      // OneProvider's own table
+      ["oneprovider", "deepseek-v4-pro", undefined],
+      // A maker's list price on its own API
+      ["anthropic", "claude-opus-5-5", undefined],
+      // A provider's catalog
+      ["groq", "llama-3.3-70b-versatile", undefined],
+      // A bridge's floor
+      ["openai", "deepseek-v4-pro", "http://127.0.0.1:8091/v1"],
+      // A local server, otherwise free
+      ["ollama", "qwen3:8b", undefined],
+      // A model nothing else prices
+      ["openai", "my-finetune", "https://llm.example.com/v1"],
+    ];
+    for (const [provider, model, apiBase] of endpoints) {
+      const result = calculateRequestCost(provider, model, usage, {
+        apiBase,
+        pricing,
+      });
+      expect(result?.priced, `${provider} ${model}`).toBe("exact");
+      expect(result?.cost, `${provider} ${model}`).toBeCloseTo(expected, 6);
+    }
+  });
+
+  it("is the price in fast mode too", () => {
+    const result = calculateRequestCost("anthropic", "claude-opus-5-5", usage, {
+      fast: true,
+      pricing,
+    });
+    expect(result).toMatchObject({ priced: "exact" });
+    expect(result?.cost).toBeCloseTo(expected, 6);
+  });
+
+  it("bills cache tokens as input without cache prices", () => {
+    const result = calculateRequestCost(
+      "groq",
+      "llama-3.3-70b-versatile",
+      usage,
+      {
+        pricing: { input: 0.5, output: 1.5 },
+      },
+    );
+    expect(result?.cost).toBeCloseTo(0.5 + 1.5, 6);
+  });
+});

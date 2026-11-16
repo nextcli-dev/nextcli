@@ -176,6 +176,17 @@ const promptTemplatesSchema = z.object({
 });
 export type PromptTemplates = z.infer<typeof promptTemplatesSchema>;
 
+/** A model's prices in US dollars per million tokens */
+export const modelPricingSchema = z.object({
+  input: z.number().nonnegative(),
+  output: z.number().nonnegative(),
+  /** Cached prompt tokens read; without it they cost the input price */
+  cacheRead: z.number().nonnegative().optional(),
+  /** Prompt tokens written to the cache; without it, the input price */
+  cacheWrite: z.number().nonnegative().optional(),
+});
+export type ModelPricing = z.infer<typeof modelPricingSchema>;
+
 const baseModelFields = {
   name: z.string(),
   model: z.string(),
@@ -193,6 +204,11 @@ const baseModelFields = {
   promptTemplates: promptTemplatesSchema.optional(),
   useLegacyCompletionsEndpoint: z.boolean().optional(),
   useResponsesApi: z.boolean().optional(),
+  /**
+   * What the host bills for the model. It wins over every other price, so
+   * cost limits count it exactly.
+   */
+  pricing: modelPricingSchema.optional(),
   env: z
     .record(z.string(), z.union([z.string(), z.boolean(), z.number()]))
     .optional(),
