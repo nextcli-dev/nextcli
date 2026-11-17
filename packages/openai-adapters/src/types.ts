@@ -56,7 +56,6 @@ export const OpenAIConfigSchema = BasePlusConfig.extend({
     z.literal("cerebras"),
     z.literal("kindo"),
     z.literal("msty"),
-    z.literal("openrouter"),
     z.literal("clawrouter"),
     z.literal("sambanova"),
     z.literal("text-gen-webui"),
@@ -71,6 +70,23 @@ export const OpenAIConfigSchema = BasePlusConfig.extend({
   ]),
 });
 export type OpenAIConfig = z.infer<typeof OpenAIConfigSchema>;
+
+/**
+ * Prompt caching for Claude (apis/AnthropicCachingStrategies.ts). Without
+ * one, DEFAULT_CACHING_STRATEGY; `none` adds no cache_control anywhere.
+ */
+const CachingStrategySchema = z.enum([
+  "none",
+  "systemOnly",
+  "systemAndTools",
+  "optimized",
+]);
+
+export const OpenRouterConfigSchema = OpenAIConfigSchema.extend({
+  provider: z.literal("openrouter"),
+  cachingStrategy: CachingStrategySchema.optional(),
+});
+export type OpenRouterConfig = z.infer<typeof OpenRouterConfigSchema>;
 
 export const MoonshotConfigSchema = OpenAIConfigSchema.extend({
   provider: z.literal("moonshot"),
@@ -221,10 +237,7 @@ export type AnthropicConfig = z.infer<typeof AnthropicConfigSchema>;
 export const OneProviderConfigSchema = OpenAIConfigSchema.extend({
   provider: z.literal("oneprovider"),
   apiKey: z.string(),
-  /** Prompt caching for Claude (apis/AnthropicCachingStrategies.ts) */
-  cachingStrategy: z
-    .enum(["none", "systemOnly", "systemAndTools", "optimized"])
-    .optional(),
+  cachingStrategy: CachingStrategySchema.optional(),
 });
 export type OneProviderConfig = z.infer<typeof OneProviderConfigSchema>;
 
@@ -272,6 +285,7 @@ export type AiSdkConfig = z.infer<typeof AiSdkConfigSchema>;
 // Discriminated union
 export const LLMConfigSchema = z.discriminatedUnion("provider", [
   OpenAIConfigSchema,
+  OpenRouterConfigSchema,
   OneProviderConfigSchema,
   BedrockConfigSchema,
   MoonshotConfigSchema,

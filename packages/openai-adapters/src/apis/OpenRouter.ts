@@ -1,12 +1,12 @@
 import { ChatCompletionCreateParams } from "openai/resources/index";
 
-import { OpenAIConfig } from "../types.js";
+import { OpenRouterConfig } from "../types.js";
+import {
+  CachingStrategyName,
+  DEFAULT_CACHING_STRATEGY,
+} from "./AnthropicCachingStrategies.js";
 import { OpenAIApi } from "./OpenAI.js";
 import { applyAnthropicCachingToOpenRouterBody } from "./OpenRouterCaching.js";
-
-export interface OpenRouterConfig extends OpenAIConfig {
-  cachingStrategy?: import("./AnthropicCachingStrategies.js").CachingStrategyName;
-}
 
 // TODO: Extract detailed error info from OpenRouter's error.metadata.raw to surface better messages
 
@@ -51,9 +51,16 @@ function applyOpenRouterControls(
 }
 
 export class OpenRouterApi extends OpenAIApi {
+  /**
+   * Prompt caching for Claude models. `none` adds no cache_control at all,
+   * as in AnthropicApi: core passes it and marks the body itself.
+   */
+  private readonly cachingStrategy: CachingStrategyName;
+
   constructor(config: OpenRouterConfig) {
     super({
       ...config,
+      provider: "openai",
       apiBase: config.apiBase ?? "https://openrouter.ai/api/v1/",
       requestOptions: {
         ...config.requestOptions,
@@ -63,6 +70,7 @@ export class OpenRouterApi extends OpenAIApi {
         },
       },
     });
+    this.cachingStrategy = config.cachingStrategy ?? DEFAULT_CACHING_STRATEGY;
   }
 
   private isAnthropicModel(model?: string): boolean {
@@ -83,16 +91,16 @@ export class OpenRouterApi extends OpenAIApi {
     const modifiedBody = super.modifyChatBody(body);
     applyOpenRouterControls(modifiedBody, { showThinking, thinking });
 
-    // "none" adds no breakpoints at all, as in AnthropicApi
-    const strategy =
-      (this.config as OpenRouterConfig).cachingStrategy ?? "systemAndTools";
-    if (!this.isAnthropicModel(modifiedBody.model) || strategy === "none") {
+    if (
+      !this.isAnthropicModel(modifiedBody.model) ||
+      this.cachingStrategy === "none"
+    ) {
       return modifiedBody;
     }
 
     applyAnthropicCachingToOpenRouterBody(
       modifiedBody as unknown as ChatCompletionCreateParams,
-      strategy,
+      this.cachingStrategy,
     );
 
     return modifiedBody;

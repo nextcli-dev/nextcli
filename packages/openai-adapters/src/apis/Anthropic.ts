@@ -37,6 +37,7 @@ import { safeParseArgs } from "../util/parseArgs.js";
 import { extractBase64FromDataUrl } from "../util/url.js";
 import {
   CACHING_STRATEGIES,
+  DEFAULT_CACHING_STRATEGY,
   CachingStrategyName,
 } from "./AnthropicCachingStrategies.js";
 import type { ThinkingMode } from "../modelControls.js";
@@ -153,13 +154,12 @@ export class AnthropicApi implements BaseLlmApi {
     const cleanBody = this._convertToCleanAnthropicBody(oaiBody);
 
     // Step 2: Apply caching strategy
-    const cachingStrategy =
-      CACHING_STRATEGIES[this.config.cachingStrategy ?? "systemAndTools"];
-    const result = cachingStrategy(cleanBody);
+    const strategy = this.config.cachingStrategy ?? DEFAULT_CACHING_STRATEGY;
+    const result = CACHING_STRATEGIES[strategy](cleanBody);
 
     // Step 3: Cache last two user messages for conversation turn caching
     // Skip when caching is disabled
-    if ((this.config.cachingStrategy ?? "systemAndTools") !== "none") {
+    if (strategy !== "none") {
       addCacheControlToLastTwoUserMessages(result.messages);
     }
 

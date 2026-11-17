@@ -262,6 +262,7 @@ export type {
   AskSageToolChoice,
   LLMConfig,
   OneProviderConfig,
+  OpenRouterConfig,
 } from "./types.js";
 
 export {
