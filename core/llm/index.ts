@@ -133,13 +133,12 @@ export abstract class BaseLLM implements ILLM {
     if (isOneProviderBase(this.apiBase)) {
       return false;
     }
-    // The model config's choice, else the provider's default: providers
-    // whose API has no legacy completions endpoint set it to false
-    const useLegacyCompletionsEndpoint =
-      this._llmOptions.useLegacyCompletionsEndpoint ??
-      (this.constructor as typeof BaseLLM).defaultOptions
-        ?.useLegacyCompletionsEndpoint;
-    if (useLegacyCompletionsEndpoint === false) {
+    // A model config can turn the legacy endpoint off for any provider.
+    // Only the config counts: the instance field is CompletionProvider's
+    // switch for using the endpoint, and a class's defaultOptions value says
+    // nothing about the host (OpenRouter, Nebius and SiliconFlow set false
+    // but serve /completions)
+    if (this._llmOptions.useLegacyCompletionsEndpoint === false) {
       return false;
     }
     if (["openai", "azure"].includes(this.providerName)) {
@@ -154,7 +153,14 @@ export abstract class BaseLLM implements ILLM {
         return false;
       }
     }
-    if (["groq", "mistral", "deepseek"].includes(this.providerName)) {
+    // Hosts without a usable /completions (checked 2026-11-17): MiniMax
+    // answers 404 there, Moonshot 403 "not open", and zAI documents only
+    // chat/completions
+    if (
+      ["groq", "mistral", "deepseek", "minimax", "moonshot", "zAI"].includes(
+        this.providerName,
+      )
+    ) {
       return false;
     }
     return true;
