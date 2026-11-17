@@ -22,30 +22,29 @@ Without proper capability configuration, you may encounter issues like:
 
 ## How NextCLI Detects Model Capabilities
 
-NextCLI uses a two-tier system for determining model capabilities:
+NextCLI decides whether a model gets native tools in this order:
 
-### How Automatic Detection Works (Default)
+1. **Your config.** A `capabilities` list on the model decides: with `tool_use` the model gets native tools, without it (an empty list included) it doesn't. See [How to Configure Capabilities Manually](#how-to-configure-capabilities-manually).
+2. **Rules by provider and model name.** For example, most Ollama models support tools, every Gemini model supports function calling, and OpenRouter models follow a list of models known to take tools.
+3. **The [models.dev](https://models.dev) catalog**, for providers without such rules: Cerebras, DeepInfra, Fireworks, Groq, MiniMax, Nebius, Nvidia, Scaleway and Together. A model the catalog lists as taking no tools gets none.
 
-NextCLI detects tool support in this order:
-
-1. The [models.dev](https://models.dev) catalog, for a model it lists on your provider or host. A model it marks as taking no tools gets none.
-2. Rules by provider and model name, for models the catalog doesn't list: custom deployments, local servers, bridges. For example, most Ollama models support tools, and every Gemini model supports function calling.
+In the CLI, a model none of these recognize still counts as capable when its name matches a family known to handle tools (Claude, GPT, Gemini, Qwen, Llama and others).
 
 This works well for popular models, but may not cover custom deployments or newer models.
 
 For implementation details, see:
 
 - [toolSupport.ts](https://github.com/nextcli-dev/nextcli/blob/main/core/llm/toolSupport.ts) - Tool capability detection logic
-- [@continuedev/llm-info](https://www.npmjs.com/package/@continuedev/llm-info) - Image support detection
+- [llm-info](https://github.com/nextcli-dev/nextcli/tree/main/packages/llm-info) - The models.dev catalog snapshot
 
 ### How to Configure Capabilities Manually
 
-You can add capabilities to models that NextCLI doesn't automatically detect in your `config.yaml`.
+Set `capabilities` on a model in your `config.yaml` to decide for it yourself.
 
 <Note>
-  You cannot override autodetection - you can only add capabilities. NextCLI
-  will always use its built-in knowledge about your model in addition to any
-  capabilities you specify.
+  A `capabilities` list replaces detection for tools and images: what the list
+  leaves out is off. List both `tool_use` and `image_input` for a model that
+  takes both.
 </Note>
 
 ```yaml
@@ -89,30 +88,31 @@ models:
 </Info>
 
 <Warning>
-  **Experimental**: System message tools are available as an experimental
-  feature for models without native tool support. These are not automatically
-  used as a fallback and must be explicitly configured. Most models are trained
-  for native tools, so system message tools may not work as well.
+  For a model without native tools, the VS Code extension describes the tools
+  in the system message instead and reads tool calls from the reply. Most
+  models are trained for native tools, so this may not work as well. The
+  experimental **Only use system message tools** setting uses it for every
+  model.
 </Warning>
 
 ### How to Handle Models with Limited Capabilities
 
-Explicitly set no capabilities (autodetection will still apply):
+Turn native tools and image input off for a model whose detection is wrong, for example one your endpoint serves without tool calling:
 
 ```yaml
 models:
-  - name: limited-claude
-    provider: anthropic
-    model: claude-4.0-sonnet
-    capabilities: [] # Empty array doesn't disable autodetection
+  - name: limited-model
+    provider: openai
+    apiBase: https://my-deployment.com/v1
+    model: my-model
+    capabilities: [] # No native tools, no image input
 ```
 
-<Warning>
-  An empty capabilities array does not disable autodetection. NextCLI will
-  still detect and use the model's actual capabilities. To truly limit a model's
-  capabilities, you would need to use a model that doesn't support those
-  features.
-</Warning>
+<Info>
+  Without native tools, the VS Code extension falls back to tools described in
+  the system message, and the CLI uses its simpler Edit tool instead of
+  MultiEdit.
+</Info>
 
 ### How to Enable Multiple Capabilities
 
@@ -159,7 +159,7 @@ For troubleshooting capability-related issues like Agent mode being unavailable 
 2. **Test after changes** - Verify tools and images work as expected
 3. **Keep NextCLI updated** - Newer versions improve autodetection
 
-Remember: Setting capabilities only adds to autodetection. NextCLI will still use its built-in knowledge about your model in addition to your specified capabilities.
+Remember: a `capabilities` list replaces autodetection for the model. Anything you leave out of it is off.
 
 ## Model Capability Support
 
