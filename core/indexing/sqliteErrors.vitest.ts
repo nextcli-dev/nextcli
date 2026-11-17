@@ -41,8 +41,18 @@ async function indexerFor(ide: FileSystemIde) {
   ide.getWorkspaceDirs = async () => [];
   const indexer = new CodebaseIndexer(configHandler, ide, undefined, false);
   await indexer.initPromise;
-  // Let the indexer's own start-up run (no workspace dirs) finish
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  // Wait for the indexer's own start-up run (no workspace dirs) to finish:
+  // it ends by aborting its controller. A fixed 100 ms let a slow run's
+  // index.sqlite open land after a test closed and corrupted the file,
+  // handing that test a live connection, so indexing succeeded
+  await vi.waitFor(
+    () => {
+      if (!(indexer as any).indexingCancellationController.signal.aborted) {
+        throw new Error("The start-up indexing run is still going");
+      }
+    },
+    { timeout: 10_000, interval: 10 },
+  );
   return indexer;
 }
 
