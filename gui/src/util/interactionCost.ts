@@ -7,7 +7,8 @@ import type { LLMInteraction } from "../hooks/useLLMLog";
 /**
  * An interaction's cost, priced as the CLI prices a request: by the
  * provider, the host the request went to (OneProvider or OpenRouter behind
- * an `openai` provider, a gateway, a local server) and fast mode
+ * an `openai` provider, a gateway, a local server) and fast mode, or by the
+ * model's configured prices
  */
 export function interactionCost(
   interaction: LLMInteraction | undefined,
@@ -20,5 +21,6 @@ export function interactionCost(
   return calculateRequestCost(start.provider, start.options.model, usage, {
     apiBase: start.apiBase,
     fast: start.options.fast,
+    pricing: start.pricing,
   });
 }

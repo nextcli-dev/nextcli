@@ -37,7 +37,7 @@ This shows your available local configs. The selection is saved for next time.
 | Effort | Reasoning depth. Claude: `output_config.effort` (or a thinking budget on older models). OpenAI, OpenRouter and xAI: `reasoning_effort`. Gemini: `thinkingLevel` (a thinking budget on Gemini 2.5). |
 | Thinking | `Off` turns thinking off, so no thinking tokens are used. `Hidden` lets the model think without showing the reasoning. `Shown` shows it dimmed above each reply. Modes a model can't use aren't listed, and the submenu title says why. |
 | Fast | Claude Opus fast mode (`speed: "fast"`) or OpenAI priority processing. |
-| Context | The context window `cn` plans for when it compacts the conversation. |
+| Context | The context window `cn` plans for when it compacts the conversation. Without a choice here, the config's `contextLength`, else the window models.dev lists for the model (at most 200K tokens), else 200K. |
 
 Which models can turn thinking off, and the effort levels each model takes, are listed in [Model settings](/ide-extensions/chat/model-settings). The CLI uses the same rules. On Bedrock, the CLI applies `Off` and the effort but doesn't turn thinking on yet. The VS Code extension does.
 

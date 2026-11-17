@@ -1,4 +1,4 @@
-import { vendorCatalogProvider } from "@nextcli/llm-info";
+import { catalogToolSupport, vendorCatalogProvider } from "@nextcli/llm-info";
 
 import { ModelDescription } from "..";
 
@@ -504,14 +504,27 @@ export function isRecommendedAgentModel(modelName: string): boolean {
   }
   return false;
 }
+/**
+ * Whether a model gets tools natively, in order: the config's capabilities,
+ * the provider's rule above when it has one, then, for a provider without a
+ * rule (Groq, DeepInfra, Fireworks...), the endpoint's models.dev catalog
+ * for a model it lists
+ */
 export function modelSupportsNativeTools(modelDescription: ModelDescription) {
   if (modelDescription.capabilities?.tools !== undefined) {
     return modelDescription.capabilities.tools;
   }
 
   const providerSupport = PROVIDER_TOOL_SUPPORT[modelDescription.provider];
-  if (!providerSupport) {
-    return false;
+  if (providerSupport) {
+    return providerSupport(modelDescription.model) ?? false;
   }
-  return providerSupport(modelDescription.model) ?? false;
+
+  return (
+    catalogToolSupport({
+      provider: modelDescription.provider,
+      model: modelDescription.model,
+      apiBase: modelDescription.apiBase,
+    }) ?? false
+  );
 }

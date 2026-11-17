@@ -110,13 +110,13 @@ If tools aren't being called:
 
 If you can't upload images:
 
-1. Add `image_input` to capabilities
+1. Add `image_input` to capabilities, with `tool_use` if the model takes tools: the list replaces detection
 2. Ensure your model actually supports vision (e.g., gpt-4-vision, claude-3)
 3. Check that your provider passes through image data
 
 ### Add capabilities
 
-If NextCLI's autodetection isn't working correctly, you can manually add capabilities in your `config.yaml`:
+If NextCLI's autodetection isn't working correctly, you can set the capabilities in your `config.yaml`. The list replaces detection, so include every capability the model has:
 
 ```yaml
 models:

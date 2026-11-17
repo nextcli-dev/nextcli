@@ -265,6 +265,17 @@ describe("BaseLLM", () => {
       expect(llmRequestHook).toHaveBeenCalledWith("m", expect.any(String));
     });
 
+    it("logs the model's configured pricing, which the usage view prices by", async () => {
+      const logger = new LLMLogger();
+      const items: LLMInteractionItem[] = [];
+      logger.onLogItem((item) => items.push(item));
+      const pricing = { input: 0.5, output: 1.5 };
+      const llm = new CaptureLLM({ model: "m", logger, pricing });
+      await drain(llm);
+      const start = items.find((i) => i.kind === "startChat");
+      expect(start).toMatchObject({ pricing });
+    });
+
     it("logs fast as not sent for a model without a fast mode", async () => {
       // A saved Fast setting stays on after a model loses its fast mode; the
       // usage view prices from the log, so it must not see a fast request

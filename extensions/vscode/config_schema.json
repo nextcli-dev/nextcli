@@ -480,10 +480,26 @@
           "description": "Azure OpenAI deployment",
           "type": "string"
         },
-        "transport": {
-          "title": "Transport",
-          "description": "Experimental. Which code sends chat requests: \"ai-sdk\" (the AI SDK) or \"legacy\" (the provider's own request code). It overrides NEXTCLI_USE_AI_SDK; without either, \"legacy\". Only OpenAI-compatible endpoints other than OpenAI's own use it.",
-          "enum": ["ai-sdk", "legacy"]
+        "pricing": {
+          "title": "Pricing",
+          "description": "What the host bills for the model, in US dollars per million tokens. It wins over every other price.",
+          "type": "object",
+          "properties": {
+            "input": { "type": "number", "minimum": 0 },
+            "output": { "type": "number", "minimum": 0 },
+            "cacheRead": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Cached prompt tokens read; without it they cost the input price"
+            },
+            "cacheWrite": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Prompt tokens written to the cache; without it, the input price"
+            }
+          },
+          "required": ["input", "output"],
+          "additionalProperties": false
         },
         "capabilities": {
           "type": "object",

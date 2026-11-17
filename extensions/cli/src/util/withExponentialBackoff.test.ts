@@ -174,7 +174,7 @@ describe("withExponentialBackoff", () => {
     expect(generatorFactory).toHaveBeenCalledTimes(1);
   });
 
-  it("does not retry an AI SDK 400 (statusCode) after a chunk", async () => {
+  it("does not retry a 400 given as statusCode after a chunk", async () => {
     const generatorFactory = vi.fn(async () => {
       return (async function* () {
         yield "partial";

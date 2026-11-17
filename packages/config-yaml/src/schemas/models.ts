@@ -176,6 +176,17 @@ const promptTemplatesSchema = z.object({
 });
 export type PromptTemplates = z.infer<typeof promptTemplatesSchema>;
 
+/** A model's prices in US dollars per million tokens */
+export const modelPricingSchema = z.object({
+  input: z.number().nonnegative(),
+  output: z.number().nonnegative(),
+  /** Cached prompt tokens read; without it they cost the input price */
+  cacheRead: z.number().nonnegative().optional(),
+  /** Prompt tokens written to the cache; without it, the input price */
+  cacheWrite: z.number().nonnegative().optional(),
+});
+export type ModelPricing = z.infer<typeof modelPricingSchema>;
+
 const baseModelFields = {
   name: z.string(),
   model: z.string(),
@@ -194,12 +205,10 @@ const baseModelFields = {
   useLegacyCompletionsEndpoint: z.boolean().optional(),
   useResponsesApi: z.boolean().optional(),
   /**
-   * Which code sends chat requests: "ai-sdk" (the AI SDK) or "legacy" (the
-   * provider's own request code). It overrides NEXTCLI_USE_AI_SDK; without
-   * either, "legacy". Only OpenAI-compatible endpoints other than OpenAI's
-   * own use it (packages/openai-adapters/src/transport.ts).
+   * What the host bills for the model. It wins over every other price, so
+   * cost limits count it exactly.
    */
-  transport: z.enum(["ai-sdk", "legacy"]).optional(),
+  pricing: modelPricingSchema.optional(),
   env: z
     .record(z.string(), z.union([z.string(), z.boolean(), z.number()]))
     .optional(),

@@ -131,7 +131,7 @@ function isClientErrorStatus(status: unknown): boolean {
   );
 }
 
-/** The HTTP status: `status` on OpenAI errors, `statusCode` on AI SDK ones. */
+/** The HTTP status: `status` on OpenAI errors, `statusCode` on some others. */
 function httpStatus(error: any): unknown {
   return error?.status ?? error?.statusCode;
 }

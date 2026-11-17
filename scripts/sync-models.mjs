@@ -96,6 +96,9 @@ function trimModel(model) {
   }
   const inputs = model.modalities?.input ?? [];
   if (inputs.includes("image")) out.images = true;
+  // Only a "no" is kept: most models take tools, and an absent flag must
+  // not read as one
+  if (model.tool_call === false) out.tools = false;
   // The request fields that turn fast mode on are the API rules' business
   // (modelControls.ts); the catalog says whether there is one, and its price
   const fast = model.experimental?.modes?.fast;

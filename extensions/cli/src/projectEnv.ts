@@ -78,7 +78,6 @@ const NEVER_FROM_FILE = [
  * new name wins when both are set.
  */
 export const RENAMED_ENV_VARS: ReadonlyArray<{ old: string; name: string }> = [
-  { old: "CONTINUE_USE_AI_SDK", name: "NEXTCLI_USE_AI_SDK" },
   { old: "CONTINUE_USE_BEDROCK", name: "NEXTCLI_USE_BEDROCK" },
 ];
 

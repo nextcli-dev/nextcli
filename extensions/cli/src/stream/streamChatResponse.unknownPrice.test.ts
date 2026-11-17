@@ -52,4 +52,12 @@ describe("warnUnknownZeroPrice", () => {
     expect(onSystemMessage).not.toHaveBeenCalled();
     expect(stderr).toEqual([]);
   });
+
+  it("stays quiet for a model with configured pricing", () => {
+    warnUnknownZeroPrice(
+      { ...allam, pricing: { input: 0.1, output: 0.1 } },
+      true,
+    );
+    expect(stderr).toEqual([]);
+  });
 });

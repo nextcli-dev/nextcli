@@ -166,7 +166,7 @@ describe("loadProjectEnvironment", () => {
         "CONTINUE_METRICS_ENABLED=x",
         "FEATURE_FLAG_DISABLE_CUSTOM_FETCH=1",
         "VERBOSE_FETCH=1",
-        "NEXTCLI_USE_AI_SDK=1",
+        "NEXTCLI_USE_BEDROCK=1",
         "OPENAI_API_KEY=sk-legit",
       ].join("\n"),
     );
@@ -174,8 +174,9 @@ describe("loadProjectEnvironment", () => {
     const report = await run({ trustFlag: true }).result;
 
     expect(env.OPENAI_API_KEY).toBe("sk-legit");
-    // Choosing the transport is the folder's call, like choosing the endpoint
-    expect(env.NEXTCLI_USE_AI_SDK).toBe("1");
+    // Choosing the provider's API is the folder's call, like choosing the
+    // endpoint
+    expect(env.NEXTCLI_USE_BEDROCK).toBe("1");
     for (const name of [
       "NODE_OPTIONS",
       "GIT_CONFIG_COUNT",
@@ -339,7 +340,6 @@ describe("isNeverFromFile", () => {
     "NEXTCLI_MODEL_BASE_URL",
     "GITHUB_TOKEN",
     "NODE_ENV",
-    "NEXTCLI_USE_AI_SDK",
     "NEXTCLI_USE_BEDROCK",
   ])("allows %s", (name) => expect(isNeverFromFile(name)).toBe(false));
 });
@@ -348,14 +348,10 @@ describe("oldEnvNamesInUse", () => {
   it("lists a renamed variable set only under its old name", () => {
     expect(
       oldEnvNamesInUse({
-        CONTINUE_USE_AI_SDK: "1",
         CONTINUE_USE_BEDROCK: "1",
         VERBOSE_FETCH: "1",
       }),
-    ).toEqual([
-      { old: "CONTINUE_USE_AI_SDK", name: "NEXTCLI_USE_AI_SDK" },
-      { old: "CONTINUE_USE_BEDROCK", name: "NEXTCLI_USE_BEDROCK" },
-    ]);
+    ).toEqual([{ old: "CONTINUE_USE_BEDROCK", name: "NEXTCLI_USE_BEDROCK" }]);
   });
 
   it("says nothing once the new name is set, or when neither is", () => {

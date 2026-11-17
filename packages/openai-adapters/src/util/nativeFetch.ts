@@ -2,9 +2,9 @@
  * Preserve the native fetch implementation before any modules can pollute it.
  * This is critical for @google/genai which requires native fetch behavior.
  *
- * The Vercel AI SDK packages (ai, @ai-sdk/openai, @ai-sdk/anthropic) can
- * pollute the global fetch/Response objects, breaking stream handling in
- * @google/genai (causing "getReader is not a function" errors).
+ * A module that replaces the global fetch/Response objects (a fetch
+ * polyfill) breaks stream handling in @google/genai ("getReader is not a
+ * function" errors).
  *
  * This module MUST be imported before any other modules that might modify fetch.
  */
@@ -25,8 +25,8 @@ export const nativeHeaders = globalThis.Headers;
  * 3. Executes the callback
  * 4. Restores the previous (possibly polluted) implementations
  *
- * This ensures GoogleGenAI gets native fetch while other packages
- * (like Vercel SDK) can still use their modified fetch implementations.
+ * This ensures GoogleGenAI gets native fetch while other packages can
+ * still use their modified fetch implementations.
  */
 export function withNativeFetch<T>(callback: () => T): T {
   const originalFetch = globalThis.fetch;

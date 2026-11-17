@@ -375,13 +375,15 @@ const warnedUnknownPrices = new Set<string>();
 /**
  * Warns once per model per run when the catalog lists the model at $0,
  * which means its price is unknown: on stderr in headless runs, in the chat
- * otherwise. The cost is then estimated, so --max-cost still counts it.
+ * otherwise. The cost is then estimated, so --max-cost still counts it. A
+ * model with configured `pricing` is priced by it, so there's no warning.
  */
 export function warnUnknownZeroPrice(
   model: any,
   isHeadless: boolean,
   callbacks?: StreamCallbacks,
 ): void {
+  if (model.pricing) return;
   const provider = String(model.provider ?? "");
   const key = `${provider}\n${model.model}\n${model.apiBase ?? ""}`;
   if (warnedUnknownPrices.has(key)) return;
@@ -414,7 +416,12 @@ export function priceRequest(
     String(model.provider ?? ""),
     model.model,
     usage,
-    { apiBase: model.apiBase, estimateUnknown: true, fast: fastModeOn(model) },
+    {
+      apiBase: model.apiBase,
+      estimateUnknown: true,
+      fast: fastModeOn(model),
+      pricing: model.pricing,
+    },
   );
   if (costBreakdown) {
     return {

@@ -572,6 +572,19 @@ export interface LLMInteractionBase {
   timestamp: number;
 }
 
+/**
+ * A model's prices in US dollars per million tokens, as its host bills
+ * them. Configured prices win over every other price.
+ */
+export interface ModelPricing {
+  input: number;
+  output: number;
+  /** Cached prompt tokens read; without it they cost the input price */
+  cacheRead?: number;
+  /** Prompt tokens written to the cache; without it, the input price */
+  cacheWrite?: number;
+}
+
 export interface LLMInteractionStartChat extends LLMInteractionBase {
   kind: "startChat";
   messages: ChatMessage[];
@@ -579,6 +592,8 @@ export interface LLMInteractionStartChat extends LLMInteractionBase {
   provider: string;
   /** The API base the request went to, when the model sets one */
   apiBase?: string;
+  /** The model's configured prices, when it sets them */
+  pricing?: ModelPricing;
 }
 
 export interface LLMInteractionStartComplete extends LLMInteractionBase {
@@ -588,6 +603,8 @@ export interface LLMInteractionStartComplete extends LLMInteractionBase {
   provider: string;
   /** The API base the request went to, when the model sets one */
   apiBase?: string;
+  /** The model's configured prices, when it sets them */
+  pricing?: ModelPricing;
 }
 
 export interface LLMInteractionStartFim extends LLMInteractionBase {
@@ -598,6 +615,8 @@ export interface LLMInteractionStartFim extends LLMInteractionBase {
   provider: string;
   /** The API base the request went to, when the model sets one */
   apiBase?: string;
+  /** The model's configured prices, when it sets them */
+  pricing?: ModelPricing;
 }
 
 export interface LLMInteractionChunk extends LLMInteractionBase {
@@ -704,13 +723,8 @@ export interface LLMOptions {
 
   useLegacyCompletionsEndpoint?: boolean;
   useResponsesApi?: boolean;
-  /**
-   * Which code sends chat requests: "ai-sdk" (the AI SDK) or "legacy" (the
-   * provider's own request code). It overrides NEXTCLI_USE_AI_SDK; without
-   * either, "legacy". Only OpenAI-compatible endpoints other than OpenAI's
-   * own use it (packages/openai-adapters/src/transport.ts).
-   */
-  transport?: "ai-sdk" | "legacy";
+  /** What the host bills for the model (calculateRequestCost) */
+  pricing?: ModelPricing;
 
   // Embedding options
   embeddingId?: string;
@@ -1786,7 +1800,7 @@ export interface JSONModelDescription {
   aiGatewaySlug?: string;
   useLegacyCompletionsEndpoint?: boolean;
   useResponsesApi?: boolean;
-  transport?: "ai-sdk" | "legacy";
+  pricing?: ModelPricing;
   deploymentId?: string;
   isFromAutoDetect?: boolean;
 }

@@ -24,4 +24,21 @@ describe("priceRequest", () => {
       fast.on = false;
     }
   });
+
+  it("prices a model with configured pricing exactly, at its rates", () => {
+    // A model nothing else prices: the flat fallback rate without pricing
+    const model = {
+      provider: "openai",
+      model: "my-finetune",
+      apiBase: "https://llm.example.com/v1",
+    };
+    const usage = { promptTokens: 1_000_000, completionTokens: 1_000_000 };
+    expect(priceRequest(model, usage).priced).toBe("fallback");
+
+    const priced = priceRequest(
+      { ...model, pricing: { input: 0.5, output: 1.5 } },
+      usage,
+    );
+    expect(priced).toEqual({ cost: 2, priced: "exact" });
+  });
 });

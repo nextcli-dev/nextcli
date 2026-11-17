@@ -62,6 +62,55 @@ describe("tokenizer", () => {
 
       expect(getModelContextLimit(model)).toBe(DEFAULT_CONTEXT_LENGTH);
     });
+
+    it("should read the top-level contextLength", () => {
+      const model: ModelConfig = {
+        name: "test-model",
+        model: "llama-3.3-70b-versatile",
+        provider: "groq",
+        contextLength: 32_000,
+      };
+
+      expect(getModelContextLimit(model)).toBe(32_000);
+    });
+
+    it("should take a smaller window from the models.dev catalog", () => {
+      const model: ModelConfig = {
+        name: "Llama",
+        model: "llama-3.3-70b-versatile",
+        provider: "groq",
+      };
+
+      expect(getModelContextLimit(model)).toBe(131_072);
+    });
+
+    it("should cap a catalog window above the default", () => {
+      // deepseek-v4-pro takes 1M tokens; a larger window is a config choice
+      const model: ModelConfig = {
+        name: "DeepSeek",
+        model: "deepseek-v4-pro",
+        provider: "deepseek",
+      };
+
+      expect(getModelContextLimit(model)).toBe(DEFAULT_CONTEXT_LENGTH);
+      expect(
+        getModelContextLimit({
+          ...model,
+          defaultCompletionOptions: { contextLength: 1_000_000 },
+        }),
+      ).toBe(1_000_000);
+    });
+
+    it("should keep the default for a model the catalog doesn't list", () => {
+      const bridge: ModelConfig = {
+        name: "Bridge",
+        model: "llama-3.3-70b-versatile",
+        provider: "openai",
+        apiBase: "http://127.0.0.1:8091/v1",
+      };
+
+      expect(getModelContextLimit(bridge)).toBe(DEFAULT_CONTEXT_LENGTH);
+    });
   });
 
   describe("countChatHistoryItemTokens", () => {

@@ -31,13 +31,10 @@ describe("OneProvider", () => {
     ).toBe("systemAndTools");
   });
 
-  it("passes the transport and OneProvider's API base to the adapter", () => {
-    expect(
-      (oneProvider({ transport: "ai-sdk" }) as any).adapterConfig(),
-    ).toMatchObject({
+  it("passes OneProvider's API base to the adapter", () => {
+    expect((oneProvider() as any).adapterConfig()).toMatchObject({
       provider: "oneprovider",
       apiBase: "https://api.oneprovider.dev/v1/",
-      transport: "ai-sdk",
     });
   });
 

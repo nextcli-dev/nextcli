@@ -30,6 +30,8 @@ export interface CatalogModel {
   efforts?: string[];
   /** Takes image input */
   images?: true;
+  /** Doesn't take tools (function calling); absent, it does */
+  tools?: false;
   /** The model has a fast or priority mode, with its prices when known */
   fast?: { cost?: CatalogRates };
   cost?: CatalogCost;
