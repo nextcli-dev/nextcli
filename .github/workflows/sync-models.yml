@@ -1,0 +1,159 @@
+name: Sync models
+
+# Refreshes the models.dev snapshot (packages/llm-info/src/generated/catalog.ts)
+# once a week with scripts/sync-models.mjs, and opens a pull request when a
+# model, a limit or a price changed. The pull request lists the models added
+# and removed, and updates the two golden snapshots that show what the sync
+# changes in requests and prices:
+#   - packages/openai-adapters/src/test/__snapshots__/catalogGolden.test.ts.snap
+#   - core/llm/utils/__snapshots__/calculateRequestCost.golden.vitest.ts.snap
+# Their diff is the review. MAINTAINING.md ("Model catalog") has the checklist.
+#
+# The pull request is opened with the NextCLI Automation app token, because a
+# pull request opened with GITHUB_TOKEN doesn't start CI. The token is created
+# after every install step, so no dependency's install script runs with it.
+# Each run pushes a new branch and closes the sync pull request it replaces.
+# It never force-pushes: the token can't push over a branch when main has
+# changed .github/workflows/ since that branch was made.
+
+on:
+  schedule:
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: sync-models
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+# bash -eo pipefail: a failed download fails the job instead of looking like a
+# week with no changes.
+defaults:
+  run:
+    shell: bash
+
+env:
+  CATALOG: packages/llm-info/src/generated/catalog.ts
+
+jobs:
+  sync:
+    if: github.repository == 'nextcli-dev/nextcli'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: ".nvmrc"
+
+      # The script uses only Node built-ins, so the root needs no install.
+      - name: Sync the catalog
+        id: sync
+        run: |
+          node scripts/sync-models.mjs | tee "$RUNNER_TEMP/sync.txt"
+          # Every sync rewrites the two lines that hold its date. Only a change
+          # to a model counts.
+          if [ -z "$(git diff -I 'CATALOG_SYNCED_AT' -I '^// by hand\. Source:' -- "$CATALOG")" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No model, limit or price changed since the last sync." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Builds every package, so llm-info's dist holds the new catalog.
+      - name: Build the packages
+        if: steps.sync.outputs.changed == 'true'
+        uses: ./.github/actions/setup-packages
+
+      - name: Install core
+        if: steps.sync.outputs.changed == 'true'
+        uses: ./.github/actions/setup-component
+        with:
+          component: core
+
+      - name: Update the golden snapshots
+        if: steps.sync.outputs.changed == 'true'
+        run: |
+          (cd packages/openai-adapters && npx vitest run -u src/test/catalogGolden.test.ts)
+          (cd core && npx vitest run -u llm/utils/calculateRequestCost.golden.vitest.ts)
+          git status --short
+
+      - name: Create GitHub App token
+        if: steps.sync.outputs.changed == 'true'
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.NEXTCLI_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NEXTCLI_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Open the pull request
+        if: steps.sync.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          BRANCH: chore/sync-models-${{ github.run_number }}-${{ github.run_attempt }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          date="$(sed -n 's/^export const CATALOG_SYNCED_AT = "\(.*\)";$/\1/p' "$CATALOG")"
+          title="chore(llm-info): sync the model catalog (${date})"
+
+          # The CLA check matches commit authors to accounts, so commit as the
+          # app's bot user.
+          bot="${APP_SLUG}[bot]"
+          bot_id="$(gh api "/users/${bot}" --jq .id)"
+          git config user.name "$bot"
+          git config user.email "${bot_id}+${bot}@users.noreply.github.com"
+          git switch --quiet -c "$BRANCH"
+          git add "$CATALOG" \
+            packages/openai-adapters/src/test/__snapshots__/catalogGolden.test.ts.snap \
+            core/llm/utils/__snapshots__/calculateRequestCost.golden.vitest.ts.snap
+          git commit --quiet -m "$title"
+          git push --quiet "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "HEAD:refs/heads/${BRANCH}"
+
+          # The script's list of models added and removed, without its last
+          # line (the absolute path it wrote to). Read from files, not a
+          # pipe into head, which would fail the step under pipefail.
+          grep -v '^Wrote ' "$RUNNER_TEMP/sync.txt" > "$RUNNER_TEMP/models.txt" || true
+          {
+            echo "## Description"
+            echo
+            echo "The weekly sync of the models.dev snapshot, read ${date}. Review it with the checklist in [MAINTAINING.md](https://github.com/${REPO}/blob/main/MAINTAINING.md#model-catalog): the golden snapshot diff shows what changes in requests and prices."
+            echo
+            echo "Models added and removed:"
+            echo
+            echo '```text'
+            head -n 400 "$RUNNER_TEMP/models.txt"
+            if [ "$(wc -l < "$RUNNER_TEMP/models.txt")" -gt 400 ]; then
+              echo "... cut at 400 lines. The full list is in the workflow log: ${RUN_URL}"
+            fi
+            echo '```'
+            echo
+            # The template's checklist, unchecked
+            sed -n '/^## Checklist/,/^## Screen/p' .github/pull_request_template.md | sed '$d'
+            echo "## Screen recording or screenshot"
+            echo
+            echo "Not applicable."
+            echo
+            echo "## Tests"
+            echo
+            echo "The workflow updated the golden snapshots with \`vitest run -u\`; review their diff. CI runs the rest."
+          } > "$RUNNER_TEMP/body.md"
+
+          url="$(gh pr create --repo "$REPO" --base main --head "$BRANCH" --title "$title" --body-file "$RUNNER_TEMP/body.md")"
+          echo "Opened ${url}" >> "$GITHUB_STEP_SUMMARY"
+
+          # Close the older sync pull requests this one replaces.
+          gh pr list --repo "$REPO" --state open --limit 100 --json number,headRefName,author \
+            --jq '.[] | select(.headRefName | startswith("chore/sync-models-")) | select(.headRefName != env.BRANCH) | select(.author.login == "app/" + env.APP_SLUG) | .number' |
+            while read -r number; do
+              gh pr close "$number" --repo "$REPO" --delete-branch --comment "Superseded by ${url}."
+            done

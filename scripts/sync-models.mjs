@@ -7,9 +7,11 @@
 //   npm run sync-models                 # download the catalog
 //   npm run sync-models -- api.json     # use a saved copy
 //
-// Run it by hand when vendors add models or change prices, then review the
-// diff, the models it lists as added and removed, and the golden tests
-// (update them with vitest -u and review their diff). The snapshot is
+// The Sync models workflow (.github/workflows/sync-models.yml) runs it every
+// Monday. When a model changed, the workflow updates the golden tests with
+// vitest -u and opens a pull request that lists the models added and removed.
+// MAINTAINING.md ("Model catalog") has the reviewer checklist. Run it by hand
+// to pick up a change sooner, then review the same things. The snapshot is
 // checked in, so nothing downloads it at runtime or in CI.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
