@@ -1,4 +1,4 @@
-import { RefObject, useCallback, useEffect, useState } from "react";
+import { RefObject, useEffect, useState } from "react";
 
 interface ElementSize {
   clientWidth: number;
@@ -8,10 +8,10 @@ interface ElementSize {
   isResizing: boolean;
 }
 
-interface UseElementSizeOptions {
-  debounceMs?: number;
-}
-
+/**
+ * The element's size, updated `debounceMs` after it stops resizing.
+ * `isResizing` is true in between.
+ */
 export const useElementSize = (
   ref: RefObject<HTMLElement>,
   debounceMs = 250,
@@ -24,58 +24,39 @@ export const useElementSize = (
     isResizing: false,
   });
 
-  // Debounced update function
-  const debouncedSetSize = useCallback(
-    (measurements: Omit<ElementSize, "isResizing">) => {
-      let timeoutId: NodeJS.Timeout;
-
-      setSize((prev) => ({ ...prev, isResizing: true }));
-
-      timeoutId = setTimeout(() => {
-        setSize({
-          ...measurements,
-          isResizing: false,
-        });
-      }, debounceMs);
-
-      return () => clearTimeout(timeoutId);
-    },
-    [debounceMs],
-  );
-
   useEffect(() => {
-    if (!ref.current) return;
+    const element = ref.current;
+    if (!element) return;
+
+    // One pending update: a new measurement replaces it, and unmounting
+    // cancels it, so no state update runs after the component is gone
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
     const updateSize = () => {
-      const element = ref.current;
-      if (!element) return;
-
       const measurements = {
         clientWidth: element.clientWidth,
         clientHeight: element.clientHeight,
         scrollWidth: element.scrollWidth,
         scrollHeight: element.scrollHeight,
       };
-
-      debouncedSetSize(measurements);
+      setSize((prev) =>
+        prev.isResizing ? prev : { ...prev, isResizing: true },
+      );
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        setSize({ ...measurements, isResizing: false });
+      }, debounceMs);
     };
 
-    // Create ResizeObserver instance
-    const resizeObserver = new ResizeObserver(() => {
-      updateSize();
-    });
-
-    // Start observing the element
-    resizeObserver.observe(ref.current);
-
-    // Initial size calculation
+    const resizeObserver = new ResizeObserver(updateSize);
+    resizeObserver.observe(element);
     updateSize();
 
-    // Cleanup
     return () => {
       resizeObserver.disconnect();
+      clearTimeout(timeoutId);
     };
-  }, [ref, debouncedSetSize]);
+  }, [ref, debounceMs]);
 
   return size;
 };
