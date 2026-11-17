@@ -11,6 +11,7 @@ import {
 import {
   CACHING_STRATEGIES,
   CachingStrategyName,
+  DEFAULT_CACHING_STRATEGY,
 } from "./AnthropicCachingStrategies.js";
 import {
   addCacheControlToLastTwoUserMessages,
@@ -159,7 +160,8 @@ export const applyAnthropicCachingToOpenRouterBody = (
     convertToAnthropic(body);
 
   const cachingStrategy =
-    CACHING_STRATEGIES[strategy] ?? CACHING_STRATEGIES.systemAndTools;
+    CACHING_STRATEGIES[strategy] ??
+    CACHING_STRATEGIES[DEFAULT_CACHING_STRATEGY];
   const cachedBody = cachingStrategy({ ...anthropicBody });
 
   cachedBody.messages = cachedBody.messages ?? [];

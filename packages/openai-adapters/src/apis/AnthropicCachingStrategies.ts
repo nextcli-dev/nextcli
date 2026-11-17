@@ -178,6 +178,9 @@ export const CACHING_STRATEGIES = {
 
 export type CachingStrategyName = keyof typeof CACHING_STRATEGIES;
 
+/** The strategy when a config names none */
+export const DEFAULT_CACHING_STRATEGY: CachingStrategyName = "systemAndTools";
+
 // Helper function to get available strategies
 export const getAvailableStrategies = () => {
   return Object.keys(CACHING_STRATEGIES) as CachingStrategyName[];

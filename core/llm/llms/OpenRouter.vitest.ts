@@ -1,5 +1,10 @@
+import http from "node:http";
+import type { AddressInfo } from "node:net";
+
 import { ChatCompletionCreateParams } from "openai/resources/index";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+import type { ChatMessage, Tool } from "../..";
 
 import OpenRouter from "./OpenRouter";
 
@@ -235,40 +240,87 @@ describe("OpenRouter Anthropic Caching", () => {
   });
 });
 
-describe("OpenRouter caching through the adapter", () => {
-  const body = (): ChatCompletionCreateParams => ({
-    model: "anthropic/claude-sonnet-4.5",
-    messages: [
-      { role: "system", content: "You are helpful." },
-      { role: "user", content: "First" },
-      { role: "assistant", content: "One" },
-      { role: "user", content: "Second" },
-      { role: "assistant", content: "Two" },
-      { role: "user", content: "Third" },
-    ],
-    tools: [
-      {
-        type: "function",
-        function: { name: "read_file", parameters: { type: "object" } },
-      },
-      {
-        type: "function",
-        function: { name: "edit_file", parameters: { type: "object" } },
-      },
-    ],
+// The request streamChat sends, end to end: core's body changes, the
+// OpenRouter adapter's, then the HTTP request to a local server
+describe("OpenRouter caching in the request it sends", () => {
+  const MESSAGES: ChatMessage[] = [
+    { role: "system", content: "You are helpful." },
+    { role: "user", content: "First" },
+    { role: "assistant", content: "One" },
+    { role: "user", content: "Second" },
+    { role: "assistant", content: "Two" },
+    { role: "user", content: "Third" },
+  ];
+  const tool = (name: string) =>
+    ({
+      type: "function",
+      displayTitle: name,
+      readonly: true,
+      group: "test",
+      function: { name, description: name, parameters: { type: "object" } },
+    }) as unknown as Tool;
+  const TOOLS = [tool("read_file"), tool("edit_file")];
+
+  let server: http.Server;
+  let apiBase: string;
+  const bodies: any[] = [];
+
+  beforeAll(async () => {
+    server = http.createServer((req, res) => {
+      let raw = "";
+      req.on("data", (chunk) => (raw += chunk));
+      req.on("end", () => {
+        bodies.push(JSON.parse(raw));
+        const chunk = (delta: object, finish: string | null) =>
+          `data: ${JSON.stringify({
+            id: "c",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: "m",
+            choices: [{ index: 0, delta, finish_reason: finish }],
+          })}\n\n`;
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        res.end(
+          chunk({ role: "assistant", content: "ok" }, null) +
+            chunk({}, "stop") +
+            "data: [DONE]\n\n",
+        );
+      });
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    apiBase = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1/`;
   });
 
-  /**
-   * Where the body that goes out has cache breakpoints: core's own changes,
-   * then the adapter's, as streamChat runs them
-   */
-  function breakpoints(options: object = {}) {
+  afterAll(() => new Promise((resolve) => server.close(resolve)));
+
+  /** Where the sent request has cache breakpoints */
+  async function breakpoints(
+    options: object = {},
+    model = "anthropic/claude-sonnet-4.5",
+  ) {
+    bodies.length = 0;
     const llm = new OpenRouter({
-      model: "anthropic/claude-sonnet-4.5",
+      model,
       apiKey: "test-key",
+      apiBase,
       ...options,
-    }) as any;
-    const sent = llm.openaiAdapter.modifyChatBody(llm.modifyChatBody(body()));
+    });
+    for await (const _ of llm.streamChat(
+      MESSAGES,
+      new AbortController().signal,
+      { tools: TOOLS },
+    )) {
+      // drain
+    }
+    expect(bodies).toHaveLength(1);
+    const sent = bodies[0];
+    // The tools went out with the request, whatever is cached
+    expect(sent.tools.map((t: any) => t.function.name)).toEqual([
+      "read_file",
+      "edit_file",
+    ]);
     const marked = (value: unknown) =>
       JSON.stringify(value).includes("cache_control");
     return {
@@ -283,29 +335,44 @@ describe("OpenRouter caching through the adapter", () => {
     };
   }
 
-  it("adds no breakpoints without the model asking", () => {
-    expect(breakpoints()).toEqual({ messages: [], tools: 0 });
+  it("adds no breakpoints without the model asking", async () => {
+    expect(await breakpoints()).toEqual({ messages: [], tools: 0 });
+    expect(
+      await breakpoints({
+        cacheBehavior: { cacheSystemMessage: false, cacheConversation: false },
+      }),
+    ).toEqual({ messages: [], tools: 0 });
   });
 
-  it("caches only the system prompt for cacheSystemMessage", () => {
+  // A breakpoint caches everything before it, the tool definitions included
+  it("caches only the system prompt for cacheSystemMessage", async () => {
     expect(
-      breakpoints({
+      await breakpoints({
         cacheBehavior: { cacheSystemMessage: true, cacheConversation: false },
       }),
     ).toEqual({ messages: ["system"], tools: 0 });
   });
 
-  it("caches only the last two user messages for cacheConversation", () => {
+  it("caches only the last two user messages for cacheConversation", async () => {
     expect(
-      breakpoints({
+      await breakpoints({
         cacheBehavior: { cacheSystemMessage: false, cacheConversation: true },
       }),
     ).toEqual({ messages: ["Second", "Third"], tools: 0 });
   });
 
-  it("caches the system prompt and the conversation for promptCaching", () => {
-    expect(breakpoints({ completionOptions: { promptCaching: true } })).toEqual(
-      { messages: ["system", "Second", "Third"], tools: 0 },
-    );
+  it("caches the system prompt and the conversation for promptCaching", async () => {
+    expect(
+      await breakpoints({ completionOptions: { promptCaching: true } }),
+    ).toEqual({ messages: ["system", "Second", "Third"], tools: 0 });
+  });
+
+  it("adds no breakpoints for a model other than Claude", async () => {
+    expect(
+      await breakpoints(
+        { completionOptions: { promptCaching: true } },
+        "openai/gpt-5.5",
+      ),
+    ).toEqual({ messages: [], tools: 0 });
   });
 });
