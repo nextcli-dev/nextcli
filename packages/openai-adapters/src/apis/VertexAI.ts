@@ -360,20 +360,35 @@ export class VertexAIApi implements BaseLlmApi {
         }
         yield* this.geminiInstance.streamWithGenAI(this.genAI, body);
         break;
-      case "mistral":
-        const headers = await this.getAuthHeaders();
-        const mistralResponse =
-          await this.mistralInstance.openai.chat.completions.create(
-            this.mistralInstance.modifyChatBody(body),
-            {
-              signal,
-              headers,
-            },
+      case "mistral": {
+        // Vertex's own endpoint, like the other publishers: the Google
+        // credentials must never go to another host
+        const mistralUrl = this.buildUrl(
+          `publishers/mistralai/models/${body.model}:streamRawPredict`,
+        );
+        const mistralResponse = await customFetch(this.config.requestOptions)(
+          mistralUrl.toString(),
+          {
+            method: "POST",
+            headers: await this.getAuthHeaders(),
+            body: JSON.stringify(this.mistralInstance.modifyChatBody(body)),
+            signal,
+          },
+        );
+        if (!mistralResponse.ok) {
+          throw new Error(
+            `VertexAI API error: ${mistralResponse.status} ${mistralResponse.statusText}\n${await mistralResponse.text()}`,
           );
-        for await (const result of mistralResponse) {
-          yield result;
         }
+        if (mistralResponse.status === 499) {
+          return;
+        }
+        // Mistral streams Chat Completions chunks
+        yield* streamSse(
+          mistralResponse,
+        ) as AsyncGenerator<ChatCompletionChunk>;
         break;
+      }
 
       default:
         throw new Error(`Unsupported model: ${body.model}`);
