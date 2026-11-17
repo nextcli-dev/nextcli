@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.6.18](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.17...vscode-v1.6.18) (2026-11-17)
+
+
+### Features
+
+* catalog tool support and per-model pricing; remove the AI-SDK transport ([#167](https://github.com/nextcli-dev/nextcli/issues/167)) ([f0bdb93](https://github.com/nextcli-dev/nextcli/commit/f0bdb93b271f074e98df6c7728e42f04d6987df1))
+* models.dev catalog for model controls and prices ([#161](https://github.com/nextcli-dev/nextcli/issues/161)) ([86ffce2](https://github.com/nextcli-dev/nextcli/commit/86ffce2a9c1f130a5f35527061ad7ebbf9cd9413))
+* **openai-adapters:** AI SDK 7 and an AI-SDK path that matches the native adapters ([#158](https://github.com/nextcli-dev/nextcli/issues/158)) ([01b7d95](https://github.com/nextcli-dev/nextcli/commit/01b7d9568976942f3d80743b601847c86207be97))
+* opt-in AI-SDK transport for OpenAI-compatible endpoints, autocomplete by endpoint, Claude finish reasons ([#164](https://github.com/nextcli-dev/nextcli/issues/164)) ([26533cc](https://github.com/nextcli-dev/nextcli/commit/26533cc6b9baab1090e4f4bf7e55f60c837e8382))
+
+
+### Bug Fixes
+
+* clear gui and vscode lint warnings and make the rules errors ([#153](https://github.com/nextcli-dev/nextcli/issues/153)) ([3144fe6](https://github.com/nextcli-dev/nextcli/commit/3144fe6c2674c0cb22ea47ed205d6a302b6c2b34))
+* **cli:** NEXTCLI_ names for the AI SDK and Bedrock env variables ([#157](https://github.com/nextcli-dev/nextcli/issues/157)) ([2fb228d](https://github.com/nextcli-dev/nextcli/commit/2fb228d405cdfb169b2a04ce8d829f52327f233d))
+* **core:** autocomplete on chat for providers without a completions endpoint ([#170](https://github.com/nextcli-dev/nextcli/issues/170)) ([e535caa](https://github.com/nextcli-dev/nextcli/commit/e535caa1301fdbf10b91c2d48fd33a1d71f6e525))
+* **core:** cache OpenRouter Claude prompts only when the model asks ([#168](https://github.com/nextcli-dev/nextcli/issues/168)) ([62120ed](https://github.com/nextcli-dev/nextcli/commit/62120edc7d86ab66fbdcbb4bec381fcdc5383074))
+* **core:** hosted Chat Completions providers get chat as messages ([#166](https://github.com/nextcli-dev/nextcli/issues/166)) ([ed8f6ea](https://github.com/nextcli-dev/nextcli/commit/ed8f6ea88d36cf2b9911e061c045a005b573f56e))
+* **openai-adapters:** send Vertex Mistral streaming to Vertex ([#165](https://github.com/nextcli-dev/nextcli/issues/165)) ([7a0a239](https://github.com/nextcli-dev/nextcli/commit/7a0a239a561adf1f047ccf0da448b04568184edb))
+* **openai-adapters:** system prompt and tools for non-streamed Vertex Gemini ([#169](https://github.com/nextcli-dev/nextcli/issues/169)) ([d2b0051](https://github.com/nextcli-dev/nextcli/commit/d2b0051b44e2b699eb0c388c679f778fa1a745a8))
+
 ## [1.6.17](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.16...vscode-v1.6.17) (2026-11-14)
 
 
