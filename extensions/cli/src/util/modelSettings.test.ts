@@ -14,7 +14,7 @@ import {
   shouldShowReasoning,
   updateModelSettings,
 } from "./modelSettings.js";
-import { getModelContextLimit } from "./tokenizer.js";
+import { configuredContextLimit, getModelContextLimit } from "./tokenizer.js";
 
 function model(partial: Partial<ModelConfig>): ModelConfig {
   return {
@@ -119,6 +119,25 @@ describe("model settings", () => {
     updateModelSettings(deepseek, { contextLength: 1_000_000 });
     expect(getModelContextLimit(deepseek)).toBe(1_000_000);
     updateModelSettings(deepseek, { contextLength: undefined });
+  });
+
+  // What the model menu shows: the configured window as current, and
+  // steps up to the catalog's own window
+  it("offers the catalog's window around the configured one, as the menu does", () => {
+    const deepseek = model({ provider: "deepseek", model: "deepseek-v4-pro" });
+    expect(configuredContextLimit(deepseek)).toBe(200_000);
+    expect(
+      getContextOptions(deepseek, configuredContextLimit(deepseek)),
+    ).toEqual([
+      64_000, 128_000, 200_000, 256_000, 400_000, 1_000_000, 1_048_576,
+    ]);
+
+    // A smaller catalog window is the current one and the largest offered
+    const llama = model({ provider: "groq", model: "llama-3.3-70b-versatile" });
+    expect(configuredContextLimit(llama)).toBe(131_072);
+    expect(getContextOptions(llama, configuredContextLimit(llama))).toEqual([
+      64_000, 128_000, 131_072,
+    ]);
   });
 
   it("uses the chosen context window for compaction limits", () => {
