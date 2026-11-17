@@ -1,6 +1,7 @@
 import { ChatCompletionCreateParams } from "openai/resources/index";
 import { describe, expect, it } from "vitest";
 
+import { constructLlmApi } from "../index.js";
 import { OpenRouterApi } from "./OpenRouter.js";
 import { applyAnthropicCachingToOpenRouterBody } from "./OpenRouterCaching.js";
 
@@ -297,6 +298,34 @@ describe("OpenRouterApi Anthropic caching", () => {
         },
       ]);
     });
+  });
+});
+
+describe("OpenRouter config", () => {
+  const body = (): ChatCompletionCreateParams => ({
+    model: "anthropic/claude-sonnet-5-5",
+    messages: [
+      { role: "system", content: "System" },
+      { role: "user", content: "Hi" },
+    ],
+  });
+
+  // The typed config (OpenRouterConfigSchema) carries the strategy from
+  // constructLlmApi to the adapter
+  it("takes cachingStrategy from the config constructLlmApi gets", () => {
+    const config = {
+      provider: "openrouter" as const,
+      apiKey: "k",
+      cachingStrategy: "none" as const,
+    };
+    const none = constructLlmApi(config);
+    expect(none).toBeInstanceOf(OpenRouterApi);
+    const sentWithNone = (none as OpenRouterApi).modifyChatBody(body());
+    expect(JSON.stringify(sentWithNone)).not.toContain("cache_control");
+
+    const byDefault = constructLlmApi({ provider: "openrouter", apiKey: "k" });
+    const sentByDefault = (byDefault as OpenRouterApi).modifyChatBody(body());
+    expect(JSON.stringify(sentByDefault)).toContain("cache_control");
   });
 });
 
