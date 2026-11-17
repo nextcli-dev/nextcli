@@ -1,20 +1,28 @@
 name: Sync models
 
 # Refreshes the models.dev snapshot (packages/llm-info/src/generated/catalog.ts)
-# once a week with scripts/sync-models.mjs, and opens a pull request when a
-# model, a limit or a price changed. The pull request lists the models added
-# and removed, and updates the two golden snapshots that show what the sync
-# changes in requests and prices:
-#   - packages/openai-adapters/src/test/__snapshots__/catalogGolden.test.ts.snap
-#   - core/llm/utils/__snapshots__/calculateRequestCost.golden.vitest.ts.snap
-# Their diff is the review. MAINTAINING.md ("Model catalog") has the checklist.
+# once a week with scripts/sync-models.mjs. When a model, a limit or a price
+# changed, it keeps one pull request, from the branch chore/sync-models, up to
+# date with the new catalog:
+#   - The body lists what changed since main: the models added and removed,
+#     and each changed price, limit and effort.
+#   - The two golden snapshots are updated with vitest -u. Their diff shows
+#     what the sync changes in requests and prices:
+#       packages/openai-adapters/src/test/__snapshots__/catalogGolden.test.ts.snap
+#       core/llm/utils/__snapshots__/calculateRequestCost.golden.vitest.ts.snap
+#   - Other tests pin catalog values (prices in calculateRequestCost.vitest.ts,
+#     efforts in modelControls.test.ts, and more). The workflow runs the
+#     openai-adapters and core suites and lists the tests the new catalog
+#     fails in the body, to be updated on the branch.
+# MAINTAINING.md ("Model catalog") has the reviewer checklist.
+#
+# The workflow only adds commits to the branch. It never force-pushes and
+# never closes the pull request, so fixes pushed to the branch stay. A branch
+# left from a closed pull request starts over from main.
 #
 # The pull request is opened with the NextCLI Automation app token, because a
 # pull request opened with GITHUB_TOKEN doesn't start CI. The token is created
-# after every install step, so no dependency's install script runs with it.
-# Each run pushes a new branch and closes the sync pull request it replaces.
-# It never force-pushes: the token can't push over a branch when main has
-# changed .github/workflows/ since that branch was made.
+# after every install and test step, so no dependency's code runs with it.
 
 on:
   schedule:
@@ -27,6 +35,7 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
 
 # bash -eo pipefail: a failed download fails the job instead of looking like a
 # week with no changes.
@@ -36,12 +45,13 @@ defaults:
 
 env:
   CATALOG: packages/llm-info/src/generated/catalog.ts
+  BRANCH: chore/sync-models
 
 jobs:
   sync:
     if: github.repository == 'nextcli-dev/nextcli'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
         with:
@@ -52,7 +62,8 @@ jobs:
         with:
           node-version-file: ".nvmrc"
 
-      # The script uses only Node built-ins, so the root needs no install.
+      # On main, so the list of changes is against main. The script uses only
+      # Node built-ins, so the root needs no install.
       - name: Sync the catalog
         id: sync
         run: |
@@ -61,31 +72,90 @@ jobs:
           # to a model counts.
           if [ -z "$(git diff -I 'CATALOG_SYNCED_AT' -I '^// by hand\. Source:' -- "$CATALOG")" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "No model, limit or price changed since the last sync." >> "$GITHUB_STEP_SUMMARY"
+            echo "No model, limit or price changed since main's catalog." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      # Builds every package, so llm-info's dist holds the new catalog.
-      - name: Build the packages
+      # The open sync pull request's branch, with any fixes pushed to it, or a
+      # new branch from main.
+      - name: Check out the sync branch
+        id: branch
         if: steps.sync.outputs.changed == 'true'
-        uses: ./.github/actions/setup-packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          cp "$CATALOG" "$RUNNER_TEMP/catalog.ts"
+          git checkout -- "$CATALOG"
+          pr="$(gh pr list --repo "$REPO" --head "$BRANCH" --state open --json number,isCrossRepository \
+            --jq '[.[] | select(.isCrossRepository | not)][0].number // empty')"
+          if [ -n "$pr" ]; then
+            git fetch --quiet --depth 1 origin "+refs/heads/${BRANCH}:refs/remotes/origin/${BRANCH}"
+            git switch --quiet -c "$BRANCH" "origin/${BRANCH}"
+          else
+            git switch --quiet -c "$BRANCH"
+          fi
+          cp "$RUNNER_TEMP/catalog.ts" "$CATALOG"
+          echo "pr=${pr}" >> "$GITHUB_OUTPUT"
+          # An earlier run may have pushed this catalog already.
+          if [ -z "$(git diff -I 'CATALOG_SYNCED_AT' -I '^// by hand\. Source:' -- "$CATALOG")" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Pull request #${pr} already has this catalog." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Install core
-        if: steps.sync.outputs.changed == 'true'
+        if: steps.branch.outputs.changed == 'true'
         uses: ./.github/actions/setup-component
         with:
           component: core
+          include-packages: "false"
+
+      # Only the packages core uses, in dependency order. llm-info's dist then
+      # holds the new catalog.
+      - name: Build the packages core uses
+        if: steps.branch.outputs.changed == 'true'
+        run: |
+          for package in config-types terminal-security fetch config-yaml llm-info openai-adapters; do
+            (cd "packages/$package" && npm ci --no-audit --no-fund && npm run build)
+          done
 
       - name: Update the golden snapshots
-        if: steps.sync.outputs.changed == 'true'
+        if: steps.branch.outputs.changed == 'true'
         run: |
           (cd packages/openai-adapters && npx vitest run -u src/test/catalogGolden.test.ts)
           (cd core && npx vitest run -u llm/utils/calculateRequestCost.golden.vitest.ts)
-          git status --short
+
+      # A failing test doesn't stop the pull request: the body lists it, to be
+      # updated on the branch. CI on the pull request runs the CLI and the
+      # other suites as well.
+      - name: Run the tests that read the catalog
+        if: steps.branch.outputs.changed == 'true'
+        env:
+          IGNORE_API_KEY_TESTS: "true"
+        run: |
+          (cd packages/openai-adapters && npx vitest run --reporter=json --outputFile="$RUNNER_TEMP/openai-adapters.json") || true
+          (cd core && npx vitest run --reporter=json --outputFile="$RUNNER_TEMP/core.json") || true
+          for suite in openai-adapters core; do
+            if [ ! -s "$RUNNER_TEMP/$suite.json" ]; then
+              echo "::error::The $suite tests wrote no report. See their output above."
+              exit 1
+            fi
+            # One line per failed test, or per test file that failed to load
+            jq -r --arg root "$GITHUB_WORKSPACE/" '
+              .testResults[]
+              | (.name | ltrimstr($root)) as $file
+              | if (.assertionResults | length) == 0 and .status == "failed"
+                then "\($file): \(.message | split("\n")[0])"
+                else (.assertionResults[] | select(.status == "failed") | "\($file) > \(.fullName)")
+                end' "$RUNNER_TEMP/$suite.json"
+          done > "$RUNNER_TEMP/failing.txt"
+          cat "$RUNNER_TEMP/failing.txt"
 
       - name: Create GitHub App token
-        if: steps.sync.outputs.changed == 'true'
+        if: steps.branch.outputs.changed == 'true'
         id: app-token
         uses: actions/create-github-app-token@v3
         with:
@@ -94,12 +164,12 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
 
-      - name: Open the pull request
-        if: steps.sync.outputs.changed == 'true'
+      - name: Push and open or update the pull request
+        if: steps.branch.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
-          BRANCH: chore/sync-models-${{ github.run_number }}-${{ github.run_attempt }}
+          PR: ${{ steps.branch.outputs.pr }}
           REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -112,30 +182,53 @@ jobs:
           bot_id="$(gh api "/users/${bot}" --jq .id)"
           git config user.name "$bot"
           git config user.email "${bot_id}+${bot}@users.noreply.github.com"
-          git switch --quiet -c "$BRANCH"
           git add "$CATALOG" \
             packages/openai-adapters/src/test/__snapshots__/catalogGolden.test.ts.snap \
             core/llm/utils/__snapshots__/calculateRequestCost.golden.vitest.ts.snap
           git commit --quiet -m "$title"
-          git push --quiet "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "HEAD:refs/heads/${BRANCH}"
 
-          # The script's list of models added and removed, without its last
-          # line (the absolute path it wrote to). Read from files, not a
-          # pipe into head, which would fail the step under pipefail.
-          grep -v '^Wrote ' "$RUNNER_TEMP/sync.txt" > "$RUNNER_TEMP/models.txt" || true
+          # A new commit on top of the branch, never a force-push: the token
+          # has no workflows permission, and fixes on the branch must stay.
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
+          if [ -z "$PR" ] && git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null; then
+            # Left from a closed pull request: start over from main.
+            git push --quiet "$remote" --delete "$BRANCH"
+          fi
+          git push --quiet "$remote" "HEAD:refs/heads/${BRANCH}"
+
+          # The script's list of changes, without its last line (the absolute
+          # path it wrote to). Lists are cut with head on files, not on a pipe,
+          # which would fail the step under pipefail.
+          grep -v '^Wrote ' "$RUNNER_TEMP/sync.txt" > "$RUNNER_TEMP/changes.txt" || true
+          cut_note() {
+            if [ "$(wc -l < "$1")" -gt "$2" ]; then
+              echo "... cut at $2 lines. The full list is in the workflow log: ${RUN_URL}"
+            fi
+          }
           {
             echo "## Description"
             echo
-            echo "The weekly sync of the models.dev snapshot, read ${date}. Review it with the checklist in [MAINTAINING.md](https://github.com/${REPO}/blob/main/MAINTAINING.md#model-catalog): the golden snapshot diff shows what changes in requests and prices."
+            echo "The weekly sync of the models.dev snapshot, read ${date}. Review it with the checklist in [MAINTAINING.md](https://github.com/${REPO}/blob/main/MAINTAINING.md#model-catalog). Each sync adds a commit to this branch and rewrites this description."
             echo
-            echo "Models added and removed:"
+            echo "Changes since \`main\` (\`+\` added, \`-\` removed, \`~\` changed):"
             echo
             echo '```text'
-            head -n 400 "$RUNNER_TEMP/models.txt"
-            if [ "$(wc -l < "$RUNNER_TEMP/models.txt")" -gt 400 ]; then
-              echo "... cut at 400 lines. The full list is in the workflow log: ${RUN_URL}"
-            fi
+            head -n 400 "$RUNNER_TEMP/changes.txt"
+            cut_note "$RUNNER_TEMP/changes.txt" 400
             echo '```'
+            echo
+            if [ -s "$RUNNER_TEMP/failing.txt" ]; then
+              echo "These tests fail with the new catalog: they pin the old values. Update them on this branch (\`${BRANCH}\`). The next sync adds its commit on top."
+              echo
+              echo '```text'
+              head -n 100 "$RUNNER_TEMP/failing.txt"
+              cut_note "$RUNNER_TEMP/failing.txt" 100
+              echo '```'
+            else
+              echo "The openai-adapters and core tests pass with the new catalog."
+            fi
+            echo
+            echo "CI also runs the CLI tests, the live provider API tests and the VS Code end-to-end tests."
             echo
             # The template's checklist, unchecked
             sed -n '/^## Checklist/,/^## Screen/p' .github/pull_request_template.md | sed '$d'
@@ -145,15 +238,13 @@ jobs:
             echo
             echo "## Tests"
             echo
-            echo "The workflow updated the golden snapshots with \`vitest run -u\`; review their diff. CI runs the rest."
+            echo "The workflow updated the golden snapshots with \`vitest run -u\`; review their diff."
           } > "$RUNNER_TEMP/body.md"
 
-          url="$(gh pr create --repo "$REPO" --base main --head "$BRANCH" --title "$title" --body-file "$RUNNER_TEMP/body.md")"
-          echo "Opened ${url}" >> "$GITHUB_STEP_SUMMARY"
-
-          # Close the older sync pull requests this one replaces.
-          gh pr list --repo "$REPO" --state open --limit 100 --json number,headRefName,author \
-            --jq '.[] | select(.headRefName | startswith("chore/sync-models-")) | select(.headRefName != env.BRANCH) | select(.author.login == "app/" + env.APP_SLUG) | .number' |
-            while read -r number; do
-              gh pr close "$number" --repo "$REPO" --delete-branch --comment "Superseded by ${url}."
-            done
+          if [ -n "$PR" ]; then
+            gh pr edit "$PR" --repo "$REPO" --title "$title" --body-file "$RUNNER_TEMP/body.md"
+            echo "Updated #${PR}" >> "$GITHUB_STEP_SUMMARY"
+          else
+            url="$(gh pr create --repo "$REPO" --base main --head "$BRANCH" --title "$title" --body-file "$RUNNER_TEMP/body.md")"
+            echo "Opened ${url}" >> "$GITHUB_STEP_SUMMARY"
+          fi

@@ -130,14 +130,19 @@ After a CLI release, update the `@nextcli/cli` version pinned in nextcli-checks 
 
 `packages/llm-info/src/generated/catalog.ts` is a snapshot of [models.dev](https://models.dev): context limits, reasoning efforts, fast mode and prices. The model menus, the request rules and `--max-cost` read it. When a price comes from it, `cn` reports the snapshot's date as `catalogDate`.
 
-`sync-models.yml` refreshes it every Monday; run Sync models by hand to pick up a change sooner. When a model, a limit or a price changed, the workflow updates the two golden snapshots with `vitest run -u` and the NextCLI Automation app opens a pull request titled `chore(llm-info): sync the model catalog (YYYY-MM-DD)`. Its body lists the models added and removed. A change under `packages/llm-info/` runs most of CI, including the live provider API tests. The next sync closes an open sync pull request, so merge it within the week. Fix code that a sync breaks in its own pull request.
+`sync-models.yml` refreshes it every Monday; run Sync models by hand to pick up a change sooner. When a model, a limit or a price changed, the NextCLI Automation app opens a pull request from `chore/sync-models` titled `chore(llm-info): sync the model catalog (YYYY-MM-DD)`, or adds a commit to the open one and rewrites its description. The description lists what changed since `main`. The workflow updates the two golden snapshots with `vitest run -u`.
+
+Other tests pin catalog values: prices in `calculateRequestCost.vitest.ts`, efforts and context windows in `modelControls.test.ts`, and more. The workflow runs the openai-adapters and core tests and lists the ones the new catalog fails in the description. Update them on `chore/sync-models`. The workflow never force-pushes and never closes the pull request, so your commits stay.
+
+A change under `packages/llm-info/` runs most of CI: the core, GUI, VS Code and CLI suites, the live provider API tests and the VS Code end-to-end tests. Re-run a job that fails for a reason the catalog can't cause.
 
 Before merging a sync pull request, check:
 
-1. **Models added and removed**, in the pull request body. A removed model that a default, a doc or a test names needs a follow-up.
+1. **The changes** in the description: models added and removed, and each changed price, limit and effort. A removed model that a default, a doc or a test names needs a follow-up. A price change should match the vendor's pricing page.
 2. **`catalogGolden.test.ts.snap`** in `packages/openai-adapters/src/test/__snapshots__/`: the efforts, Off, fast mode and largest context of popular models. A change should match the vendor's docs.
-3. **`calculateRequestCost.golden.vitest.ts.snap`** in `core/llm/utils/__snapshots__/`: what one review turn costs on popular models. A price change should match the vendor's pricing page. A label that drops from `exact` or `catalog` to `estimated` or `fallback` means a model lost its price.
-4. **CI is green.**
+3. **`calculateRequestCost.golden.vitest.ts.snap`** in `core/llm/utils/__snapshots__/`: what one review turn costs on popular models. A label that drops from `exact` or `catalog` to `estimated` or `fallback` means a model lost its price.
+4. **The tests the description lists**, updated to the new values.
+5. **CI is green.**
 
 ## Repository settings
 
