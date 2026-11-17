@@ -7,13 +7,15 @@
 //   npm run sync-models                 # download the catalog
 //   npm run sync-models -- api.json     # use a saved copy
 //
-// Run it by hand when vendors add models or change prices, then review the
-// diff, the models it lists as added and removed, and the golden tests
-// (update them with vitest -u and review their diff). The snapshot is
+// The Sync models workflow (.github/workflows/sync-models.yml) runs it every
+// Monday. When a model changed, the workflow updates the golden tests with
+// vitest -u and opens or updates a pull request that lists what changed.
+// MAINTAINING.md ("Model catalog") has the reviewer checklist. Run it by hand
+// to pick up a change sooner, then review the same things. The snapshot is
 // checked in, so nothing downloads it at runtime or in CI.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const SOURCE_URL = "https://models.dev/api.json";
 const OUTPUT = join(
@@ -149,70 +151,141 @@ function render(catalog, syncedAt) {
   return lines.join("\n");
 }
 
-/**
- * Model ids added and removed since the last snapshot, per provider. What
- * a sync changes in requests and prices shows in the golden tests
- * (catalogGolden.test.ts, calculateRequestCost.golden.vitest.ts).
- */
-function summarize(previousText, catalog) {
-  const previous = new Map();
+/** The models of a generated catalog.ts, as {provider: {id: model}}. */
+export function parseCatalog(text) {
+  const catalog = {};
   let provider;
-  for (const line of previousText.split("\n")) {
-    const providerMatch = line.match(/^ {2}"([^"]+)": \{$/);
+  for (const line of text.split("\n")) {
+    const providerMatch = line.match(/^ {2}("[^"]+"): \{$/);
     if (providerMatch) {
-      provider = providerMatch[1];
-      previous.set(provider, new Set());
+      provider = JSON.parse(providerMatch[1]);
+      catalog[provider] = {};
       continue;
     }
-    const modelMatch = line.match(/^ {4}"([^"]+)":/);
-    if (modelMatch && provider) previous.get(provider).add(modelMatch[1]);
-  }
-  let changed = false;
-  for (const [id, models] of Object.entries(catalog)) {
-    const before = previous.get(id) ?? new Set();
-    const now = new Set(Object.keys(models));
-    const added = [...now].filter((m) => !before.has(m));
-    const removed = [...before].filter((m) => !now.has(m));
-    if (added.length || removed.length) {
-      changed = true;
-      console.log(`${id}: +${added.length} -${removed.length}`);
-      for (const m of added) console.log(`  + ${m}`);
-      for (const m of removed) console.log(`  - ${m}`);
+    const modelMatch = line.match(/^ {4}("(?:[^"\\]|\\.)*"): (\{.*\}),$/);
+    if (modelMatch && provider) {
+      catalog[provider][JSON.parse(modelMatch[1])] = JSON.parse(modelMatch[2]);
     }
   }
-  if (!changed) console.log("No models added or removed.");
+  return catalog;
 }
 
-const source = await loadCatalog(process.argv[2]);
-const catalog = {};
-for (const id of PROVIDERS) {
-  const provider = source[id];
-  if (!provider?.models) {
-    throw new Error(`models.dev has no provider "${id}". Update PROVIDERS.`);
-  }
-  catalog[id] = {};
-  for (const [modelId, model] of Object.entries(provider.models)) {
-    if (isChatModel({ ...model, id: modelId })) {
-      catalog[id][modelId] = trimModel(model);
+/** A model's fields as dotted paths: {"cost.input": 3, "efforts": [...]}. */
+function flatten(value, prefix = "", out = {}) {
+  for (const [key, field] of Object.entries(value)) {
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (field && typeof field === "object" && !Array.isArray(field)) {
+      flatten(field, path, out);
+    } else {
+      out[path] = field;
     }
   }
+  return out;
 }
-const total = Object.values(catalog).reduce(
-  (sum, models) => sum + Object.keys(models).length,
-  0,
-);
-if (total < 500) {
-  throw new Error(
-    `Found only ${total} models. The catalog format may have changed.`,
+
+/**
+ * What changed between two catalogs, per provider: the model ids added and
+ * removed, and each changed field (a price, a limit, the efforts) of the
+ * models in both. Providers with no change are left out.
+ */
+export function diffCatalogs(before, after) {
+  const providers = [
+    ...new Set([...Object.keys(before), ...Object.keys(after)]),
+  ].sort();
+  const diff = [];
+  for (const provider of providers) {
+    const old = before[provider] ?? {};
+    const now = after[provider] ?? {};
+    const added = Object.keys(now)
+      .filter((id) => !(id in old))
+      .sort();
+    const removed = Object.keys(old)
+      .filter((id) => !(id in now))
+      .sort();
+    const changed = [];
+    for (const id of Object.keys(now).sort()) {
+      if (!(id in old)) continue;
+      const a = flatten(old[id]);
+      const b = flatten(now[id]);
+      const fields = [...new Set([...Object.keys(a), ...Object.keys(b)])]
+        .sort()
+        .filter((path) => JSON.stringify(a[path]) !== JSON.stringify(b[path]))
+        .map((path) => ({ path, before: a[path], after: b[path] }));
+      if (fields.length) changed.push({ id, fields });
+    }
+    if (added.length || removed.length || changed.length) {
+      diff.push({ provider, added, removed, changed });
+    }
+  }
+  return diff;
+}
+
+const shown = (value) => (value === undefined ? "none" : JSON.stringify(value));
+
+/** The diff as text: `+` added, `-` removed, `~` changed with its fields. */
+export function formatDiff(diff) {
+  if (diff.length === 0) return ["No model changed."];
+  const lines = [];
+  for (const { provider, added, removed, changed } of diff) {
+    lines.push(
+      `${provider}: ${added.length} added, ${removed.length} removed, ${changed.length} changed`,
+    );
+    for (const id of added) lines.push(`  + ${id}`);
+    for (const id of removed) lines.push(`  - ${id}`);
+    for (const { id, fields } of changed) {
+      const what = fields.map(
+        ({ path, before, after }) =>
+          `${path} ${shown(before)} -> ${shown(after)}`,
+      );
+      lines.push(`  ~ ${id}: ${what.join(", ")}`);
+    }
+  }
+  return lines;
+}
+
+async function main() {
+  const source = await loadCatalog(process.argv[2]);
+  const catalog = {};
+  for (const id of PROVIDERS) {
+    const provider = source[id];
+    if (!provider?.models) {
+      throw new Error(`models.dev has no provider "${id}". Update PROVIDERS.`);
+    }
+    catalog[id] = {};
+    for (const [modelId, model] of Object.entries(provider.models)) {
+      if (isChatModel({ ...model, id: modelId })) {
+        catalog[id][modelId] = trimModel(model);
+      }
+    }
+  }
+  const total = Object.values(catalog).reduce(
+    (sum, models) => sum + Object.keys(models).length,
+    0,
+  );
+  if (total < 500) {
+    throw new Error(
+      `Found only ${total} models. The catalog format may have changed.`,
+    );
+  }
+
+  // What a sync changes in requests and prices shows in the golden tests
+  // (catalogGolden.test.ts, calculateRequestCost.golden.vitest.ts).
+  const syncedAt = new Date().toISOString().slice(0, 10);
+  const previous = existsSync(OUTPUT)
+    ? parseCatalog(readFileSync(OUTPUT, "utf8"))
+    : {};
+  // The catalog goes through JSON, as it does when written and read back
+  const next = JSON.parse(JSON.stringify(catalog));
+  for (const line of formatDiff(diffCatalogs(previous, next))) {
+    console.log(line);
+  }
+  const text = render(catalog, syncedAt);
+  writeFileSync(OUTPUT, text);
+  console.log(
+    `Wrote ${total} models from ${PROVIDERS.length} providers (${Math.round(text.length / 1024)} KB) to ${OUTPUT}`,
   );
 }
 
-const syncedAt = new Date().toISOString().slice(0, 10);
-if (existsSync(OUTPUT)) {
-  summarize(readFileSync(OUTPUT, "utf8"), catalog);
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  await main();
 }
-const text = render(catalog, syncedAt);
-writeFileSync(OUTPUT, text);
-console.log(
-  `Wrote ${total} models from ${PROVIDERS.length} providers (${Math.round(text.length / 1024)} KB) to ${OUTPUT}`,
-);

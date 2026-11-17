@@ -71,6 +71,7 @@ Other workflows:
 | `release-prs.yml`            | push to `main`                     | Keeps the Release PRs up to date and creates releases when they merge |
 | `publish-vscode.yaml`        | VS Code release, or manually       | Builds 8 targets, publishes to Open VSX and the Marketplace           |
 | `release-cli.yml`            | CLI release, or manually (dry run) | Publishes `@nextcli/cli` to npm                                       |
+| `sync-models.yml`            | Mondays, or manually               | Refreshes the models.dev catalog and opens a PR when it changed       |
 | `cla.yaml`                   | PR opened or updated, PR comments  | CLA signatures, stored on the `cla-signatures` branch                 |
 | `stale-issue-helper.yaml`    | daily                              | Marks and closes inactive issues and PRs                              |
 | `delete-stale-branches.yaml` | weekdays                           | Deletes branches inactive for 60 days, except `backup/*`              |
@@ -129,12 +130,30 @@ npm trusted publishing is bound to `release-cli.yml`. Leave `NPM_TOKEN` unset to
 
 ### Libraries
 
-`@nextcli/config-types`, `@nextcli/config-yaml`, `@nextcli/fetch`, `@nextcli/llm-info` and `@nextcli/openai-adapters` have no release workflow. The CLI and the extension build them from `packages/` and don't install them from npm. To publish them again, add each package to release-please as its own component.
+`@nextcli/config-types`, `@nextcli/config-yaml`, `@nextcli/fetch`, `@nextcli/llm-info` and `@nextcli/openai-adapters` have no release workflow. The CLI and the extension build them from `packages/` and don't install them from npm. To publish them again, add each package to release-please as its own component. Publish `@nextcli/llm-info` before `@nextcli/openai-adapters`, which depends on it.
+
+### Model catalog
+
+`packages/llm-info/src/generated/catalog.ts` is a snapshot of [models.dev](https://models.dev): context limits, reasoning efforts, fast mode and prices. The model menus, the request rules and `--max-cost` read it. When a price comes from it, `cn` reports the snapshot's date as `catalogDate`.
+
+`sync-models.yml` refreshes it every Monday; run Sync models by hand to pick up a change sooner. When a model, a limit or a price changed, the NextCLI Automation app opens a pull request from `chore/sync-models` titled `chore(llm-info): sync the model catalog (YYYY-MM-DD)`, or adds a commit to the open one and rewrites its description. The description lists what changed since `main`. The workflow updates the two golden snapshots with `vitest run -u`.
+
+Other tests pin catalog values: prices in `calculateRequestCost.vitest.ts`, efforts and context windows in `modelControls.test.ts`, and more. The workflow runs the openai-adapters and core tests and lists the ones the new catalog fails in the description. Update them on `chore/sync-models`. The workflow never force-pushes and never closes the pull request, so your commits stay.
+
+A change under `packages/llm-info/` runs most of CI: the core, GUI, VS Code and CLI suites, the live provider API tests and the VS Code end-to-end tests. Re-run a job that fails for a reason the catalog can't cause.
+
+Before merging a sync pull request, check:
+
+1. **The changes** in the description: models added and removed, and each changed price, limit and effort. A removed model that a default, a doc or a test names needs a follow-up. A price change should match the vendor's pricing page.
+2. **`catalogGolden.test.ts.snap`** in `packages/openai-adapters/src/test/__snapshots__/`: the efforts, Off, fast mode and largest context of popular models. A change should match the vendor's docs.
+3. **`calculateRequestCost.golden.vitest.ts.snap`** in `core/llm/utils/__snapshots__/`: what one review turn costs on popular models. A label that drops from `exact` or `catalog` to `estimated` or `fallback` means a model lost its price.
+4. **The tests the description lists**, updated to the new values.
+5. **CI is green.**
 
 ## Repository settings
 
 - `main` ruleset: pull request required, status check `ci` required and branches must be up to date, no force pushes or deletion.
 - Merge button: squash only, PR title as the commit message, branches deleted after merge.
 - Environments: `production` requires a reviewer and only accepts `vscode-v*` and `cli-v*` tags; `staging` only accepts `main`.
-- The NextCLI Automation GitHub App (`NEXTCLI_APP_CLIENT_ID` variable, `NEXTCLI_APP_PRIVATE_KEY` secret) needs contents and pull request write access. release-please uses it so that Release PRs run CI and releases start the publish workflows.
+- The NextCLI Automation GitHub App (`NEXTCLI_APP_CLIENT_ID` variable, `NEXTCLI_APP_PRIVATE_KEY` secret) needs contents and pull request write access. release-please uses it so that Release PRs run CI and releases start the publish workflows, and Sync models uses it so that its pull requests run CI.
 - `NEXTCLI_SENTRY_DSN` only if error reporting should be on.
