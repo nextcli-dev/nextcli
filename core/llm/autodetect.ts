@@ -75,37 +75,40 @@ const PROVIDER_HANDLES_TEMPLATING: string[] = [
   "nous",
   "zAI",
   "tensorix",
+  // Hosted Chat Completions APIs, which apply the model's chat template
+  // themselves. Templating their chat here sends the whole conversation as
+  // one user message, without tools or a system role.
+  "azure",
+  "cerebras",
+  "cometapi",
+  "deepinfra",
+  "fireworks",
+  "function-network",
+  "inception",
+  "kindo",
+  "moonshot",
+  "ncompass",
+  "ovhcloud",
+  "scaleway",
+  "siliconflow",
+  "venice",
   // TODO add these, change to inverted logic so only the ones that need templating are hardcoded
   // Asksage.ts
-  // Azure.ts
   // BedrockImport.ts
-  // Cerebras.ts
   // Cloudflare.ts
-  // CometAPI.ts
   // CustomLLM.ts
-  // DeepInfra.ts
-  // Fireworks.ts
   // Flowise.ts
-  // FunctionNetwork.ts
   // HuggingFaceInferenceAPI.ts
   // HuggingFaceTEI.ts
   // HuggingFaceTGI.ts
-  // Inception.ts
-  // Kindo.ts
   // LlamaCpp.ts
   // LlamaStack.ts
   // Llamafile.ts
   // Mock.ts
-  // Moonshot.ts
-  // NCompass.ts
-  // OVHcloud.ts
   // Replicate.ts
-  // Scaleway.ts
-  // SiliconFlow.ts
   // TARS.ts
   // Test.ts
   // TextGenWebUI.ts
-  // Venice.ts
   // Vllm.ts
   // Voyage.ts
   // etc

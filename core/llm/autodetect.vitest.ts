@@ -400,3 +400,31 @@ test("OneProvider formats chat itself: no prompt template", () => {
     null,
   );
 });
+
+test("hosted Chat Completions APIs get chat as messages, not a prompt template", () => {
+  // Open models' ids that would otherwise get a template (llama3, chatml)
+  for (const provider of [
+    "azure",
+    "cerebras",
+    "cometapi",
+    "deepinfra",
+    "fireworks",
+    "function-network",
+    "inception",
+    "kindo",
+    "moonshot",
+    "ncompass",
+    "ovhcloud",
+    "scaleway",
+    "siliconflow",
+    "venice",
+  ]) {
+    for (const model of ["llama-3.3-70b-instruct", "qwen3-coder-480b"]) {
+      expect(autodetectTemplateFunction(model, provider), provider).toBe(null);
+    }
+  }
+  // A local server still gets one
+  expect(autodetectTemplateFunction("qwen3-coder-480b", "llamafile")).not.toBe(
+    null,
+  );
+});
