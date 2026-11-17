@@ -234,3 +234,78 @@ describe("OpenRouter Anthropic Caching", () => {
     expect(modifiedBody.messages).toEqual(body.messages);
   });
 });
+
+describe("OpenRouter caching through the adapter", () => {
+  const body = (): ChatCompletionCreateParams => ({
+    model: "anthropic/claude-sonnet-4.5",
+    messages: [
+      { role: "system", content: "You are helpful." },
+      { role: "user", content: "First" },
+      { role: "assistant", content: "One" },
+      { role: "user", content: "Second" },
+      { role: "assistant", content: "Two" },
+      { role: "user", content: "Third" },
+    ],
+    tools: [
+      {
+        type: "function",
+        function: { name: "read_file", parameters: { type: "object" } },
+      },
+      {
+        type: "function",
+        function: { name: "edit_file", parameters: { type: "object" } },
+      },
+    ],
+  });
+
+  /**
+   * Where the body that goes out has cache breakpoints: core's own changes,
+   * then the adapter's, as streamChat runs them
+   */
+  function breakpoints(options: object = {}) {
+    const llm = new OpenRouter({
+      model: "anthropic/claude-sonnet-4.5",
+      apiKey: "test-key",
+      ...options,
+    }) as any;
+    const sent = llm.openaiAdapter.modifyChatBody(llm.modifyChatBody(body()));
+    const marked = (value: unknown) =>
+      JSON.stringify(value).includes("cache_control");
+    return {
+      messages: sent.messages
+        .filter((message: any) => marked(message.content))
+        .map((message: any) =>
+          message.role === "system"
+            ? "system"
+            : JSON.stringify(message.content).match(/"text":"(\w+)"/)?.[1],
+        ),
+      tools: sent.tools.filter(marked).length,
+    };
+  }
+
+  it("adds no breakpoints without the model asking", () => {
+    expect(breakpoints()).toEqual({ messages: [], tools: 0 });
+  });
+
+  it("caches only the system prompt for cacheSystemMessage", () => {
+    expect(
+      breakpoints({
+        cacheBehavior: { cacheSystemMessage: true, cacheConversation: false },
+      }),
+    ).toEqual({ messages: ["system"], tools: 0 });
+  });
+
+  it("caches only the last two user messages for cacheConversation", () => {
+    expect(
+      breakpoints({
+        cacheBehavior: { cacheSystemMessage: false, cacheConversation: true },
+      }),
+    ).toEqual({ messages: ["Second", "Third"], tools: 0 });
+  });
+
+  it("caches the system prompt and the conversation for promptCaching", () => {
+    expect(breakpoints({ completionOptions: { promptCaching: true } })).toEqual(
+      { messages: ["system", "Second", "Third"], tools: 0 },
+    );
+  });
+});

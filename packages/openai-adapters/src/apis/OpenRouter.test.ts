@@ -73,7 +73,8 @@ describe("OpenRouterApi Anthropic caching", () => {
     expect(modifiedBody.messages[1]).toEqual(body.messages[1]);
   });
 
-  it("respects cachingStrategy when set to none", () => {
+  it("adds no cache_control at all when cachingStrategy is none", () => {
+    // As AnthropicApi: core passes none when the model doesn't opt in
     const api = new OpenRouterApi({
       ...baseConfig,
       cachingStrategy: "none",
@@ -91,27 +92,8 @@ describe("OpenRouterApi Anthropic caching", () => {
 
     const modifiedBody = api["modifyChatBody"]({ ...body });
 
-    // System message should remain unchanged when strategy is none
-    expect(modifiedBody.messages[0]).toEqual(body.messages[0]);
-
-    const userMessages = modifiedBody.messages.filter(
-      (message) => message.role === "user",
-    );
-
-    expect(userMessages[0].content).toEqual([
-      {
-        type: "text",
-        text: "First",
-        cache_control: { type: "ephemeral" },
-      },
-    ]);
-    expect(userMessages[1].content).toEqual([
-      {
-        type: "text",
-        text: "Second",
-        cache_control: { type: "ephemeral" },
-      },
-    ]);
+    expect(modifiedBody.messages).toEqual(body.messages);
+    expect(JSON.stringify(modifiedBody)).not.toContain("cache_control");
   });
 
   it("leaves messages unchanged for non-Anthropic models", () => {

@@ -83,13 +83,16 @@ export class OpenRouterApi extends OpenAIApi {
     const modifiedBody = super.modifyChatBody(body);
     applyOpenRouterControls(modifiedBody, { showThinking, thinking });
 
-    if (!this.isAnthropicModel(modifiedBody.model)) {
+    // "none" adds no breakpoints at all, as in AnthropicApi
+    const strategy =
+      (this.config as OpenRouterConfig).cachingStrategy ?? "systemAndTools";
+    if (!this.isAnthropicModel(modifiedBody.model) || strategy === "none") {
       return modifiedBody;
     }
 
     applyAnthropicCachingToOpenRouterBody(
       modifiedBody as unknown as ChatCompletionCreateParams,
-      (this.config as OpenRouterConfig).cachingStrategy ?? "systemAndTools",
+      strategy,
     );
 
     return modifiedBody;

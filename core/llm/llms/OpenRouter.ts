@@ -1,6 +1,6 @@
 import { ChatCompletionCreateParams } from "openai/resources/index";
 
-import { OPENROUTER_HEADERS } from "@nextcli/openai-adapters";
+import { OPENROUTER_HEADERS, type LLMConfig } from "@nextcli/openai-adapters";
 
 import { LLMOptions } from "../../index.js";
 import { osModelsEditPrompt } from "../templates/edit.js";
@@ -31,6 +31,21 @@ class OpenRouter extends OpenAI {
         },
       },
     });
+  }
+
+  /**
+   * Claude prompt caching is modifyChatBody's alone: it marks what the
+   * model's flags ask for (cacheSystemMessage: the system prompt;
+   * cacheConversation: the last two user messages; promptCaching: both),
+   * and nothing without them. The adapter would add its own systemAndTools
+   * breakpoints (system prompt, last tool, last two user messages) whatever
+   * the flags say, so it gets `none`. The CLI keeps the adapter's default.
+   */
+  protected adapterConfig(): LLMConfig {
+    return {
+      ...super.adapterConfig(),
+      cachingStrategy: "none",
+    } as LLMConfig;
   }
 
   private isAnthropicModel(model?: string): boolean {
