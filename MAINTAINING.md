@@ -113,11 +113,17 @@ Both registries bind to the workflow file name, so don't rename `publish-vscode.
 
 ### CLI
 
-Merge the cli Release PR. release-please creates `cli-vX.Y.Z` and its GitHub release, and `release-cli.yml` builds, tests, packs and installs the tarball, then waits for approval of the `production` deployment before publishing to npm. To check a build without publishing, run CLI Release manually: it stops after packing.
+Release checklist:
+
+1. Merge the cli Release PR. release-please creates `cli-vX.Y.Z` and its GitHub release, and `release-cli.yml` builds, tests, packs and installs the tarball. Approve the `production` deployment to publish to npm.
+2. Check that npm has it: `npm view @nextcli/cli version`.
+3. In nextcli-checks, move the default `@nextcli/cli` version to the new release in `scripts/install-agent.sh`, the `agent-version` description in `action.yml`, the inputs table in `README.md`, and `DEFAULT_NEXTCLI` in `scripts/test_checks.py`. Run `python3 -I scripts/test_checks.py` and open a pull request.
+4. After it merges, publish a nextcli-checks release (`v3.Y.Z`) and move the `v3` tag to it. The action and the reusable workflow `.github/workflows/checks.yml` are released together.
+5. Set this repository's `CHECKS_NEXTCLI_VERSION` variable to the new version. `ai-checks.yml` passes it as `agent-version`.
+
+To check a build without publishing, run CLI Release manually: it stops after packing.
 
 npm trusted publishing is bound to `release-cli.yml`. Leave `NPM_TOKEN` unset to publish with the workflow's OIDC token.
-
-After a CLI release, update the `@nextcli/cli` version pinned in nextcli-checks (`scripts/install-agent.sh`, `action.yml`, README) and move its `v2` tag.
 
 `extensions/cli/LICENSE` and `extensions/cli/NOTICE` are copies of the repository root files. npm only packs files inside the package directory. Update both copies when the root files change.
 
