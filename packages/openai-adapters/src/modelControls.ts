@@ -806,7 +806,9 @@ const CONTEXT_STEPS = [64_000, 128_000, 200_000, 256_000, 400_000, 1_000_000];
 
 /**
  * Context windows to offer: standard steps up to the largest one known for
- * the model (its own limit, or the configured or default context length).
+ * the model (its own limit, or the configured or default context length),
+ * and the configured window itself, so the current choice is always one of
+ * them (a configured 8K is offered next to the steps)
  */
 export function getContextOptions(
   maxContextLength: number | undefined,
@@ -814,5 +816,7 @@ export function getContextOptions(
 ): number[] {
   const max = Math.max(maxContextLength ?? 0, configuredContextLength);
   const steps = CONTEXT_STEPS.filter((step) => step < max);
-  return [...steps, max];
+  return [...new Set([...steps, configuredContextLength, max])].sort(
+    (a, b) => a - b,
+  );
 }

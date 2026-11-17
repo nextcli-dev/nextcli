@@ -206,15 +206,15 @@ export { effortLabel, formatContextLength, thinkingLabel };
 
 /**
  * Context windows to offer: standard steps up to the largest one known for
- * the model (its own limit, or the configured or default context length).
+ * the model, and the configured window (tokenizer.ts configuredContextLimit)
  */
 export function getContextOptions(
   model: ModelConfig,
-  defaultContextLength: number,
+  configuredContextLength: number,
 ): number[] {
   return contextOptionsFor(
     getModelControlsFor(model).maxContextLength,
-    model.defaultCompletionOptions?.contextLength ?? defaultContextLength,
+    configuredContextLength,
   );
 }
 

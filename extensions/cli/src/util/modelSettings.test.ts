@@ -138,6 +138,13 @@ describe("model settings", () => {
     expect(getContextOptions(llama, configuredContextLimit(llama))).toEqual([
       64_000, 128_000, 131_072,
     ]);
+
+    // A configured window between the steps is current, and offered
+    const small = { ...llama, contextLength: 8_192 };
+    expect(configuredContextLimit(small)).toBe(8_192);
+    expect(getContextOptions(small, configuredContextLimit(small))).toEqual([
+      8_192, 64_000, 128_000, 131_072,
+    ]);
   });
 
   it("uses the chosen context window for compaction limits", () => {

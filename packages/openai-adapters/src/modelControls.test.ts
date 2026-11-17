@@ -614,6 +614,14 @@ describe("context options", () => {
     expect(getContextOptions(200_000, 300_000)).toEqual([
       64_000, 128_000, 200_000, 256_000, 300_000,
     ]);
+    // A configured window between the steps is offered too, so the current
+    // choice is one of the options
+    expect(getContextOptions(131_072, 8_192)).toEqual([
+      8_192, 64_000, 128_000, 131_072,
+    ]);
+    expect(getContextOptions(1_000_000, 150_000)).toEqual([
+      64_000, 128_000, 150_000, 200_000, 256_000, 400_000, 1_000_000,
+    ]);
   });
 
   it("formats context lengths", () => {

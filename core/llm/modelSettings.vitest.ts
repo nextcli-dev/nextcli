@@ -147,6 +147,17 @@ describe("model controls by provider", () => {
     expect(controls.contextOptions.length).toBeGreaterThan(0);
   });
 
+  test("offers the configured context window, between the steps too", () => {
+    const controls = new Anthropic({
+      apiKey: "k",
+      model: "claude-haiku-4-5",
+      contextLength: 8_192,
+    }).getModelControls();
+    expect(controls.defaultContextLength).toBe(8_192);
+    expect(controls.contextOptions).toContain(8_192);
+    expect(controls.contextOptions[0]).toBe(8_192);
+  });
+
   test("uses Gemini and xAI rules", () => {
     expect(controlsFor(geminiPro)).toMatchObject({
       format: "gemini",
