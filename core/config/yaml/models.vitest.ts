@@ -355,3 +355,33 @@ describe("llmsFromModelConfig requestOptions merging", () => {
     });
   });
 });
+
+describe("llmsFromModelConfig capabilities", () => {
+  const config = { requestOptions: undefined } as unknown as ContinueConfig;
+
+  async function capabilitiesOf(capabilities?: string[]) {
+    const [llm] = await llmsFromModelConfig({
+      model: {
+        name: "m",
+        provider: "openai",
+        model: "gpt-5.5",
+        ...(capabilities && { capabilities }),
+      } as ModelConfig,
+      uniqueId: "test-id",
+      llmLogger: { log: vi.fn() } as any,
+      config,
+    });
+    return llm.capabilities;
+  }
+
+  // A list replaces detection: what it leaves out is off
+  it("turns tools off for a list without tool_use, an empty one included", async () => {
+    expect((await capabilitiesOf([]))?.tools).toBe(false);
+    expect((await capabilitiesOf(["image_input"]))?.tools).toBe(false);
+    expect((await capabilitiesOf(["tool_use"]))?.tools).toBe(true);
+  });
+
+  it("leaves detection to the rules without a list", async () => {
+    expect((await capabilitiesOf())?.tools).toBeUndefined();
+  });
+});

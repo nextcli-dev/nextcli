@@ -315,7 +315,8 @@ export function resolveCatalog({
 /**
  * Whether a model takes tools, as its endpoint's catalog says. Undefined
  * when that catalog doesn't list the model (a bridge or local server,
- * `openai` on another host, an unknown id): the caller's own rules decide.
+ * `openai` on another host, an unknown id). Core and the CLI ask it only
+ * for providers without a tool rule of their own (core/llm/toolSupport.ts).
  */
 export function catalogToolSupport(
   endpoint: ModelEndpoint,

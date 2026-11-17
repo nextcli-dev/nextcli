@@ -36,12 +36,16 @@ const GENERIC_ENDPOINT_PROVIDERS = new Set([
 /**
  * Determines if a model is recommended for use with `cn`.
  *
- * In order: the config (`capabilities: [tool_use]`) decides; then the
- * models.dev catalog of the model's endpoint, for a model id it lists (a
- * "no" is final); then the provider tool-support rules shared with the IDE
- * extensions (a "no" is final for a real model id on a catalog provider,
- * e.g. openrouter's moonshotai/kimi-k2:free); then the recommended agent
- * models and the name patterns.
+ * In order:
+ * 1. The config's `capabilities` list, when it has one: `tool_use` in it
+ *    decides, as in the IDE extensions (core/config/yaml/models.ts).
+ * 2. The provider tool-support rules shared with the IDE extensions. A "no"
+ *    is final for a real model id on a provider with its own models (e.g.
+ *    openrouter's moonshotai/kimi-k2:free); generic endpoints go on to the
+ *    names.
+ * 3. For a provider without a rule (Groq, DeepInfra, Fireworks...), the
+ *    models.dev catalog of the model's endpoint, for a model id it lists.
+ * 4. The recommended agent models and the name patterns.
  */
 export function isModelCapable(
   provider: string,
@@ -50,15 +54,8 @@ export function isModelCapable(
   capabilities?: string[],
   apiBase?: string,
 ): boolean {
-  if (capabilities?.includes("tool_use")) {
-    return true;
-  }
-
-  if (model) {
-    const fromCatalog = catalogToolSupport({ provider, model, apiBase });
-    if (fromCatalog !== undefined) {
-      return fromCatalog;
-    }
+  if (capabilities) {
+    return capabilities.includes("tool_use");
   }
 
   const providerRule = PROVIDER_TOOL_SUPPORT[provider];
@@ -69,6 +66,11 @@ export function isModelCapable(
     // Rules match model ids, not display names
     if (model && !GENERIC_ENDPOINT_PROVIDERS.has(provider)) {
       return false;
+    }
+  } else if (model) {
+    const fromCatalog = catalogToolSupport({ provider, model, apiBase });
+    if (fromCatalog !== undefined) {
+      return fromCatalog;
     }
   }
 

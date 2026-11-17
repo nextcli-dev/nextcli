@@ -11,6 +11,10 @@ describe("isModelCapable", () => {
     test("should consider GPT-3.5-turbo as capable", () => {
       expect(isModelCapable("openai", "gpt-3.5-turbo")).toBe(true);
       expect(isModelCapable("openai", "gpt-3.5-turbo-16k")).toBe(true);
+      // With its id, as real calls pass it: OpenAI's rule says no, the
+      // provider is generic, and the name matches. The catalog, which says
+      // no, isn't asked for a provider with a rule.
+      expect(isModelCapable("openai", "GPT-3.5", "gpt-3.5-turbo")).toBe(true);
     });
 
     test("should consider O-series models as capable", () => {
@@ -195,13 +199,21 @@ describe("isModelCapable", () => {
       expect(isModelCapable("ollama", "devstral-small-2")).toBe(true);
     });
 
-    test("should trust capabilities: [tool_use] from the config", () => {
+    test("should let the config's capabilities list decide", () => {
       expect(
         isModelCapable("openai", "In-house", "my-model", ["tool_use"]),
       ).toBe(true);
       expect(
         isModelCapable("openai", "In-house", "my-model", ["image_input"]),
       ).toBe(false);
+      // A list without tool_use turns tools off, as in the IDE extensions,
+      // whatever the rules and names say
+      expect(isModelCapable("anthropic", "Claude", "claude-opus-5-5", [])).toBe(
+        false,
+      );
+      expect(isModelCapable("openai", "GPT", "gpt-5.5", ["image_input"])).toBe(
+        false,
+      );
     });
 
     test("should keep retired DeepSeek models without tool calling not capable", () => {
@@ -240,9 +252,30 @@ describe("isModelCapable", () => {
   describe("The models.dev catalog", () => {
     const guard = "meta-llama/llama-prompt-guard-2-22m";
 
-    test("should let the endpoint's catalog say no over the name", () => {
+    test("should follow the catalog for a provider without a rule", () => {
+      // Groq has no rule: the catalog decides, both ways
       expect(isModelCapable("groq", "Llama Guard", guard)).toBe(false);
-      // Groq's catalog under the openai provider, by its host
+      expect(isModelCapable("groq", "Llama", "llama-3.3-70b-versatile")).toBe(
+        true,
+      );
+    });
+
+    test("should let a provider's rule decide over the catalog", () => {
+      // OpenRouter's allowlist, where the catalog says the opposite
+      expect(
+        isModelCapable(
+          "openrouter",
+          "Llama 3.2 3B",
+          "meta-llama/llama-3.2-3b-instruct",
+        ),
+      ).toBe(true);
+      expect(
+        isModelCapable("openrouter", "LFM free", "liquid/lfm-3-1.7b:free"),
+      ).toBe(false);
+      // Inception's rule knows only mercury-2; the catalog lists mercury-3
+      expect(isModelCapable("inception", "Mercury", "mercury-3")).toBe(false);
+      // Groq's host under the openai provider: OpenAI's rule says no, and
+      // the generic endpoint goes on to the names
       expect(
         isModelCapable(
           "openai",
@@ -251,12 +284,7 @@ describe("isModelCapable", () => {
           undefined,
           "https://api.groq.com/openai/v1",
         ),
-      ).toBe(false);
-    });
-
-    test("should take a model the catalog says takes tools", () => {
-      // No rule or name pattern knows Mercury
-      expect(isModelCapable("inception", "Mercury", "mercury-3")).toBe(true);
+      ).toBe(true);
     });
 
     test("should let the config's tool_use win over the catalog", () => {

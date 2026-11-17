@@ -18,54 +18,53 @@ function model(
   };
 }
 
-describe("modelSupportsNativeTools with the models.dev catalog", () => {
-  it("follows the catalog for a model it lists", () => {
-    // Groq has no hand-written rule: its catalog decides
-    expect(
-      modelSupportsNativeTools(model("groq", "llama-3.3-70b-versatile")),
-    ).toBe(true);
-    expect(
-      modelSupportsNativeTools(
-        model("groq", "meta-llama/llama-prompt-guard-2-22m"),
-      ),
-    ).toBe(false);
-    // The catalog's "no" wins over the provider's rule (every gemini id)
-    expect(
-      modelSupportsNativeTools(model("gemini", "gemini-2.5-flash-image")),
-    ).toBe(false);
-    expect(modelSupportsNativeTools(model("gemini", "gemini-2.5-pro"))).toBe(
+const supports = (provider: string, id: string, extra = {}) =>
+  modelSupportsNativeTools(model(provider, id, extra));
+
+describe("modelSupportsNativeTools", () => {
+  it("follows the models.dev catalog for a provider without a rule", () => {
+    // Groq has no hand-written rule: its catalog decides, both ways
+    expect(supports("groq", "llama-3.3-70b-versatile")).toBe(true);
+    expect(supports("groq", "meta-llama/llama-prompt-guard-2-22m")).toBe(false);
+    // Not in the catalog, and no rule
+    expect(supports("groq", "not-a-model")).toBe(false);
+  });
+
+  it("lets a provider's rule decide over the catalog", () => {
+    // OpenRouter's allowlist, where the catalog says the opposite
+    expect(supports("openrouter", "meta-llama/llama-3.2-3b-instruct")).toBe(
       true,
     );
+    expect(supports("openrouter", "liquid/lfm-3-1.7b:free")).toBe(false);
+    expect(supports("openrouter", "moonshotai/kimi-k2:free")).toBe(false);
+    // Every gemini id, though the catalog lists this one without tools
+    expect(supports("gemini", "gemini-2.5-flash-image")).toBe(true);
+    // OpenAI's rule (gpt-4 and later), whatever the catalog says
+    expect(supports("openai", "gpt-3.5-turbo")).toBe(false);
   });
 
-  it("lets the config's capabilities win over the catalog", () => {
+  it("lets the config's capabilities win over both", () => {
     expect(
-      modelSupportsNativeTools(
-        model("groq", "llama-3.3-70b-versatile", {
-          capabilities: { tools: false },
-        }),
-      ),
+      supports("groq", "llama-3.3-70b-versatile", {
+        capabilities: { tools: false },
+      }),
     ).toBe(false);
     expect(
-      modelSupportsNativeTools(
-        model("groq", "meta-llama/llama-prompt-guard-2-22m", {
-          capabilities: { tools: true },
-        }),
-      ),
+      supports("groq", "meta-llama/llama-prompt-guard-2-22m", {
+        capabilities: { tools: true },
+      }),
+    ).toBe(true);
+    expect(
+      supports("openrouter", "liquid/lfm-3-1.7b:free", {
+        capabilities: { tools: true },
+      }),
     ).toBe(true);
   });
 
-  it("leaves a model the catalog doesn't list to the provider's rule", () => {
-    // A bridge: OpenAI's rule by name
+  it("leaves a bridge's model to the provider's rule", () => {
     const bridge = { apiBase: "http://localhost:8091/v1" };
-    expect(modelSupportsNativeTools(model("openai", "gpt-5.5", bridge))).toBe(
-      true,
-    );
-    expect(
-      modelSupportsNativeTools(
-        model("openai", "llama-3.3-70b-versatile", bridge),
-      ),
-    ).toBe(false);
-    expect(modelSupportsNativeTools(model("ollama", "qwen3:8b"))).toBe(true);
+    expect(supports("openai", "gpt-5.5", bridge)).toBe(true);
+    expect(supports("openai", "llama-3.3-70b-versatile", bridge)).toBe(false);
+    expect(supports("ollama", "qwen3:8b")).toBe(true);
   });
 });
