@@ -34,18 +34,17 @@ class OpenRouter extends OpenAI {
   }
 
   /**
-   * Claude prompt caching only when the model config asks for it, as core's
-   * Anthropic and OneProvider classes do. The adapter caches every Claude
-   * request by default, which the CLI keeps.
+   * Claude prompt caching is modifyChatBody's alone: it marks what the
+   * model's flags ask for (cacheSystemMessage: the system prompt;
+   * cacheConversation: the last two user messages; promptCaching: both),
+   * and nothing without them. The adapter would add its own systemAndTools
+   * breakpoints (system prompt, last tool, last two user messages) whatever
+   * the flags say, so it gets `none`. The CLI keeps the adapter's default.
    */
   protected adapterConfig(): LLMConfig {
-    const caching =
-      this.cacheBehavior?.cacheSystemMessage ||
-      this.cacheBehavior?.cacheConversation ||
-      this.completionOptions.promptCaching;
     return {
       ...super.adapterConfig(),
-      cachingStrategy: caching ? "systemAndTools" : "none",
+      cachingStrategy: "none",
     } as LLMConfig;
   }
 
