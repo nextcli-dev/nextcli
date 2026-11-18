@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/nextcli-dev/nextcli/compare/cli-v0.13.0...cli-v0.14.0) (2026-11-18)
+
+
+### Features
+
+* ask_question tool in the extension and cn ([#174](https://github.com/nextcli-dev/nextcli/issues/174)) ([7418470](https://github.com/nextcli-dev/nextcli/commit/7418470ce9b492ed8272044bc9d9e65487edd01e))
+
 ## [0.13.0](https://github.com/nextcli-dev/nextcli/compare/cli-v0.12.2...cli-v0.13.0) (2026-11-17)
 
 
