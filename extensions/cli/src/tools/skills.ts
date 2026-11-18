@@ -1,3 +1,4 @@
+import { CLI_ASK_QUESTION_TOOL_NAME } from "@nextcli/ask-question";
 import { ContinueError, ContinueErrorReason } from "core/util/errors.js";
 
 import { loadMarkdownSkills } from "../util/loadMarkdownSkills.js";
@@ -93,7 +94,7 @@ ${identifier}
 # Guidelines
 - There can be multiple skills in a single repository.
 - Use the available tools to fetch content and write files. When you are done, briefly summarize which skill you imported and where you saved it.
-- Use the "AskQuestion" tool where required to clarify with the user.
+- Use the "${CLI_ASK_QUESTION_TOOL_NAME}" tool where required to clarify with the user.
 
 # Process:
 

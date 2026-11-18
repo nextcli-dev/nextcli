@@ -34,7 +34,7 @@ This shows your available local configs. The selection is saved for next time.
 
 | Setting | What it changes |
 | --- | --- |
-| Effort | Reasoning depth. Claude: `output_config.effort` (or a thinking budget on older models). OpenAI, OpenRouter and xAI: `reasoning_effort`. Gemini: `thinkingLevel` (a thinking budget on Gemini 2.5). |
+| Effort | Reasoning depth. Claude: `output_config.effort` (or a thinking budget on older models). OpenAI, OpenRouter and xAI: `reasoning_effort`. Gemini: `thinkingLevel` (a thinking budget on Gemini 2.5). In the TUI it starts at `Medium`, as in the VS Code extension. |
 | Thinking | `Off` turns thinking off, so no thinking tokens are used. `Hidden` lets the model think without showing the reasoning. `Shown` shows it dimmed above each reply. Modes a model can't use aren't listed, and the submenu title says why. |
 | Fast | Claude Opus fast mode (`speed: "fast"`) or OpenAI priority processing. |
 | Context | The context window `cn` plans for when it compacts the conversation. Without a choice here, the config's `contextLength`, else the window models.dev lists for the model (at most 200K tokens), else 200K. |
@@ -42,6 +42,8 @@ This shows your available local configs. The selection is saved for next time.
 Which models can turn thinking off, and the effort levels each model takes, are listed in [Model settings](/ide-extensions/chat/model-settings). The CLI uses the same rules. On Bedrock, the CLI applies `Off` and the effort but doesn't turn thinking on yet. The VS Code extension does.
 
 Settings are saved per model in `~/.continue/index/globalContext.json` and shared with the model menu in the VS Code extension. `cn` reads them when it starts, so a change made in VS Code applies from the next run.
+
+Without a choice in the menu, `--effort` or a config setting, the TUI uses medium effort, or the model's next level down. On Claude before 5, an effort turns thinking on. Headless runs (`cn -p`) send no effort unless one is set, so unattended runs keep their cost. For a model `cn` doesn't recognize, the levels are a guess and the menu offers `Not sent`, which is also its starting value.
 
 For one run, including headless runs, pass `--effort`:
 

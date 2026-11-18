@@ -4,6 +4,7 @@ import { BuiltInToolNames } from "core/tools/builtIn";
 import { useState } from "react";
 import { useAppSelector } from "../../../redux/hooks";
 import { RootState } from "../../../redux/store";
+import { AskQuestionToolCall } from "./AskQuestionToolCall";
 import FunctionSpecificToolCallDiv from "./FunctionSpecificToolCallDiv";
 import { GroupedToolCallHeader } from "./GroupedToolCallHeader";
 import { McpAppRenderer } from "./MCPAppRenderer";
@@ -46,6 +47,15 @@ export function ToolCallDiv({
       functionName && tool?.toolCallIcon
         ? getIconByName(tool.toolCallIcon)
         : undefined;
+
+    if (functionName === BuiltInToolNames.AskQuestion) {
+      return (
+        <AskQuestionToolCall
+          toolCallState={toolCallState}
+          historyIndex={historyIndex}
+        />
+      );
+    }
 
     if (toolCallState.mcpUiState) {
       return (

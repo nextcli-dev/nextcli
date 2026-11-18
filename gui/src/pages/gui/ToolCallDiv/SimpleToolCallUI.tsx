@@ -4,6 +4,7 @@ import {
   ContextItemsPeekItem,
   openContextItem,
 } from "../../../components/mainInput/belowMainInput/ContextItemsPeek";
+import { FONT_STEP, useFontSize } from "../../../components/ui/font";
 import { IdeMessengerContext } from "../../../context/IdeMessenger";
 import { ToggleWithIcon } from "./ToggleWithIcon";
 import { ToolCallStatusMessage } from "./ToolCallStatusMessage";
@@ -24,6 +25,7 @@ export function SimpleToolCallUI({
   historyIndex,
 }: SimpleToolCallUIProps) {
   const ideMessenger = useContext(IdeMessengerContext);
+  const rowFont = useFontSize(FONT_STEP.row);
   const shownContextItems = useMemo(() => {
     const contextItems = toolCallStateToContextItems(toolCallState);
     return contextItems.filter((item) => !item.hidden);
@@ -48,9 +50,10 @@ export function SimpleToolCallUI({
     <div className="mt-1 flex flex-col px-4">
       <div className="flex min-w-0 flex-row items-center justify-between gap-2">
         <div
-          className={`text-description flex min-w-0 flex-row items-center justify-between gap-1.5 text-xs transition-colors duration-200 ease-in-out ${
+          className={`text-description flex min-w-0 flex-row items-center justify-between gap-1.5 transition-colors duration-200 ease-in-out ${
             isClickable ? "cursor-pointer hover:brightness-125" : ""
           }`}
+          style={{ fontSize: rowFont }}
           onClick={isClickable ? handleClick : undefined}
           data-testid="context-items-peek"
         >
@@ -79,7 +82,10 @@ export function SimpleToolCallUI({
               <ContextItemsPeekItem key={idx} contextItem={contextItem} />
             ))
           ) : (
-            <div className="text-description pl-5 text-xs italic">
+            <div
+              className="text-description pl-5 italic"
+              style={{ fontSize: rowFont }}
+            >
               No tool call output
             </div>
           )}

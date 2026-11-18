@@ -1150,7 +1150,7 @@ export class Core {
     return resolveSettingsForModels(
       [...config.modelsByRole.chat, ...config.modelsByRole.edit],
       readStoredModelSettings(this.globalContext),
-      { thinkingOnByDefault: true },
+      { thinkingOnByDefault: true, defaultEffort: "medium" },
     );
   }
 

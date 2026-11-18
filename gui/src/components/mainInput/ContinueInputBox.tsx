@@ -9,6 +9,8 @@ import { memo, useMemo } from "react";
 import { defaultBorderRadius, vscBackground } from "..";
 import { useAppSelector } from "../../redux/hooks";
 import { selectSlashCommandComboBoxInputs } from "../../redux/selectors";
+import { selectOpenQuestion } from "../../redux/selectors/selectToolCalls";
+import { AskQuestionPanel } from "./AskQuestionPanel/AskQuestionPanel";
 import { ContextItemsPeek } from "./belowMainInput/ContextItemsPeek";
 import { RulesPeek } from "./belowMainInput/RulesPeek";
 import { GradientBorder } from "./GradientBorder";
@@ -62,6 +64,9 @@ function ContinueInputBox(props: ContinueInputBoxProps) {
   );
   const isInEdit = useAppSelector((store) => store.session.isInEdit);
   const editModeState = useAppSelector((state) => state.editModeState);
+  const openQuestionCall = useAppSelector(selectOpenQuestion);
+  // Only the main input answers questions; earlier messages keep their editor.
+  const openQuestion = props.isMainInput ? openQuestionCall : undefined;
 
   const filteredSlashCommands = useMemo(() => {
     if (isInEdit) {
@@ -114,27 +119,37 @@ function ContinueInputBox(props: ContinueInputBoxProps) {
     >
       <div className={`relative flex flex-col px-2`}>
         {props.isMainInput && <Lump />}
-        <GradientBorder
-          loading={isStreaming && (props.isLastUserInput || isInEdit) ? 1 : 0}
-          borderColor={
-            isStreaming && (props.isLastUserInput || isInEdit)
-              ? undefined
-              : vscBackground
-          }
-          borderRadius={defaultBorderRadius}
-        >
-          <TipTapEditor
-            editorState={props.editorState}
-            onEnter={props.onEnter}
-            placeholder={placeholder}
-            isMainInput={props.isMainInput ?? false}
-            availableContextProviders={filteredContextProviders}
-            availableSlashCommands={filteredSlashCommands}
-            historyKey={historyKey}
-            toolbarOptions={toolbarOptions}
-            inputId={props.inputId}
+        {openQuestion && (
+          <AskQuestionPanel
+            key={openQuestion.toolCallId}
+            toolCallState={openQuestion}
           />
-        </GradientBorder>
+        )}
+        {/* Hidden, not unmounted, so a draft survives while a question is
+            open. The hidden attribute, because GradientBorder sets display. */}
+        <div hidden={!!openQuestion}>
+          <GradientBorder
+            loading={isStreaming && (props.isLastUserInput || isInEdit) ? 1 : 0}
+            borderColor={
+              isStreaming && (props.isLastUserInput || isInEdit)
+                ? undefined
+                : vscBackground
+            }
+            borderRadius={defaultBorderRadius}
+          >
+            <TipTapEditor
+              editorState={props.editorState}
+              onEnter={props.onEnter}
+              placeholder={placeholder}
+              isMainInput={props.isMainInput ?? false}
+              availableContextProviders={filteredContextProviders}
+              availableSlashCommands={filteredSlashCommands}
+              historyKey={historyKey}
+              toolbarOptions={toolbarOptions}
+              inputId={props.inputId}
+            />
+          </GradientBorder>
+        </div>
       </div>
 
       {(appliedRules.length > 0 || contextItems.length > 0) && (

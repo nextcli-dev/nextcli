@@ -1,3 +1,4 @@
+import type { AnswerSet } from "@nextcli/ask-question";
 import React from "react";
 
 import type { AssistantConfig } from "../../services/types.js";
@@ -19,7 +20,7 @@ interface ChatScreenContentProps {
     createPolicy?: boolean,
     stopStream?: boolean,
   ) => void;
-  handleQuizAnswer: (requestId: string, answer: string) => void;
+  handleQuizAnswer: (requestId: string, answers: AnswerSet) => void;
   handleUserMessage: (message: string, imageMap?: Map<string, Buffer>) => void;
   isWaitingForResponse: boolean;
   isCompacting: boolean;
@@ -55,9 +56,9 @@ export const ChatScreenContent: React.FC<ChatScreenContentProps> = ({
   if (activeQuizQuestion) {
     return (
       <QuizPrompt
-        question={activeQuizQuestion.question.question}
-        options={activeQuizQuestion.question.options}
-        defaultAnswer={activeQuizQuestion.question.defaultAnswer}
+        // A new question set starts with a fresh prompt
+        key={activeQuizQuestion.requestId}
+        set={activeQuizQuestion.set}
         requestId={activeQuizQuestion.requestId}
         onAnswer={handleQuizAnswer}
       />

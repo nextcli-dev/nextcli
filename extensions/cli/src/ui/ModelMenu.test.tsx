@@ -161,11 +161,14 @@ describe("ModelMenu", () => {
     await waitFor(() => expect(lastFrame()).toContain("➤ Effort"));
     await press(stdin, ENTER);
     await waitFor(() => expect(lastFrame()).toContain("Effort for Opus"));
-    await press(stdin, DOWN); // Default -> Low
+    // No level set: the list starts on its first level; there's no Default
     await waitFor(() => expect(lastFrame()).toContain("➤ Low"));
+    expect(lastFrame()).not.toContain("Not sent");
+    await press(stdin, DOWN); // Low -> Medium
+    await waitFor(() => expect(lastFrame()).toContain("➤ Medium"));
     await press(stdin, ENTER);
     await waitFor(() =>
-      expect(getModelSettings(state.model).effort).toBe("low"),
+      expect(getModelSettings(state.model).effort).toBe("medium"),
     );
     await waitFor(() =>
       expect(lastFrame()).toContain("Model settings (experimental)"),

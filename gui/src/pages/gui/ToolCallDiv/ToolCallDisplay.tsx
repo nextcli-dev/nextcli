@@ -1,6 +1,7 @@
 import { Tool, ToolCallState } from "core";
 import { useContext, useMemo } from "react";
 import { openContextItem } from "../../../components/mainInput/belowMainInput/ContextItemsPeek";
+import { FONT_STEP, useFontSize } from "../../../components/ui/font";
 import { IdeMessengerContext } from "../../../context/IdeMessenger";
 import { ToolCallStatusMessage } from "./ToolCallStatusMessage";
 import { toolCallStateToContextItems } from "./utils";
@@ -22,6 +23,7 @@ export function ToolCallDisplay({
   historyIndex,
 }: ToolCallDisplayProps) {
   const ideMessenger = useContext(IdeMessengerContext);
+  const rowFont = useFontSize(FONT_STEP.row);
   const shownContextItems = useMemo(() => {
     const contextItems = toolCallStateToContextItems(toolCallState);
     return contextItems.filter((item) => !item.hidden);
@@ -42,6 +44,7 @@ export function ToolCallDisplay({
             className={`flex min-w-0 flex-row items-center gap-2 transition-colors duration-200 ease-in-out ${
               isClickable ? "cursor-pointer hover:brightness-125" : ""
             }`}
+            style={{ fontSize: rowFont }}
             onClick={isClickable ? handleClick : undefined}
           >
             <div className="mt-[1px] h-4 w-4 flex-shrink-0 font-semibold">

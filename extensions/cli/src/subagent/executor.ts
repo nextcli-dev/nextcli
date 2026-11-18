@@ -1,3 +1,4 @@
+import { CLI_ASK_QUESTION_TOOL_NAME } from "@nextcli/ask-question";
 import type { ChatHistoryItem } from "core";
 
 import type { ToolPermissions } from "../permissions/types.js";
@@ -70,7 +71,9 @@ export async function executeSubAgent(
     }
 
     // The child runs under the main session's permissions, read for each
-    // request so a mode switch applies, and cannot start another subagent.
+    // request so a mode switch applies. It cannot start another subagent or
+    // ask the user questions: it works on a delegated task, and a question
+    // from it would interrupt the main session's turn.
     // They are passed down its stream, not written over the main session's.
     const childPermissions = async (): Promise<ToolPermissions> => {
       const parent = await readSessionPermissions();
@@ -78,6 +81,7 @@ export async function executeSubAgent(
         ...parent,
         policies: [
           { tool: "Subagent", permission: "exclude" },
+          { tool: CLI_ASK_QUESTION_TOOL_NAME, permission: "exclude" },
           ...parent.policies,
         ],
       };

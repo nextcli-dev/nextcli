@@ -1,4 +1,5 @@
 import { CodeBracketIcon } from "@heroicons/react/24/outline";
+import { FONT_STEP, useFontSize } from "../../../components/ui/font";
 import { ToolbarButtonWithTooltip } from "../../../components/StyledMarkdownPreview/StepContainerPreToolbar/ToolbarButtonWithTooltip";
 
 interface ArgsToggleIconProps {
@@ -28,6 +29,7 @@ interface ArgsItemsProps {
 }
 
 export const ArgsItems = ({ args, isShowing }: ArgsItemsProps) => {
+  const rowFont = useFontSize(FONT_STEP.row);
   if (args.length === 0) {
     return null;
   }
@@ -37,7 +39,7 @@ export const ArgsItems = ({ args, isShowing }: ArgsItemsProps) => {
   }
 
   return (
-    <div className="ml-5 mr-2 mt-1 flex flex-col text-xs">
+    <div className="ml-5 mr-2 mt-1 flex flex-col" style={{ fontSize: rowFont }}>
       {args.map(([key, value]) => (
         <div key={key} className="flex flex-row items-center gap-2 py-0.5">
           <span className="text-lightgray">{key}:</span>

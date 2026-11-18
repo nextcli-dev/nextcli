@@ -1025,6 +1025,23 @@ describe("catalog-backed controls", () => {
     });
   });
 
+  it('offers no "default" level, and guesses none for a model that lists only it', () => {
+    const groq = (model: string) =>
+      getModelControls({ provider: "groq", model });
+    // The catalog lists ["none", "default", "low", "medium", "high"]
+    expect(groq("qwen/qwen3.8-27b")).toMatchObject({
+      format: "generic",
+      efforts: ["low", "medium", "high"],
+      experimental: false,
+    });
+    // ["none", "default"]: Groq rejects any other level for it
+    expect(groq("qwen/qwen3.6-27b")).toMatchObject({
+      format: "generic",
+      efforts: [],
+      experimental: false,
+    });
+  });
+
   it("keeps thinking on for OneProvider's -thinking ids", () => {
     const controls = getModelControls({
       provider: "oneprovider",

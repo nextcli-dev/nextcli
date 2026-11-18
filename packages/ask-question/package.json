@@ -1,0 +1,25 @@
+{
+  "name": "@nextcli/ask-question",
+  "version": "1.0.0",
+  "description": "The ask-question tool contract shared by the NextCLI VS Code extension and cn: argument schema, validation and the answer text",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "build": "tsc",
+    "clean": "rm -rf dist"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nextcli-dev/nextcli.git",
+    "directory": "packages/ask-question"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.2",
+    "vitest": "^3.2.4"
+  }
+}

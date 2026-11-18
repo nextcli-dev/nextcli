@@ -139,8 +139,9 @@ describe("ThinkingBlockPeek", () => {
     );
     const peek = screen.getByTestId("thinking-block-peek");
     expect(peek.className).not.toMatch(/rounded-full|border-solid/);
-    // Same size as the reasoning and answers, not a smaller caption
-    expect(peek).toHaveStyle({ fontSize: "14px" });
+    // The size of the tool call rows (2px under the 14px setting), and it
+    // follows the setting rather than a fixed text-xs
+    expect(peek).toHaveStyle({ fontSize: "12px" });
     expect(peek.className).not.toMatch(/text-xs/);
 
     await user.click(peek);
@@ -148,9 +149,13 @@ describe("ThinkingBlockPeek", () => {
     // No inner scroll box: the reasoning takes its full height
     expect(content.className).not.toMatch(/overflow-y-auto|max-h-/);
     const markdown = content.querySelector('[data-muted="true"]')!;
-    const noSpaces = (v: string) => v.replace(/\s/g, "");
-    expect(noSpaces(getComputedStyle(markdown).color)).toBe(
-      noSpaces(varWithFallback("description")),
+    // jsdom lowercases var() names in some computed values (browsers don't);
+    // the description and foreground variables differ by more than case
+    const normalize = (v: string) => v.replace(/\s/g, "").toLowerCase();
+    expect(normalize(getComputedStyle(markdown).color)).toBe(
+      normalize(varWithFallback("description")),
     );
+    // The reasoning matches its header, not the 14px answers
+    expect(getComputedStyle(markdown).fontSize).toBe("12px");
   });
 });

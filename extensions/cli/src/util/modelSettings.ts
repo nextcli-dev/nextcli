@@ -43,6 +43,18 @@ export function setSessionEffort(effort: string | undefined): void {
   sessionEffort = effort;
 }
 
+/**
+ * The effort when nothing else sets one. The TUI uses "medium", like the
+ * VS Code extension, since both read the same model menu settings. Headless
+ * runs leave it unset, so an unattended review sends no effort (and Claude
+ * before 5 doesn't think) unless --effort or the config asks.
+ */
+let defaultEffort: string | undefined;
+
+export function setDefaultEffort(effort: string | undefined): void {
+  defaultEffort = effort;
+}
+
 export function modelIdentity(model: ModelConfig): ModelIdentity {
   return {
     provider: model.provider,
@@ -87,6 +99,7 @@ function readStoredSettings(model: ModelConfig): CliModelSettings {
 export function resetModelSettingsCache(): void {
   storedSettings = undefined;
   sessionEffort = undefined;
+  defaultEffort = undefined;
 }
 
 /**
@@ -100,7 +113,8 @@ function defaultShowThinking(model: ModelConfig): boolean {
 /**
  * The effective settings for a model: the --effort flag, then the model
  * menu, then the config's `reasoningEffort` (or `reasoning: true`, which
- * means medium).
+ * means medium), then the default effort. The default skips levels guessed
+ * for a model the catalog doesn't know: its server may reject them.
  */
 export function getModelSettings(model: ModelConfig): CliModelSettings {
   const stored = readStoredSettings(model);
@@ -110,7 +124,10 @@ export function getModelSettings(model: ModelConfig): CliModelSettings {
       sessionEffort ??
       stored.effort ??
       model.defaultCompletionOptions?.reasoningEffort ??
-      (model.defaultCompletionOptions?.reasoning ? "medium" : undefined),
+      (model.defaultCompletionOptions?.reasoning ? "medium" : undefined) ??
+      (defaultEffort && !getModelControlsFor(model).experimental
+        ? defaultEffort
+        : undefined),
     showThinking:
       stored.thinking === undefined
         ? (stored.showThinking ?? defaultShowThinking(model))

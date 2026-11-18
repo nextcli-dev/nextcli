@@ -8,10 +8,10 @@ Click the model name in the chat input to open the model menu. It shows the sett
 | --- | --- |
 | Fast | Claude Opus fast mode (`speed: "fast"`) or OpenAI priority processing (`service_tier: "priority"`). |
 | Thinking | `Off` turns thinking off, so no thinking tokens are used. `Hidden` lets the model think without showing the reasoning. `Shown` shows the reasoning above the reply. |
-| Effort | Reasoning depth, from the levels the model accepts. `Default` uses the provider's level. |
+| Effort | Reasoning depth, from the levels the model accepts. It starts at `Medium`, or the next level down when the model has no `Medium` (its lowest level if none is lower). The `reasoningEffort` config setting changes the starting level. For a model NextCLI doesn't recognize, the levels are a guess, marked `guess`: nothing is sent until you pick a level, and `Not sent` goes back to that. The `cn` TUI starts at the same level. |
 | Context | The context window NextCLI fills before it trims older messages. The largest option is the model's limit. |
 
-The toolbar shows the chosen effort and a lightning icon when Fast is on, for example `Opus 5.5 High`. A crossed-out icon means thinking is off.
+The toolbar shows the effort and a lightning icon when Fast is on, for example `Opus 5.5 High`. A crossed-out icon means thinking is off.
 
 ## Thinking off
 

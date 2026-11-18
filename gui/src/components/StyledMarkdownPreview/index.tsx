@@ -160,6 +160,8 @@ interface StyledMarkdownPreviewProps {
   collapsible?: boolean;
   /** Secondary text, such as reasoning, in the description color */
   muted?: boolean;
+  /** Font size in px; defaults to the font-size setting */
+  fontSize?: number;
 }
 
 const HLJS_LANGUAGE_CLASSNAME_PREFIX = "language-";
@@ -391,7 +393,7 @@ const StyledMarkdownPreview = memo(function StyledMarkdownPreview(
 
   return (
     <StyledMarkdown
-      fontSize={getFontSize()}
+      fontSize={props.fontSize ?? getFontSize()}
       whiteSpace={codeWrapState}
       bgColor={props.useParentBackgroundColor ? "" : vscBackground}
       $muted={props.muted}

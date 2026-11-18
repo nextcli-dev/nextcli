@@ -7,9 +7,11 @@ import {
   effectiveEffort,
   effectiveThinking,
   getContextOptions,
+  getModelControlsFor,
   getModelSettings,
   modelStatusLabel,
   resetModelSettingsCache,
+  setDefaultEffort,
   setSessionEffort,
   shouldShowReasoning,
   updateModelSettings,
@@ -76,6 +78,25 @@ describe("model settings", () => {
     expect(getModelSettings(configured).effort).toBe("high");
     setSessionEffort("max");
     expect(getModelSettings(configured).effort).toBe("max");
+  });
+
+  it("uses the TUI's default effort, but not for guessed levels", () => {
+    // Headless runs set no default: nothing is sent unless asked
+    expect(getModelSettings(opus).effort).toBeUndefined();
+
+    setDefaultEffort("medium");
+    expect(getModelSettings(opus).effort).toBe("medium");
+    // A configured level still wins
+    const configured = model({
+      provider: "anthropic",
+      model: "claude-opus-5-5",
+      defaultCompletionOptions: { reasoningEffort: "low" },
+    });
+    expect(getModelSettings(configured).effort).toBe("low");
+    // Levels guessed for a model the catalog doesn't know stay unset
+    const unknown = model({ provider: "openai", model: "gpt-7" });
+    expect(getModelControlsFor(unknown).experimental).toBe(true);
+    expect(getModelSettings(unknown).effort).toBeUndefined();
   });
 
   it("treats reasoning: true in the config as medium effort", () => {

@@ -1,5 +1,6 @@
 import { FolderIcon } from "@heroicons/react/24/outline";
 import { ToolCallState } from "core";
+import { FONT_STEP, useFontSize } from "../../../components/ui/font";
 import { ToggleWithIcon } from "./ToggleWithIcon";
 import { getGroupActionVerb } from "./utils";
 
@@ -16,10 +17,12 @@ export function GroupedToolCallHeader({
   open,
   onToggle,
 }: GroupedToolCallHeaderProps) {
+  const rowFont = useFontSize(FONT_STEP.row);
   return (
     <div className="mb-2">
       <div
         className="text-description flex cursor-pointer items-center gap-1.5 transition-colors duration-200 ease-in-out hover:brightness-125"
+        style={{ fontSize: rowFont }}
         data-testid="performing-actions"
         onClick={onToggle}
       >

@@ -1,3 +1,4 @@
+export { askQuestionTool } from "./askQuestion";
 export { createNewFileTool } from "./createNewFile";
 export { createRuleBlock } from "./createRuleBlock";
 export { editFileTool } from "./editFile";

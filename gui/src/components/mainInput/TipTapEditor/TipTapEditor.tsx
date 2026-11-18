@@ -22,6 +22,7 @@ import "./TipTapEditor.css";
 import { createEditorConfig, getPlaceholderText } from "./utils/editorConfig";
 import { handleImageFile } from "./utils/imageUtils";
 import { useEditorEventHandlers } from "./utils/keyHandlers";
+import { openQuestionPanel } from "../focusChatInput";
 
 export interface TipTapEditorProps {
   availableContextProviders: ContextProviderDescription[];
@@ -118,9 +119,16 @@ function TipTapEditorInner(props: TipTapEditorProps) {
     }
   }, [props.isMainInput, editor]);
 
-  // Re-focus main input after done generating
+  // Re-focus main input after done generating, unless a question panel took
+  // its place (the panel focuses itself)
   useEffect(() => {
-    if (editor && !isStreaming && props.isMainInput && document.hasFocus()) {
+    if (
+      editor &&
+      !isStreaming &&
+      props.isMainInput &&
+      document.hasFocus() &&
+      !openQuestionPanel()
+    ) {
       editor.commands.focus(undefined, { scrollIntoView: false });
     }
   }, [props.isMainInput, isStreaming, editor]);

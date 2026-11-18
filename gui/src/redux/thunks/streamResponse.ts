@@ -14,6 +14,7 @@ import {
   updateHistoryItemAtIndex,
 } from "../slices/sessionSlice";
 import { ThunkApiType } from "../store";
+import { dismissOpenQuestions } from "./answerQuestion";
 import { streamNormalInput } from "./streamNormalInput";
 import { streamThunkWrapper } from "./streamThunkWrapper";
 import { updateFileSymbolsFromFiles } from "./updateFileSymbols";
@@ -37,6 +38,12 @@ export const streamResponseThunk = createAsyncThunk<
 
         if (!selectedChatModel) {
           throw missingChatModelError(state.config.configError);
+        }
+        // A new message replaces the answer to an open question. Editing an
+        // earlier message (index set) drops the question with the history
+        // after it.
+        if (index === undefined) {
+          dismissOpenQuestions(dispatch, state);
         }
         dispatch(
           submitEditorAndInitAtIndex({ index: inputIndex, editorState }),

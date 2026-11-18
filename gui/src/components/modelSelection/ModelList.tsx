@@ -6,7 +6,7 @@ import {
   PlusIcon,
 } from "@heroicons/react/24/outline";
 import { getMetaKeyLabel } from "../../util";
-import { useFontSize } from "../ui/font";
+import { FONT_STEP, useFontSize } from "../ui/font";
 import { Divider } from "../ui/Divider";
 
 export interface ModelListOption {
@@ -47,7 +47,7 @@ export function ModelList({
   onAddModel,
   onBack,
 }: ModelListProps) {
-  const tinyFont = useFontSize(-4);
+  const captionFont = useFontSize(FONT_STEP.caption);
 
   return (
     <div role="group" aria-label="Models">
@@ -64,7 +64,7 @@ export function ModelList({
               <ChevronLeftIcon className="h-3 w-3" />
             </button>
           )}
-          <span className="text-description text-xs font-medium">Models</span>
+          <span className="text-description font-medium">Models</span>
         </div>
         <button
           type="button"
@@ -78,12 +78,12 @@ export function ModelList({
 
       <div className="no-scrollbar max-h-[300px] overflow-y-auto">
         {isLoading ? (
-          <div className="text-description flex items-center gap-2 px-2 pb-2 pt-1 text-xs">
+          <div className="text-description flex items-center gap-2 px-2 pb-2 pt-1">
             <ArrowPathIcon className="animate-spin-slow h-3 w-3" />
             <span>Loading config</span>
           </div>
         ) : options.length === 0 ? (
-          <div className="text-description-muted px-2 py-4 text-center text-sm">
+          <div className="text-description-muted px-2 py-4 text-center">
             No models configured
           </div>
         ) : (
@@ -108,12 +108,18 @@ export function ModelList({
                   <span className="line-clamp-1">
                     {option.title}
                     {option.isAutoDetected && (
-                      <span className="text-description-muted ml-1.5 text-[10px] italic">
+                      <span
+                        className="text-description-muted ml-1.5 italic"
+                        style={{ fontSize: captionFont }}
+                      >
                         (autodetected)
                       </span>
                     )}
                     {missingKey && (
-                      <span className="ml-1.5 text-[10px] italic">
+                      <span
+                        className="ml-1.5 italic"
+                        style={{ fontSize: captionFont }}
+                      >
                         (Missing API key)
                       </span>
                     )}
@@ -151,7 +157,7 @@ export function ModelList({
           </button>
           <Divider className="!my-0" />
           <div className="text-description flex items-center justify-start p-2">
-            <span className="block" style={{ fontSize: tinyFont }}>
+            <span className="block" style={{ fontSize: captionFont }}>
               <code>{getMetaKeyLabel()}'</code> to toggle model
             </span>
           </div>

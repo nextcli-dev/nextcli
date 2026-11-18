@@ -15,6 +15,7 @@ import {
   selectApplyStateByToolCallId,
   selectToolCallById,
 } from "../../../redux/selectors/selectToolCalls";
+import { FONT_STEP, useFontSize } from "../../../components/ui/font";
 import { cn } from "../../../util/cn";
 import { getStatusIcon } from "./utils";
 
@@ -71,12 +72,16 @@ function DiffLines({
 }
 
 function DiffStats({ added, removed }: { added: number; removed: number }) {
+  const rowFont = useFontSize(FONT_STEP.row);
   if (added === 0 && removed === 0) {
     return null;
   }
 
   return (
-    <div className="flex items-center gap-1 font-mono text-xs">
+    <div
+      className="flex items-center gap-1 font-mono"
+      style={{ fontSize: rowFont }}
+    >
       {added > 0 && <span className="text-success">+{added}</span>}
       {removed > 0 && <span className="text-error">-{removed}</span>}
     </div>
@@ -92,6 +97,9 @@ export function FindAndReplaceDisplay({
   toolCallId,
   historyIndex,
 }: FindAndReplaceDisplayProps) {
+  // Rows like the other tool calls; the diff itself at the size of code in
+  // answers, which is the same step
+  const rowFont = useFontSize(FONT_STEP.row);
   const [isExpanded, setIsExpanded] = useState<boolean | undefined>(undefined);
   const ideMessenger = useContext(IdeMessengerContext);
   const applyState: ApplyState | undefined = useAppSelector((state) =>
@@ -213,7 +221,10 @@ export function FindAndReplaceDisplay({
           setIsExpanded(!showContent);
         }}
       >
-        <div className="flex min-w-0 flex-1 flex-row items-center gap-2 text-xs">
+        <div
+          className="flex min-w-0 flex-1 flex-row items-center gap-2"
+          style={{ fontSize: rowFont }}
+        >
           <div className="flex min-w-0 flex-row items-center">
             {statusIcon}
             <ChevronDownIcon
@@ -283,7 +294,8 @@ export function FindAndReplaceDisplay({
       className={`${config?.ui?.showChatScrollbar ? "thin-scrollbar" : "no-scrollbar"} max-h-72 overflow-auto`}
     >
       <pre
-        className={`bg-editor m-0 w-fit min-w-full text-xs leading-tight ${config?.ui?.codeWrap ? "whitespace-pre-wrap" : "whitespace-pre"}`}
+        className={`bg-editor m-0 w-fit min-w-full leading-tight ${config?.ui?.codeWrap ? "whitespace-pre-wrap" : "whitespace-pre"}`}
+        style={{ fontSize: rowFont }}
       >
         {diffResult.diff?.map((part, index) => {
           if (part.removed) {
