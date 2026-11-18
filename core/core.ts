@@ -23,6 +23,7 @@ import { callTool } from "./tools/callTool";
 import { ChatDescriber } from "./util/chatDescriber";
 import { compactConversation } from "./util/conversationCompaction";
 import { GlobalContext } from "./util/GlobalContext";
+import { SnapshotManager } from "./snapshot/SnapshotManager";
 import historyManager from "./util/history";
 import { editConfigFile, migrateV1DevDataFiles } from "./util/paths";
 
@@ -107,6 +108,9 @@ export class Core {
   llmLogger = new LLMLogger();
 
   private messageAbortControllers = new Map<string, AbortController>();
+  private readonly snapshotManager = new SnapshotManager(() =>
+    this.ide.getWorkspaceDirs(),
+  );
   private addMessageAbortController(id: string): AbortController {
     const controller = new AbortController();
     this.messageAbortControllers.set(id, controller);
@@ -334,6 +338,16 @@ export class Core {
     on("history/save", (msg) => {
       historyManager.save(msg.data);
     });
+
+    // Snapshots for undoing agent turns
+    on("snapshot/capture", (msg) => this.snapshotManager.capture(msg.data.pin));
+    on("snapshot/finishTurn", (msg) =>
+      this.snapshotManager.finishTurn(msg.data.checkpoint, msg.data.pin),
+    );
+    on("snapshot/planRevert", (msg) =>
+      this.snapshotManager.planRevert(msg.data.checkpoints),
+    );
+    on("snapshot/restore", (msg) => this.snapshotManager.restore(msg.data));
 
     on("history/share", async (msg) => {
       const session = historyManager.load(msg.data.id);

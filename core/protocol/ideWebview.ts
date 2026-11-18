@@ -38,6 +38,15 @@ export type ToIdeFromWebviewProtocol = ToIdeFromWebviewOrCoreProtocol & {
   "edit/addCurrentSelection": [undefined, void];
   "edit/clearDecorations": [undefined, void];
   "session/share": [{ sessionId: string }, void];
+  /**
+   * Around a turn snapshot: "save" writes the agent's unsaved edits to disk
+   * before the end of a turn is captured; "reload" puts the files an undo
+   * restored into their open editors.
+   */
+  "snapshot/syncDocuments": [
+    { filepaths: string[]; action: "save" | "reload" },
+    void,
+  ];
 };
 
 export type ToWebviewFromIdeProtocol = ToWebviewFromIdeOrCoreProtocol & {
