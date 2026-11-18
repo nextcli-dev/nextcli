@@ -175,6 +175,20 @@ describe("sessionSlice streamUpdate", () => {
       expect(newState.history[1].message.id).toBe("mock-uuid-1");
     });
 
+    it("keeps the chunks that follow a <think> chunk in the same batch", () => {
+      const newState = sessionSlice.reducer(
+        createInitialState(),
+        sessionSlice.actions.streamUpdate([
+          { role: "assistant", content: "<think>Plan.</think> First" },
+          { role: "assistant", content: " and second." },
+        ]),
+      );
+
+      expect(newState.history).toHaveLength(2);
+      expect(newState.history[0].reasoning?.text).toBe("Plan.");
+      expect(newState.history[1].message.content).toBe("First and second.");
+    });
+
     it("does not duplicate the first reasoning_details chunk", () => {
       const initialState = createInitialState();
       const action = {
