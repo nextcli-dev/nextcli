@@ -19,6 +19,7 @@ export type NavigationScreen =
   | "diff" // Full-screen diff overlay
   | "update" // Update selector
   | "edit" // Edit message selector
+  | "restore" // Undo: restore files from a turn snapshot
   | "jobs" // Background Jobs selector
   | "export"; // Export session selector
 

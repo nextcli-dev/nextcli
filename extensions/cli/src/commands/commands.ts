@@ -73,6 +73,17 @@ export const SYSTEM_SLASH_COMMANDS: SystemCommand[] = [
     category: "system",
   },
   {
+    name: "undo",
+    description:
+      "Undo the last turn: put files back and remove it from the chat",
+    category: "system",
+  },
+  {
+    name: "redo",
+    description: "Re-apply the turn you just undid",
+    category: "system",
+  },
+  {
     name: "fork",
     description: "Start a forked chat session from the current history",
     category: "system",

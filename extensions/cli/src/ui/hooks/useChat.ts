@@ -37,6 +37,14 @@ import {
 } from "./useChat.remote.helpers.js";
 import { handleBashModeProcessing } from "./useChat.shellMode.js";
 import {
+  applyRedo,
+  applyUndo,
+  beginTurnSnapshot,
+  findUndoTarget,
+  finishTurnSnapshot,
+  type RestoreMode,
+} from "./useChat.snapshot.js";
+import {
   createStreamCallbacks,
   executeStreaming,
 } from "./useChat.stream.helpers.js";
@@ -63,6 +71,7 @@ export function useChat({
   onShowSessionSelector,
   onShowJobsSelector,
   onShowExportSelector,
+  onShowRestore,
   onClear,
   onRefreshStatic,
   isRemoteMode = false,
@@ -315,6 +324,15 @@ export function useChat({
       historyLength: newHistory.length,
     });
 
+    // Snapshot the work tree before any tool runs, so /undo can restore it.
+    // A snapshot failure never stops the turn.
+    const snapshotTurn = isRemoteMode
+      ? undefined
+      : await beginTurnSnapshot().catch((error) => {
+          logger.warn("Turn snapshot failed", { error });
+          return undefined;
+        });
+
     try {
       const streamCallbacks = createStreamCallbacks({
         setChatHistory: setChatHistory,
@@ -360,6 +378,12 @@ export function useChat({
     } finally {
       // Stop active time tracking
       telemetryService.stopActiveTime();
+
+      if (snapshotTurn) {
+        await finishTurnSnapshot(snapshotTurn).catch((error) =>
+          logger.warn("Turn end snapshot failed", { error }),
+        );
+      }
 
       setAbortController(null);
       setIsWaitingForResponse(false);
@@ -458,9 +482,66 @@ export function useChat({
       onShowUpdateSelector,
       onShowExportSelector,
       onClear,
+      onUndo: handleUndoCommand,
+      onRedo: () => void handleRedoCommand(),
     });
 
     return newInput || null;
+  };
+
+  const showSystemMessage = (content: string) => {
+    setChatHistory((prev) => [
+      ...prev,
+      { message: { role: "system", content }, contextItems: [] },
+    ]);
+  };
+
+  const handleUndoCommand = () => {
+    if (isWaitingForResponse) {
+      showSystemMessage("Wait for the current turn to finish, then /undo.");
+      return;
+    }
+    const target = findUndoTarget(chatHistory);
+    if ("message" in target) {
+      showSystemMessage(target.message);
+    } else {
+      onShowRestore?.(target.fromIndex);
+    }
+  };
+
+  const handleRedoCommand = async () => {
+    try {
+      const result = await applyRedo(services.chatHistory.getHistory());
+      if (result.history) {
+        setChatHistory(result.history);
+        onRefreshStatic?.();
+      }
+      showSystemMessage(result.message);
+    } catch (error) {
+      showSystemMessage(`Redo failed: ${formatError(error)}`);
+    }
+  };
+
+  /** Restores files (and, by mode, the conversation) from the restore screen. */
+  const handleRestore = async (
+    plan: Parameters<typeof applyUndo>[1],
+    mode: RestoreMode,
+  ) => {
+    try {
+      const result = await applyUndo(
+        services.chatHistory.getHistory(),
+        plan,
+        mode,
+      );
+      if (result.history) {
+        setQueuedMessages([]);
+        setChatHistory(result.history);
+        onRefreshStatic?.();
+      }
+      showSystemMessage(result.message);
+    } catch (error) {
+      showSystemMessage(`Undo failed: ${formatError(error)}`);
+    }
   };
 
   const convertMessageContentToString = (content: any): string => {
@@ -897,6 +978,7 @@ export function useChat({
     handleFileAttached,
     resetChatHistory,
     handleEditMessage,
+    handleRestore,
     handleToolPermissionResponse,
     handleQuizAnswer,
   };

@@ -21,6 +21,8 @@ export interface UseChatProps {
   onShowSessionSelector?: () => void;
   onShowJobsSelector?: () => void;
   onShowExportSelector?: () => void;
+  /** Opens the restore screen for the user message at this history index */
+  onShowRestore?: (fromIndex: number) => void;
   onReload?: () => Promise<void>;
   onClear?: () => void;
   onRefreshStatic?: () => void;
@@ -72,4 +74,8 @@ export interface SlashCommandResult {
   openExportSelector?: boolean;
   compact?: boolean;
   diffContent?: string;
+  /** /undo: undo the last turn that has a snapshot */
+  undo?: boolean;
+  /** /redo: re-apply the last undo */
+  redo?: boolean;
 }

@@ -39,6 +39,8 @@ Type `/` to see available commands. Run `/help` for the full list.
 | `/init` | Create `AGENTS.md`, or update the first agent file already in the working directory (`AGENTS.md`, `AGENT.md`, `CLAUDE.md`, `CODEX.md`) |
 | `/compact` | Summarize chat history into a compact form |
 | `/resume` | Resume a previous chat session |
+| `/undo` | Undo the last turn: put its files back and remove it from the chat |
+| `/redo` | Re-apply the turn you just undid |
 | `/fork` | Start a forked chat session from the current history |
 | `/title` | Set the title for the current session |
 | `/rename` | Rename the current session (alias for `/title`) |
@@ -60,6 +62,23 @@ cn --resume
 ```
 
 This restores the full conversation history, so the agent remembers prior context.
+
+## Undo a turn
+
+Before each turn, `cn` records the state of your git work tree, so you can take back what the agent changed: edits, new files, and files that shell commands deleted or wrote.
+
+- `/undo` shows the files it will put back, the files it will delete (the agent created them) and any file someone changed after the agent wrote it. Choose **Restore code and conversation** to also remove the turn from the chat (press <kbd>↑</kbd> to get the prompt back), or **Restore code only** to keep the chat.
+- `/redo` re-applies what you undid. Sending a new message makes the undo final.
+- To go back further, press <kbd>Esc</kbd> twice, select an earlier message and press <kbd>r</kbd>. Every turn from that message on is undone. <kbd>Enter</kbd> still edits the message without touching files.
+
+Undo restores only the files the undone turns changed, so your own edits to other files stay. It works after `cn --resume` too. It doesn't undo:
+
+- files outside the git repository, files git ignores, and untracked files over 2 MB
+- the contents of submodules
+- what a background job writes after the turn ends
+- anything outside your files, such as commits, network calls or databases
+
+Snapshots live in `~/.continue/snapshots`, one store per repository, and are deleted after 30 days. They need git 2.26 or later and a folder inside a git repository. They never run in `cn -p`, `cn review` or `cn serve`. Turn them off with `--no-snapshots` or `NEXTCLI_SNAPSHOTS=0`.
 
 ## Interactive questions in TUI mode
 

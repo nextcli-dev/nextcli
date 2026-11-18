@@ -4,10 +4,13 @@ import React from "react";
 import { UpdateServiceState } from "src/services/types.js";
 
 import type { ChatHistoryItem } from "../../../../../core/index.js";
+import { services as serviceInstances } from "../../services/index.js";
+import type { UndoPlan } from "../../services/SnapshotService.js";
 import { ConfigSelector } from "../ConfigSelector.js";
 import type { NavigationScreen } from "../context/NavigationContext.js";
 import { DiffViewer } from "../DiffViewer.js";
 import { EditMessageSelector } from "../EditMessageSelector.js";
+import type { RestoreMode } from "../hooks/useChat.snapshot.js";
 import type {
   ActivePermissionRequest,
   ActiveQuizQuestion,
@@ -15,6 +18,7 @@ import type {
 import { JobsSelector } from "../JobsSelector.js";
 import { MCPSelector } from "../MCPSelector.js";
 import { ModelMenu } from "../ModelMenu.js";
+import { RestoreSelector } from "../RestoreSelector.js";
 import type { ConfigOption, ModelOption } from "../types/selectorTypes.js";
 import { UpdateSelector } from "../UpdateSelector.js";
 
@@ -53,7 +57,13 @@ interface ScreenContentProps {
   chatHistory?: ChatHistoryItem[];
   handleEditMessage?: (messageIndex: number, newContent: string) => void;
   onShowEditSelector?: () => void;
+  /** History index the restore screen undoes from */
+  restoreFromIndex?: number;
+  handleRestore?: (plan: UndoPlan, mode: RestoreMode) => void;
+  onShowRestore?: (fromIndex: number) => void;
 }
+
+const snapshotService = serviceInstances.snapshot;
 
 function hideScreenContent(state?: UpdateServiceState) {
   return (
@@ -90,6 +100,9 @@ export const ScreenContent: React.FC<ScreenContentProps> = ({
   chatHistory = [],
   handleEditMessage,
   onShowEditSelector,
+  restoreFromIndex,
+  handleRestore,
+  onShowRestore,
 }) => {
   if (hideScreenContent(services.update)) {
     return null;
@@ -170,6 +183,26 @@ export const ScreenContent: React.FC<ScreenContentProps> = ({
           closeCurrentScreen();
         }}
         onExit={closeCurrentScreen}
+        canRestore={(index) =>
+          snapshotService.isEnabled() &&
+          snapshotService.canRestore(chatHistory, index)
+        }
+        onRestore={onShowRestore}
+      />
+    );
+  }
+
+  // Undo: restore files from a turn snapshot
+  if (isScreenActive("restore") && restoreFromIndex !== undefined) {
+    return (
+      <RestoreSelector
+        chatHistory={chatHistory}
+        fromIndex={restoreFromIndex}
+        onConfirm={(plan, mode) => {
+          closeCurrentScreen();
+          handleRestore?.(plan, mode);
+        }}
+        onCancel={closeCurrentScreen}
       />
     );
   }

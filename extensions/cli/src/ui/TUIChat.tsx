@@ -228,6 +228,7 @@ const TUIChat: React.FC<TUIChatProps> = ({
     handleFileAttached,
     resetChatHistory,
     handleEditMessage,
+    handleRestore,
     handleToolPermissionResponse,
     handleQuizAnswer,
   } = useChat({
@@ -246,6 +247,7 @@ const TUIChat: React.FC<TUIChatProps> = ({
     onShowSessionSelector: () => navigateTo("session"),
     onShowJobsSelector: () => navigateTo("jobs"),
     onShowExportSelector: () => navigateTo("export"),
+    onShowRestore: (fromIndex) => navigateTo("restore", { fromIndex }),
     onReload: handleReload,
     onClear: handleClear,
     onRefreshStatic: () => setStaticRefreshTrigger((prev) => prev + 1),
@@ -475,6 +477,13 @@ const TUIChat: React.FC<TUIChatProps> = ({
           chatHistory={chatHistory}
           handleEditMessage={handleEditMessage}
           onShowEditSelector={() => navigateTo("edit")}
+          restoreFromIndex={
+            navState.currentScreen === "restore"
+              ? navState.screenData?.fromIndex
+              : undefined
+          }
+          handleRestore={(plan, mode) => void handleRestore(plan, mode)}
+          onShowRestore={(fromIndex) => navigateTo("restore", { fromIndex })}
         />
 
         {/* Resource debug bar - only in verbose mode */}
