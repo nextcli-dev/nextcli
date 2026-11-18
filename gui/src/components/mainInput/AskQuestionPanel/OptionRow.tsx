@@ -1,6 +1,7 @@
 import { CheckIcon } from "@heroicons/react/24/outline";
 import { ReactNode } from "react";
 import { cn } from "../../../util/cn";
+import { FONT_STEP, useFontSize } from "../../ui/font";
 
 /** Round for single choice, square for multiple choice, filled when picked. */
 export function ChoiceBadge({
@@ -12,11 +13,13 @@ export function ChoiceBadge({
   selected: boolean;
   children: ReactNode;
 }) {
+  const captionFont = useFontSize(FONT_STEP.caption);
   return (
     <span
       aria-hidden
+      style={{ fontSize: captionFont }}
       className={cn(
-        "mt-px flex h-[18px] w-[18px] shrink-0 items-center justify-center border border-solid text-[10.5px] tabular-nums",
+        "mt-px flex h-[18px] w-[18px] shrink-0 items-center justify-center border border-solid tabular-nums",
         multiSelect ? "rounded" : "rounded-full",
         selected
           ? "border-primary bg-primary text-primary-foreground"
@@ -47,6 +50,7 @@ export function OptionRow({
   highlighted,
   onPick,
 }: OptionRowProps) {
+  const controlFont = useFontSize(FONT_STEP.control);
   return (
     <div
       role={multiSelect ? "checkbox" : "radio"}
@@ -72,7 +76,10 @@ export function OptionRow({
       <span className="flex min-w-0 flex-col">
         <span className="break-words">{label}</span>
         {description && (
-          <span className="text-description break-words text-xs">
+          <span
+            className="text-description break-words"
+            style={{ fontSize: controlFont }}
+          >
             {description}
           </span>
         )}

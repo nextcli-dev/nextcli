@@ -6,8 +6,10 @@ import { useAppSelector } from "../../redux/hooks";
 import { selectUIConfig } from "../../redux/slices/configSlice";
 import { deleteMessage } from "../../redux/slices/sessionSlice";
 import { AnimatedEllipsis } from "../AnimatedEllipsis";
+import Spinner from "../gui/Spinner";
 import ThinkingBlockPeek from "../mainInput/belowMainInput/ThinkingBlockPeek";
 import StyledMarkdownPreview from "../StyledMarkdownPreview";
+import { FONT_STEP, useFontSize } from "../ui/font";
 import ConversationSummary from "./ConversationSummary";
 import ResponseActions from "./ResponseActions";
 
@@ -23,6 +25,7 @@ export default function StepContainer(props: StepContainerProps) {
   const [isTruncated, setIsTruncated] = useState(false);
   const isStreaming = useAppSelector((state) => state.session.isStreaming);
   const uiConfig = useAppSelector(selectUIConfig);
+  const rowFont = useFontSize(FONT_STEP.row);
 
   // Calculate dimming and indicator state based on latest summary index
   const latestSummaryIndex = props.latestSummaryIndex ?? -1;
@@ -94,23 +97,33 @@ export default function StepContainer(props: StepContainerProps) {
           </pre>
         ) : (
           <>
+            {/* Rows here cancel this block's inset (-mx-1.5) so they line up
+                with the tool call rows around it */}
             {props.item.reasoning?.text?.trim() && (
-              <ThinkingBlockPeek
-                content={props.item.reasoning.text}
-                index={props.index}
-                prevItem={props.index > 0 ? props.item : null}
-                inProgress={!props.item.reasoning?.endAt}
-                hidden={props.item.thinkingHidden}
-              />
+              <div className="-mx-1.5">
+                <ThinkingBlockPeek
+                  content={props.item.reasoning.text}
+                  index={props.index}
+                  prevItem={props.index > 0 ? props.item : null}
+                  inProgress={!props.item.reasoning?.endAt}
+                  hidden={props.item.thinkingHidden}
+                />
+              </div>
             )}
 
             {isWaitingForModel && (
               <div
-                className="text-description px-2 py-1"
+                className="text-description -mx-1.5 mt-1 flex items-center gap-1.5 px-4 py-1"
+                style={{ fontSize: rowFont }}
                 data-testid="waiting-for-model"
               >
-                Waiting for the model
-                <AnimatedEllipsis />
+                <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center">
+                  <Spinner />
+                </span>
+                <span>
+                  Waiting for the model
+                  <AnimatedEllipsis />
+                </span>
               </div>
             )}
 

@@ -8,6 +8,7 @@ import { DISMISS_TEXT, normalizeQuestionArgs } from "@nextcli/ask-question";
 import { ToolCallState } from "core";
 import { ComponentType, ReactNode, SVGProps, useMemo, useState } from "react";
 import Spinner from "../../../components/gui/Spinner";
+import { FONT_STEP, useFontSize } from "../../../components/ui/font";
 import { useAppSelector } from "../../../redux/hooks";
 import { selectOpenQuestion } from "../../../redux/selectors/selectToolCalls";
 import { cn } from "../../../util/cn";
@@ -23,6 +24,15 @@ const ErrorIcon: Icon = (props) => (
   <XMarkIcon {...props} className={cn(props.className, "text-error")} />
 );
 
+/** The spinner in the 16px icon column, so the label lines up */
+function LeadingSpinner() {
+  return (
+    <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center">
+      <Spinner />
+    </span>
+  );
+}
+
 /**
  * The ask_question call in the chat history. The questions themselves are in
  * the panel that replaces the chat input; this row says what happened and
@@ -36,6 +46,7 @@ export function AskQuestionToolCall({
   historyIndex: number;
 }) {
   const openQuestion = useAppSelector(selectOpenQuestion);
+  const rowFont = useFontSize(FONT_STEP.row);
   const [open, setOpen] = useState(false);
   const count = useMemo(() => {
     try {
@@ -55,7 +66,7 @@ export function AskQuestionToolCall({
   let message: string;
   switch (toolCallState.status) {
     case "generating":
-      leading = <Spinner />;
+      leading = <LeadingSpinner />;
       message = "NextCLI is writing a question";
       break;
     case "generated":
@@ -64,7 +75,7 @@ export function AskQuestionToolCall({
       break;
     case "calling":
       if (openQuestion?.toolCallId === toolCallState.toolCallId) {
-        leading = <Spinner />;
+        leading = <LeadingSpinner />;
         message = `NextCLI is waiting for your answer${count > 1 ? ` · ${count} questions` : ""}`;
       } else {
         icon = MinusIcon;
@@ -98,9 +109,10 @@ export function AskQuestionToolCall({
           aria-expanded={expandable ? open : undefined}
           onClick={expandable ? () => setOpen((prev) => !prev) : undefined}
           className={cn(
-            "text-description flex min-w-0 flex-row items-center gap-1.5 text-xs",
+            "text-description flex min-w-0 flex-row items-center gap-1.5",
             expandable && "cursor-pointer hover:brightness-125",
           )}
+          style={{ fontSize: rowFont }}
         >
           {leading ?? (
             <ToggleWithIcon icon={icon} isToggleable={expandable} open={open} />
@@ -113,7 +125,8 @@ export function AskQuestionToolCall({
       </div>
       {expandable && open && (
         <div
-          className="text-description border-command-border ml-2 mt-1.5 whitespace-pre-wrap break-words border-0 border-l-2 border-solid pl-3 text-xs"
+          className="text-description border-command-border ml-2 mt-1.5 whitespace-pre-wrap break-words border-0 border-l-2 border-solid pl-3"
+          style={{ fontSize: rowFont }}
           data-testid="ask-question-answers"
         >
           {output}

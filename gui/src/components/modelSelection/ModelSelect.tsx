@@ -17,7 +17,7 @@ import { updateSelectedModelByRole } from "../../redux/thunks/updateSelectedMode
 import { isMetaEquivalentKeyPressed } from "../../util";
 import { CONFIG_ROUTES } from "../../util/navigation";
 import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
-import { useFontSize } from "../ui/font";
+import { FONT_STEP, useFontSize } from "../ui/font";
 import { ModelList, ModelListOption } from "./ModelList";
 import { FastIcon, ModelSettingsMenu, SettingsView } from "./ModelSettingsMenu";
 import { effortLabel, visibleSettingRows } from "./modelMenuLabels";
@@ -102,7 +102,7 @@ function ModelSelect() {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const { selectedProfile } = useAuth();
-  const menuFont = useFontSize(-3);
+  const menuFont = useFontSize(FONT_STEP.control);
   const panelRef = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<MenuView>("root");
 

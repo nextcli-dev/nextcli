@@ -12,7 +12,7 @@ import { ToolTip } from "../gui/Tooltip";
 import ModelSelect from "../modelSelection/ModelSelect";
 import { ModeSelect } from "../ModeSelect/ModeSelect";
 import { Button } from "../ui/Button";
-import { useFontSize } from "../ui/font";
+import { FONT_STEP, useFontSize } from "../ui/font";
 import ContextStatus from "./ContextStatus";
 import HoverItem from "./InputToolbar/HoverItem";
 
@@ -56,8 +56,7 @@ function InputToolbar(props: InputToolbarProps) {
       defaultModel.capabilities,
     );
 
-  const smallFont = useFontSize(-2);
-  const tinyFont = useFontSize(-3);
+  const controlFont = useFontSize(FONT_STEP.control);
 
   return (
     <>
@@ -65,7 +64,7 @@ function InputToolbar(props: InputToolbarProps) {
         onClick={props.onClick}
         className={`find-widget-skip bg-vsc-input-background flex select-none flex-row items-center justify-between gap-1 pt-1 ${props.hidden ? "pointer-events-none h-0 cursor-default opacity-0" : "pointer-events-auto mt-2 cursor-text opacity-100"}`}
         style={{
-          fontSize: smallFont,
+          fontSize: controlFont,
         }}
       >
         <div className="xs:gap-1.5 flex flex-row items-center gap-1">
@@ -126,7 +125,7 @@ function InputToolbar(props: InputToolbarProps) {
         <div
           className="text-description flex items-center gap-2 whitespace-nowrap"
           style={{
-            fontSize: tinyFont,
+            fontSize: controlFont,
           }}
         >
           {!isInEdit && <ContextStatus />}

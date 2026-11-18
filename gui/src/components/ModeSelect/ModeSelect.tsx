@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo } from "react";
 import { useAppDispatch, useAppSelector } from "../../redux/hooks";
 import { selectSelectedChatModel } from "../../redux/slices/configSlice";
 import { setMode } from "../../redux/slices/sessionSlice";
-import { getFontSize, getMetaKeyLabel } from "../../util";
+import { getMetaKeyLabel } from "../../util";
 import { ToolTip } from "../gui/Tooltip";
 import { useMainEditor } from "../mainInput/TipTapEditor/MainEditorProvider";
 import { Listbox } from "@headlessui/react";
@@ -119,9 +119,7 @@ export function ModeSelect() {
                   className="h-2.5 w-2.5 flex-shrink-0"
                 />
               </ToolTip>
-              <span
-                className={`text-description-muted text-[${getFontSize() - 3}px] mr-auto`}
-              >
+              <span className="text-description-muted mr-auto">
                 {getMetaKeyLabel()}L
               </span>
             </div>

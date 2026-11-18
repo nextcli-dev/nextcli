@@ -6,14 +6,14 @@ import {
 import * as React from "react";
 import { defaultBorderRadius, vscCommandCenterInactiveBorder } from "..";
 import { cn } from "../../util/cn";
-import { FontSizeModifier, useFontSize } from "./font";
+import { FONT_STEP, FontSizeModifier, useFontSize } from "./font";
 
 type ListboxButtonProps = React.ComponentProps<typeof HLButton> & {
   fontSizeModifier?: FontSizeModifier;
 };
 
 const ListboxButton = React.forwardRef<HTMLButtonElement, ListboxButtonProps>(
-  ({ fontSizeModifier = -3, ...props }, ref) => {
+  ({ fontSizeModifier = FONT_STEP.control, ...props }, ref) => {
     const fontSize = useFontSize(fontSizeModifier);
     return (
       <HLButton
@@ -37,7 +37,7 @@ type ListboxOptionsProps = React.ComponentProps<typeof HLOptions> & {
   fontSizeModifier?: FontSizeModifier;
 };
 const ListboxOptions = React.forwardRef<HTMLUListElement, ListboxOptionsProps>(
-  ({ fontSizeModifier = -3, ...props }, ref) => {
+  ({ fontSizeModifier = FONT_STEP.control, ...props }, ref) => {
     const fontSize = useFontSize(fontSizeModifier);
     return (
       <HLOptions
@@ -64,7 +64,7 @@ type ListboxOptionProps = React.ComponentProps<typeof HLOption> & {
   fontSizeModifier?: FontSizeModifier;
 };
 const ListboxOption = React.forwardRef<HTMLLIElement, ListboxOptionProps>(
-  ({ fontSizeModifier = -3, ...props }, ref) => {
+  ({ fontSizeModifier = FONT_STEP.control, ...props }, ref) => {
     const fontSize = useFontSize(fontSizeModifier);
     return (
       <HLOption

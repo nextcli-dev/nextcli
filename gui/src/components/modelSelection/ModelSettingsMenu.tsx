@@ -10,6 +10,7 @@ import type {
   ResolvedModelSettings,
 } from "core/llm/modelSettings";
 import { Divider } from "../ui/Divider";
+import { FONT_STEP, useFontSize } from "../ui/font";
 import { MENU_ITEM_CLASS } from "./ModelList";
 import {
   effortLabel,
@@ -106,6 +107,7 @@ function SubmenuOption({
   disabled?: boolean;
   onClick: () => void;
 }) {
+  const captionFont = useFontSize(FONT_STEP.caption);
   return (
     <button
       type="button"
@@ -123,7 +125,10 @@ function SubmenuOption({
       <span className="grid min-w-0">
         <span>{label}</span>
         {description && (
-          <span className="text-description whitespace-normal text-[10px]">
+          <span
+            className="text-description whitespace-normal"
+            style={{ fontSize: captionFont }}
+          >
             {description}
           </span>
         )}
@@ -146,6 +151,7 @@ export function ModelSettingsMenu({
   onView,
   onChange,
 }: ModelSettingsMenuProps) {
+  const captionFont = useFontSize(FONT_STEP.caption);
   const rows = visibleSettingRows(controls);
   const thinking = settings?.thinking;
   const effortBlocked = thinking === "off" && controls.effortNeedsThinking;
@@ -172,7 +178,7 @@ export function ModelSettingsMenu({
           >
             <ChevronLeftIcon className="h-3 w-3" />
           </button>
-          <span className="text-description text-xs font-medium">{title}</span>
+          <span className="text-description font-medium">{title}</span>
         </div>
         {view === "thinking" &&
           THINKING_MODES.map((mode) => {
@@ -266,7 +272,10 @@ export function ModelSettingsMenu({
             onClick={() => onView("effort")}
           />
           {effortBlocked && (
-            <div className="text-description px-2 pb-1 text-[10px]">
+            <div
+              className="text-description px-2 pb-1"
+              style={{ fontSize: captionFont }}
+            >
               Effort only applies while the model thinks.
             </div>
           )}

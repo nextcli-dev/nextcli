@@ -42,6 +42,7 @@ import {
 } from "../../../util/askQuestionDrafts";
 import { cn } from "../../../util/cn";
 import { Button } from "../../ui/Button";
+import { FONT_STEP, useFontSize } from "../../ui/font";
 import { useMainEditor } from "../TipTapEditor/MainEditorProvider";
 import { ChoiceBadge, OptionRow } from "./OptionRow";
 
@@ -115,9 +116,15 @@ export function AskQuestionPanel({
 /** core validated the arguments, so this only shows if the two disagree. */
 function UnreadableQuestion({ toolCallId }: { toolCallId: string }) {
   const dispatch = useAppDispatch();
+  const rowFont = useFontSize(FONT_STEP.row);
+  const controlFont = useFontSize(FONT_STEP.control);
   return (
-    <div className={PANEL_CLASS} data-testid="ask-question-panel">
-      <span className="text-description text-xs">
+    <div
+      className={PANEL_CLASS}
+      style={{ fontSize: rowFont }}
+      data-testid="ask-question-panel"
+    >
+      <span className="text-description" style={{ fontSize: controlFont }}>
         NextCLI sent a question this panel can't show.
       </span>
       <div className="flex justify-end">
@@ -144,6 +151,10 @@ function QuestionForm({
 }) {
   const dispatch = useAppDispatch();
   const { mainEditor } = useMainEditor();
+  // Question and options at the size of the chat's tool call rows
+  const rowFont = useFontSize(FONT_STEP.row);
+  const controlFont = useFontSize(FONT_STEP.control);
+  const captionFont = useFontSize(FONT_STEP.caption);
   const [draft, setDraft] = useState<PanelDraft>(() =>
     loadQuestionDraft(toolCallId, set.questions.length),
   );
@@ -389,17 +400,22 @@ function QuestionForm({
       aria-label="Questions from NextCLI"
       data-testid="ask-question-panel"
       className={PANEL_CLASS}
+      style={{ fontSize: rowFont }}
       onKeyDown={onKeyDown}
       onFocus={() => setHasFocus(true)}
       onBlur={onBlur}
     >
-      <div className="text-description flex min-h-5 items-center gap-1.5 text-xs">
+      <div
+        className="text-description flex min-h-5 items-center gap-1.5"
+        style={{ fontSize: controlFont }}
+      >
         <QuestionMarkCircleIcon className="h-3.5 w-3.5 shrink-0" />
         <span className="font-medium">Questions</span>
         {question.header && (
           <span
             title={question.header}
-            className="bg-badge text-badge-foreground text-2xs max-w-[12ch] truncate rounded px-1.5"
+            className="bg-badge text-badge-foreground max-w-[12ch] truncate rounded px-1.5"
+            style={{ fontSize: captionFont }}
           >
             {question.header}
           </span>
@@ -446,7 +462,9 @@ function QuestionForm({
         {question.question}
       </p>
       {question.multiSelect && (
-        <p className="text-description m-0 text-xs">Select all that apply.</p>
+        <p className="text-description m-0" style={{ fontSize: controlFont }}>
+          Select all that apply.
+        </p>
       )}
 
       <div
@@ -523,9 +541,10 @@ function QuestionForm({
         <span
           role="status"
           className={cn(
-            "min-w-0 flex-1 text-[11px]",
+            "min-w-0 flex-1",
             warning ? "text-warning" : "text-description-muted",
           )}
+          style={{ fontSize: captionFont }}
         >
           {warning || <span className="hidden sm:inline">{keyHint}</span>}
         </span>
