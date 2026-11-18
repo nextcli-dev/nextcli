@@ -238,6 +238,49 @@ describe("ModelSelect", () => {
     expect(screen.getByTestId("model-select-menu")).toBeInTheDocument();
   });
 
+  it("lists only the model's levels and checks the one it runs at", async () => {
+    // Nothing stored: core resolves the default, medium
+    const { user } = await setup(OPUS, {
+      "anthropic/claude-opus-5-5": resolved("anthropic/claude-opus-5-5", {
+        effort: "medium",
+      }),
+    });
+    const menu = await openMenu(user);
+    await user.click(within(menu).getByText("Effort"));
+    expect(
+      screen.getAllByRole("menuitemradio").map((option) => option.textContent),
+    ).toEqual(["Low", "Medium", "High", "Extra high", "Max"]);
+    expect(
+      screen.getByRole("menuitemradio", { name: "Medium" }),
+    ).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("can send no level for a model whose levels are guessed", async () => {
+    const guessed = model("GPT-7", "openai", "gpt-7", {
+      ...CLAUDE_CONTROLS,
+      format: "openai",
+      efforts: ["low", "medium", "high"],
+      experimental: true,
+    });
+    const { user, updates } = await setup(guessed, {
+      "openai/gpt-7": resolved("openai/gpt-7", {
+        effort: "high",
+        stored: { effort: "high" },
+      }),
+    });
+    const menu = await openMenu(user);
+    expect(within(menu).getByText("guess")).toBeInTheDocument();
+    await user.click(within(menu).getByText("Effort"));
+    const notSent = screen.getByRole("menuitemradio", { name: /Not sent/ });
+    expect(notSent).toHaveAttribute("aria-checked", "false");
+    await user.click(notSent);
+    await waitFor(() =>
+      expect(updates).toEqual([
+        { key: "openai/gpt-7", patch: { effort: null } },
+      ]),
+    );
+  });
+
   it("explains a thinking mode the model can't use", async () => {
     const { user, updates } = await setup(GEMINI, {
       "gemini/gemini-3.1-pro": resolved("gemini/gemini-3.1-pro", {

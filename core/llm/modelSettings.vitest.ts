@@ -118,6 +118,75 @@ describe("resolveModelSettings", () => {
     ).toBe("high");
   });
 
+  describe("with a default effort, as in the IDE", () => {
+    const ide = { thinkingOnByDefault: true, defaultEffort: "medium" };
+
+    test("runs a model the catalog knows at medium", () => {
+      expect(
+        resolveModelSettings("k", controlsFor(opus), {}, {}, ide).effort,
+      ).toBe("medium");
+      expect(
+        resolveModelSettings("k", controlsFor(gpt), {}, {}, ide).effort,
+      ).toBe("medium");
+      expect(
+        resolveModelSettings("k", controlsFor(sonnet46), {}, {}, ide),
+      ).toMatchObject({ thinking: "shown", effort: "medium" });
+    });
+
+    test("uses the closest lower level a model has", () => {
+      const levels = (efforts: string[]) =>
+        resolveModelSettings("k", { ...controlsFor(gpt), efforts }, {}, {}, ide)
+          .effort;
+      expect(levels(["low", "high", "max"])).toBe("low");
+      expect(levels(["high"])).toBe("high");
+    });
+
+    test("loses to a menu choice and to the config", () => {
+      expect(
+        resolveModelSettings(
+          "k",
+          controlsFor(opus),
+          { effort: "high" },
+          {},
+          ide,
+        ).effort,
+      ).toBe("high");
+      expect(
+        resolveModelSettings(
+          "k",
+          controlsFor(opus),
+          {},
+          { reasoningEffort: "max" },
+          ide,
+        ).effort,
+      ).toBe("max");
+    });
+
+    test("leaves levels guessed for an unknown model unset", () => {
+      const unknown = controlsFor(new OpenAI({ apiKey: "k", model: "gpt-7" }));
+      expect(unknown.experimental).toBe(true);
+      expect(
+        resolveModelSettings("k", unknown, {}, {}, ide).effort,
+      ).toBeUndefined();
+      // A level picked in the menu is still sent
+      expect(
+        resolveModelSettings("k", unknown, { effort: "low" }, {}, ide).effort,
+      ).toBe("low");
+    });
+
+    test("sends none while thinking is off where effort needs thinking", () => {
+      expect(
+        resolveModelSettings(
+          "k",
+          controlsFor(gpt),
+          { thinking: "off" },
+          {},
+          ide,
+        ).effort,
+      ).toBeUndefined();
+    });
+  });
+
   test("ignores a thinking mode the model lacks", () => {
     expect(
       resolveModelSettings("k", controlsFor(geminiPro), { thinking: "off" }, {})

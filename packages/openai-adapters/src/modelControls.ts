@@ -121,9 +121,14 @@ export interface ModelIdentity {
 const ONEPROVIDER_PROVIDER = "oneprovider";
 const CONSERVATIVE_EFFORTS = ["low", "medium", "high"];
 
-/** The catalog's effort levels, without "none" (that's thinking off) */
+/**
+ * The catalog's effort levels, without "none" (that's thinking off) and
+ * "default" (thinking on at the provider's level, which isn't a level)
+ */
 function catalogEfforts(entry: CatalogModel | undefined): string[] {
-  return (entry?.efforts ?? []).filter((effort) => effort !== "none");
+  return (entry?.efforts ?? []).filter(
+    (effort) => effort !== "none" && effort !== "default",
+  );
 }
 
 /** The catalog lists "none" among the efforts: reasoning can be turned off */
@@ -511,9 +516,12 @@ function genericControls(
     };
   }
   const levels = catalogEfforts(entry);
+  // Guess levels only when the catalog doesn't list them: a model listed
+  // with just "none" and "default" takes no level
+  const guessed = levels.length === 0 && !entry?.efforts;
   return {
     format: "generic",
-    efforts: levels.length > 0 ? levels : CONSERVATIVE_EFFORTS,
+    efforts: guessed ? CONSERVATIVE_EFFORTS : levels,
     thinkingModes: ["hidden", "shown"],
     thinkingUnavailable: {
       off: "NextCli can't turn thinking off for this provider.",
@@ -524,7 +532,7 @@ function genericControls(
     effortNeedsThinking: false,
     fast: false,
     maxContextLength: promptLimit(entry),
-    experimental: levels.length === 0,
+    experimental: guessed,
   };
 }
 

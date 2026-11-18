@@ -51,6 +51,12 @@ export interface ResolveOptions {
    * by default; the CLI keeps it off until an effort is set.
    */
   thinkingOnByDefault?: boolean;
+  /**
+   * Effort for a model the catalog knows when nothing is stored or
+   * configured, clamped to its levels. Levels guessed for an unknown model
+   * stay unset: its server may reject them.
+   */
+  defaultEffort?: string;
 }
 
 export function modelSettingsKey(model: {
@@ -62,7 +68,8 @@ export function modelSettingsKey(model: {
 
 /**
  * The settings a model runs with: the stored menu choices, then the
- * config's `reasoningEffort` and `reasoning`, then the model's defaults.
+ * config's `reasoningEffort` and `reasoning`, then `options.defaultEffort`
+ * and the model's defaults.
  */
 export function resolveModelSettings(
   key: string,
@@ -100,10 +107,13 @@ export function resolveModelSettings(
     }
   }
 
+  const requestedEffort =
+    settings.effort ??
+    (controls.experimental ? undefined : options.defaultEffort);
   const effort =
     thinking === "off" && controls.effortNeedsThinking
       ? undefined
-      : clampEffort(controls.efforts, settings.effort);
+      : clampEffort(controls.efforts, requestedEffort);
   const maxContext = Math.max(
     controls.defaultContextLength,
     ...controls.contextOptions,

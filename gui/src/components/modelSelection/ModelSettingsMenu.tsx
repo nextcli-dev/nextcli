@@ -200,17 +200,22 @@ export function ModelSettingsMenu({
           })}
         {view === "effort" && (
           <>
-            <SubmenuOption
-              label="Default"
-              description="The provider's default level"
-              selected={!settings?.stored.effort}
-              onClick={() => choose({ effort: null })}
-            />
+            {/* Known models start at medium. Levels guessed for a model the
+                catalog doesn't know can be left out, in case its server
+                rejects them */}
+            {controls.experimental && (
+              <SubmenuOption
+                label={effortLabel(undefined)}
+                description="Don't send an effort level"
+                selected={!settings?.effort}
+                onClick={() => choose({ effort: null })}
+              />
+            )}
             {controls.efforts.map((effort) => (
               <SubmenuOption
                 key={effort}
                 label={effortLabel(effort)}
-                selected={settings?.stored.effort === effort}
+                selected={settings?.effort === effort}
                 onClick={() => choose({ effort })}
               />
             ))}
