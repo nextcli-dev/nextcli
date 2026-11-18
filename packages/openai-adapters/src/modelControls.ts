@@ -791,7 +791,7 @@ const EFFORT_LABELS: Record<string, string> = {
 };
 
 export function effortLabel(effort: string | undefined): string {
-  return effort ? (EFFORT_LABELS[effort] ?? effort) : "Default";
+  return effort ? (EFFORT_LABELS[effort] ?? effort) : "Not sent";
 }
 
 const THINKING_LABELS: Record<ThinkingMode, string> = {

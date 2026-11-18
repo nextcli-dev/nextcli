@@ -96,10 +96,18 @@ function buildRows(model: ModelConfig | null): MenuRow[] {
  * (effort, readable thinking, fast mode, context window), like the model
  * picker in Cursor. Rows a model doesn't support are hidden.
  */
+/** The Effort option that sends no level, offered only for guessed levels */
+const NOT_SENT = "not-sent";
+
 function effortOptions(model: ModelConfig): SelectorOption[] {
+  const controls = getModelControlsFor(model);
   return [
-    { id: "default", name: "Default" },
-    ...getModelControlsFor(model).efforts.map((effort) => ({
+    // Levels guessed for a model the catalog doesn't know can be left out,
+    // in case its server rejects them
+    ...(controls.experimental
+      ? [{ id: NOT_SENT, name: effortLabel(undefined) }]
+      : []),
+    ...controls.efforts.map((effort) => ({
       id: effort,
       name: effortLabel(effort),
     })),
@@ -151,7 +159,7 @@ export function ModelMenu({ onSelectModel, onCancel }: ModelMenuProps) {
   const model = currentModel();
   const rows = buildRows(model);
   const settings = model ? getModelSettings(model) : undefined;
-  const currentEffort = settings?.effort ?? "default";
+  const currentEffort = (model && effectiveEffort(model)) ?? NOT_SENT;
   const currentContext = model
     ? String(settings?.contextLength ?? configuredContextLimit(model))
     : "";
@@ -187,7 +195,7 @@ export function ModelMenu({ onSelectModel, onCancel }: ModelMenuProps) {
         currentId={currentEffort}
         onSelect={(option) => {
           updateModelSettings(model, {
-            effort: option.id === "default" ? undefined : option.id,
+            effort: option.id === NOT_SENT ? undefined : option.id,
           });
           backToMain();
         }}

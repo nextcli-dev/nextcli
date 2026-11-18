@@ -82,7 +82,10 @@ export function SimpleToolCallUI({
               <ContextItemsPeekItem key={idx} contextItem={contextItem} />
             ))
           ) : (
-            <div className="text-description pl-5 text-xs italic">
+            <div
+              className="text-description pl-5 italic"
+              style={{ fontSize: rowFont }}
+            >
               No tool call output
             </div>
           )}

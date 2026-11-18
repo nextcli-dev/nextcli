@@ -28,7 +28,7 @@ import { startTUIChat } from "../ui/index.js";
 import { gracefulExit } from "../util/exit.js";
 import { formatAnthropicError, formatError } from "../util/formatError.js";
 import { logger } from "../util/logger.js";
-import { setSessionEffort } from "../util/modelSettings.js";
+import { setDefaultEffort, setSessionEffort } from "../util/modelSettings.js";
 import { question } from "../util/prompt.js";
 import { prependPrompt } from "../util/promptProcessor.js";
 import {
@@ -586,6 +586,8 @@ export async function chat(prompt?: string, options: ChatOptions = {}) {
     // Interactive path - requires TTY for Ink rendering
     // If not in headless mode, use unified initialization with TUI
     if (!options.headless) {
+      // The TUI's model menu matches the extension's: medium unless set
+      setDefaultEffort("medium");
       // Process flags for TUI mode
       const { permissionOverrides } = processCommandFlags(options);
       // Initialize services with onboarding handled internally

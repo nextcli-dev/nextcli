@@ -13,6 +13,7 @@ import { AnimatedEllipsis } from "../../AnimatedEllipsis";
 import FileIcon from "../../FileIcon";
 import SafeImg from "../../SafeImg";
 import ToggleDiv from "../../ToggleDiv";
+import { FONT_STEP, useFontSize } from "../../ui/font";
 import { getIconFromDropdownItem } from "../AtMentionDropdown";
 import { NAMED_ICONS } from "../icons";
 
@@ -55,6 +56,7 @@ export function ContextItemsPeekItem({
   contextItem,
 }: ContextItemsPeekItemProps) {
   const ideMessenger = useContext(IdeMessengerContext);
+  const rowFont = useFontSize(FONT_STEP.row);
   const isUrl = contextItem.uri?.type === "url";
 
   function getContextItemIcon() {
@@ -123,7 +125,8 @@ export function ContextItemsPeekItem({
   return (
     <div
       onClick={() => openContextItem(contextItem, ideMessenger)}
-      className="mr-2 flex cursor-pointer flex-row items-center gap-1.5 whitespace-nowrap rounded px-1.5 py-1 text-xs hover:bg-white/10"
+      className="mr-2 flex cursor-pointer flex-row items-center gap-1.5 whitespace-nowrap rounded px-1.5 py-1 hover:bg-white/10"
+      style={{ fontSize: rowFont }}
       data-testid="context-items-peek-item"
     >
       {getContextItemIcon()}
@@ -131,7 +134,7 @@ export function ContextItemsPeekItem({
         {contextItem.name}
       </span>
       <div
-        className={`text-description-muted group flex flex-row items-center gap-1.5 pr-1.5 text-xs ${isUrl ? "hover:underline" : ""}`}
+        className={`text-description-muted group flex flex-row items-center gap-1.5 pr-1.5 ${isUrl ? "hover:underline" : ""}`}
         onClick={
           isUrl
             ? (e) => {
@@ -164,6 +167,7 @@ export function ContextItemsPeek({
   icon,
   title,
 }: ContextItemsPeekProps) {
+  const rowFont = useFontSize(FONT_STEP.row);
   const ctxItems = useMemo(() => {
     return contextItems?.filter((ctxItem) => !ctxItem.hidden) ?? [];
   }, [contextItems]);
@@ -196,7 +200,10 @@ export function ContextItemsPeek({
           <ContextItemsPeekItem key={idx} contextItem={contextItem} />
         ))
       ) : (
-        <div className="text-description-muted pl-2 text-xs italic">
+        <div
+          className="text-description-muted pl-2 italic"
+          style={{ fontSize: rowFont }}
+        >
           No results
         </div>
       )}
