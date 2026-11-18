@@ -509,14 +509,16 @@ export function UnifiedTerminalCommand({
         {/* Status information */}
         {(statusMessage || isRunning) && (
           <div
-            className="text-description flex items-center px-2 pb-2 pt-2 text-xs"
+            className="text-description flex flex-wrap items-center gap-x-3 gap-y-1 px-2 pb-2 pt-2 text-xs"
             style={{
               borderTop:
                 "1px solid var(--vscode-commandCenter-inactiveBorder, #555555)",
             }}
           >
-            <StatusIcon status={statusType} />
-            {isRunning ? "Running" : statusMessage}
+            <span className="flex items-center">
+              <StatusIcon status={statusType} />
+              {isRunning ? "Running" : statusMessage}
+            </span>
             {isRunning && toolCallId && (
               <a
                 href="#"
@@ -524,7 +526,7 @@ export function UnifiedTerminalCommand({
                   e.preventDefault();
                   handleMoveToBackground();
                 }}
-                className="text-link ml-3 cursor-pointer text-xs no-underline hover:underline"
+                className="text-link cursor-pointer text-xs no-underline hover:underline"
               >
                 Move to background
               </a>

@@ -32,6 +32,7 @@ const GridDiv = styled.div`
   display: grid;
   grid-template-rows: 1fr auto;
   height: 100vh;
+  grid-template-columns: minmax(0, 1fr);
   overflow-x: visible;
 `;
 
@@ -195,6 +196,7 @@ const Layout = () => {
               minHeight: "100%",
               display: "grid",
               gridTemplateRows: "1fr auto",
+              gridTemplateColumns: "minmax(0, 1fr)",
             }}
           >
             <TextDialog

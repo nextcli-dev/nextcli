@@ -24,7 +24,9 @@ function NoticeFrame({
     <div
       className={`border-border relative m-2 flex flex-col rounded-md border border-solid bg-transparent p-4`}
     >
-      <p className={`thread-message text-center ${textClassName}`}>{text}</p>
+      <p className={`thread-message break-words text-center ${textClassName}`}>
+        {text}
+      </p>
       <div className="text-description flex flex-row flex-wrap items-center justify-center gap-1.5 px-3">
         {children}
       </div>

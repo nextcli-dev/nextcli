@@ -107,6 +107,34 @@ describe("UnifiedTerminalCommand", () => {
     expect(screen.getByText("Move to background")).toBeInTheDocument();
   });
 
+  test("keeps the running status apart from the move-to-background link", async () => {
+    const runningToolCallState: ToolCallState = {
+      status: "calling",
+      toolCallId: MOCK_TOOL_CALL_ID,
+      toolCall: {
+        id: MOCK_TOOL_CALL_ID,
+        type: "function",
+        function: { name: "terminal", arguments: "{}" },
+      },
+      parsedArgs: {},
+    };
+
+    await renderWithProviders(
+      <UnifiedTerminalCommand
+        command={MOCK_COMMAND}
+        status="running"
+        toolCallState={runningToolCallState}
+        toolCallId={MOCK_TOOL_CALL_ID}
+      />,
+    );
+
+    // The icon and label wrap as one unit, so the row gap only separates the link
+    const statusGroup = screen.getByText("Running");
+    const link = screen.getByText("Move to background");
+    expect(statusGroup.contains(link)).toBe(false);
+    expect(statusGroup.parentElement).toBe(link.parentElement);
+  });
+
   test("can expand and collapse terminal", async () => {
     const { user, container } = await renderWithProviders(
       <UnifiedTerminalCommand
