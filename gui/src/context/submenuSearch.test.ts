@@ -123,6 +123,43 @@ describe("rankFileSearchResults", () => {
     ).toBeGreaterThan(1);
   });
 
+  it("orders fuzzy-only matches by score, not by name length", () => {
+    const results = rankFileSearchResults(
+      [
+        { id: "a", title: "ca.ts", description: "core/util/ca.ts", score: 1 },
+        {
+          id: "b",
+          title: "longerName.ts",
+          description: "src/longerName.ts",
+          score: 5,
+        },
+      ],
+      "zzz",
+      new Set(),
+    );
+    expect(results.map((r) => r.title)).toEqual(["longerName.ts", "ca.ts"]);
+  });
+
+  it("orders name matches by name length before score", () => {
+    const results = rankFileSearchResults(
+      [
+        {
+          id: "a",
+          title: "agentFilesHelper.ts",
+          description: "src/agentFilesHelper.ts",
+          score: 10,
+        },
+        { id: "b", title: "agents.md", description: "agents.md", score: 1 },
+      ],
+      "agent",
+      new Set(),
+    );
+    expect(results.map((r) => r.title)).toEqual([
+      "agents.md",
+      "agentFilesHelper.ts",
+    ]);
+  });
+
   it("returns nothing to rank for an empty list", () => {
     expect(rankFileSearchResults([], "agents", new Set())).toEqual([]);
   });
