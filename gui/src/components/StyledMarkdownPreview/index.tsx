@@ -14,11 +14,10 @@ import {
 } from "..";
 import useUpdatingRef from "../../hooks/useUpdatingRef";
 import { varWithFallback } from "../../styles/theme";
-import { shallowEqual } from "react-redux";
 import { useThrottledValue } from "../../hooks/useThrottledValue";
 import { useAppSelector } from "../../redux/hooks";
 import { selectUIConfig } from "../../redux/slices/configSlice";
-import { getContextItemsFromHistory } from "../../redux/thunks/updateFileSymbols";
+import { selectPastContextItems } from "../../redux/thunks/updateFileSymbols";
 import { getFontSize } from "../../util";
 import { ToolTip } from "../gui/Tooltip";
 import FilenameLink from "./FilenameLink";
@@ -212,7 +211,7 @@ function getCodeChildrenContent(children: any) {
 
 const MARKDOWN_THROTTLE_MS = 120;
 
-const NO_CONTEXT_ITEMS: ReturnType<typeof getContextItemsFromHistory> = [];
+const NO_CONTEXT_ITEMS: ReturnType<typeof selectPastContextItems>[number] = [];
 
 const StyledMarkdownPreview = memo(function StyledMarkdownPreview(
   props: StyledMarkdownPreviewProps,
@@ -224,14 +223,13 @@ const StyledMarkdownPreview = memo(function StyledMarkdownPreview(
   // The logic here is to get file names from
   // 1. Context items found in past messages
   // 2. Toolbar Codeblocks found in past messages
-  // Only the context items, compared item by item: they keep their identity
-  // while a reply streams, so the stream doesn't re-render every message
-  const pastContextItems = useAppSelector(
-    (state) =>
-      props.itemIndex === undefined
-        ? NO_CONTEXT_ITEMS
-        : getContextItemsFromHistory(state.session.history, props.itemIndex),
-    shallowEqual,
+  // One shared, cached list: a stable array per index, so the stream
+  // neither re-renders every message nor re-walks the history for each one
+  const pastContextItems = useAppSelector((state) =>
+    props.itemIndex === undefined
+      ? NO_CONTEXT_ITEMS
+      : (selectPastContextItems(state.session.history)[props.itemIndex] ??
+        NO_CONTEXT_ITEMS),
   );
   const allSymbols = useAppSelector((state) => state.session.symbols);
   const pastFileInfo = useMemo(() => {

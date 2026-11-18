@@ -4,6 +4,30 @@ import { CodeBlock } from "../../components/mainInput/TipTapEditor/extensions/Co
 import { updateFileSymbols } from "../slices/sessionSlice";
 import { ThunkApiType } from "../store";
 
+/** File context items attached to one history item */
+function normalContextItems(item: ChatHistoryItem): ContextItemWithId[] {
+  return (
+    item.contextItems?.filter(
+      (item) => item.uri?.type === "file" && item.uri?.value,
+    ) ?? []
+  );
+}
+
+/** File context items in one history item's code-block toolbars */
+function toolbarContextItems(item: ChatHistoryItem): ContextItemWithId[] {
+  if (!item.editorState || !Array.isArray(item.editorState.content)) {
+    return [];
+  }
+  return item.editorState.content
+    .filter(
+      (content: any) =>
+        content?.type === CodeBlock.name &&
+        content?.attrs?.item?.uri?.value &&
+        content.attrs.item.uri?.type === "file",
+    )
+    .map((content: any) => content.attrs!.item!);
+}
+
 export function getContextItemsFromHistory(
   historyItems: ChatHistoryItem[],
   priorToIndex?: number,
@@ -11,28 +35,69 @@ export function getContextItemsFromHistory(
   const pastHistoryItems = historyItems.filter(
     (_, i) => i <= (priorToIndex ?? historyItems.length - 1),
   );
+  return [
+    ...pastHistoryItems.flatMap(normalContextItems),
+    ...pastHistoryItems.flatMap(toolbarContextItems),
+  ];
+}
 
-  const pastNormalContextItems = pastHistoryItems.flatMap((item) => {
-    return (
-      item.contextItems?.filter(
-        (item) => item.uri?.type === "file" && item.uri?.value,
-      ) ?? []
+interface PastContextItemsCache {
+  history: readonly ChatHistoryItem[];
+  /** Entry i: getContextItemsFromHistory(history, i) */
+  entries: ContextItemWithId[][];
+  normal: ContextItemWithId[][];
+  toolbar: ContextItemWithId[][];
+}
+
+let pastContextItemsCache: PastContextItemsCache | undefined;
+const NO_ITEMS: ContextItemWithId[] = [];
+
+/**
+ * For each history index, the file context items of the items up to it: the
+ * same as getContextItemsFromHistory(history, i), shared by every caller and
+ * computed once per history. Unchanged items keep their identity in the
+ * store, so while a reply streams only the entries from the changed item on
+ * are rebuilt, and every other entry keeps its array.
+ */
+export function selectPastContextItems(
+  history: readonly ChatHistoryItem[],
+): ContextItemWithId[][] {
+  const previous = pastContextItemsCache;
+  if (previous?.history === history) return previous.entries;
+
+  const entries: ContextItemWithId[][] = [];
+  const normal: ContextItemWithId[][] = [];
+  const toolbar: ContextItemWithId[][] = [];
+  let reusing = !!previous;
+  for (let i = 0; i < history.length; i++) {
+    if (
+      reusing &&
+      previous!.history[i] === history[i] &&
+      i < previous!.entries.length
+    ) {
+      entries.push(previous!.entries[i]);
+      normal.push(previous!.normal[i]);
+      toolbar.push(previous!.toolbar[i]);
+      continue;
+    }
+    reusing = false;
+    const ownNormal = normalContextItems(history[i]);
+    const ownToolbar = toolbarContextItems(history[i]);
+    const prevNormal = normal[i - 1] ?? NO_ITEMS;
+    const prevToolbar = toolbar[i - 1] ?? NO_ITEMS;
+    normal.push(ownNormal.length ? [...prevNormal, ...ownNormal] : prevNormal);
+    toolbar.push(
+      ownToolbar.length ? [...prevToolbar, ...ownToolbar] : prevToolbar,
     );
-  });
-  const pastToolbarContextItems: ContextItemWithId[] = pastHistoryItems
-    .filter(
-      (item) => item.editorState && Array.isArray(item.editorState.content),
-    )
-    .flatMap((item) => item.editorState.content)
-    .filter(
-      (content) =>
-        content?.type === CodeBlock.name &&
-        content?.attrs?.item?.uri?.value &&
-        content.attrs.item.uri?.type === "file",
-    )
-    .map((content) => content.attrs!.item!);
-
-  return [...pastNormalContextItems, ...pastToolbarContextItems];
+    const prevEntry = entries[i - 1];
+    entries.push(
+      !ownNormal.length && !ownToolbar.length && prevEntry
+        ? prevEntry
+        : [...normal[i], ...toolbar[i]],
+    );
+  }
+  pastContextItemsCache = { history, entries, normal, toolbar };
+  return entries;
 }
 
 /*
