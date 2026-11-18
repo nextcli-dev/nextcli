@@ -10,10 +10,14 @@ const ellipsisAnimation = keyframes`
 export const AnimatedEllipsis = styled.span`
   display: inline-block;
   width: 1em; /* Fixed width to match the maximum animation width */
+  white-space: nowrap;
 
   &::after {
     content: "...";
     display: inline-block;
+    /* While the box is narrower than the dots, an inherited overflow-wrap
+       (such as the thinking row's break-words) would wrap them one per line */
+    white-space: nowrap;
     overflow: hidden;
     vertical-align: bottom;
     animation: ${ellipsisAnimation} 2s infinite;
