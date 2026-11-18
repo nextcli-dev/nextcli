@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.6.20](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.19...vscode-v1.6.20) (2026-11-18)
+
+
+### Bug Fixes
+
+* **vscode:** keep chat content inside the panel at narrow widths and high zoom ([#179](https://github.com/nextcli-dev/nextcli/issues/179)) ([233d76f](https://github.com/nextcli-dev/nextcli/commit/233d76f8b83ef11ab3e78d8e4f7a36dc238cf79f))
+* **vscode:** keep the animated ellipsis dots on one line ([#177](https://github.com/nextcli-dev/nextcli/issues/177)) ([0abc1e7](https://github.com/nextcli-dev/nextcli/commit/0abc1e7a4b02d68bcf9181248fa3ad7fa11b9842))
+
 ## [1.6.19](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.18...vscode-v1.6.19) (2026-11-18)
 
 
