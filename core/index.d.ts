@@ -6,6 +6,7 @@ import {
 } from "@nextcli/config-yaml";
 import { ToolPolicy } from "@continuedev/terminal-security";
 import type { ModelControls } from "@nextcli/openai-adapters";
+import type { TurnCheckpoint } from "@nextcli/snapshot";
 import { McpUiResourceMeta } from "@modelcontextprotocol/ext-apps";
 import { TextResourceContents } from "@modelcontextprotocol/sdk/types.js";
 import Parser from "web-tree-sitter";
@@ -558,6 +559,11 @@ export interface ChatHistoryItem {
   thinkingHidden?: boolean;
   appliedRules?: RuleMetadata[];
   conversationSummary?: string;
+  /**
+   * On the user message of an agent turn: the work-tree snapshots taken
+   * around the turn, used to undo and redo it. Never sent to a model.
+   */
+  checkpoint?: TurnCheckpoint;
 }
 
 export interface LLMFullCompletionOptions extends BaseCompletionOptions {
