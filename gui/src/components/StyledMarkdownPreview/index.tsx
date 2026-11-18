@@ -15,6 +15,7 @@ import {
 import useUpdatingRef from "../../hooks/useUpdatingRef";
 import { varWithFallback } from "../../styles/theme";
 import { shallowEqual } from "react-redux";
+import { useThrottledValue } from "../../hooks/useThrottledValue";
 import { useAppSelector } from "../../redux/hooks";
 import { selectUIConfig } from "../../redux/slices/configSlice";
 import { getContextItemsFromHistory } from "../../redux/thunks/updateFileSymbols";
@@ -208,6 +209,8 @@ function getCodeChildrenContent(children: any) {
   }
   return undefined;
 }
+
+const MARKDOWN_THROTTLE_MS = 120;
 
 const NO_CONTEXT_ITEMS: ReturnType<typeof getContextItemsFromHistory> = [];
 
@@ -416,12 +419,16 @@ const StyledMarkdownPreview = memo(function StyledMarkdownPreview(
     },
   });
 
+  // A streaming message grows on every chunk, and each parse covers the whole
+  // text (markdown, math, highlighting). Parse at most a few times a second;
+  // the last text always lands.
+  const source = useThrottledValue(props.source ?? "", MARKDOWN_THROTTLE_MS);
   useEffect(() => {
     setMarkdownSource(
       // some patches to source markdown are applied here:
-      fixDoubleDollarNewLineLatex(patchNestedMarkdown(props.source ?? "")),
+      fixDoubleDollarNewLineLatex(patchNestedMarkdown(source)),
     );
-  }, [props.source, allSymbols]);
+  }, [source, allSymbols]);
 
   const uiConfig = useAppSelector(selectUIConfig);
   const codeWrapState = uiConfig?.codeWrap ? "pre-wrap" : "pre";
