@@ -22,6 +22,11 @@ export interface ShadowRepoConfig {
   projectCommonDir: string;
   storeRoot: string;
   storeDir: string;
+  /**
+   * The store root relative to the work tree, with `/` separators, when the
+   * store lives inside it. Captures leave it out and undo never touches it.
+   */
+  storeRel?: string;
   maxUntrackedFileBytes: number;
 }
 
@@ -144,6 +149,24 @@ export class ShadowRepo {
       to,
     ]);
     return splitNul(stdout);
+  }
+
+  /**
+   * The entries of `files` that the store's ignore rules (the project's
+   * `.gitignore` files, its `info/exclude`, the person's excludes file and
+   * the size limit) leave out. Every path must have real parent folders:
+   * git refuses a path beyond a symlink.
+   */
+  async ignored(files: readonly string[]): Promise<Set<string>> {
+    if (files.length === 0) return new Set();
+    // Exit 1 means none of the paths is ignored. check-ignore reads plain
+    // paths and rejects the literal-pathspec setting.
+    const { GIT_LITERAL_PATHSPECS: _literal, ...env } = this.env;
+    const { stdout } = await this.git(
+      ["check-ignore", "--no-index", "-z", "--stdin"],
+      { env, input: files.join("\0") + "\0", okCodes: [0, 1] },
+    );
+    return new Set(splitNul(stdout));
   }
 
   /** The entries of `files` that exist in `tree`. Throws if git fails. */

@@ -127,6 +127,73 @@ describe("what a snapshot contains", () => {
     );
     expect(listed).not.toContain(".continue/snapshots");
   });
+
+  it("recognises its store inside the work tree through a symlink or another case", async () => {
+    const f = createFixture();
+    const link = path.join(path.dirname(f.root), "project-link");
+    symlinkSync(f.root, link);
+    const spellings = [path.join(link, ".continue", "snapshots")];
+    // The default macOS volume (and Windows) ignore case.
+    const upper = path.join(path.dirname(f.root), "PROJECT");
+    if (existsSync(upper)) {
+      spellings.push(path.join(upper, ".continue", "snapshots"));
+    }
+    for (const storeRoot of spellings) {
+      const result = await openSnapshotter({
+        cwd: f.root,
+        storeRoot,
+        env: f.env,
+      });
+      if (!result.ok) throw new Error(result.reason);
+      const s = result.snapshotter;
+      expect(s.storeDir.startsWith(f.root + path.sep)).toBe(true);
+      await s.capture();
+      f.write("a.txt", `a-${spellings.indexOf(storeRoot)}\n`);
+      const tree = await s.capture();
+      const listed = storeGit(
+        s.storeDir,
+        f.root,
+        "ls-tree",
+        "-r",
+        "--name-only",
+        tree,
+      );
+      expect(listed.split("\n").sort().filter(Boolean)).toEqual([
+        "a.txt",
+        "b.txt",
+      ]);
+      // Undo never writes into the store, even for a checkpoint that lists it.
+      const plan = await s.planRevert([
+        { start: tree, files: [".continue/snapshots/x", "a.txt"] },
+      ]);
+      expect(plan.skipped).toEqual([".continue/snapshots/x"]);
+      await expect(
+        s.restore([{ path: ".continue/snapshots/x", tree }]),
+      ).rejects.toThrow(/snapshot store/);
+    }
+  });
+
+  it("resolves a relative store root against cwd", async () => {
+    const f = createFixture();
+    const elsewhere = mkdtempSync(path.join(tmpdir(), "cn-cwd-"));
+    const before = process.cwd();
+    process.chdir(elsewhere);
+    try {
+      const result = await openSnapshotter({
+        cwd: f.root,
+        storeRoot: "rel-store",
+        env: f.env,
+      });
+      if (!result.ok) throw new Error(`${result.reason}: ${result.detail}`);
+      expect(
+        result.snapshotter.storeDir.startsWith(path.join(f.root, "rel-store")),
+      ).toBe(true);
+      await result.snapshotter.capture();
+      expect(existsSync(path.join(elsewhere, "rel-store"))).toBe(false);
+    } finally {
+      process.chdir(before);
+    }
+  });
 });
 
 describe("prune", () => {

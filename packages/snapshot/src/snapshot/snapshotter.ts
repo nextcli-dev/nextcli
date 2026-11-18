@@ -13,6 +13,8 @@ import { planRevert } from "../undo/plan.js";
 import { restoreFiles } from "../undo/restore.js";
 
 import { captureTree } from "./capture.js";
+import { toPosix } from "./paths.js";
+import { preserveBeforeWrite, type PreservedTurn } from "./preserve.js";
 import { pruneStore, type PruneOptions } from "./prune.js";
 import { ShadowRepo, storeKey } from "./store.js";
 
@@ -24,7 +26,10 @@ const MIN_GIT: [number, number] = [2, 26];
 export interface OpenSnapshotterOptions {
   /** Any directory inside the work tree. */
   cwd: string;
-  /** Directory that holds one store per work tree, e.g. `~/.continue/snapshots`. */
+  /**
+   * Directory that holds one store per work tree, e.g. `~/.continue/snapshots`.
+   * A relative path is resolved against `cwd`.
+   */
   storeRoot: string;
   gitBinary?: string;
   maxUntrackedFileBytes?: number;
@@ -94,14 +99,26 @@ export async function openSnapshotter(
   }
 
   try {
+    // The work tree is a real path, so the store must be one too: compared
+    // through a symlink or in another case, a store inside the work tree
+    // would not be recognised and would end up in its own snapshots.
+    const requestedRoot = path.resolve(options.cwd, options.storeRoot);
+    await fs.mkdir(requestedRoot, { recursive: true });
+    const storeRoot = await fs.realpath(requestedRoot);
+    const rel = path.relative(toplevel, storeRoot);
+    const storeRel =
+      rel && !rel.startsWith("..") && !path.isAbsolute(rel)
+        ? toPosix(rel)
+        : undefined;
     const repo = new ShadowRepo({
       gitBinary,
       baseEnv,
       toplevel,
       projectGitDir: gitDir,
       projectCommonDir: commonDir,
-      storeRoot: path.resolve(options.storeRoot),
-      storeDir: path.join(options.storeRoot, storeKey(toplevel)),
+      storeRoot,
+      storeDir: path.join(storeRoot, storeKey(toplevel)),
+      storeRel,
       maxUntrackedFileBytes:
         options.maxUntrackedFileBytes ?? DEFAULT_MAX_UNTRACKED_FILE_BYTES,
     });
@@ -140,12 +157,35 @@ export class Snapshotter {
     return this.repo.changedFiles(from, to);
   }
 
-  /** Captures the end of a turn and lists the files it changed. */
+  /**
+   * Call before a tool writes `files` (absolute, or relative to the work
+   * tree), so undo also covers the ignored ones. Returns the turn's new
+   * start and `written` list; store both on the checkpoint. Changes made by
+   * shell commands can't be announced, so ignored files they write are not
+   * covered. See `snapshot/preserve.ts`.
+   */
+  preserve(
+    turn: { start: string; written?: readonly string[] },
+    files: readonly string[],
+    pin?: string,
+  ): Promise<PreservedTurn> {
+    return this.repo.lock.run(() =>
+      preserveBeforeWrite(this.repo, turn, files, pin),
+    );
+  }
+
+  /**
+   * Captures the end of a turn and lists the files it changed. `written` is
+   * the turn's list from `preserve`.
+   */
   async finishTurn(
     start: string,
     pin?: string,
+    written: readonly string[] = [],
   ): Promise<{ end: string; files: string[] }> {
-    const end = await this.capture(pin);
+    const end = await this.repo.lock.run(() =>
+      captureTree(this.repo, pin, written),
+    );
     return { end, files: await this.changedFiles(start, end) };
   }
 

@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import {
+  chmodSync,
   existsSync,
   lstatSync,
   mkdtempSync,
@@ -14,7 +15,7 @@ import * as path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { openSnapshotter } from "../../src/index.js";
+import { openSnapshotter, RestoreError } from "../../src/index.js";
 import { createFixture } from "../helpers.js";
 
 const read = (root: string, file: string) =>
@@ -121,6 +122,8 @@ describe("undo and redo of a turn", () => {
 
     const plan = await s.planRevert([{ start }]);
     expect(plan.restore).toEqual(["a.txt"]);
+    // Nothing says which edits were the agent's, so all need confirming.
+    expect(plan.conflicts).toEqual(["a.txt"]);
     await s.restore(plan.targets);
     expect(read(f.root, "a.txt")).toBe("a1\n");
   });
@@ -173,6 +176,220 @@ describe("undo and redo of a turn", () => {
   });
 });
 
+describe("symlinks and directories", () => {
+  it.skipIf(process.platform === "win32")(
+    "undoes a symlink that became a directory, and redoes it",
+    async () => {
+      const f = createFixture();
+      f.write("target/kept.txt", "kept\n");
+      symlinkSync("target", path.join(f.root, "link"));
+      const s = await f.open();
+      const start = await s.capture();
+      rmSync(path.join(f.root, "link"));
+      f.write("link/secret.txt", "secret\n");
+      const turn = await s.finishTurn(start);
+      expect(turn.files.sort()).toEqual(["link", "link/secret.txt"]);
+
+      const plan = await s.planRevert([{ start, ...turn }]);
+      const undone = await s.restore(plan.targets);
+      expect(lstatSync(path.join(f.root, "link")).isSymbolicLink()).toBe(true);
+      expect(undone.restored).toEqual(["link"]);
+      // The checkout already removed the directory; nothing else was deleted.
+      expect(undone.deleted).toEqual([]);
+      expect(read(f.root, "target/kept.txt")).toBe("kept\n");
+
+      const redone = await s.restore(
+        plan.targets.map((t) => ({ ...t, tree: undone.redoTree })),
+      );
+      expect(lstatSync(path.join(f.root, "link")).isDirectory()).toBe(true);
+      expect(read(f.root, "link/secret.txt")).toBe("secret\n");
+      expect(redone.restored).toEqual(["link/secret.txt"]);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "never deletes through a symlinked folder",
+    async () => {
+      const f = createFixture();
+      const outside = mkdtempSync(path.join(tmpdir(), "cn-outside-"));
+      writeFileSync(path.join(outside, "victim.txt"), "keep me\n");
+      symlinkSync(outside, path.join(f.root, "out"));
+      const s = await f.open();
+      const tree = await s.capture();
+      const result = await s.restore([{ path: "out/victim.txt", tree }]);
+      expect(result.deleted).toEqual([]);
+      expect(readFileSync(path.join(outside, "victim.txt"), "utf8")).toBe(
+        "keep me\n",
+      );
+    },
+  );
+
+  it("reports only deletions that happened", async () => {
+    const f = createFixture();
+    const s = await f.open();
+    const start = await s.capture();
+    f.write("new.txt", "x\n");
+    f.write("dir/inner.txt", "y\n");
+    const turn = await s.finishTurn(start);
+    // The person removed one of them already.
+    rmSync(path.join(f.root, "new.txt"));
+    const result = await s.restore(
+      [...turn.files, "dir"].map((file) => ({ path: file, tree: start })),
+    );
+    expect(result.deleted).toEqual(["dir/inner.txt"]);
+    expect(existsSync(path.join(f.root, "dir"))).toBe(false);
+  });
+
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "keeps the redo tree when a restore fails partway",
+    async () => {
+      const f = createFixture();
+      const s = await f.open();
+      const start = await s.capture();
+      f.write("a.txt", "agent\n");
+      f.write("locked/new.txt", "agent\n");
+      const turn = await s.finishTurn(start);
+      const plan = await s.planRevert([{ start, ...turn }]);
+      // The checkout of a.txt works; deleting locked/new.txt can't.
+      chmodSync(path.join(f.root, "locked"), 0o555);
+      try {
+        const error = await s.restore(plan.targets).then(
+          () => undefined,
+          (e: unknown) => e,
+        );
+        expect(error).toBeInstanceOf(RestoreError);
+        const failed = error as RestoreError;
+        expect(read(f.root, "a.txt")).toBe("a1\n");
+        expect(failed.partial.restored).toEqual(["a.txt"]);
+        expect(failed.partial.deleted).toEqual([]);
+
+        chmodSync(path.join(f.root, "locked"), 0o755);
+        await s.restore(
+          plan.targets.map((t) => ({ ...t, tree: failed.redoTree })),
+        );
+        expect(read(f.root, "a.txt")).toBe("agent\n");
+        expect(read(f.root, "locked/new.txt")).toBe("agent\n");
+      } finally {
+        chmodSync(path.join(f.root, "locked"), 0o755);
+      }
+    },
+  );
+});
+
+describe("submodules", () => {
+  it("lists a changed submodule pointer as skipped, not restored", async () => {
+    const f = createFixture();
+    const s = await f.open();
+    const start = await s.capture();
+    // An embedded repository the agent created or moved.
+    f.write("sub/file.txt", "1\n");
+    execFileSync("git", ["init", "-q"], {
+      cwd: path.join(f.root, "sub"),
+      env: f.env,
+    });
+    execFileSync(
+      "git",
+      [
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@example.com",
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        "x",
+      ],
+      { cwd: path.join(f.root, "sub"), env: f.env },
+    );
+    const turn = await s.finishTurn(start);
+    expect(turn.files).toEqual(["sub"]);
+    const plan = await s.planRevert([{ start, ...turn }]);
+    expect(plan.skipped).toEqual(["sub"]);
+    expect(plan.delete).toEqual([]);
+    expect(plan.targets).toEqual([]);
+  });
+});
+
+describe("ignored files a turn writes", () => {
+  function ignoring(pattern: string) {
+    const f = createFixture();
+    f.write(".gitignore", pattern + "\n");
+    f.git("add", ".gitignore");
+    f.git("commit", "-qm", "ignore");
+    return f;
+  }
+
+  it("undoes and redoes an edit to an ignored file", async () => {
+    const f = ignoring(".env");
+    f.write(".env", "v1\n");
+    const s = await f.open();
+    const start = await s.capture();
+    const turn = await s.preserve({ start }, [path.join(f.root, ".env")]);
+    expect(turn.written).toEqual([".env"]);
+    f.write(".env", "v2-agent\n");
+    const end = await s.finishTurn(turn.start, undefined, turn.written);
+    expect(end.files).toEqual([".env"]);
+
+    const plan = await s.planRevert([{ ...turn, ...end }]);
+    expect(plan.restore).toEqual([".env"]);
+    const undone = await s.restore(plan.targets);
+    expect(read(f.root, ".env")).toBe("v1\n");
+
+    await s.restore(plan.targets.map((t) => ({ ...t, tree: undone.redoTree })));
+    expect(read(f.root, ".env")).toBe("v2-agent\n");
+  });
+
+  it("deletes an ignored file the turn created, and keeps one it didn't write", async () => {
+    const f = createFixture();
+    const excludes = path.join(f.home, "excludes");
+    writeFileSync(excludes, "*.log\n");
+    f.git("config", "--global", "core.excludesFile", excludes);
+    f.write("other.log", "person\n");
+    const s = await f.open();
+    const start = await s.capture();
+    const turn = await s.preserve({ start }, ["debug.log"]);
+    expect(turn.start).toBe(start);
+    f.write("debug.log", "agent\n");
+    f.write("other.log", "person 2\n");
+    const end = await s.finishTurn(turn.start, undefined, turn.written);
+
+    const plan = await s.planRevert([{ ...turn, ...end }]);
+    expect(plan.delete).toEqual(["debug.log"]);
+    const result = await s.restore(plan.targets);
+    expect(result.deleted).toEqual(["debug.log"]);
+    expect(existsSync(path.join(f.root, "debug.log"))).toBe(false);
+    expect(read(f.root, "other.log")).toBe("person 2\n");
+  });
+
+  it("keeps the first version when a turn writes an ignored file twice", async () => {
+    const f = ignoring(".env");
+    f.write(".env", "v1\n");
+    const s = await f.open();
+    const start = await s.capture();
+    let turn = await s.preserve({ start }, [".env"]);
+    f.write(".env", "v2\n");
+    turn = await s.preserve(turn, [".env"]);
+    f.write(".env", "v3\n");
+    const end = await s.finishTurn(turn.start, undefined, turn.written);
+    await s.restore((await s.planRevert([{ ...turn, ...end }])).targets);
+    expect(read(f.root, ".env")).toBe("v1\n");
+  });
+
+  it("leaves tracked files and paths outside the work tree to the captures", async () => {
+    const f = createFixture();
+    const s = await f.open();
+    const start = await s.capture();
+    const turn = await s.preserve({ start }, [
+      "a.txt",
+      "new.txt",
+      path.join(tmpdir(), "x.txt"),
+      ".git/config",
+    ]);
+    expect(turn).toEqual({ start, written: [] });
+  });
+});
+
 describe("failing safely", () => {
   it("changes no file when a snapshot object is missing", async () => {
     const f = createFixture();
@@ -211,6 +428,41 @@ describe("failing safely", () => {
     await expect(s.restore([{ path: "../outside.txt", tree }])).rejects.toThrow(
       /outside the work tree/,
     );
+  });
+
+  it("refuses git metadata in any case or spelling, and leaves .git alone", async () => {
+    const f = createFixture();
+    const s = await f.open();
+    const tree = await s.capture();
+    const config = read(f.root, ".git/config");
+    for (const file of [
+      ".git/config",
+      ".GIT/config",
+      "sub/.Git/HEAD",
+      ".git./config",
+      "git~1/config",
+      ".g\u200cit/config",
+    ]) {
+      await expect(s.restore([{ path: file, tree }])).rejects.toThrow(
+        /git metadata/,
+      );
+    }
+    expect(read(f.root, ".git/config")).toBe(config);
+    // A checkpoint that lists such a path plans around it.
+    const plan = await s.planRevert([{ start: tree, files: [".GIT/config"] }]);
+    expect(plan.targets).toEqual([]);
+    expect(plan.skipped).toEqual([".GIT/config"]);
+    // Names that only look similar are ordinary files.
+    f.write(".github/x.yml", "1\n");
+    f.write(".gitignore", "\n");
+    const start = await s.capture();
+    f.write(".github/x.yml", "2\n");
+    rmSync(path.join(f.root, ".gitignore"));
+    await s.restore(
+      (await s.planRevert([{ start, ...(await s.finishTurn(start)) }])).targets,
+    );
+    expect(read(f.root, ".github/x.yml")).toBe("1\n");
+    expect(read(f.root, ".gitignore")).toBe("\n");
   });
 
   it("serialises opening and capturing from two processes sharing a store", async () => {

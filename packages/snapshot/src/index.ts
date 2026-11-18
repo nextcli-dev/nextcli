@@ -17,3 +17,5 @@ export {
 export { DEFAULT_MAX_AGE_DAYS } from "./snapshot/prune.js";
 export { storeKey } from "./snapshot/store.js";
 export { GitError } from "./git/runGit.js";
+export { RestoreError } from "./undo/restore.js";
+export type { PreservedTurn } from "./snapshot/preserve.js";

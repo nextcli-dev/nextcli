@@ -1,32 +1,87 @@
+import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
 
 import { chunkByLength, runGit, splitNul } from "../git/runGit.js";
 
+import { workTreeEntry } from "./paths.js";
 import { EMPTY_GITCONFIG, type ShadowRepo } from "./store.js";
 
 export const REF_PREFIX = "refs/cn/";
 
 /**
- * Records the current state of the work tree and returns its tree id. With
- * `pin`, the tree is kept by `refs/cn/<date>/<pin>` until it is pruned.
- * The caller holds the store lock.
+ * Records the current state of the work tree and returns its tree id.
+ * `include` lists paths to record even though ignore rules leave them out:
+ * ignored files that a turn wrote. With `pin`, the tree is kept by
+ * `refs/cn/<date>/<pin>` until it is pruned. The caller holds the store lock.
  */
 export async function captureTree(
   repo: ShadowRepo,
   pin?: string,
+  include: readonly string[] = [],
 ): Promise<string> {
   await syncExcludes(repo);
   await repo.git(["add", "--all"]);
-  const tree = (await repo.git(["write-tree"])).stdout.toString("utf8").trim();
-  if (pin) {
-    await repo.git([
-      "update-ref",
-      `${REF_PREFIX}${dateSegment(new Date())}/${sanitizePin(pin)}`,
-      tree,
-    ]);
-  }
+  let tree = (await repo.git(["write-tree"])).stdout.toString("utf8").trim();
+  if (include.length > 0) tree = await withWorkTreePaths(repo, tree, include);
+  if (pin) await pinTree(repo, tree, pin);
   return tree;
+}
+
+/** Keeps `tree` by `refs/cn/<date>/<pin>` until it is pruned. */
+export async function pinTree(
+  repo: ShadowRepo,
+  tree: string,
+  pin: string,
+): Promise<void> {
+  await repo.git([
+    "update-ref",
+    `${REF_PREFIX}${dateSegment(new Date())}/${sanitizePin(pin)}`,
+    tree,
+  ]);
+}
+
+/**
+ * `tree` with the work tree's current version of `files`, ignore rules or
+ * not. A file that is gone is dropped from the tree; a path that is now a
+ * directory is left as it is. The shadow index is not changed, so later
+ * captures still follow the ignore rules. The caller holds the store lock.
+ */
+export async function withWorkTreePaths(
+  repo: ShadowRepo,
+  tree: string,
+  files: readonly string[],
+): Promise<string> {
+  const present: string[] = [];
+  const gone: string[] = [];
+  for (const file of new Set(files)) {
+    const entry = await workTreeEntry(repo, file);
+    if (entry === "file") present.push(file);
+    else if (entry === "none") gone.push(file);
+  }
+  const indexFile = path.join(repo.storeDir, `nextcli-${randomUUID()}.index`);
+  const env = { ...repo.env, GIT_INDEX_FILE: indexFile };
+  const fromStdin = ["--pathspec-from-file=-", "--pathspec-file-nul"];
+  try {
+    await repo.git(["read-tree", tree], { env });
+    if (present.length > 0) {
+      await repo.git(["add", "--force", ...fromStdin], {
+        env,
+        input: present.join("\0"),
+      });
+    }
+    if (gone.length > 0) {
+      await repo.git(
+        ["rm", "--cached", "--quiet", "--ignore-unmatch", ...fromStdin],
+        { env, input: gone.join("\0") },
+      );
+    }
+    return (await repo.git(["write-tree"], { env })).stdout
+      .toString("utf8")
+      .trim();
+  } finally {
+    await fs.rm(indexFile, { force: true });
+  }
 }
 
 /** `YYYYMMDD`, the date segment of pinned refs. */
@@ -46,7 +101,7 @@ function sanitizePin(pin: string): string {
  * Copies ignore rules that live outside the work tree into the store, and
  * leaves out large untracked files and the store itself.
  */
-async function syncExcludes(repo: ShadowRepo): Promise<void> {
+export async function syncExcludes(repo: ShadowRepo): Promise<void> {
   const { config } = repo;
   const lines: string[] = ["# Written by NextCLI on every capture"];
   lines.push(
@@ -58,9 +113,10 @@ async function syncExcludes(repo: ShadowRepo): Promise<void> {
   if (userExcludes) {
     lines.push(await fs.readFile(userExcludes, "utf8").catch(() => ""));
   }
-  const storeRel = path.relative(repo.toplevel, config.storeRoot);
-  if (storeRel && !storeRel.startsWith("..") && !path.isAbsolute(storeRel)) {
-    lines.push("/" + escapeExcludePath(toPosix(storeRel)) + "/");
+  // Both paths are real paths (see openSnapshotter), so a store reached
+  // through a symlink or a differently cased folder is still left out.
+  if (config.storeRel) {
+    lines.push("/" + escapeExcludePath(config.storeRel) + "/");
   }
 
   const excludePath = path.join(repo.storeDir, "info", "exclude");
@@ -144,10 +200,6 @@ async function largeUntrackedFiles(repo: ShadowRepo): Promise<string[]> {
     for (const file of splitNul(out)) tracked.add(file);
   }
   return candidates.filter((file) => !tracked.has(file));
-}
-
-function toPosix(file: string): string {
-  return file.split(path.sep).join("/");
 }
 
 /** Escapes a literal path for a gitignore-style exclude file. */
