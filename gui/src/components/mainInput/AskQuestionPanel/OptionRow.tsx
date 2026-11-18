@@ -1,5 +1,5 @@
 import { CheckIcon } from "@heroicons/react/24/outline";
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useRef } from "react";
 import { cn } from "../../../util/cn";
 import { FONT_STEP, useFontSize } from "../../ui/font";
 
@@ -51,8 +51,14 @@ export function OptionRow({
   onPick,
 }: OptionRowProps) {
   const controlFont = useFontSize(FONT_STEP.control);
+  const rowRef = useRef<HTMLDivElement>(null);
+  // Keyboard moves keep the highlighted row inside the panel's scroll area
+  useEffect(() => {
+    if (highlighted) rowRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [highlighted]);
   return (
     <div
+      ref={rowRef}
       role={multiSelect ? "checkbox" : "radio"}
       aria-checked={selected}
       data-testid={`ask-question-option-${index}`}

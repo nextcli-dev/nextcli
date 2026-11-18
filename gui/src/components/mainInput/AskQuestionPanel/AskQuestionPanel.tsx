@@ -45,7 +45,7 @@ import { useMainEditor } from "../TipTapEditor/MainEditorProvider";
 import { ChoiceBadge, OptionRow } from "./OptionRow";
 
 const PANEL_CLASS =
-  "bg-input text-input-foreground border-command-border focus-within:border-command-border-focus rounded-default flex flex-col gap-1.5 border border-solid px-2 pb-1.5 pt-2 outline-none";
+  "bg-input text-input-foreground border-command-border focus-within:border-command-border-focus rounded-default flex flex-col gap-1.5 border border-solid px-2 pb-1.5 pt-2 outline-none max-h-[60vh]";
 
 function Kbd({ children }: { children: ReactNode }) {
   return <span className="ml-1 opacity-75">{children}</span>;
@@ -123,6 +123,7 @@ function QuestionForm({
   const finished = useRef(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const otherRef = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
+  const otherRowRef = useRef<HTMLDivElement>(null);
 
   const total = set.questions.length;
   const page = form.page;
@@ -132,6 +133,14 @@ function QuestionForm({
   const highlight = form.highlight[page] ?? 0;
   const isLast = page === total - 1;
   const answered = isDraftAnswered(question, current);
+  const otherHighlighted = hasFocus && highlight === optionCount;
+
+  // Focus moves without scrolling, so keep the highlighted row in view
+  useEffect(() => {
+    if (otherHighlighted) {
+      otherRowRef.current?.scrollIntoView?.({ block: "nearest" });
+    }
+  }, [otherHighlighted]);
 
   useEffect(() => {
     if (!finished.current) saveQuestionDraft(toolCallId, sessionId, form);
@@ -285,7 +294,7 @@ function QuestionForm({
       onBlur={onBlur}
     >
       <div
-        className="text-description flex min-h-5 items-center gap-1.5"
+        className="text-description flex min-h-5 shrink-0 items-center gap-1.5"
         style={{ fontSize: controlFont }}
       >
         <QuestionMarkCircleIcon className="h-3.5 w-3.5 shrink-0" />
@@ -333,91 +342,98 @@ function QuestionForm({
         />
       </div>
 
-      <p
-        id={questionId}
-        className="m-0 whitespace-pre-wrap break-words font-semibold"
-        data-testid="ask-question-text"
-      >
-        {question.question}
-      </p>
-      {question.multiSelect && (
-        <p className="text-description m-0" style={{ fontSize: controlFont }}>
-          Select all that apply.
-        </p>
-      )}
-
+      {/* The question and its options scroll; the header and the Skip and
+          Send row stay in view, so a long question can't push them out */}
       <div
-        role={question.multiSelect ? "group" : "radiogroup"}
-        aria-labelledby={questionId}
-        className="flex flex-col gap-0.5"
+        className="thin-scrollbar flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto"
+        data-testid="ask-question-body"
       >
-        {question.options.map((option, index) => (
-          <OptionRow
-            key={`${page}-${index}`}
-            index={index}
-            label={option.label}
-            description={option.description}
-            multiSelect={question.multiSelect}
-            selected={current.selected.includes(index)}
-            highlighted={hasFocus && highlight === index}
-            onPick={() => apply({ type: "pick", index })}
-          />
-        ))}
-        {optionCount > 0 ? (
-          <div
-            className={cn(
-              "flex items-center gap-2 rounded px-1.5 py-1",
-              otherSelected
-                ? "bg-list-active text-list-active-foreground"
-                : "hover:bg-list-hover",
-              hasFocus &&
-                highlight === optionCount &&
-                "outline-command-border-focus outline outline-1 -outline-offset-1",
-            )}
-            onClick={() => apply({ type: "editOther" })}
-          >
-            <ChoiceBadge
+        <p
+          id={questionId}
+          className="m-0 whitespace-pre-wrap break-words font-semibold"
+          data-testid="ask-question-text"
+        >
+          {question.question}
+        </p>
+        {question.multiSelect && (
+          <p className="text-description m-0" style={{ fontSize: controlFont }}>
+            Select all that apply.
+          </p>
+        )}
+
+        <div
+          role={question.multiSelect ? "group" : "radiogroup"}
+          aria-labelledby={questionId}
+          className="flex flex-col gap-0.5"
+        >
+          {question.options.map((option, index) => (
+            <OptionRow
+              key={`${page}-${index}`}
+              index={index}
+              label={option.label}
+              description={option.description}
               multiSelect={question.multiSelect}
-              selected={otherSelected}
+              selected={current.selected.includes(index)}
+              highlighted={hasFocus && highlight === index}
+              onPick={() => apply({ type: "pick", index })}
+            />
+          ))}
+          {optionCount > 0 ? (
+            <div
+              ref={otherRowRef}
+              className={cn(
+                "flex items-center gap-2 rounded px-1.5 py-1",
+                otherSelected
+                  ? "bg-list-active text-list-active-foreground"
+                  : "hover:bg-list-hover",
+                otherHighlighted &&
+                  "outline-command-border-focus outline outline-1 -outline-offset-1",
+              )}
+              onClick={() => apply({ type: "editOther" })}
             >
-              <PencilIcon className="h-2.5 w-2.5" />
-            </ChoiceBadge>
-            <input
+              <ChoiceBadge
+                multiSelect={question.multiSelect}
+                selected={otherSelected}
+              >
+                <PencilIcon className="h-2.5 w-2.5" />
+              </ChoiceBadge>
+              <input
+                ref={otherRef}
+                type="text"
+                autoComplete="off"
+                aria-label="Other answer"
+                placeholder="Other: type your own answer"
+                data-testid="ask-question-other"
+                value={current.other}
+                onFocus={() =>
+                  !form.editing && apply({ type: "editOther" }, false)
+                }
+                onChange={(e) =>
+                  apply({ type: "type", text: e.target.value }, false)
+                }
+                className="text-input-foreground placeholder:text-input-placeholder focus:border-border-focus focus:bg-editor w-full min-w-0 rounded border border-solid border-transparent bg-transparent px-1 py-0.5 outline-none"
+                style={{ font: "inherit" }}
+              />
+            </div>
+          ) : (
+            <textarea
               ref={otherRef}
-              type="text"
-              autoComplete="off"
-              aria-label="Other answer"
-              placeholder="Other: type your own answer"
+              rows={2}
+              aria-label="Your answer"
+              placeholder="Type your answer"
               data-testid="ask-question-other"
               value={current.other}
-              onFocus={() =>
-                !form.editing && apply({ type: "editOther" }, false)
-              }
               onChange={(e) =>
                 apply({ type: "type", text: e.target.value }, false)
               }
-              className="text-input-foreground placeholder:text-input-placeholder focus:border-border-focus focus:bg-editor w-full min-w-0 rounded border border-solid border-transparent bg-transparent px-1 py-0.5 outline-none"
+              className="text-input-foreground placeholder:text-input-placeholder border-input-border focus:border-border-focus bg-editor min-h-12 w-full resize-y rounded border border-solid px-2 py-1.5 outline-none"
               style={{ font: "inherit" }}
             />
-          </div>
-        ) : (
-          <textarea
-            ref={otherRef}
-            rows={2}
-            aria-label="Your answer"
-            placeholder="Type your answer"
-            data-testid="ask-question-other"
-            value={current.other}
-            onChange={(e) =>
-              apply({ type: "type", text: e.target.value }, false)
-            }
-            className="text-input-foreground placeholder:text-input-placeholder border-input-border focus:border-border-focus bg-editor min-h-12 w-full resize-y rounded border border-solid px-2 py-1.5 outline-none"
-            style={{ font: "inherit" }}
-          />
-        )}
+          )}
+        </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-1">
+      <div className="flex shrink-0 flex-wrap items-center gap-1">
         <span
           role="status"
           className={cn(

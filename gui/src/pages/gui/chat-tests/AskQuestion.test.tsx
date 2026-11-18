@@ -559,6 +559,39 @@ test("an answer resumes at the depth of the round that asked", async () => {
   expect(resumeDepth([...history, ...history.slice(1)])).toBe(5);
 });
 
+test("a long question scrolls inside the panel and follows the highlight", async () => {
+  // jsdom has no layout and no scrollIntoView
+  const original = Element.prototype.scrollIntoView;
+  const scrollIntoView = vi.fn();
+  Element.prototype.scrollIntoView = scrollIntoView;
+  try {
+    const { panel, user } = await renderWithQuestion({
+      questions: [
+        {
+          question: "Which region?",
+          options: Array.from({ length: 12 }, (_, i) => `Region ${i + 1}`),
+        },
+      ],
+    });
+    await waitFor(() => expect(panel).toHaveFocus());
+
+    // The options scroll; Send stays outside the scrolling part
+    const body = screen.getByTestId("ask-question-body");
+    expect(body).toContainElement(screen.getByTestId("ask-question-option-11"));
+    expect(body).not.toContainElement(screen.getByTestId("ask-question-next"));
+
+    scrollIntoView.mockClear();
+    await user.keyboard("{ArrowDown}{ArrowDown}");
+    await waitFor(() =>
+      expect(scrollIntoView.mock.contexts.at(-1)).toBe(
+        screen.getByTestId("ask-question-option-2"),
+      ),
+    );
+  } finally {
+    Element.prototype.scrollIntoView = original;
+  }
+});
+
 test("plan mode offers the tool and chat mode doesn't", async () => {
   const { store } = await renderWithProviders(<Chat />);
   await act(async () => {
