@@ -250,7 +250,10 @@ type SessionState = {
 
 export interface UndoneTurn {
   /** Per work tree: the files to put back and the tree that has them */
-  roots: { root: string; targets: { path: string; tree: string }[] }[];
+  roots: {
+    root: string;
+    targets: { path: string; tree: string; written?: boolean }[];
+  }[];
   /** Messages removed by the undo, put back by redo */
   removedHistory?: ChatHistoryItemWithMessageId[];
 }

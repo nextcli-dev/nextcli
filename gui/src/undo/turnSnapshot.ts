@@ -1,5 +1,6 @@
 import { createAsyncThunk } from "@reduxjs/toolkit";
 import type { ChatHistoryItem } from "core";
+import { BuiltInToolNames } from "core/tools/builtIn";
 
 import {
   appendHistory,
@@ -12,7 +13,7 @@ import { AppThunkDispatch, RootState, ThunkApiType } from "../redux/store";
 import { saveCurrentSession } from "../redux/thunks/session";
 
 type TurnCheckpoint = NonNullable<ChatHistoryItem["checkpoint"]>;
-type RestoreTarget = { path: string; tree: string };
+type RestoreTarget = { path: string; tree: string; written?: boolean };
 
 export type UndoMode = "code-and-conversation" | "code";
 
@@ -26,6 +27,7 @@ export interface UndoPlan {
       restore: string[];
       delete: string[];
       conflicts: string[];
+      skipped: string[];
     };
   }[];
 }
@@ -124,6 +126,65 @@ export async function beginTurnSnapshot(
   );
 }
 
+/** Edit tools whose `filepath` argument names the file they write. */
+const FILE_WRITING_TOOLS = new Set<string>([
+  BuiltInToolNames.CreateNewFile,
+  BuiltInToolNames.EditExistingFile,
+  BuiltInToolNames.SingleFindAndReplace,
+  BuiltInToolNames.MultiEdit,
+]);
+
+// Preserves run one at a time: each replaces the turn's checkpoint.
+let preserving: Promise<unknown> = Promise.resolve();
+
+/**
+ * Called before a tool runs. If it is an edit tool, saves the file it will
+ * write when git ignores it (snapshots leave ignored files out), so undo
+ * can put it back. Stores the updated checkpoint on the turn's message.
+ * Never throws: a tool never fails because of a snapshot.
+ */
+export function preserveBeforeToolWrite(
+  api: ThunkApi,
+  toolName: string,
+  args: unknown,
+): Promise<void> {
+  const filepath = (args as { filepath?: unknown } | undefined)?.filepath;
+  if (!FILE_WRITING_TOOLS.has(toolName) || typeof filepath !== "string") {
+    return Promise.resolve();
+  }
+  const next = preserving.then(() => preserveNow(api, filepath));
+  preserving = next.catch(() => {});
+  return next.catch((e) => console.warn("Saving a file for undo failed", e));
+}
+
+async function preserveNow(
+  { dispatch, extra, getState }: ThunkApi,
+  filepath: string,
+): Promise<void> {
+  const state = getState();
+  const history = state.session.history;
+  const index = history.findLastIndex((item) => item.message.role === "user");
+  const checkpoint = history[index]?.checkpoint;
+  if (!checkpoint) return;
+  const result = await extra.ideMessenger.request("snapshot/preserve", {
+    checkpoint,
+    filepaths: [filepath],
+    pin: `${state.session.id}/${Date.now()}`,
+  });
+  if (result.status !== "success") return;
+  if (JSON.stringify(result.content) === JSON.stringify(checkpoint)) return;
+  const at = getState().session.history.findIndex(
+    (item) => item.checkpoint === checkpoint,
+  );
+  if (at < 0) return;
+  dispatch(
+    updateHistoryItemAtIndex({
+      index: at,
+      updates: { checkpoint: result.content },
+    }),
+  );
+}
+
 const finishing = new Set<string>();
 
 /**
@@ -137,6 +198,7 @@ export async function finishTurnSnapshotIfDone({
   extra,
   getState,
 }: ThunkApi): Promise<boolean> {
+  await preserving;
   const state = getState();
   const history = state.session.history;
   const index = history.findLastIndex((item) => item.message.role === "user");
@@ -205,7 +267,7 @@ async function restoreAndReload(
   });
   if (result.status !== "success") throw new Error(result.error);
   const restored = result.content.roots.flatMap(({ root, result: r }) =>
-    r.restored.map((file) => joinPath(root, file)),
+    (r?.restored ?? []).map((file) => joinPath(root, file)),
   );
   if (restored.length > 0) {
     await extra.ideMessenger.request("snapshot/syncDocuments", {
@@ -231,26 +293,39 @@ export const applyUndo = createAsyncThunk<
       extra,
       plan.roots.map(({ root, plan: p }) => ({ root, targets: p.targets })),
     );
+    const failure = results.find((r) => r.error);
     const history = getState().session.history;
     let removedHistory: ChatHistoryItemWithMessageId[] | undefined;
-    if (mode === "code-and-conversation") {
+    // A failed undo keeps the conversation: its turns are only partly undone.
+    if (mode === "code-and-conversation" && !failure) {
       removedHistory = history.slice(plan.fromIndex);
       dispatch(truncateHistoryFrom(plan.fromIndex));
     }
-    dispatch(
-      setUndoneTurn({
-        roots: results.map(({ root, result }) => ({
-          root,
-          targets: (
-            plan.roots.find((p) => p.root === root)?.plan.targets ?? []
-          ).map((t) => ({ path: t.path, tree: result.redoTree })),
-        })),
-        removedHistory,
-      }),
+    // Redo also covers what a failed undo changed before it stopped.
+    const roots = results.flatMap(({ root, result }) =>
+      result
+        ? [
+            {
+              root,
+              targets: (
+                plan.roots.find((p) => p.root === root)?.plan.targets ?? []
+              ).map((t) => ({ ...t, tree: result.redoTree })),
+            },
+          ]
+        : [],
     );
+    if (roots.length > 0 || removedHistory) {
+      dispatch(setUndoneTurn({ roots, removedHistory }));
+    }
     await dispatch(
       saveCurrentSession({ openNewSession: false, generateTitle: false }),
     );
+    if (failure) {
+      throw new Error(
+        `Undo stopped partway: ${failure.error}` +
+          (roots.length > 0 ? " Redo puts back what it changed." : ""),
+      );
+    }
   },
 );
 
@@ -260,7 +335,9 @@ export const applyRedo = createAsyncThunk<void, undefined, ThunkApiType>(
   async (_, { dispatch, extra, getState }) => {
     const undone = getState().session.undoneTurn;
     if (!undone) return;
-    await restoreAndReload(extra, undone.roots);
+    const results = await restoreAndReload(extra, undone.roots);
+    const failure = results.find((r) => r.error);
+    if (failure) throw new Error(`Redo stopped partway: ${failure.error}`);
     if (undone.removedHistory) {
       dispatch(appendHistory(undone.removedHistory));
     }

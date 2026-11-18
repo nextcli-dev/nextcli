@@ -14,6 +14,7 @@ export const WEBVIEW_TO_CORE_PASS_THROUGH: (keyof ToCoreFromWebviewProtocol)[] =
     "history/save",
     "history/clear",
     "snapshot/capture",
+    "snapshot/preserve",
     "snapshot/finishTurn",
     "snapshot/planRevert",
     "snapshot/restore",

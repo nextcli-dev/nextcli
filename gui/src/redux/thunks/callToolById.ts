@@ -3,6 +3,7 @@ import { ContextItem, McpUiState } from "core";
 import { CLIENT_TOOLS_IMPLS } from "core/tools/builtIn";
 import { ContinueError, ContinueErrorReason } from "core/util/errors";
 
+import { preserveBeforeToolWrite } from "../../undo/turnSnapshot";
 import { callClientTool } from "../../util/clientTools/callClientTool";
 import { selectSelectedChatModel } from "../slices/configSlice";
 import {
@@ -50,6 +51,13 @@ export const callToolById = createAsyncThunk<
     setToolCallCalling({
       toolCallId,
     }),
+  );
+
+  // Undo needs ignored files as they were before an edit tool writes them.
+  await preserveBeforeToolWrite(
+    { dispatch, extra, getState },
+    toolCallState.toolCall.function.name,
+    toolCallState.parsedArgs,
   );
 
   let output: ContextItem[] | undefined = undefined;

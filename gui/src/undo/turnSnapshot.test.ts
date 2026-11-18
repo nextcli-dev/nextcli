@@ -10,6 +10,7 @@ import {
   isTurnOver,
   lastUndoableIndex,
   planUndo,
+  preserveBeforeToolWrite,
 } from "./turnSnapshot";
 
 const ROOT = "/repo";
@@ -56,6 +57,7 @@ const plan = {
         restore: ["a.ts"],
         delete: ["new.ts"],
         conflicts: [],
+        skipped: [],
       },
     },
   ],
@@ -145,6 +147,56 @@ describe("turn snapshots", () => {
     expect(await finishTurnSnapshotIfDone(api(store))).toBe(false);
   });
 
+  it("saves an edit tool's file into the turn's checkpoint first", async () => {
+    const checkpoint = { v: 1, roots: [{ root: ROOT, start: "start" }] };
+    const store = storeWith([item("user", "go", { checkpoint } as any)]);
+    const requests: any[] = [];
+    store.mockIdeMessenger.responseHandlers["snapshot/preserve"] = async (
+      data: any,
+    ) => {
+      requests.push(data);
+      return {
+        v: 1,
+        roots: [{ root: ROOT, start: "start2", written: [".env"] }],
+      };
+    };
+
+    // Tools that don't write files never ask.
+    await preserveBeforeToolWrite(api(store), "read_file", {
+      filepath: ".env",
+    });
+    expect(requests).toEqual([]);
+
+    await preserveBeforeToolWrite(api(store), "edit_existing_file", {
+      filepath: ".env",
+    });
+    expect(requests).toEqual([
+      expect.objectContaining({ checkpoint, filepaths: [".env"] }),
+    ]);
+    expect(
+      (store.getState() as RootState).session.history[0].checkpoint,
+    ).toEqual({
+      v: 1,
+      roots: [{ root: ROOT, start: "start2", written: [".env"] }],
+    });
+  });
+
+  it("never fails a tool when saving its file fails", async () => {
+    const checkpoint = { v: 1, roots: [{ root: ROOT, start: "start" }] };
+    const store = storeWith([item("user", "go", { checkpoint } as any)]);
+    store.mockIdeMessenger.responseHandlers["snapshot/preserve"] = async () => {
+      throw new Error("git broke");
+    };
+    await expect(
+      preserveBeforeToolWrite(api(store), "create_new_file", {
+        filepath: "x.log",
+      }),
+    ).resolves.toBeUndefined();
+    expect(
+      (store.getState() as RootState).session.history[0].checkpoint,
+    ).toEqual(checkpoint);
+  });
+
   it("never fails the turn when snapshots are unavailable", async () => {
     const store = storeWith([item("user", "go")]);
     delete store.mockIdeMessenger.responses["snapshot/capture"];
@@ -222,6 +274,49 @@ describe("undo and redo", () => {
     session = (store.getState() as RootState).session;
     expect(session.history).toEqual(history);
     expect(session.undoneTurn).toBeUndefined();
+  });
+
+  it("keeps redo and the conversation when an undo fails partway", async () => {
+    const store = undoStore();
+    store.mockIdeMessenger.responseHandlers["snapshot/restore"] = async ({
+      roots,
+    }: any) => ({
+      roots: roots.map((r: any) => ({
+        root: r.root,
+        result: {
+          restored: ["a.ts"],
+          deleted: [],
+          keptIgnored: [],
+          skipped: [],
+          redoTree: "redo",
+        },
+        error: "The restore stopped partway: EACCES",
+      })),
+    });
+    const planned: any = await store.dispatch(
+      planUndo({ fromIndex: 2 }) as any,
+    );
+    const action: any = await store.dispatch(
+      applyUndo({
+        plan: planned.payload,
+        mode: "code-and-conversation",
+      }) as any,
+    );
+    expect(action.error.message).toMatch(/stopped partway.*Redo puts back/);
+    const session = (store.getState() as RootState).session;
+    expect(session.history).toHaveLength(4);
+    expect(session.undoneTurn).toEqual({
+      roots: [
+        {
+          root: ROOT,
+          targets: [
+            { path: "a.ts", tree: "redo" },
+            { path: "new.ts", tree: "redo" },
+          ],
+        },
+      ],
+      removedHistory: undefined,
+    });
   });
 
   it("keeps the conversation when restoring code only", async () => {

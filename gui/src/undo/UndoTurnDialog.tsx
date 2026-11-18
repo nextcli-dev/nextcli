@@ -39,7 +39,10 @@ function FileList({
 }
 
 /** Prefixes paths with their folder name when several repositories are open. */
-function filesOf(plan: UndoPlan, key: "restore" | "delete" | "conflicts") {
+function filesOf(
+  plan: UndoPlan,
+  key: "restore" | "delete" | "conflicts" | "skipped",
+) {
   const many = plan.roots.length > 1;
   return plan.roots.flatMap(({ root, plan: p }) => {
     const folder = root.split(/[\\/]/).pop() ?? root;
@@ -84,6 +87,7 @@ export function UndoTurnDialog({ fromIndex }: { fromIndex: number }) {
   const restore = plan ? filesOf(plan, "restore") : [];
   const remove = plan ? filesOf(plan, "delete") : [];
   const conflicts = plan ? filesOf(plan, "conflicts") : [];
+  const skipped = plan ? filesOf(plan, "skipped") : [];
 
   return (
     <div className="p-4 pt-0" data-testid="undo-turn-dialog">
@@ -98,7 +102,7 @@ export function UndoTurnDialog({ fromIndex }: { fromIndex: number }) {
       )}
       {plan && (
         <div className="text-sm">
-          {restore.length + remove.length === 0 && (
+          {restore.length + remove.length + skipped.length === 0 && (
             <p>These turns changed no files.</p>
           )}
           <FileList label="Put back" files={restore} className="text-success" />
@@ -112,9 +116,15 @@ export function UndoTurnDialog({ fromIndex }: { fromIndex: number }) {
             files={conflicts}
             className="text-warning"
           />
+          <FileList
+            label="Left as they are (submodules, git metadata)"
+            files={skipped}
+            className="text-description"
+          />
           <p className="text-description mt-3 text-xs">
             Unsaved changes in these files are replaced. Files outside git,
-            ignored files and submodules aren't restored.
+            submodules, and ignored files that terminal commands changed aren't
+            restored.
           </p>
         </div>
       )}

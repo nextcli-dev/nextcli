@@ -13,6 +13,8 @@ import { pathToFileURL } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
+import type { TurnCheckpoint } from "@nextcli/snapshot";
+
 import { SnapshotManager } from "./SnapshotManager";
 
 function setup() {
@@ -65,7 +67,7 @@ describe("SnapshotManager", () => {
     expect(readFileSync(path.join(repo, "a.txt"), "utf8")).toBe("a1\n");
     expect(existsSync(path.join(repo, "b.txt"))).toBe(false);
 
-    const { result } = undone.roots[0];
+    const result = undone.roots[0].result!;
     await manager.restore({
       roots: [
         {
@@ -79,6 +81,49 @@ describe("SnapshotManager", () => {
     });
     expect(readFileSync(path.join(repo, "a.txt"), "utf8")).toBe("a2\n");
     expect(readFileSync(path.join(repo, "b.txt"), "utf8")).toBe("b\n");
+  });
+
+  it("saves ignored files an edit tool writes, so undo covers them", async () => {
+    const { repo, manager } = setup();
+    writeFileSync(path.join(repo, ".gitignore"), ".env\n");
+    writeFileSync(path.join(repo, ".env"), "v1\n");
+    const { roots } = await manager.capture("session/1");
+    let checkpoint: TurnCheckpoint = {
+      v: 1,
+      roots: roots.map((r) => ({ root: r.root, start: r.tree })),
+    };
+    checkpoint = await manager.preserve(
+      checkpoint,
+      [path.join(repo, ".env"), path.join(repo, "a.txt")],
+      "session/1",
+    );
+    expect(checkpoint.roots[0].written).toEqual([".env"]);
+    writeFileSync(path.join(repo, ".env"), "agent\n");
+    checkpoint = await manager.finishTurn(checkpoint, "session/1");
+    expect(checkpoint.roots[0].files).toEqual([".env"]);
+
+    const { roots: plans } = await manager.planRevert([checkpoint]);
+    await manager.restore({
+      roots: plans.map((p) => ({ root: p.root, targets: p.plan.targets })),
+    });
+    expect(readFileSync(path.join(repo, ".env"), "utf8")).toBe("v1\n");
+  });
+
+  it("reports a restore that failed instead of throwing", async () => {
+    const { repo, manager } = setup();
+    const { roots } = await manager.capture();
+    const restored = await manager.restore({
+      roots: [
+        { root: repo, targets: [{ path: ".GIT/config", tree: roots[0].tree }] },
+      ],
+    });
+    expect(restored.roots).toEqual([
+      {
+        root: repo,
+        result: undefined,
+        error: expect.stringMatching(/git metadata/),
+      },
+    ]);
   });
 
   it("refuses to restore a work tree that is no longer open", async () => {

@@ -85,6 +85,10 @@ export type ToCoreFromIdeOrWebviewProtocol = {
 
   // Snapshots for undoing agent turns
   "snapshot/capture": [{ pin?: string }, SnapshotRoots];
+  "snapshot/preserve": [
+    { checkpoint: TurnCheckpoint; filepaths: string[]; pin?: string },
+    TurnCheckpoint,
+  ];
   "snapshot/finishTurn": [
     { checkpoint: TurnCheckpoint; pin?: string },
     TurnCheckpoint,

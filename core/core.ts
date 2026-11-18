@@ -21,6 +21,9 @@ import { EditAggregator } from "./nextEdit/context/aggregateEdits";
 import { createNewPromptFileV2 } from "./promptFiles/createNewPromptFile";
 import { callTool } from "./tools/callTool";
 import { ChatDescriber } from "./util/chatDescriber";
+import { resolveEditableFileUri } from "./util/ideUtils";
+import { resolveNewFilePath } from "./util/pathResolver";
+import { localPathOrUriToPath } from "./util/pathToUri";
 import { compactConversation } from "./util/conversationCompaction";
 import { GlobalContext } from "./util/GlobalContext";
 import { SnapshotManager } from "./snapshot/SnapshotManager";
@@ -341,6 +344,25 @@ export class Core {
 
     // Snapshots for undoing agent turns
     on("snapshot/capture", (msg) => this.snapshotManager.capture(msg.data.pin));
+    on("snapshot/preserve", async (msg) => {
+      // Resolve the paths the way the edit tools do, existing or new.
+      const filepaths: string[] = [];
+      for (const filepath of msg.data.filepaths) {
+        const uri =
+          (await resolveEditableFileUri(filepath, this.ide)) ??
+          (await resolveNewFilePath(this.ide, filepath)
+            .then((resolved) => resolved.uri)
+            .catch(() => undefined));
+        if (uri && (!uri.includes("://") || uri.startsWith("file://"))) {
+          filepaths.push(localPathOrUriToPath(uri));
+        }
+      }
+      return this.snapshotManager.preserve(
+        msg.data.checkpoint,
+        filepaths,
+        msg.data.pin,
+      );
+    });
     on("snapshot/finishTurn", (msg) =>
       this.snapshotManager.finishTurn(msg.data.checkpoint, msg.data.pin),
     );

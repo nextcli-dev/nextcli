@@ -1,5 +1,6 @@
 import {
   openSnapshotter,
+  RestoreError,
   type OpenSnapshotterResult,
   type RestoreResult,
   type RestoreTarget,
@@ -26,7 +27,13 @@ export interface SnapshotRestoreRequest {
 }
 
 export interface SnapshotRestoreResult {
-  roots: { root: string; result: RestoreResult }[];
+  /**
+   * One entry per work tree restored, in request order. A restore that
+   * failed is the last entry, with `error`; it has a `result` (with the redo
+   * tree) only if it changed files before it failed. Later roots are not
+   * attempted.
+   */
+  roots: { root: string; result?: RestoreResult; error?: string }[];
 }
 
 /**
@@ -53,6 +60,32 @@ export class SnapshotManager {
     return { roots };
   }
 
+  /**
+   * Called before an edit tool writes `filepaths` (absolute local paths).
+   * Saves the ignored ones, which snapshots leave out, into each work
+   * tree's start, so undo covers them. Returns the updated checkpoint.
+   */
+  async preserve(
+    checkpoint: TurnCheckpoint,
+    filepaths: string[],
+    pin?: string,
+  ): Promise<TurnCheckpoint> {
+    const byRoot = await this.byRoot();
+    const roots = await Promise.all(
+      checkpoint.roots.map(async (root) => {
+        const snapshotter = byRoot.get(root.root);
+        if (!snapshotter) return root;
+        const { start, written } = await snapshotter.preserve(
+          root,
+          filepaths,
+          pin ? `${pin}/start` : undefined,
+        );
+        return written.length > 0 ? { ...root, start, written } : root;
+      }),
+    );
+    return { v: 1, roots };
+  }
+
   /** Captures the end of a turn and the files it changed, per work tree. */
   async finishTurn(
     checkpoint: TurnCheckpoint,
@@ -66,6 +99,7 @@ export class SnapshotManager {
         const { end, files } = await snapshotter.finishTurn(
           root.start,
           pin ? `${pin}/end` : undefined,
+          root.written,
         );
         return { ...root, end, files };
       }),
@@ -81,7 +115,12 @@ export class SnapshotManager {
     for (const checkpoint of checkpoints) {
       for (const root of checkpoint.roots) {
         const turns = turnsByRoot.get(root.root) ?? [];
-        turns.push({ start: root.start, end: root.end, files: root.files });
+        turns.push({
+          start: root.start,
+          end: root.end,
+          files: root.files,
+          written: root.written,
+        });
         turnsByRoot.set(root.root, turns);
       }
     }
@@ -97,18 +136,32 @@ export class SnapshotManager {
     return { roots };
   }
 
-  /** Restores files; used for undo and, with the redo trees, for redo. */
+  /**
+   * Restores files; used for undo and, with the redo trees, for redo. Stops
+   * at the first work tree that fails and reports it, so the caller can
+   * still offer redo for what was changed.
+   */
   async restore(
     request: SnapshotRestoreRequest,
   ): Promise<SnapshotRestoreResult> {
     const byRoot = await this.byRoot();
-    const roots: SnapshotRestoreResult["roots"] = [];
-    for (const { root, targets } of request.roots) {
-      const snapshotter = byRoot.get(root);
-      if (!snapshotter) {
+    for (const { root } of request.roots) {
+      if (!byRoot.has(root)) {
         throw new Error(`${root} is no longer open, so it can't be restored.`);
       }
-      roots.push({ root, result: await snapshotter.restore(targets) });
+    }
+    const roots: SnapshotRestoreResult["roots"] = [];
+    for (const { root, targets } of request.roots) {
+      try {
+        roots.push({ root, result: await byRoot.get(root)!.restore(targets) });
+      } catch (error) {
+        roots.push({
+          root,
+          result: error instanceof RestoreError ? error.partial : undefined,
+          error: (error as Error).message,
+        });
+        break;
+      }
     }
     return { roots };
   }
