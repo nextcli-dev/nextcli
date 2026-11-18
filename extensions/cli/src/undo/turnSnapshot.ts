@@ -4,6 +4,7 @@ import { services } from "../services/index.js";
 import { getCurrentSession } from "../session.js";
 import { logger } from "../util/logger.js";
 
+import { setBeforeFileWriteHook } from "./beforeFileWrite.js";
 import type { OpenTurn, UndoPlan } from "./SnapshotService.js";
 import { describeReason } from "./SnapshotService.js";
 
@@ -32,22 +33,48 @@ export async function beginTurnSnapshot(): Promise<OpenTurn | undefined> {
   if (!history[index].checkpoint) {
     services.chatHistory.setCheckpoint(index, begun.checkpoint);
   }
-  return begun.turn;
+  const turn = begun.turn;
+  setBeforeFileWriteHook((paths) => preserveBeforeWrite(turn, paths));
+  return turn;
 }
 
-/** Records the end of the turn on the user message that started it. */
-export async function finishTurnSnapshot(turn: OpenTurn): Promise<void> {
-  const checkpoint = await services.snapshot.finishTurn(turn);
-  if (!checkpoint) return;
-  // Find the message by its start snapshot: compaction may have moved it.
+/** The index of the user message whose checkpoint starts at `start`. */
+function messageWithStart(start: string): number {
   const history = services.chatHistory.getHistory();
   for (let i = history.length - 1; i >= 0; i--) {
     const item = history[i];
     if (item.message.role !== "user") continue;
-    if (item.checkpoint?.roots.some((root) => root.start === turn.start)) {
-      services.chatHistory.setCheckpoint(i, checkpoint);
-      return;
-    }
+    if (item.checkpoint?.roots.some((root) => root.start === start)) return i;
+  }
+  return -1;
+}
+
+/**
+ * Saves ignored files a tool is about to write into the turn's start, and
+ * stores the new start on the turn's message straight away, so undo of an
+ * interrupted turn covers them too.
+ */
+async function preserveBeforeWrite(
+  turn: OpenTurn,
+  paths: string[],
+): Promise<void> {
+  const before = turn.start;
+  const checkpoint = await services.snapshot.preserve(turn, paths);
+  if (!checkpoint) return;
+  const index = messageWithStart(before);
+  if (index >= 0) services.chatHistory.setCheckpoint(index, checkpoint);
+}
+
+/** Records the end of the turn on the user message that started it. */
+export async function finishTurnSnapshot(turn: OpenTurn): Promise<void> {
+  setBeforeFileWriteHook(undefined);
+  const checkpoint = await services.snapshot.finishTurn(turn);
+  if (!checkpoint) return;
+  // Find the message by its start snapshot: compaction may have moved it.
+  const index = messageWithStart(turn.start);
+  if (index >= 0) {
+    services.chatHistory.setCheckpoint(index, checkpoint);
+    return;
   }
   logger.debug("The turn's message is gone; its end snapshot isn't stored");
 }
@@ -97,8 +124,9 @@ export async function applyUndo(
   if (result.keptIgnored.length > 0) {
     message += ` Kept ${result.keptIgnored.join(", ")}: ignored by git.`;
   }
-  if (result.skipped.length > 0) {
-    message += ` Submodules aren't restored: ${result.skipped.join(", ")}.`;
+  const skipped = [...new Set([...plan.plan.skipped, ...result.skipped])];
+  if (skipped.length > 0) {
+    message += ` Left as they are (submodules, git metadata): ${skipped.join(", ")}.`;
   }
   if (mode === "code-and-conversation") {
     message += " Press ↑ to recall the prompt.";

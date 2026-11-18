@@ -1,6 +1,8 @@
 import { execFileSync } from "node:child_process";
 import {
+  chmodSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
@@ -123,6 +125,37 @@ describe("SnapshotService", () => {
     expect(service.getState().canRedo).toBe(false);
     expect(await service.redo()).toBeUndefined();
   });
+
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "keeps redo when an undo fails after changing files",
+    async () => {
+      const { root, storeRoot } = createRepo();
+      const service = new SnapshotService();
+      await service.initialize({ enabled: true, cwd: root, storeRoot });
+      await service.settled();
+
+      const begun = await service.beginTurn("s");
+      writeFileSync(path.join(root, "a.txt"), "a2\n");
+      mkdirSync(path.join(root, "locked"));
+      writeFileSync(path.join(root, "locked", "new.txt"), "new\n");
+      const checkpoint = await service.finishTurn(begun!.turn);
+      const history = [{ ...user("x"), checkpoint }];
+      const plan = await service.planUndo(history, 0);
+
+      // a.txt is restored, then deleting locked/new.txt fails.
+      chmodSync(path.join(root, "locked"), 0o555);
+      try {
+        await expect(service.undo(plan)).rejects.toThrow(/partway/);
+      } finally {
+        chmodSync(path.join(root, "locked"), 0o755);
+      }
+      expect(readFileSync(path.join(root, "a.txt"), "utf8")).toBe("a1\n");
+      expect(service.getState().canRedo).toBe(true);
+
+      await service.redo();
+      expect(readFileSync(path.join(root, "a.txt"), "utf8")).toBe("a2\n");
+    },
+  );
 
   it("makes an undo final once the next turn starts", async () => {
     const { root, storeRoot } = createRepo();

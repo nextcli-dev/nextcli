@@ -13,6 +13,7 @@ import type { ChatHistoryItem } from "core/index.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { services } from "../services/index.js";
+import { writeFileTool } from "../tools/writeFile.js";
 
 import {
   applyRedo,
@@ -53,20 +54,70 @@ beforeEach(async () => {
 });
 
 /** Runs one turn the way useChat does: snapshot, tool writes, snapshot. */
-async function runTurn(prompt: string, write: () => void) {
+async function runTurn(prompt: string, write: () => void | Promise<void>) {
   services.chatHistory.setHistory([
     ...services.chatHistory.getHistory(),
     user(prompt),
   ]);
   const turn = await beginTurnSnapshot();
   expect(turn).toBeDefined();
-  write();
+  await write();
   services.chatHistory.setHistory([
     ...services.chatHistory.getHistory(),
     assistant(`did ${prompt}`),
   ]);
   await finishTurnSnapshot(turn!);
 }
+
+describe("ignored files written by file tools", () => {
+  const log = () => path.join(root, "debug.log");
+  beforeEach(() => {
+    writeFileSync(path.join(root, ".gitignore"), "*.log\n");
+    writeFileSync(log(), "v1\n");
+  });
+
+  it("undoes a tool's edit to an ignored file", async () => {
+    await runTurn("edit the log", async () => {
+      await writeFileTool.run({ filepath: log(), content: "agent\n" });
+    });
+    const history = services.chatHistory.getHistory();
+    expect(history[0].checkpoint?.roots[0]).toMatchObject({
+      files: ["debug.log"],
+      written: ["debug.log"],
+    });
+
+    const plan = await services.snapshot.planUndo(history, 0);
+    expect(plan.plan.restore).toEqual(["debug.log"]);
+    const undone = await applyUndo(history, plan, "code");
+    expect(readFileSync(log(), "utf8")).toBe("v1\n");
+
+    await applyRedo(undone.history ?? history);
+    expect(readFileSync(log(), "utf8")).toBe("agent\n");
+  });
+
+  it("covers the write even if the turn never finished", async () => {
+    services.chatHistory.setHistory([user("crash")]);
+    const turn = await beginTurnSnapshot();
+    await writeFileTool.run({ filepath: log(), content: "agent\n" });
+    // The turn dies here: no end snapshot.
+    const history = services.chatHistory.getHistory();
+    expect(history[0].checkpoint?.roots[0].written).toEqual(["debug.log"]);
+    expect(history[0].checkpoint?.roots[0].start).toBe(turn!.start);
+
+    const plan = await services.snapshot.planUndo(history, 0);
+    expect(plan.plan.conflicts).toEqual(["debug.log"]);
+    await applyUndo(history, plan, "code");
+    expect(readFileSync(log(), "utf8")).toBe("v1\n");
+    await finishTurnSnapshot(turn!);
+  });
+
+  it("leaves the hook off between turns", async () => {
+    await runTurn("noop", () => {});
+    await writeFileTool.run({ filepath: log(), content: "later\n" });
+    const [item] = services.chatHistory.getHistory();
+    expect(item.checkpoint?.roots[0].written).toBeUndefined();
+  });
+});
 
 describe("turn snapshots in the chat", () => {
   it("stores the start, end and changed files on the user message", async () => {

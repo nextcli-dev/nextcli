@@ -119,7 +119,11 @@ export function RestoreSelector({
     );
   }
 
-  const nothing = plan.plan.restore.length + plan.plan.delete.length === 0;
+  const nothing =
+    plan.plan.restore.length +
+      plan.plan.delete.length +
+      plan.plan.skipped.length ===
+    0;
 
   return (
     <Box {...defaultBoxStyles("yellow")}>
@@ -142,6 +146,11 @@ export function RestoreSelector({
         label="Changed since the agent wrote them, will be overwritten"
         files={plan.plan.conflicts}
         color="yellow"
+      />
+      <FileList
+        label="Left as they are (submodules, git metadata)"
+        files={plan.plan.skipped}
+        color="gray"
       />
       <Box flexDirection="column" marginTop={1}>
         {CHOICES.map((choice, index) => (

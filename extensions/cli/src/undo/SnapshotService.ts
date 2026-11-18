@@ -2,7 +2,9 @@ import * as path from "path";
 
 import {
   openSnapshotter,
+  RestoreError,
   type RestoreResult,
+  type RestoreTarget,
   type RevertPlan,
   type Snapshotter,
   type TurnCheckpoint,
@@ -38,16 +40,19 @@ export interface UndoPlan {
 }
 
 interface RedoEntry {
-  redoTree: string;
-  paths: string[];
+  /** The undo's targets, with the tree of the state before the undo. */
+  targets: RestoreTarget[];
   /** History removed by the undo, put back by redo. */
   removedHistory?: ChatHistoryItem[];
 }
 
 /** A turn whose start was captured and whose end is still to come. */
 export interface OpenTurn {
+  /** Grows when a file tool is about to write an ignored file. */
   start: string;
   pinPrefix: string;
+  /** Ignored files the turn's file tools wrote (see `preserve`). */
+  written: string[];
 }
 
 /**
@@ -73,6 +78,9 @@ export class SnapshotService extends BaseService<SnapshotServiceState> {
   private redoStack: RedoEntry[] = [];
   private opening: Promise<void> = Promise.resolve();
   private background: Promise<unknown> = Promise.resolve();
+  /** Preserves run one at a time: each extends the turn's start. */
+  private preserving: Promise<unknown> = Promise.resolve();
+  private preserveCount = 0;
 
   constructor() {
     super("SnapshotService", { enabled: false, canRedo: false });
@@ -154,9 +162,19 @@ export class SnapshotService extends BaseService<SnapshotServiceState> {
     try {
       const start =
         root?.start ?? (await snapshotter.capture(`${pinPrefix}/start`));
+      const written = root?.written ?? [];
       return {
-        checkpoint: { v: 1, roots: [{ root: snapshotter.toplevel, start }] },
-        turn: { start, pinPrefix },
+        checkpoint: {
+          v: 1,
+          roots: [
+            {
+              root: snapshotter.toplevel,
+              start,
+              ...(written.length > 0 ? { written } : {}),
+            },
+          ],
+        },
+        turn: { start, pinPrefix, written: [...written] },
       };
     } catch (error) {
       logger.warn("Could not snapshot the work tree before the turn", {
@@ -166,18 +184,70 @@ export class SnapshotService extends BaseService<SnapshotServiceState> {
     }
   }
 
+  /**
+   * Called before a file tool writes `paths`. Saves the current bytes of
+   * the ignored ones, which snapshots leave out, into the turn's start.
+   * Returns the turn's checkpoint when it changed, so the caller can store
+   * it; an interrupted turn then still covers those files.
+   */
+  preserve(
+    turn: OpenTurn,
+    paths: string[],
+  ): Promise<TurnCheckpoint | undefined> {
+    const next = this.preserving.then(async () => {
+      const snapshotter = this.snapshotter;
+      if (!snapshotter) return undefined;
+      const count = ++this.preserveCount;
+      const result = await snapshotter.preserve(
+        turn,
+        paths,
+        `${turn.pinPrefix}/start-${count}`,
+      );
+      if (
+        result.start === turn.start &&
+        result.written.length === turn.written.length
+      ) {
+        return undefined;
+      }
+      turn.start = result.start;
+      turn.written = result.written;
+      return {
+        v: 1 as const,
+        roots: [
+          {
+            root: snapshotter.toplevel,
+            start: turn.start,
+            written: turn.written,
+          },
+        ],
+      };
+    });
+    this.preserving = next.catch(() => {});
+    return next;
+  }
+
   /** Captures the end of a turn and the files it changed. */
   async finishTurn(turn: OpenTurn): Promise<TurnCheckpoint | undefined> {
     const snapshotter = this.snapshotter;
     if (!snapshotter) return undefined;
     try {
+      await this.preserving;
       const { end, files } = await snapshotter.finishTurn(
         turn.start,
         `${turn.pinPrefix}/end`,
+        turn.written,
       );
       return {
         v: 1,
-        roots: [{ root: snapshotter.toplevel, start: turn.start, end, files }],
+        roots: [
+          {
+            root: snapshotter.toplevel,
+            start: turn.start,
+            end,
+            files,
+            ...(turn.written.length > 0 ? { written: turn.written } : {}),
+          },
+        ],
       };
     } catch (error) {
       logger.warn("Could not snapshot the work tree after the turn", {
@@ -226,14 +296,22 @@ export class SnapshotService extends BaseService<SnapshotServiceState> {
     removedHistory?: ChatHistoryItem[],
   ): Promise<RestoreResult> {
     const snapshotter = this.requireSnapshotter();
-    const result = await snapshotter.restore(plan.plan.targets);
-    this.redoStack.push({
-      redoTree: result.redoTree,
-      paths: plan.plan.targets.map((t) => t.path),
-      removedHistory,
-    });
-    this.setState({ canRedo: true });
-    return result;
+    const pushRedo = (redoTree: string) => {
+      this.redoStack.push({
+        targets: plan.plan.targets.map((t) => ({ ...t, tree: redoTree })),
+        removedHistory,
+      });
+      this.setState({ canRedo: true });
+    };
+    try {
+      const result = await snapshotter.restore(plan.plan.targets);
+      pushRedo(result.redoTree);
+      return result;
+    } catch (error) {
+      // Some files already changed; redo can still put them back.
+      if (error instanceof RestoreError) pushRedo(error.redoTree);
+      throw error;
+    }
   }
 
   /** Re-applies the last undo. Returns the messages to put back, if any. */
@@ -244,9 +322,7 @@ export class SnapshotService extends BaseService<SnapshotServiceState> {
     const entry = this.redoStack.pop();
     if (!entry) return undefined;
     try {
-      const result = await snapshotter.restore(
-        entry.paths.map((p) => ({ path: p, tree: entry.redoTree })),
-      );
+      const result = await snapshotter.restore(entry.targets);
       return { result, removedHistory: entry.removedHistory };
     } catch (error) {
       this.redoStack.push(entry);
@@ -284,7 +360,12 @@ export class SnapshotService extends BaseService<SnapshotServiceState> {
       (r) => r.root === this.snapshotter?.toplevel,
     );
     return root
-      ? { start: root.start, end: root.end, files: root.files }
+      ? {
+          start: root.start,
+          end: root.end,
+          files: root.files,
+          written: root.written,
+        }
       : undefined;
   }
 
