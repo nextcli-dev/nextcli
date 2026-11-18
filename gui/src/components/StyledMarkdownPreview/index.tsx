@@ -14,6 +14,7 @@ import {
 } from "..";
 import useUpdatingRef from "../../hooks/useUpdatingRef";
 import { varWithFallback } from "../../styles/theme";
+import { shallowEqual } from "react-redux";
 import { useAppSelector } from "../../redux/hooks";
 import { selectUIConfig } from "../../redux/slices/configSlice";
 import { getContextItemsFromHistory } from "../../redux/thunks/updateFileSymbols";
@@ -208,6 +209,8 @@ function getCodeChildrenContent(children: any) {
   return undefined;
 }
 
+const NO_CONTEXT_ITEMS: ReturnType<typeof getContextItemsFromHistory> = [];
+
 const StyledMarkdownPreview = memo(function StyledMarkdownPreview(
   props: StyledMarkdownPreviewProps,
 ) {
@@ -218,17 +221,23 @@ const StyledMarkdownPreview = memo(function StyledMarkdownPreview(
   // The logic here is to get file names from
   // 1. Context items found in past messages
   // 2. Toolbar Codeblocks found in past messages
-  const history = useAppSelector((state) => state.session.history);
+  // Only the context items, compared item by item: they keep their identity
+  // while a reply streams, so the stream doesn't re-render every message
+  const pastContextItems = useAppSelector(
+    (state) =>
+      props.itemIndex === undefined
+        ? NO_CONTEXT_ITEMS
+        : getContextItemsFromHistory(state.session.history, props.itemIndex),
+    shallowEqual,
+  );
   const allSymbols = useAppSelector((state) => state.session.symbols);
   const pastFileInfo = useMemo(() => {
-    const index = props.itemIndex;
-    if (index === undefined) {
+    if (props.itemIndex === undefined) {
       return {
         symbols: [],
         rifs: [],
       };
     }
-    const pastContextItems = getContextItemsFromHistory(history, index);
     const rifs = pastContextItems.map((item) =>
       ctxItemToRifWithContents(item, true),
     );
@@ -241,7 +250,7 @@ const StyledMarkdownPreview = memo(function StyledMarkdownPreview(
       symbols,
       rifs,
     };
-  }, [props.itemIndex, history, allSymbols]);
+  }, [props.itemIndex, pastContextItems, allSymbols]);
   const pastFileInfoRef = useUpdatingRef(pastFileInfo);
   const itemIndexRef = useUpdatingRef(props.itemIndex);
 

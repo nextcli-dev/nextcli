@@ -37,7 +37,7 @@ import { useWebviewListener } from "./useWebviewListener";
 function ParallelListeners() {
   const dispatch = useAppDispatch();
   const ideMessenger = useContext(IdeMessengerContext);
-  const history = useAppSelector((store) => store.session.history);
+  const historyLength = useAppSelector((store) => store.session.history.length);
   const isInEdit = useAppSelector((store) => store.session.isInEdit);
   const selectedProfileId = useAppSelector(
     (store) => store.profiles.selectedProfileId,
@@ -158,9 +158,9 @@ function ParallelListeners() {
   useWebviewListener(
     "getWebviewHistoryLength",
     async () => {
-      return history.length;
+      return historyLength;
     },
-    [history],
+    [historyLength],
   );
 
   useWebviewListener(
@@ -198,9 +198,9 @@ function ParallelListeners() {
 
   useEffect(() => {
     if (!isInEdit) {
-      dispatch(setLastNonEditSessionEmpty(history.length === 0));
+      dispatch(setLastNonEditSessionEmpty(historyLength === 0));
     }
-  }, [isInEdit, history]);
+  }, [isInEdit, historyLength]);
 
   useEffect(() => {
     migrateLocalStorage(dispatch);
