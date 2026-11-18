@@ -1,6 +1,7 @@
 import {
   ASK_QUESTION_DESCRIPTION,
   ASK_QUESTION_PARAMETERS,
+  CLI_ASK_QUESTION_TOOL_NAME,
   formatAnswers,
   normalizeQuestionArgs,
   QuestionSet,
@@ -16,7 +17,7 @@ import { Tool } from "./types.js";
  * ask_question tool through @nextcli/ask-question.
  */
 export const askQuestionTool: Tool = {
-  name: "AskQuestion",
+  name: CLI_ASK_QUESTION_TOOL_NAME,
   displayName: "Ask Question",
   description: ASK_QUESTION_DESCRIPTION,
   parameters: ASK_QUESTION_PARAMETERS,

@@ -1,3 +1,4 @@
+import { ASK_QUESTION_TOOL_NAME } from "@nextcli/ask-question";
 import { describe, expect, it } from "vitest";
 
 import { IDE } from "../..";
@@ -26,6 +27,11 @@ function parseSystemToolCall(text: string): Record<string, unknown> {
 }
 
 describe("askQuestionTool", () => {
+  it("uses the name the shared package gives the extension's tool", () => {
+    // BuiltInToolNames is a string enum, which can't take the constant itself
+    expect(askQuestionTool.function.name).toBe(ASK_QUESTION_TOOL_NAME);
+  });
+
   it("runs in the webview, needs no approval and is offered in plan mode", () => {
     expect(CLIENT_TOOLS_IMPLS).toContain(askQuestionTool.function.name);
     expect(askQuestionTool.defaultToolPolicy).toBe("allowedWithoutPermission");

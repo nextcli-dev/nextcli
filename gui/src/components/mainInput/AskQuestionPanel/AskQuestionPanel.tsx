@@ -7,15 +7,13 @@ import {
 } from "@heroicons/react/24/outline";
 import {
   AnswerSet,
-  draftsToAnswerSet,
-  firstUnanswered,
+  FormEvent,
+  FormState,
   isDraftAnswered,
+  MAX_NUMBER_KEY,
   normalizeQuestionArgs,
-  pickOption,
-  QuestionDraft,
   QuestionSet,
-  skipDraft,
-  typeOther,
+  reduceForm,
 } from "@nextcli/ask-question";
 import { ToolCallState } from "core";
 import {
@@ -37,7 +35,6 @@ import {
 import { getMetaKeyLabel, isMetaEquivalentKeyPressed } from "../../../util";
 import {
   loadQuestionDraft,
-  PanelDraft,
   saveQuestionDraft,
 } from "../../../util/askQuestionDrafts";
 import { cn } from "../../../util/cn";
@@ -48,13 +45,6 @@ import { ChoiceBadge, OptionRow } from "./OptionRow";
 
 const PANEL_CLASS =
   "bg-input text-input-foreground border-command-border focus-within:border-command-border-focus rounded-default flex flex-col gap-1.5 border border-solid px-2 pb-1.5 pt-2 outline-none";
-
-/** Highest option a number key can pick. */
-const MAX_NUMBER_KEY = 9;
-
-function replaceAt<T>(list: T[], index: number, value: T): T[] {
-  return list.map((item, i) => (i === index ? value : item));
-}
 
 function Kbd({ children }: { children: ReactNode }) {
   return <span className="ml-1 opacity-75">{children}</span>;
@@ -93,53 +83,20 @@ function IconButton({
 /**
  * The questions from an ask_question call, shown in place of the chat input.
  * Answering continues the turn; dismissing ends it and gives the input back.
+ * The paging, picking and sending rules are @nextcli/ask-question's form,
+ * shared with the cn prompt; this maps keys and clicks to its events.
  */
 export function AskQuestionPanel({
   toolCallState,
 }: {
   toolCallState: ToolCallState;
 }) {
-  const set = useMemo(() => {
-    try {
-      return normalizeQuestionArgs(toolCallState.parsedArgs);
-    } catch {
-      return undefined;
-    }
-  }, [toolCallState.parsedArgs]);
-
-  if (!set) {
-    return <UnreadableQuestion toolCallId={toolCallState.toolCallId} />;
-  }
-  return <QuestionForm toolCallId={toolCallState.toolCallId} set={set} />;
-}
-
-/** core validated the arguments, so this only shows if the two disagree. */
-function UnreadableQuestion({ toolCallId }: { toolCallId: string }) {
-  const dispatch = useAppDispatch();
-  const rowFont = useFontSize(FONT_STEP.row);
-  const controlFont = useFontSize(FONT_STEP.control);
-  return (
-    <div
-      className={PANEL_CLASS}
-      style={{ fontSize: rowFont }}
-      data-testid="ask-question-panel"
-    >
-      <span className="text-description" style={{ fontSize: controlFont }}>
-        NextCLI sent a question this panel can't show.
-      </span>
-      <div className="flex justify-end">
-        <Button
-          variant="primary"
-          size="sm"
-          className="my-0"
-          onClick={() => void dispatch(dismissQuestion({ toolCallId }))}
-          data-testid="ask-question-dismiss"
-        >
-          Dismiss
-        </Button>
-      </div>
-    </div>
+  // core ran the same normalization before the call reached "calling"
+  const set = useMemo(
+    () => normalizeQuestionArgs(toolCallState.parsedArgs),
+    [toolCallState.parsedArgs],
   );
+  return <QuestionForm toolCallId={toolCallState.toolCallId} set={set} />;
 }
 
 function QuestionForm({
@@ -155,49 +112,45 @@ function QuestionForm({
   const rowFont = useFontSize(FONT_STEP.row);
   const controlFont = useFontSize(FONT_STEP.control);
   const captionFont = useFontSize(FONT_STEP.caption);
-  const [draft, setDraft] = useState<PanelDraft>(() =>
-    loadQuestionDraft(toolCallId, set.questions.length),
+  const [form, setForm] = useState<FormState>(() =>
+    loadQuestionDraft(toolCallId, set),
   );
-  const [warning, setWarning] = useState("");
+  // Bumped after each event that should move focus to the field or the panel
+  const [focusRequest, setFocusRequest] = useState(1);
   const [hasFocus, setHasFocus] = useState(false);
-  const [focusTarget, setFocusTarget] = useState<"panel" | "other" | null>(
-    "panel",
-  );
   const finished = useRef(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const otherRef = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
 
   const total = set.questions.length;
-  const page = draft.page;
+  const page = form.page;
   const question = set.questions[page];
-  const current = draft.drafts[page];
+  const current = form.drafts[page];
   const optionCount = question.options.length;
-  const highlight = draft.highlight[page] ?? 0;
+  const highlight = form.highlight[page] ?? 0;
   const isLast = page === total - 1;
   const answered = isDraftAnswered(question, current);
-  // One single-choice question: picking an option is the whole answer.
-  const sendsOnPick = total === 1 && !question.multiSelect && optionCount > 0;
 
   useEffect(() => {
-    if (!finished.current) saveQuestionDraft(toolCallId, draft);
-  }, [toolCallId, draft]);
+    if (!finished.current) saveQuestionDraft(toolCallId, form);
+  }, [toolCallId, form]);
 
   // The editor grabs focus when streaming stops, which is exactly when the
   // panel appears, so focus is moved after the next paint.
   useEffect(() => {
-    if (!focusTarget) return;
     const frame = requestAnimationFrame(() => {
-      const other = otherRef.current;
-      if ((focusTarget === "other" || optionCount === 0) && other) {
-        other.focus({ preventScroll: true });
-        other.setSelectionRange(other.value.length, other.value.length);
+      const field = otherRef.current;
+      if (form.editing && field) {
+        if (document.activeElement !== field) {
+          field.focus({ preventScroll: true });
+          field.setSelectionRange(field.value.length, field.value.length);
+        }
       } else {
         panelRef.current?.focus({ preventScroll: true });
       }
-      setFocusTarget(null);
     });
     return () => cancelAnimationFrame(frame);
-  }, [focusTarget, optionCount, page]);
+  }, [focusRequest, form.editing, page]);
 
   function finish(answers: AnswerSet) {
     if (finished.current) return;
@@ -210,78 +163,16 @@ function QuestionForm({
     requestAnimationFrame(() => mainEditor?.commands.focus());
   }
 
-  function withCurrent(next: QuestionDraft, nextHighlight = highlight) {
-    return {
-      ...draft,
-      drafts: replaceAt(draft.drafts, page, next),
-      highlight: replaceAt(draft.highlight, page, nextHighlight),
-    };
-  }
-
-  /** Moves on from the current question, or sends when it is the last one. */
-  function advance(next: PanelDraft) {
-    setWarning("");
-    if (next.page < total - 1) {
-      setDraft({ ...next, page: next.page + 1 });
-      setFocusTarget("panel");
-      return;
+  /** Runs a form event; `moveFocus` is false while the field keeps focus. */
+  function apply(event: FormEvent, moveFocus = true) {
+    if (finished.current) return;
+    const step = reduceForm(set, form, event);
+    setForm(step.state);
+    if (step.answers) {
+      finish(step.answers);
+    } else if (moveFocus) {
+      setFocusRequest((n) => n + 1);
     }
-    const missing = firstUnanswered(set, next.drafts);
-    if (missing >= 0) {
-      setDraft({ ...next, page: missing });
-      setWarning(`Answer or skip question ${missing + 1} first.`);
-      setFocusTarget("panel");
-      return;
-    }
-    setDraft(next);
-    finish(draftsToAnswerSet(set, next.drafts));
-  }
-
-  function goNext() {
-    if (!answered) {
-      setWarning(
-        optionCount === 0
-          ? "Type an answer, or press Esc to skip."
-          : question.multiSelect
-            ? "Pick at least one option, or press Esc to skip."
-            : "Pick an option, or press Esc to skip.",
-      );
-      return;
-    }
-    advance(draft);
-  }
-
-  function skip() {
-    advance(withCurrent(skipDraft()));
-  }
-
-  function pick(index: number, thenAdvance: boolean) {
-    const next = withCurrent(pickOption(question, current, index), index);
-    setWarning("");
-    if (thenAdvance) {
-      advance(next);
-    } else {
-      setDraft(next);
-    }
-  }
-
-  function setOther(text: string) {
-    setWarning("");
-    setDraft(withCurrent(typeOther(question, current, text), optionCount));
-  }
-
-  function goPage(delta: number) {
-    const next = page + delta;
-    if (next < 0 || next >= total) return;
-    setWarning("");
-    setDraft({ ...draft, page: next });
-    setFocusTarget("panel");
-  }
-
-  function moveHighlight(delta: number) {
-    const next = Math.max(0, Math.min(optionCount, highlight + delta));
-    setDraft(withCurrent(current, next));
-    setFocusTarget(next === optionCount ? "other" : "panel");
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
@@ -297,7 +188,7 @@ function QuestionForm({
       if (!isMetaEquivalentKeyPressed(e)) return;
       if (e.key === "Enter") {
         e.preventDefault();
-        goNext();
+        apply({ type: "next" });
       } else if (!inText) {
         e.preventDefault();
         finish({ dismissed: true });
@@ -310,26 +201,17 @@ function QuestionForm({
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
-      if (inText && optionCount > 0) {
-        setDraft(withCurrent(current, optionCount));
-        setFocusTarget("panel");
-      } else {
-        skip();
-      }
+      apply({ type: "escape" });
       return;
     }
     if (e.key === "Enter" && !e.shiftKey && !e.altKey && !anyMod) {
       e.preventDefault();
-      if (inText || optionCount === 0 || question.multiSelect) {
-        goNext();
-      } else if (highlight < optionCount) {
-        pick(highlight, true);
-      } else {
-        setFocusTarget("other");
-      }
+      apply({ type: "enter" });
       return;
     }
     if (inText) {
+      // Other keys edit the text; ←/→ move the caret. ↑ at the start of the
+      // "Other" field goes back to the options.
       const field = target as HTMLInputElement;
       if (
         e.key === "ArrowUp" &&
@@ -338,28 +220,23 @@ function QuestionForm({
         field.selectionEnd === 0
       ) {
         e.preventDefault();
-        setDraft(withCurrent(current, optionCount - 1));
-        setFocusTarget("panel");
+        apply({ type: "move", delta: -1 });
       }
       return;
     }
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
-      moveHighlight(e.key === "ArrowDown" ? 1 : -1);
+      apply({ type: "move", delta: e.key === "ArrowDown" ? 1 : -1 });
       return;
     }
     if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
       e.preventDefault();
-      goPage(e.key === "ArrowRight" ? 1 : -1);
+      apply({ type: "page", delta: e.key === "ArrowRight" ? 1 : -1 });
       return;
     }
     if (e.key === " ") {
       e.preventDefault();
-      if (highlight < optionCount) {
-        pick(highlight, false);
-      } else {
-        setFocusTarget("other");
-      }
+      apply({ type: "toggle" });
       return;
     }
     if (anyMod || e.altKey || e.key.length !== 1) return;
@@ -367,15 +244,14 @@ function QuestionForm({
     if (Number.isInteger(number) && number >= 1 && number <= MAX_NUMBER_KEY) {
       if (number <= optionCount) {
         e.preventDefault();
-        pick(number - 1, false);
+        apply({ type: "pick", index: number - 1 });
       }
       return;
     }
     if (optionCount > 0) {
       // Typing anywhere in the panel writes the "Other" answer.
       e.preventDefault();
-      setOther(current.other + e.key);
-      setFocusTarget("other");
+      apply({ type: "type", text: current.other + e.key });
     }
   }
 
@@ -427,7 +303,7 @@ function QuestionForm({
               icon={ChevronLeftIcon}
               label="Previous question"
               disabled={page === 0}
-              onClick={() => goPage(-1)}
+              onClick={() => apply({ type: "page", delta: -1 })}
               testId="ask-question-previous"
             />
             <span
@@ -440,7 +316,7 @@ function QuestionForm({
               icon={ChevronRightIcon}
               label="Next question"
               disabled={isLast}
-              onClick={() => goPage(1)}
+              onClick={() => apply({ type: "page", delta: 1 })}
               testId="ask-question-following"
             />
           </div>
@@ -481,10 +357,7 @@ function QuestionForm({
             multiSelect={question.multiSelect}
             selected={current.selected.includes(index)}
             highlighted={hasFocus && highlight === index}
-            onPick={() => {
-              pick(index, sendsOnPick);
-              if (!sendsOnPick) setFocusTarget("panel");
-            }}
+            onPick={() => apply({ type: "pick", index })}
           />
         ))}
         {optionCount > 0 ? (
@@ -498,10 +371,7 @@ function QuestionForm({
                 highlight === optionCount &&
                 "outline-command-border-focus outline outline-1 -outline-offset-1",
             )}
-            onClick={() => {
-              if (!current.otherOn) setOther(current.other);
-              setFocusTarget("other");
-            }}
+            onClick={() => apply({ type: "editOther" })}
           >
             <ChoiceBadge
               multiSelect={question.multiSelect}
@@ -517,7 +387,12 @@ function QuestionForm({
               placeholder="Other: type your own answer"
               data-testid="ask-question-other"
               value={current.other}
-              onChange={(e) => setOther(e.target.value)}
+              onFocus={() =>
+                !form.editing && apply({ type: "editOther" }, false)
+              }
+              onChange={(e) =>
+                apply({ type: "type", text: e.target.value }, false)
+              }
               className="text-input-foreground placeholder:text-input-placeholder focus:border-border-focus focus:bg-editor w-full min-w-0 rounded border border-solid border-transparent bg-transparent px-1 py-0.5 outline-none"
               style={{ font: "inherit" }}
             />
@@ -530,7 +405,9 @@ function QuestionForm({
             placeholder="Type your answer"
             data-testid="ask-question-other"
             value={current.other}
-            onChange={(e) => setOther(e.target.value)}
+            onChange={(e) =>
+              apply({ type: "type", text: e.target.value }, false)
+            }
             className="text-input-foreground placeholder:text-input-placeholder border-input-border focus:border-border-focus bg-editor min-h-12 w-full resize-y rounded border border-solid px-2 py-1.5 outline-none"
             style={{ font: "inherit" }}
           />
@@ -542,17 +419,17 @@ function QuestionForm({
           role="status"
           className={cn(
             "min-w-0 flex-1",
-            warning ? "text-warning" : "text-description-muted",
+            form.warning ? "text-warning" : "text-description-muted",
           )}
           style={{ fontSize: captionFont }}
         >
-          {warning || <span className="hidden sm:inline">{keyHint}</span>}
+          {form.warning || <span className="hidden sm:inline">{keyHint}</span>}
         </span>
         <Button
           variant="ghost"
           size="sm"
           className="text-description my-0"
-          onClick={skip}
+          onClick={() => apply({ type: "skip" })}
           data-testid="ask-question-skip"
         >
           Skip
@@ -563,7 +440,7 @@ function QuestionForm({
           size="sm"
           className={cn("my-0", !answered && "opacity-50")}
           aria-disabled={!answered}
-          onClick={goNext}
+          onClick={() => apply({ type: "next" })}
           data-testid="ask-question-next"
         >
           {isLast ? "Send" : "Next"}

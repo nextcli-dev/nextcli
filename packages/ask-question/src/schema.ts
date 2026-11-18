@@ -27,6 +27,11 @@ export const SUGGESTED_MAX_QUESTIONS = 4;
 export const SUGGESTED_MAX_OPTIONS = 4;
 export const SUGGESTED_HEADER_LENGTH = 12;
 
+/** The tool's name in the VS Code extension, like core's other built-ins. */
+export const ASK_QUESTION_TOOL_NAME = "ask_question";
+/** The tool's name in cn, whose built-in tools are PascalCase. */
+export const CLI_ASK_QUESTION_TOOL_NAME = "AskQuestion";
+
 export const ASK_QUESTION_DESCRIPTION = [
   "Ask the user 1 to 4 multiple-choice questions and wait for the answers. Use it when a decision is the user's to make: unclear requirements, a choice between approaches, or a preference you cannot infer from the code. Ask only when the answer changes what you do next.",
   "",

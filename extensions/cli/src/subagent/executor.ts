@@ -1,3 +1,4 @@
+import { CLI_ASK_QUESTION_TOOL_NAME } from "@nextcli/ask-question";
 import type { ChatHistoryItem } from "core";
 
 import type { ToolPermissions } from "../permissions/types.js";
@@ -80,7 +81,7 @@ export async function executeSubAgent(
         ...parent,
         policies: [
           { tool: "Subagent", permission: "exclude" },
-          { tool: "AskQuestion", permission: "exclude" },
+          { tool: CLI_ASK_QUESTION_TOOL_NAME, permission: "exclude" },
           ...parent.policies,
         ],
       };

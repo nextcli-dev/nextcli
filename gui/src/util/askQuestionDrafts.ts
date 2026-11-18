@@ -1,34 +1,25 @@
-import { emptyDraft, QuestionDraft } from "@nextcli/ask-question";
-
-/** What the question panel needs to pick up where the user left off. */
-export interface PanelDraft {
-  drafts: QuestionDraft[];
-  /** The question on screen. */
-  page: number;
-  /** Highlighted row per question; the row after the options is "Other". */
-  highlight: number[];
-}
+import {
+  FormState,
+  initialFormState,
+  QuestionSet,
+} from "@nextcli/ask-question";
 
 // Kept outside React so half-finished answers survive the panel unmounting,
 // for example when the user switches to another session and back. A webview
-// reload clears it.
-const drafts = new Map<string, PanelDraft>();
+// reload clears them; the question itself stays open in the saved session.
+const drafts = new Map<string, FormState>();
 
 export function loadQuestionDraft(
   toolCallId: string,
-  questionCount: number,
-): PanelDraft {
+  set: QuestionSet,
+): FormState {
   const saved = drafts.get(toolCallId);
-  if (saved && saved.drafts.length === questionCount) return saved;
-  return {
-    drafts: Array.from({ length: questionCount }, emptyDraft),
-    page: 0,
-    highlight: Array.from({ length: questionCount }, () => 0),
-  };
+  if (saved && saved.drafts.length === set.questions.length) return saved;
+  return initialFormState(set);
 }
 
-export function saveQuestionDraft(toolCallId: string, draft: PanelDraft) {
-  drafts.set(toolCallId, draft);
+export function saveQuestionDraft(toolCallId: string, form: FormState) {
+  drafts.set(toolCallId, form);
 }
 
 export function clearQuestionDraft(toolCallId: string) {

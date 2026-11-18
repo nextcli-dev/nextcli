@@ -175,8 +175,8 @@ test("answers sent with clicks reach the model and continue the turn", async () 
     await renderWithQuestion(TWO_QUESTIONS);
   const before = streamChat.mock.calls.length;
 
+  // A single-choice pick answers the question and moves on
   await click("ask-question-option-1");
-  await click("ask-question-next");
   expect(screen.getByTestId("ask-question-count")).toHaveTextContent("2 of 2");
 
   await click("ask-question-option-0");
@@ -241,6 +241,18 @@ test("one single-choice question is sent as soon as an option is clicked", async
   await screen.findByText("Going ahead");
   expect(lastRequestText(request)).toContain(
     "The user answered your question:\n1. Which database?\n   → Postgres",
+  );
+});
+
+test("a number key answers a lone question and sends it", async () => {
+  const { panel, user, request } = await renderWithQuestion(ONE_QUESTION);
+  await waitFor(() => expect(panel).toHaveFocus());
+
+  await user.keyboard("2");
+
+  await screen.findByText("Going ahead");
+  expect(lastRequestText(request)).toContain(
+    "The user answered your question:\n1. Which database?\n   → SQLite",
   );
 });
 
@@ -344,7 +356,6 @@ test("the model continues only after the question and the other call are done", 
   const before = streamChat.mock.calls.length;
 
   await click("ask-question-option-0");
-  await click("ask-question-next");
   await click("ask-question-option-1");
   await click("ask-question-next");
   expect(streamChat.mock.calls.length).toBe(before);
@@ -377,7 +388,9 @@ test("a session restored with an open question shows the panel again", async () 
     );
   });
   await getElementByTestId("ask-question-panel");
-  // The half-finished answer is still there
+  // The half-finished answers are still there, on the same page
+  expect(screen.getByTestId("ask-question-count")).toHaveTextContent("2 of 2");
+  await click("ask-question-previous");
   expect(screen.getByTestId("ask-question-option-1")).toHaveAttribute(
     "aria-checked",
     "true",

@@ -11,6 +11,7 @@ const waitFor = (check: () => void) => vi.waitFor(check, { timeout: 5000 });
 const UP = "\u001B[A";
 const DOWN = "\u001B[B";
 const RIGHT = "\u001B[C";
+const LEFT = "\u001B[D";
 const ENTER = "\r";
 const ESC = "\u001B";
 const CTRL_C = "\u0003";
@@ -157,6 +158,38 @@ describe("QuizPrompt", () => {
       expect(onAnswer).toHaveBeenCalledWith("quiz-1", {
         dismissed: false,
         answers: [{ status: "answered", selected: [], other: "chat_sessions" }],
+      }),
+    );
+  });
+
+  it("moves the caret with the arrows while typing, not the page", async () => {
+    const { stdin, lastFrame } = renderPrompt();
+
+    await press(stdin, "a");
+    await press(stdin, "c");
+    await waitFor(() => expect(lastFrame()).toContain("ac▊"));
+    await press(stdin, LEFT);
+    await waitFor(() => expect(lastFrame()).toContain("a▊c"));
+    await press(stdin, "b");
+    await waitFor(() => expect(lastFrame()).toContain("ab▊c"));
+    expect(lastFrame()).toContain("Question 1 of 2");
+  });
+
+  it("answers and sends a lone question with a number key", async () => {
+    const { stdin, onAnswer } = renderPrompt(
+      normalizeQuestionArgs({
+        questions: [
+          { question: "Which database?", options: ["Postgres", "SQLite"] },
+        ],
+      }),
+    );
+
+    await press(stdin, "2");
+
+    await waitFor(() =>
+      expect(onAnswer).toHaveBeenCalledWith("quiz-1", {
+        dismissed: false,
+        answers: [{ status: "answered", selected: ["SQLite"] }],
       }),
     );
   });

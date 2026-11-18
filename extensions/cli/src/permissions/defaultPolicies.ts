@@ -1,3 +1,5 @@
+import { CLI_ASK_QUESTION_TOOL_NAME } from "@nextcli/ask-question";
+
 import { PermissionPolicy, ToolPermissionPolicy } from "./types.js";
 
 type Defaults = {
@@ -51,7 +53,7 @@ const TOOL_DEFAULTS: Record<string, Defaults> = {
   Edit: write,
   MultiEdit: write,
   Write: write,
-  AskQuestion: interactive,
+  [CLI_ASK_QUESTION_TOOL_NAME]: interactive,
   CheckBackgroundJob: allow,
   Checklist: allow,
   Diff: allow,

@@ -1,14 +1,11 @@
 import {
   type AnswerSet,
-  draftsToAnswerSet,
-  emptyDraft,
-  firstUnanswered,
-  isDraftAnswered,
-  pickOption,
-  type QuestionDraft,
+  type FormEvent,
+  type FormState,
+  initialFormState,
+  MAX_NUMBER_KEY,
   type QuestionSet,
-  skipDraft,
-  typeOther,
+  reduceForm,
 } from "@nextcli/ask-question";
 import { Box, type Key, Text, useInput } from "ink";
 import React, { useState } from "react";
@@ -21,26 +18,24 @@ interface QuizPromptProps {
   onAnswer: (requestId: string, answers: AnswerSet) => void;
 }
 
-/** Highest option a number key can pick. */
-const MAX_NUMBER_KEY = 9;
-
-function replaceAt<T>(list: T[], index: number, value: T): T[] {
-  return list.map((item, i) => (i === index ? value : item));
-}
-
-interface PromptState {
-  drafts: QuestionDraft[];
-  page: number;
-  /** Highlighted row per question; the row after the options is "Other". */
-  highlight: number[];
-  /** Keys go to the "Other" text. */
-  typing: boolean;
-  warning: string;
-}
+/** The answer being typed, with a caret at `cursor`. */
+const TypedText: React.FC<{ text: string; cursor: number; color?: string }> = ({
+  text,
+  cursor,
+  color,
+}) => (
+  <Text color={color}>
+    {text.slice(0, cursor)}
+    <Text color="gray">▊</Text>
+    {text.slice(cursor)}
+  </Text>
+);
 
 /**
  * The AskQuestion prompt. It replaces the input line while a question set is
  * open. Esc skips a question; Ctrl+C dismisses them all and ends the turn.
+ * The paging, picking and sending rules are @nextcli/ask-question's form,
+ * shared with the VS Code panel; this maps keys to its events.
  */
 export const QuizPrompt: React.FC<QuizPromptProps> = ({
   set,
@@ -48,155 +43,88 @@ export const QuizPrompt: React.FC<QuizPromptProps> = ({
   onAnswer,
 }) => {
   const total = set.questions.length;
-  const [state, setState] = useState<PromptState>(() => ({
-    drafts: set.questions.map(() => emptyDraft()),
-    page: 0,
-    highlight: set.questions.map(() => 0),
-    typing: set.questions[0]?.options.length === 0,
-    warning: "",
-  }));
+  const [form, setForm] = useState<FormState>(() => initialFormState(set));
+  /** Caret position in the "Other" or free-text answer. */
+  const [cursor, setCursor] = useState(0);
   const [submitted, setSubmitted] = useState(false);
 
-  const question = set.questions[state.page];
-  const draft = state.drafts[state.page];
+  const question = set.questions[form.page];
+  const draft = form.drafts[form.page];
   const optionCount = question.options.length;
-  const highlight = state.highlight[state.page] ?? 0;
-  const typing = optionCount === 0 || state.typing;
-  const isLast = state.page === total - 1;
+  const highlight = form.highlight[form.page] ?? 0;
+  const typing = optionCount === 0 || form.editing;
+  const isLast = form.page === total - 1;
 
   function finish(answers: AnswerSet) {
     setSubmitted(true);
     onAnswer(requestId, answers);
   }
 
-  function withDraft(next: QuestionDraft, nextHighlight = highlight) {
-    return {
-      ...state,
-      drafts: replaceAt(state.drafts, state.page, next),
-      highlight: replaceAt(state.highlight, state.page, nextHighlight),
-    };
-  }
-
-  function onPage(next: PromptState, page: number, warning = "") {
-    setState({
-      ...next,
-      page,
-      typing: set.questions[page].options.length === 0,
-      warning,
-    });
-  }
-
-  /** Moves on from the current question, or sends when it is the last one. */
-  function advance(next: PromptState) {
-    if (next.page < total - 1) {
-      onPage(next, next.page + 1);
+  function apply(event: FormEvent, nextCursor?: number) {
+    const step = reduceForm(set, form, event);
+    if (step.answers) {
+      finish(step.answers);
       return;
     }
-    const missing = firstUnanswered(set, next.drafts);
-    if (missing >= 0) {
-      onPage(next, missing, `Answer or skip question ${missing + 1} first.`);
-      return;
-    }
-    finish(draftsToAnswerSet(set, next.drafts));
-  }
-
-  function goNext() {
-    if (!isDraftAnswered(question, draft)) {
-      setState({
-        ...state,
-        warning:
-          optionCount === 0
-            ? "Type an answer, or press Esc to skip."
-            : question.multiSelect
-              ? "Pick at least one option, or press Esc to skip."
-              : "Pick an option, or press Esc to skip.",
-      });
-      return;
-    }
-    advance(state);
-  }
-
-  function pick(index: number, thenAdvance: boolean) {
-    const next = {
-      ...withDraft(pickOption(question, draft, index), index),
-      typing: false,
-      warning: "",
-    };
-    if (thenAdvance) advance(next);
-    else setState(next);
-  }
-
-  function setOther(text: string) {
-    setState({
-      ...withDraft(typeOther(question, draft, text), optionCount),
-      typing: true,
-      warning: "",
-    });
-  }
-
-  function goPage(delta: number) {
-    const page = state.page + delta;
-    if (page >= 0 && page < total) onPage(state, page);
-  }
-
-  function moveHighlight(delta: number) {
-    const next = Math.max(0, Math.min(optionCount, highlight + delta));
-    setState({
-      ...withDraft(draft, next),
-      typing: next === optionCount,
-      warning: "",
-    });
-  }
-
-  function onEscape() {
-    if (state.typing && optionCount > 0) {
-      setState({ ...withDraft(draft, optionCount), typing: false });
-    } else {
-      advance(withDraft(skipDraft()));
+    setForm(step.state);
+    const text = step.state.drafts[step.state.page].other;
+    if (nextCursor !== undefined) {
+      setCursor(nextCursor);
+    } else if (
+      step.state.page !== form.page ||
+      (step.state.editing && !form.editing)
+    ) {
+      // A new page or a fresh start in the field puts the caret at the end
+      setCursor(text.length);
     }
   }
 
-  function onEnter() {
-    if (typing || question.multiSelect) {
-      goNext();
-    } else if (highlight < optionCount) {
-      pick(highlight, true);
-    } else {
-      setState({ ...state, typing: true });
-    }
-  }
-
-  /** Keys while the "Other" text (or a free-text answer) has the cursor. */
+  /** Keys while the "Other" text (or a free-text answer) has the caret. */
   function onTypingKey(input: string, key: Key) {
-    if (key.backspace || key.delete) {
-      setOther(draft.other.slice(0, -1));
-    } else if (key.upArrow && optionCount > 0) {
-      setState({ ...withDraft(draft, optionCount - 1), typing: false });
-    } else if (input && !key.upArrow && !key.downArrow && !key.tab) {
-      setOther(draft.other + input);
+    const text = draft.other;
+    const at = Math.min(cursor, text.length);
+    if (key.leftArrow) {
+      setCursor(Math.max(0, at - 1));
+    } else if (key.rightArrow) {
+      setCursor(Math.min(text.length, at + 1));
+    } else if (key.upArrow) {
+      apply({ type: "move", delta: -1 });
+    } else if (key.backspace || key.delete) {
+      if (at > 0) {
+        apply(
+          { type: "type", text: text.slice(0, at - 1) + text.slice(at) },
+          at - 1,
+        );
+      }
+    } else if (input && !key.downArrow && !key.tab) {
+      const typed = input.replace(/[\r\n]+/g, " ");
+      apply(
+        { type: "type", text: text.slice(0, at) + typed + text.slice(at) },
+        at + typed.length,
+      );
     }
   }
 
   /** Keys while an option row is highlighted. */
   function onOptionKey(input: string, key: Key) {
     if (key.upArrow || key.downArrow) {
-      moveHighlight(key.downArrow ? 1 : -1);
-      return;
-    }
-    if (input === " ") {
-      if (highlight < optionCount) pick(highlight, false);
-      else setState({ ...state, typing: true });
-      return;
-    }
-    const number = /^[1-9]$/.test(input) ? Number(input) : 0;
-    if (number) {
+      apply({ type: "move", delta: key.downArrow ? 1 : -1 });
+    } else if (key.leftArrow || key.rightArrow) {
+      apply({ type: "page", delta: key.rightArrow ? 1 : -1 });
+    } else if (input === " ") {
+      apply({ type: "toggle" });
+    } else if (/^[1-9]$/.test(input)) {
+      const number = Number(input);
       if (number <= Math.min(optionCount, MAX_NUMBER_KEY)) {
-        pick(number - 1, false);
+        apply({ type: "pick", index: number - 1 });
       }
-      return;
+    } else if (input && !key.tab) {
+      // Typing anywhere starts an "Other" answer
+      apply(
+        { type: "type", text: draft.other + input },
+        draft.other.length + input.length,
+      );
     }
-    // Typing anywhere starts an "Other" answer
-    if (input && !key.tab) setOther(draft.other + input);
   }
 
   useInput((input, key) => {
@@ -204,11 +132,9 @@ export const QuizPrompt: React.FC<QuizPromptProps> = ({
     if (key.ctrl && input === "c") {
       finish({ dismissed: true });
     } else if (key.escape) {
-      onEscape();
+      apply({ type: "escape" });
     } else if (key.return) {
-      onEnter();
-    } else if (key.leftArrow || key.rightArrow) {
-      goPage(key.rightArrow ? 1 : -1);
+      apply({ type: "enter" });
     } else if (!key.ctrl && !key.meta) {
       if (typing) onTypingKey(input, key);
       else onOptionKey(input, key);
@@ -222,7 +148,7 @@ export const QuizPrompt: React.FC<QuizPromptProps> = ({
   const multi = question.multiSelect;
   const indent = multi ? 9 : 5;
   const meta = [
-    total > 1 ? `Question ${state.page + 1} of ${total}` : "",
+    total > 1 ? `Question ${form.page + 1} of ${total}` : "",
     question.header ?? "",
     multi ? "select all that apply" : "",
   ]
@@ -234,7 +160,7 @@ export const QuizPrompt: React.FC<QuizPromptProps> = ({
     multi ? "Space toggle" : "",
     `Enter ${isLast ? "send" : "next"}`,
     "Esc skip",
-    total > 1 ? "←/→ page" : "",
+    total > 1 && !typing ? "←/→ page" : "",
     "Ctrl+C dismiss",
   ]
     .filter(Boolean)
@@ -259,8 +185,7 @@ export const QuizPrompt: React.FC<QuizPromptProps> = ({
         {optionCount === 0 ? (
           <Box>
             <Text color="cyan">❯ </Text>
-            <Text>{draft.other}</Text>
-            <Text color="gray">▊</Text>
+            <TypedText text={draft.other} cursor={cursor} />
           </Box>
         ) : (
           <>
@@ -303,19 +228,20 @@ export const QuizPrompt: React.FC<QuizPromptProps> = ({
                   {`${typing ? "❯ " : "  "}${multi ? (otherSelected ? "[x] " : "[ ] ") : ""}✎`}
                 </Text>
               </Box>
-              {draft.other ? (
-                <Text color={typing ? "cyan" : undefined}>{draft.other}</Text>
+              {typing ? (
+                <TypedText text={draft.other} cursor={cursor} color="cyan" />
+              ) : draft.other ? (
+                <Text>{draft.other}</Text>
               ) : (
                 <Text color="gray">Other: start typing</Text>
               )}
-              {typing && <Text color="gray">▊</Text>}
             </Box>
           </>
         )}
       </Box>
 
       <Box flexDirection="column" marginTop={1}>
-        {state.warning && <Text color="yellow">{state.warning}</Text>}
+        {form.warning && <Text color="yellow">{form.warning}</Text>}
         <Text color="gray" dimColor>
           {keys}
         </Text>

@@ -96,7 +96,8 @@ export class QuizService extends EventEmitter {
   /** Answers (or dismisses) a pending request. False if it is not pending. */
   answerQuestions(requestId: string, answers: AnswerSet): boolean {
     const resolve = this.pending.get(requestId);
-    if (!resolve || !this.settle(requestId)) return false;
+    if (!resolve) return false;
+    this.settle(requestId);
     resolve(answers);
     return true;
   }
