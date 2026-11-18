@@ -60,7 +60,7 @@ export function StepContainerPreToolbar({
   collapsible,
 }: StepContainerPreToolbarProps) {
   const ideMessenger = useContext(IdeMessengerContext);
-  const history = useAppSelector((state) => state.session.history);
+  const historyLength = useAppSelector((state) => state.session.history.length);
   const [isExpanded, setIsExpanded] = useState(expanded ?? true);
 
   const [relativeFilepathUri, setRelativeFilepathUri] = useState<string | null>(
@@ -129,8 +129,8 @@ export function StepContainerPreToolbar({
   const isStreaming = useAppSelector((store) => store.session.isStreaming);
 
   const isLastItem = useMemo(() => {
-    return itemIndex === history.length - 1;
-  }, [history.length, itemIndex]);
+    return itemIndex === historyLength - 1;
+  }, [historyLength, itemIndex]);
 
   const isGeneratingCodeBlock = isLastItem && isLastCodeblock && isStreaming;
 

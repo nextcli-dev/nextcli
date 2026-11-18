@@ -14,9 +14,10 @@ import {
 } from "..";
 import useUpdatingRef from "../../hooks/useUpdatingRef";
 import { varWithFallback } from "../../styles/theme";
+import { useThrottledValue } from "../../hooks/useThrottledValue";
 import { useAppSelector } from "../../redux/hooks";
 import { selectUIConfig } from "../../redux/slices/configSlice";
-import { getContextItemsFromHistory } from "../../redux/thunks/updateFileSymbols";
+import { selectPastContextItems } from "../../redux/thunks/updateFileSymbols";
 import { getFontSize } from "../../util";
 import { ToolTip } from "../gui/Tooltip";
 import FilenameLink from "./FilenameLink";
@@ -208,6 +209,12 @@ function getCodeChildrenContent(children: any) {
   return undefined;
 }
 
+const MARKDOWN_THROTTLE_MS = 120;
+const isAppended = (previous: string, next: string) =>
+  next.startsWith(previous);
+
+const NO_CONTEXT_ITEMS: ReturnType<typeof selectPastContextItems>[number] = [];
+
 const StyledMarkdownPreview = memo(function StyledMarkdownPreview(
   props: StyledMarkdownPreviewProps,
 ) {
@@ -218,17 +225,22 @@ const StyledMarkdownPreview = memo(function StyledMarkdownPreview(
   // The logic here is to get file names from
   // 1. Context items found in past messages
   // 2. Toolbar Codeblocks found in past messages
-  const history = useAppSelector((state) => state.session.history);
+  // One shared, cached list: a stable array per index, so the stream
+  // neither re-renders every message nor re-walks the history for each one
+  const pastContextItems = useAppSelector((state) =>
+    props.itemIndex === undefined
+      ? NO_CONTEXT_ITEMS
+      : (selectPastContextItems(state.session.history)[props.itemIndex] ??
+        NO_CONTEXT_ITEMS),
+  );
   const allSymbols = useAppSelector((state) => state.session.symbols);
   const pastFileInfo = useMemo(() => {
-    const index = props.itemIndex;
-    if (index === undefined) {
+    if (props.itemIndex === undefined) {
       return {
         symbols: [],
         rifs: [],
       };
     }
-    const pastContextItems = getContextItemsFromHistory(history, index);
     const rifs = pastContextItems.map((item) =>
       ctxItemToRifWithContents(item, true),
     );
@@ -241,7 +253,7 @@ const StyledMarkdownPreview = memo(function StyledMarkdownPreview(
       symbols,
       rifs,
     };
-  }, [props.itemIndex, history, allSymbols]);
+  }, [props.itemIndex, pastContextItems, allSymbols]);
   const pastFileInfoRef = useUpdatingRef(pastFileInfo);
   const itemIndexRef = useUpdatingRef(props.itemIndex);
 
@@ -407,12 +419,21 @@ const StyledMarkdownPreview = memo(function StyledMarkdownPreview(
     },
   });
 
+  // A streaming message grows on every chunk, and each parse covers the whole
+  // text (markdown, math, highlighting). Parse growing text at most a few
+  // times a second; the last text always lands, and text that is replaced
+  // rather than appended to renders at once.
+  const source = useThrottledValue(
+    props.source ?? "",
+    MARKDOWN_THROTTLE_MS,
+    isAppended,
+  );
   useEffect(() => {
     setMarkdownSource(
       // some patches to source markdown are applied here:
-      fixDoubleDollarNewLineLatex(patchNestedMarkdown(props.source ?? "")),
+      fixDoubleDollarNewLineLatex(patchNestedMarkdown(source)),
     );
-  }, [props.source, allSymbols]);
+  }, [source, allSymbols]);
 
   const uiConfig = useAppSelector(selectUIConfig);
   const codeWrapState = uiConfig?.codeWrap ? "pre-wrap" : "pre";

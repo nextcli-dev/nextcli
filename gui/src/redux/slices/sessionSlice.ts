@@ -659,7 +659,8 @@ export const sessionSlice = createSlice({
 
               handleToolCallsInMessage(message, lastItem);
 
-              return;
+              // On to the next chunk of the batch, not out of the reducer
+              continue;
             }
           }
 

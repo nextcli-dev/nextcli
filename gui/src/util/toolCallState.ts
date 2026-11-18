@@ -39,18 +39,22 @@ export function addToolCallDeltaToState(
     mergedName = currentName + nameDelta;
   }
 
-  // Similar logic for args, with an extra JSON check
+  // Model streams in args in parts e.g. "{"file": "file1"" -> ", "line": 1}".
+  // Args that parse as JSON are complete, so nothing is added to them. Only
+  // an object that ends in "}" can be complete, so the full parse of the
+  // growing string runs only then.
   let mergedArgs = currentArgs;
-  try {
-    // If args is JSON parseable, it is complete, don't add to it
-    JSON.parse(currentArgs);
-  } catch (e) {
-    // Model streams in args in parts e.g. "{"file": "file1"" -> ", "line": 1}"
-    mergedArgs = currentArgs + argsDelta;
-
-    // Note, removed case where model progresssively streams args but full args each time e.g. "{"file": "file1"}" -> "{"file": "file1", "line": 1}"
-    // Because no apis do this and difficult to detect reliably
+  if (!currentArgs.trimEnd().endsWith("}")) {
+    mergedArgs += argsDelta;
+  } else {
+    try {
+      JSON.parse(currentArgs);
+    } catch {
+      mergedArgs += argsDelta;
+    }
   }
+  // Note, removed case where model progresssively streams args but full args each time e.g. "{"file": "file1"}" -> "{"file": "file1", "line": 1}"
+  // Because no apis do this and difficult to detect reliably
 
   const [_, parsedArgs] = incrementalParseJson(mergedArgs || "{}");
 
