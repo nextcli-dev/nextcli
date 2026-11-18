@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.6.21](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.20...vscode-v1.6.21) (2026-11-18)
+
+
+### Bug Fixes
+
+* **gui:** find files by name in the @ mention dropdown ([#185](https://github.com/nextcli-dev/nextcli/issues/185)) ([b5d7afd](https://github.com/nextcli-dev/nextcli/commit/b5d7afdc24009b5198e76730dc649182f0df11d3))
+* **gui:** keep the chat responsive while a reply streams ([#183](https://github.com/nextcli-dev/nextcli/issues/183)) ([0f0d28c](https://github.com/nextcli-dev/nextcli/commit/0f0d28c0492c94994457107f262a02fae3f50a9b))
+
 ## [1.6.20](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.19...vscode-v1.6.20) (2026-11-18)
 
 
