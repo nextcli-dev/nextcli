@@ -22,6 +22,7 @@ import { VerticalDiffManager } from "../diff/vertical/manager";
 import { addCurrentSelectionToEdit } from "../quickEdit/AddCurrentSelection";
 import EditDecorationManager from "../quickEdit/EditDecorationManager";
 import { handleLLMError } from "../util/errorHandling";
+import { syncSnapshotDocuments } from "../util/snapshotDocuments";
 import { showTutorial } from "../util/tutorial";
 import { getExtensionUri } from "../util/vscode";
 import { VsCodeIde } from "../VsCodeIde";
@@ -129,6 +130,13 @@ export class VsCodeMessenger {
         streamId,
       );
     });
+
+    this.onWebview(
+      "snapshot/syncDocuments",
+      async ({ data: { filepaths, action } }) => {
+        await syncSnapshotDocuments(filepaths, action);
+      },
+    );
 
     this.onWebview("applyToFile", async ({ data }) => {
       const [verticalDiffManager, configHandler] = await Promise.all([
