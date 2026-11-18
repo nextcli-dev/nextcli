@@ -1,21 +1,12 @@
-import {
-  ArrowLeftIcon,
-  ChatBubbleOvalLeftIcon,
-} from "@heroicons/react/24/outline";
+import { ArrowLeftIcon } from "@heroicons/react/24/outline";
 import { Editor, JSONContent } from "@tiptap/react";
 import { ChatHistoryItem, InputModifiers } from "core";
-import { renderChatMessage } from "core/util/messageContent";
-import { useCallback, useContext, useEffect, useRef, useState } from "react";
-import { ErrorBoundary } from "react-error-boundary";
+import { useCallback, useContext, useEffect, useRef } from "react";
 import styled from "styled-components";
-import { Button, lightGray, vscBackground } from "../../components";
 import { useFindWidget } from "../../components/find/FindWidget";
-import TimelineItem from "../../components/gui/TimelineItem";
 import { NewSessionButton } from "../../components/mainInput/belowMainInput/NewSessionButton";
-import ThinkingBlockPeek from "../../components/mainInput/belowMainInput/ThinkingBlockPeek";
 import ContinueInputBox from "../../components/mainInput/ContinueInputBox";
 import { useOnboardingCard } from "../../components/OnboardingCard/hooks/useOnboardingCard";
-import StepContainer from "../../components/StepContainer/StepContainer";
 import { TabBar } from "../../components/TabBar/TabBar";
 import { IdeMessengerContext } from "../../context/IdeMessenger";
 import { useWebviewListener } from "../../hooks/useWebviewListener";
@@ -26,7 +17,6 @@ import {
 } from "../../redux/selectors/selectToolCalls";
 import {
   cancelToolCall,
-  ChatHistoryItemWithMessageId,
   newSession,
   updateToolCallOutput,
 } from "../../redux/slices/sessionSlice";
@@ -34,14 +24,13 @@ import { streamEditThunk } from "../../redux/thunks/edit";
 import { loadLastSession } from "../../redux/thunks/session";
 import { streamResponseThunk } from "../../redux/thunks/streamResponse";
 import { isMetaEquivalentKeyPressed } from "../../util";
-import { ToolCallDiv } from "./ToolCallDiv";
+import { ChatHistoryRow } from "./ChatHistoryRow";
 
 import { useStore } from "react-redux";
 import FeedbackDialog from "../../components/dialogs/FeedbackDialog";
 
 import { DeprecationBanner } from "../../components/DeprecationBanner";
 import { FatalErrorIndicator } from "../../components/config/FatalErrorNotice";
-import InlineErrorMessage from "../../components/mainInput/InlineErrorMessage";
 import { resolveEditorContent } from "../../components/mainInput/TipTapEditor/utils/resolveEditorContent";
 import { setDialogMessage, setShowDialog } from "../../redux/slices/uiSlice";
 import { RootState } from "../../redux/store";
@@ -76,26 +65,6 @@ const StepsDiv = styled.div`
 
 export const MAIN_EDITOR_INPUT_ID = "main-editor-input";
 
-function fallbackRender({ error, resetErrorBoundary }: any) {
-  // Call resetErrorBoundary() to reset the error boundary and retry the render.
-
-  return (
-    <div
-      role="alert"
-      className="px-2"
-      style={{ backgroundColor: vscBackground }}
-    >
-      <p>Something went wrong:</p>
-      <pre style={{ color: "red" }}>{error.message}</pre>
-      <pre style={{ color: lightGray }}>{error.stack}</pre>
-
-      <div className="text-center">
-        <Button onClick={resetErrorBoundary}>Restart</Button>
-      </div>
-    </div>
-  );
-}
-
 export function Chat() {
   const dispatch = useAppDispatch();
   const ideMessenger = useContext(IdeMessengerContext);
@@ -105,7 +74,6 @@ export function Chat() {
     (store) => store.config.config.ui?.showSessionTabs,
   );
   const isStreaming = useAppSelector((state) => state.session.isStreaming);
-  const [stepsOpen] = useState<(boolean | undefined)[]>([]);
   const mainTextInputRef = useRef<HTMLInputElement>(null);
   const stepsDivRef = useRef<HTMLDivElement>(null);
   const tabsRef = useRef<HTMLDivElement>(null);
@@ -244,128 +212,10 @@ export function Chat() {
     [dispatch],
   );
 
-  const isLastUserInput = useCallback(
-    (index: number): boolean => {
-      return !history
-        .slice(index + 1)
-        .some((entry) => entry.message.role === "user");
-    },
-    [history],
-  );
-
-  const renderChatHistoryItem = useCallback(
-    (item: ChatHistoryItemWithMessageId, index: number) => {
-      const {
-        message,
-        editorState,
-        contextItems,
-        appliedRules,
-        toolCallStates,
-      } = item;
-
-      // Calculate once for the entire function
-      const latestSummaryIndex = findLatestSummaryIndex(history);
-      const isBeforeLatestSummary =
-        latestSummaryIndex !== -1 && index < latestSummaryIndex;
-
-      if (message.role === "user") {
-        return (
-          <ContinueInputBox
-            onEnter={(editorState, modifiers) =>
-              sendInput(editorState, modifiers, index)
-            }
-            isLastUserInput={isLastUserInput(index)}
-            isMainInput={false}
-            editorState={editorState ?? item.message.content}
-            contextItems={contextItems}
-            appliedRules={appliedRules}
-            inputId={message.id}
-          />
-        );
-      }
-
-      if (message.role === "tool") {
-        return null;
-      }
-
-      if (message.role === "assistant") {
-        return (
-          <>
-            {/* Always render assistant content through normal path */}
-            <div className="thread-message">
-              <TimelineItem
-                item={item}
-                iconElement={
-                  <ChatBubbleOvalLeftIcon width="16px" height="16px" />
-                }
-                open={
-                  typeof stepsOpen[index] === "undefined"
-                    ? true
-                    : stepsOpen[index]!
-                }
-                onToggle={() => {}}
-              >
-                <StepContainer
-                  index={index}
-                  isLast={index === history.length - 1}
-                  item={item}
-                  latestSummaryIndex={latestSummaryIndex}
-                />
-              </TimelineItem>
-            </div>
-
-            {toolCallStates && (
-              <ToolCallDiv
-                toolCallStates={toolCallStates}
-                historyIndex={index}
-              />
-            )}
-          </>
-        );
-      }
-
-      if (message.role === "thinking") {
-        const thinkingContent = renderChatMessage(message);
-        if (!thinkingContent?.trim()) {
-          return null;
-        }
-        return (
-          <div className={isBeforeLatestSummary ? "opacity-50" : ""}>
-            <ThinkingBlockPeek
-              content={thinkingContent}
-              redactedThinking={message.redactedThinking}
-              index={index}
-              prevItem={index > 0 ? history[index - 1] : null}
-              inProgress={index === history.length - 1 && isStreaming}
-              signature={message.signature}
-              hidden={item.thinkingHidden}
-            />
-          </div>
-        );
-      }
-
-      // Default case - regular assistant message
-      return (
-        <div className="thread-message">
-          <TimelineItem
-            item={item}
-            iconElement={<ChatBubbleOvalLeftIcon width="16px" height="16px" />}
-            open={
-              typeof stepsOpen[index] === "undefined" ? true : stepsOpen[index]!
-            }
-            onToggle={() => {}}
-          >
-            <StepContainer
-              index={index}
-              isLast={index === history.length - 1}
-              item={item}
-              latestSummaryIndex={latestSummaryIndex}
-            />
-          </TimelineItem>
-        </div>
-      );
-    },
-    [sendInput, isLastUserInput, history, stepsOpen, isStreaming],
+  // Computed once per render, not once per message
+  const latestSummaryIndex = findLatestSummaryIndex(history);
+  const lastUserIndex = history.findLastIndex(
+    (entry) => entry.message.role === "user",
   );
 
   const showScrollbar = showChatScrollbar ?? window.innerHeight > 5000;
@@ -384,22 +234,21 @@ export function Chat() {
         {history
           .filter((item) => item.message.role !== "system")
           .map((item, index: number) => (
-            <div
+            <ChatHistoryRow
               key={item.message.id}
-              style={{
-                minHeight: index === history.length - 1 ? "200px" : 0,
-              }}
-            >
-              <ErrorBoundary
-                FallbackComponent={fallbackRender}
-                onReset={() => {
-                  dispatch(newSession());
-                }}
-              >
-                {renderChatHistoryItem(item, index)}
-              </ErrorBoundary>
-              {index === history.length - 1 && <InlineErrorMessage />}
-            </div>
+              item={item}
+              index={index}
+              isLast={index === history.length - 1}
+              isLastUserInput={lastUserIndex <= index}
+              latestSummaryIndex={latestSummaryIndex}
+              inProgress={index === history.length - 1 && isStreaming}
+              prevItem={
+                item.message.role === "thinking" && index > 0
+                  ? history[index - 1]
+                  : null
+              }
+              sendInput={sendInput}
+            />
           ))}
       </StepsDiv>
       <div className={"relative shrink-0"}>
