@@ -1,5 +1,5 @@
-import { act, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, fireEvent, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { updateConfig } from "../../../redux/slices/configSlice";
 import { setModelSettings } from "../../../redux/slices/modelSettingsSlice";
 import { varWithFallback } from "../../../styles/theme";
@@ -122,6 +122,50 @@ describe("ThinkingBlockPeek", () => {
     await user.click(screen.getByTestId("thinking-block-peek"));
     expect(screen.queryByTestId("thinking-block-live")).not.toBeInTheDocument();
     expect(screen.getByText("Long reasoning")).toBeVisible();
+  });
+
+  it("follows the end of live reasoning until the user scrolls up", async () => {
+    await renderWithProviders(
+      <ThinkingBlockPeek
+        content="Long reasoning"
+        index={0}
+        prevItem={null}
+        inProgress
+      />,
+    );
+    const box = screen.getByTestId("thinking-block-live");
+    const content = box.firstElementChild!;
+    // jsdom has no layout: give the box sizes, and find the observer that
+    // watches its content (renderWithProviders mocks ResizeObserver)
+    let scrollHeight = 1000;
+    Object.defineProperty(box, "scrollHeight", { get: () => scrollHeight });
+    Object.defineProperty(box, "clientHeight", { value: 100 });
+    Object.defineProperty(box, "scrollTop", { value: 0, writable: true });
+    const RO = vi.mocked(global.ResizeObserver);
+    const index = RO.mock.results.findIndex((r) =>
+      vi
+        .mocked(r.value.observe)
+        .mock.calls.some(([target]: [Element]) => target === content),
+    );
+    const grow = (height: number) => {
+      scrollHeight = height;
+      (RO.mock.calls[index][0] as ResizeObserverCallback)([], {} as any);
+    };
+
+    grow(1000);
+    expect(box.scrollTop).toBe(1000);
+
+    // The user scrolls up to read: new text doesn't pull them down
+    box.scrollTop = 200;
+    fireEvent.scroll(box);
+    grow(1500);
+    expect(box.scrollTop).toBe(200);
+
+    // Back at the end: following resumes
+    box.scrollTop = 1400;
+    fireEvent.scroll(box);
+    grow(2000);
+    expect(box.scrollTop).toBe(2000);
   });
 
   it("keeps a block the user toggled while thinking in that state", async () => {

@@ -1,7 +1,7 @@
 // src/components/ThinkingBlockPeek.tsx
 import { LightBulbIcon } from "@heroicons/react/24/outline";
 import { ChatHistoryItem } from "core";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import styled from "styled-components";
 
 import { ToggleWithIcon } from "../../../pages/gui/ToolCallDiv/ToggleWithIcon";
@@ -9,6 +9,9 @@ import { cn } from "../../../util/cn";
 import { AnimatedEllipsis } from "../../AnimatedEllipsis";
 import StyledMarkdownPreview from "../../StyledMarkdownPreview";
 import { FONT_STEP, useFontSize } from "../../ui/font";
+
+/** How close to the end of the live box still counts as at the end */
+const FOLLOW_SLACK_PX = 8;
 
 const MarkdownWrapper = styled.div`
   /* The text starts under the row's label, not at the markdown's inset */
@@ -61,6 +64,30 @@ function ThinkingBlockPeek({
   const hideContent = !!hidden;
   const open = !hideContent && (userOpen ?? !!inProgress);
   const capped = open && !!inProgress && userOpen === undefined;
+  const liveBoxRef = useRef<HTMLDivElement>(null);
+  const liveContentRef = useRef<HTMLDivElement>(null);
+  // Follow the end of the live box until the user scrolls away from it
+  const followEnd = useRef(true);
+  useEffect(() => {
+    const box = liveBoxRef.current;
+    const content = liveContentRef.current;
+    if (!capped || !box || !content) return;
+    followEnd.current = true;
+    const stick = () => {
+      if (followEnd.current) box.scrollTop = box.scrollHeight;
+    };
+    stick();
+    // Fires when the (throttled) markdown changes size, not on every chunk
+    const observer = new ResizeObserver(stick);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [capped]);
+  const onLiveScroll = () => {
+    const box = liveBoxRef.current;
+    if (!box) return;
+    followEnd.current =
+      box.scrollHeight - box.scrollTop - box.clientHeight <= FOLLOW_SLACK_PX;
+  };
   const [startTime, setStartTime] = useState<number | null>(null);
   const [elapsedTime, setElapsedTime] = useState<string>("");
   // The size of the tool call rows around it, not of the answer
@@ -141,18 +168,15 @@ function ThinkingBlockPeek({
               </div>
             ) : (
               <div
-                // While the model thinks (and nobody opened the block), keep
-                // the reasoning in a box that stays scrolled to its end
-                // (column-reverse anchors it there), so the chat doesn't
-                // grow and lay out again on every chunk. Full height after.
-                className={
-                  capped
-                    ? "flex max-h-[50vh] flex-col-reverse overflow-y-auto"
-                    : ""
-                }
+                // While the model thinks (and nobody opened the block), the
+                // reasoning sits in a bounded box that follows its end, so
+                // the chat doesn't grow and lay out again on every chunk
+                ref={liveBoxRef}
+                className={capped ? "max-h-[50vh] overflow-y-auto" : ""}
+                onScroll={capped ? onLiveScroll : undefined}
                 data-testid={capped ? "thinking-block-live" : undefined}
               >
-                <MarkdownWrapper>
+                <MarkdownWrapper ref={liveContentRef}>
                   <StyledMarkdownPreview
                     isRenderingInStepContainer
                     source={content}
