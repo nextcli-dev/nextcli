@@ -11,9 +11,8 @@ import {
 import type { ChatHistoryItem } from "core/index.js";
 
 import { env } from "../env.js";
+import { BaseService } from "../services/BaseService.js";
 import { logger } from "../util/logger.js";
-
-import { BaseService } from "./BaseService.js";
 
 export interface SnapshotServiceState {
   enabled: boolean;
@@ -72,6 +71,7 @@ export function shouldSnapshot(
 export class SnapshotService extends BaseService<SnapshotServiceState> {
   private snapshotter: Snapshotter | undefined;
   private redoStack: RedoEntry[] = [];
+  private opening: Promise<void> = Promise.resolve();
   private background: Promise<unknown> = Promise.resolve();
 
   constructor() {
@@ -84,33 +84,53 @@ export class SnapshotService extends BaseService<SnapshotServiceState> {
     this.snapshotter = undefined;
     this.redoStack = [];
     if (!options.enabled) {
+      this.opening = Promise.resolve();
       return { enabled: false, reason: "off", canRedo: false };
     }
-    const result = await openSnapshotter({
-      cwd: options.cwd ?? process.cwd(),
-      storeRoot: options.storeRoot ?? path.join(env.continueHome, "snapshots"),
-    });
-    if (!result.ok) {
-      logger.debug("Snapshots are off", result);
-      return { enabled: false, reason: result.reason, canRedo: false };
+    // Open the store in the background: starting the terminal UI never waits
+    // for git. The first turn waits for it instead (see beginTurn).
+    this.opening = this.open(options);
+    return { enabled: false, reason: "starting", canRedo: false };
+  }
+
+  private async open(options: SnapshotServiceOptions): Promise<void> {
+    try {
+      const result = await openSnapshotter({
+        cwd: options.cwd ?? process.cwd(),
+        storeRoot:
+          options.storeRoot ?? path.join(env.continueHome, "snapshots"),
+      });
+      if (!result.ok) {
+        logger.debug("Snapshots are off", result);
+        this.setState({ enabled: false, reason: result.reason });
+        return;
+      }
+      const snapshotter = result.snapshotter;
+      this.snapshotter = snapshotter;
+      this.setState({
+        enabled: true,
+        reason: undefined,
+        root: snapshotter.toplevel,
+      });
+      // The first capture hashes the whole tree; do it now rather than on
+      // the first turn. Then drop snapshots older than the retention period.
+      this.background = snapshotter
+        .capture()
+        .then(() => snapshotter.prune())
+        .catch((error) => logger.debug("Snapshot warm-up failed", { error }));
+    } catch (error) {
+      logger.debug("Snapshots couldn't be set up", { error });
+      this.setState({ enabled: false, reason: "error" });
     }
-    const snapshotter = result.snapshotter;
-    this.snapshotter = snapshotter;
-    // The first capture hashes the whole tree; do it now rather than on the
-    // first turn. Then drop snapshots older than the retention period.
-    this.background = snapshotter
-      .capture()
-      .then(() => snapshotter.prune())
-      .catch((error) => logger.debug("Snapshot warm-up failed", { error }));
-    return { enabled: true, root: snapshotter.toplevel, canRedo: false };
   }
 
   isEnabled(): boolean {
     return !!this.snapshotter;
   }
 
-  /** Waits for the warm-up capture and prune. For tests. */
+  /** Waits until the store is open and warmed up. */
   async settled(): Promise<void> {
+    await this.opening;
     await this.background;
   }
 
@@ -124,6 +144,7 @@ export class SnapshotService extends BaseService<SnapshotServiceState> {
     sessionId: string,
     existing?: TurnCheckpoint,
   ): Promise<{ checkpoint: TurnCheckpoint; turn: OpenTurn } | undefined> {
+    await this.opening;
     const snapshotter = this.snapshotter;
     if (!snapshotter) return undefined;
     this.clearRedo();
@@ -285,6 +306,8 @@ export function describeReason(reason: string | undefined): string {
       return "git isn't installed";
     case "git-too-old":
       return "git 2.26 or later is needed";
+    case "starting":
+      return "snapshots are still being set up; try again in a moment";
     case "off":
       return "snapshots are turned off (--no-snapshots or NEXTCLI_SNAPSHOTS=0)";
     default:

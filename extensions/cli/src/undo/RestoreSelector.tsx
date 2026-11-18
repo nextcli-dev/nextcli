@@ -3,11 +3,11 @@ import React, { useEffect, useState } from "react";
 
 import type { ChatHistoryItem } from "../../../../core/index.js";
 import { services } from "../services/index.js";
-import type { UndoPlan } from "../services/SnapshotService.js";
+import { defaultBoxStyles } from "../ui/styles.js";
 import { formatError } from "../util/formatError.js";
 
-import type { RestoreMode } from "./hooks/useChat.snapshot.js";
-import { defaultBoxStyles } from "./styles.js";
+import type { UndoPlan } from "./SnapshotService.js";
+import type { RestoreMode } from "./turnSnapshot.js";
 
 const MAX_FILES_SHOWN = 12;
 

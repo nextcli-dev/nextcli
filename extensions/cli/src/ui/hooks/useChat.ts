@@ -17,6 +17,14 @@ import {
 import { handleSlashCommands } from "../../slashCommands.js";
 import { messageQueue, QueuedMessage } from "../../stream/messageQueue.js";
 import { telemetryService } from "../../telemetry/telemetryService.js";
+import {
+  applyRedo,
+  applyUndo,
+  beginTurnSnapshot,
+  findUndoTarget,
+  finishTurnSnapshot,
+  type RestoreMode,
+} from "../../undo/turnSnapshot.js";
 import { formatError } from "../../util/formatError.js";
 import { logger } from "../../util/logger.js";
 
@@ -36,14 +44,6 @@ import {
   setupRemotePolling,
 } from "./useChat.remote.helpers.js";
 import { handleBashModeProcessing } from "./useChat.shellMode.js";
-import {
-  applyRedo,
-  applyUndo,
-  beginTurnSnapshot,
-  findUndoTarget,
-  finishTurnSnapshot,
-  type RestoreMode,
-} from "./useChat.snapshot.js";
 import {
   createStreamCallbacks,
   executeStreaming,

@@ -12,7 +12,7 @@ import * as path from "node:path";
 import type { ChatHistoryItem } from "core/index.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { services } from "../../services/index.js";
+import { services } from "../services/index.js";
 
 import {
   applyRedo,
@@ -20,9 +20,9 @@ import {
   beginTurnSnapshot,
   findUndoTarget,
   finishTurnSnapshot,
-} from "./useChat.snapshot.js";
+} from "./turnSnapshot.js";
 
-vi.mock("../../util/logger.js", () => ({
+vi.mock("../util/logger.js", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
@@ -47,6 +47,7 @@ beforeEach(async () => {
     cwd: root,
     storeRoot: path.join(base, "store"),
   });
+  await services.snapshot.settled();
   // Remote mode keeps the history in memory, without session files.
   await services.chatHistory.initialize(undefined, true);
 });
@@ -122,6 +123,7 @@ describe("turn snapshots in the chat", () => {
       message: expect.stringMatching(/Nothing to undo/),
     });
     await services.snapshot.initialize({ enabled: false });
+    await services.snapshot.settled();
     expect(findUndoTarget([user("x")])).toEqual({
       message: expect.stringMatching(/Undo is off: snapshots are turned off/),
     });

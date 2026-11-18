@@ -140,7 +140,7 @@ export type {
 export type { ChatHistoryState } from "./ChatHistoryService.js";
 export type { FileIndexServiceState } from "./FileIndexService.js";
 export type { GitAiIntegrationServiceState } from "./GitAiIntegrationService.js";
-export type { SnapshotServiceState } from "./SnapshotService.js";
+export type { SnapshotServiceState } from "../undo/SnapshotService.js";
 
 /**
  * Service names as constants to prevent typos

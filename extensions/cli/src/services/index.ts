@@ -4,6 +4,7 @@ import {
   setBetaSubagentToolEnabled,
   setBetaUploadArtifactToolEnabled,
 } from "../tools/toolsConfig.js";
+import { shouldSnapshot, SnapshotService } from "../undo/SnapshotService.js";
 import { logger } from "../util/logger.js";
 
 import { AgentFileService } from "./AgentFileService.js";
@@ -20,7 +21,6 @@ import { ModelService } from "./ModelService.js";
 import { quizService } from "./QuizService.js";
 import { ResourceMonitoringService } from "./ResourceMonitoringService.js";
 import { serviceContainer } from "./ServiceContainer.js";
-import { shouldSnapshot, SnapshotService } from "./SnapshotService.js";
 import { StorageSyncService } from "./StorageSyncService.js";
 import { SystemMessageService } from "./SystemMessageService.js";
 import {

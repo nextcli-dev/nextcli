@@ -1,10 +1,11 @@
 import type { ChatHistoryItem } from "core/index.js";
 
-import { services } from "../../services/index.js";
-import type { OpenTurn, UndoPlan } from "../../services/SnapshotService.js";
-import { describeReason } from "../../services/SnapshotService.js";
-import { getCurrentSession } from "../../session.js";
-import { logger } from "../../util/logger.js";
+import { services } from "../services/index.js";
+import { getCurrentSession } from "../session.js";
+import { logger } from "../util/logger.js";
+
+import type { OpenTurn, UndoPlan } from "./SnapshotService.js";
+import { describeReason } from "./SnapshotService.js";
 
 function lastUserIndex(history: readonly ChatHistoryItem[]): number {
   for (let i = history.length - 1; i >= 0; i--) {

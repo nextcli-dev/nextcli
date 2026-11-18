@@ -5,12 +5,13 @@ import { UpdateServiceState } from "src/services/types.js";
 
 import type { ChatHistoryItem } from "../../../../../core/index.js";
 import { services as serviceInstances } from "../../services/index.js";
-import type { UndoPlan } from "../../services/SnapshotService.js";
+import { RestoreSelector } from "../../undo/RestoreSelector.js";
+import type { UndoPlan } from "../../undo/SnapshotService.js";
+import type { RestoreMode } from "../../undo/turnSnapshot.js";
 import { ConfigSelector } from "../ConfigSelector.js";
 import type { NavigationScreen } from "../context/NavigationContext.js";
 import { DiffViewer } from "../DiffViewer.js";
 import { EditMessageSelector } from "../EditMessageSelector.js";
-import type { RestoreMode } from "../hooks/useChat.snapshot.js";
 import type {
   ActivePermissionRequest,
   ActiveQuizQuestion,
@@ -18,7 +19,6 @@ import type {
 import { JobsSelector } from "../JobsSelector.js";
 import { MCPSelector } from "../MCPSelector.js";
 import { ModelMenu } from "../ModelMenu.js";
-import { RestoreSelector } from "../RestoreSelector.js";
 import type { ConfigOption, ModelOption } from "../types/selectorTypes.js";
 import { UpdateSelector } from "../UpdateSelector.js";
 

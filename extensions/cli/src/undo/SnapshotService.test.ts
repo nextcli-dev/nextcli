@@ -72,6 +72,7 @@ describe("SnapshotService", () => {
   it("stays off when disabled or outside a git repository", async () => {
     const off = new SnapshotService();
     await off.initialize({ enabled: false });
+    await off.settled();
     expect(off.isEnabled()).toBe(false);
     expect(off.getState().reason).toBe("off");
     expect(await off.beginTurn("s")).toBeUndefined();
@@ -80,6 +81,7 @@ describe("SnapshotService", () => {
     const noGit = new SnapshotService();
     vi.stubEnv("GIT_CEILING_DIRECTORIES", tmpdir());
     await noGit.initialize({ enabled: true, cwd: dir, storeRoot: dir });
+    await noGit.settled();
     vi.unstubAllEnvs();
     expect(noGit.getState()).toMatchObject({
       enabled: false,
@@ -126,6 +128,7 @@ describe("SnapshotService", () => {
     const { root, storeRoot } = createRepo();
     const service = new SnapshotService();
     await service.initialize({ enabled: true, cwd: root, storeRoot });
+    await service.settled();
 
     const begun = await service.beginTurn("s");
     writeFileSync(path.join(root, "a.txt"), "a2\n");
@@ -142,6 +145,7 @@ describe("SnapshotService", () => {
     const { root, storeRoot } = createRepo();
     const service = new SnapshotService();
     await service.initialize({ enabled: true, cwd: root, storeRoot });
+    await service.settled();
 
     const first = await service.beginTurn("s");
     writeFileSync(path.join(root, "a.txt"), "a2\n");
@@ -153,6 +157,7 @@ describe("SnapshotService", () => {
     const { root, storeRoot } = createRepo();
     const service = new SnapshotService();
     await service.initialize({ enabled: true, cwd: root, storeRoot });
+    await service.settled();
     const history = [user("no snapshot"), assistant("ok")];
     expect(service.lastUndoableIndex(history)).toBeUndefined();
     expect(service.canRestore(history, 0)).toBe(false);

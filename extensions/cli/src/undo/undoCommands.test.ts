@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { processSlashCommandResult } from "./useChat.helpers.js";
+import { processSlashCommandResult } from "../ui/hooks/useChat.helpers.js";
 
-vi.mock("../../session.js", () => ({
+vi.mock("../session.js", () => ({
   loadSession: vi.fn(),
   updateSessionHistory: vi.fn(),
   startNewSession: vi.fn(),
@@ -10,7 +10,7 @@ vi.mock("../../session.js", () => ({
 
 describe("/undo and /redo results", () => {
   it("are recognised as slash commands", async () => {
-    const { handleSlashCommands } = await import("../../slashCommands.js");
+    const { handleSlashCommands } = await import("../slashCommands.js");
     expect(await handleSlashCommands("/undo", {} as any)).toEqual({
       undo: true,
     });
