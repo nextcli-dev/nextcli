@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.19](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.18...vscode-v1.6.19) (2026-11-18)
+
+
+### Features
+
+* ask_question tool in the extension and cn ([#174](https://github.com/nextcli-dev/nextcli/issues/174)) ([7418470](https://github.com/nextcli-dev/nextcli/commit/7418470ce9b492ed8272044bc9d9e65487edd01e))
+
 ## [1.6.18](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.17...vscode-v1.6.18) (2026-11-17)
 
 
