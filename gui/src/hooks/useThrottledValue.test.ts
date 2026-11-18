@@ -63,3 +63,25 @@ it("updates at most once per interval during a steady stream", () => {
   expect(seen.size).toBeLessThanOrEqual(13);
   expect(result.current).toBe(100);
 });
+
+it("lets a change that isn't growth land at once", () => {
+  const appended = (previous: string, next: string) =>
+    next.startsWith(previous);
+  const { result, rerender } = renderHook(
+    ({ value }) => useThrottledValue(value, 100, appended),
+    { initialProps: { value: "Hello" } },
+  );
+  rerender({ value: "Hello," });
+  expect(result.current).toBe("Hello,");
+
+  // Growth inside the interval waits
+  act(() => {
+    vi.advanceTimersByTime(10);
+  });
+  rerender({ value: "Hello, wor" });
+  expect(result.current).toBe("Hello,");
+
+  // A replacement doesn't
+  rerender({ value: "Different text" });
+  expect(result.current).toBe("Different text");
+});

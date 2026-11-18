@@ -210,6 +210,8 @@ function getCodeChildrenContent(children: any) {
 }
 
 const MARKDOWN_THROTTLE_MS = 120;
+const isAppended = (previous: string, next: string) =>
+  next.startsWith(previous);
 
 const NO_CONTEXT_ITEMS: ReturnType<typeof selectPastContextItems>[number] = [];
 
@@ -418,9 +420,14 @@ const StyledMarkdownPreview = memo(function StyledMarkdownPreview(
   });
 
   // A streaming message grows on every chunk, and each parse covers the whole
-  // text (markdown, math, highlighting). Parse at most a few times a second;
-  // the last text always lands.
-  const source = useThrottledValue(props.source ?? "", MARKDOWN_THROTTLE_MS);
+  // text (markdown, math, highlighting). Parse growing text at most a few
+  // times a second; the last text always lands, and text that is replaced
+  // rather than appended to renders at once.
+  const source = useThrottledValue(
+    props.source ?? "",
+    MARKDOWN_THROTTLE_MS,
+    isAppended,
+  );
   useEffect(() => {
     setMarkdownSource(
       // some patches to source markdown are applied here:
