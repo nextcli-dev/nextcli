@@ -31,3 +31,19 @@ test("renders an empty message without errors, then its streamed text", async ()
     expect.anything(),
   );
 });
+
+test("renders a markdown table inside its own horizontal scroll box", async () => {
+  await renderWithProviders(
+    <StyledMarkdownPreview
+      source={"| Path | Size |\n| --- | --- |\n| src/index.ts | 4 KB |"}
+      isRenderingInStepContainer
+    />,
+  );
+
+  const cell = await screen.findByText("src/index.ts");
+  const table = cell.closest("table");
+  expect(table).not.toBeNull();
+  expect(table!.parentElement).toBe(
+    screen.getByTestId("markdown-table-scroll"),
+  );
+});

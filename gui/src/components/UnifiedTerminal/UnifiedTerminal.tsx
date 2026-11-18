@@ -515,8 +515,10 @@ export function UnifiedTerminalCommand({
                 "1px solid var(--vscode-commandCenter-inactiveBorder, #555555)",
             }}
           >
-            <StatusIcon status={statusType} />
-            {isRunning ? "Running" : statusMessage}
+            <span className="flex items-center">
+              <StatusIcon status={statusType} />
+              {isRunning ? "Running" : statusMessage}
+            </span>
             {isRunning && toolCallId && (
               <a
                 href="#"

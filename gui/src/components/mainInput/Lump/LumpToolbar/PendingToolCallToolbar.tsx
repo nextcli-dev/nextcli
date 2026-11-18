@@ -42,7 +42,7 @@ export function PendingToolCallToolbar() {
           key={toolCall.toolCallId}
           className="border-input bg-input flex flex-wrap items-center gap-2 rounded border"
         >
-          <span className="text-description min-w-0 flex-1 truncate text-xs italic">
+          <span className="text-description min-w-0 flex-[1_1_6rem] truncate text-xs italic">
             {toolCall.tool?.displayTitle ?? toolCall.toolCall.function.name}
           </span>
 
@@ -58,9 +58,7 @@ export function PendingToolCallToolbar() {
               )}
             >
               {index === 0 && (
-                <span className="text-2xs xs:inline mr-1 hidden">
-                  {getMetaKeyLabel()}⌫
-                </span>
+                <span className="text-2xs mr-1">{getMetaKeyLabel()}⌫</span>
               )}
               <span>Reject</span>
             </Button>
@@ -76,9 +74,7 @@ export function PendingToolCallToolbar() {
               )}
             >
               {index === 0 && (
-                <span className="text-2xs xs:inline mr-1 hidden">
-                  {getMetaKeyLabel()}⏎
-                </span>
+                <span className="text-2xs mr-1">{getMetaKeyLabel()}⏎</span>
               )}
               <span>Accept</span>
             </Button>

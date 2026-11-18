@@ -43,8 +43,3 @@
 .tiptap img.selected-image {
   outline: 3px solid var(--vscode-badge-background, #bfe2b6);
 }
-
-/* Long unbreakable tokens (paths, URLs) must wrap instead of widening the input */
-.ProseMirror {
-  overflow-wrap: anywhere;
-}

@@ -75,21 +75,16 @@ const StyledMarkdown = styled.div<{
     padding: 8px;
   }
 
-  /* Wide tables and display math scroll inside their own box instead of
-     widening the chat (narrow sidebars, high VS Code zoom). */
-  table {
-    display: block;
-    max-width: 100%;
-    overflow-x: auto;
-    border-collapse: collapse;
-  }
-
+  /* Tables scroll inside their wrapper div (see the "table" component below).
+     Keep words whole in cells: the global "word-break: break-word" would let
+     a narrow table shrink its columns to one character each. */
   th,
   td {
     word-break: normal;
     overflow-wrap: break-word;
   }
 
+  /* Wide display math scrolls inside its own box (narrow sidebars, high zoom). */
   .katex-display {
     max-width: 100%;
     overflow-x: auto;
@@ -311,6 +306,16 @@ const StyledMarkdownPreview = memo(function StyledMarkdownPreview(
     ],
     rehypeReactOptions: {
       components: {
+        // Wide tables scroll inside this box instead of widening the chat
+        // (narrow sidebars, high VS Code zoom); the table keeps table layout.
+        table: ({ ...tableProps }) => (
+          <div
+            className="max-w-full overflow-x-auto"
+            data-testid="markdown-table-scroll"
+          >
+            <table {...tableProps} />
+          </div>
+        ),
         a: ({ ...aProps }) => {
           return (
             <ToolTip place="top" className="m-0 p-0" content={aProps.href}>

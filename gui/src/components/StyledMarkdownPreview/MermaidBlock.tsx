@@ -166,7 +166,7 @@ export default function MermaidDiagram({ code }: { code: string }) {
             </ToolTip>
           </div>
           <div
-            className="flex min-h-5 justify-center overflow-hidden [&>svg]:max-w-full"
+            className="flex min-h-5 justify-center"
             ref={mermaidRenderContainerRef}
           />
         </div>
