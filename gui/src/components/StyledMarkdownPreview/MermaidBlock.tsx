@@ -139,7 +139,9 @@ export default function MermaidDiagram({ code }: { code: string }) {
         <div className="text-vsc-foreground text-xs">Generating diagram...</div>
       )}
       {!!error ? (
-        <div className="text-error whitespace-pre text-sm">{error}</div>
+        <div className="text-error whitespace-pre-wrap break-words text-sm">
+          {error}
+        </div>
       ) : (
         <div className="mermaid relative">
           <div className="absolute right-0 z-10 m-2 flex items-center gap-x-1">
@@ -164,7 +166,7 @@ export default function MermaidDiagram({ code }: { code: string }) {
             </ToolTip>
           </div>
           <div
-            className="flex min-h-5 justify-center"
+            className="flex min-h-5 justify-center overflow-hidden [&>svg]:max-w-full"
             ref={mermaidRenderContainerRef}
           />
         </div>

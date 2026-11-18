@@ -40,13 +40,13 @@ export function PendingToolCallToolbar() {
       {pendingToolCalls.map((toolCall, index) => (
         <div
           key={toolCall.toolCallId}
-          className="border-input bg-input flex items-center gap-2 rounded border"
+          className="border-input bg-input flex flex-wrap items-center gap-2 rounded border"
         >
-          <span className="text-description flex-1 truncate text-xs italic">
+          <span className="text-description min-w-0 flex-1 truncate text-xs italic">
             {toolCall.tool?.displayTitle ?? toolCall.toolCall.function.name}
           </span>
 
-          <div className="flex items-center gap-1">
+          <div className="ml-auto flex items-center gap-1">
             <Button
               variant="ghost"
               size="sm"
@@ -58,7 +58,9 @@ export function PendingToolCallToolbar() {
               )}
             >
               {index === 0 && (
-                <span className="text-2xs mr-1">{getMetaKeyLabel()}⌫</span>
+                <span className="text-2xs xs:inline mr-1 hidden">
+                  {getMetaKeyLabel()}⌫
+                </span>
               )}
               <span>Reject</span>
             </Button>
@@ -74,7 +76,9 @@ export function PendingToolCallToolbar() {
               )}
             >
               {index === 0 && (
-                <span className="text-2xs mr-1">{getMetaKeyLabel()}⏎</span>
+                <span className="text-2xs xs:inline mr-1 hidden">
+                  {getMetaKeyLabel()}⏎
+                </span>
               )}
               <span>Accept</span>
             </Button>

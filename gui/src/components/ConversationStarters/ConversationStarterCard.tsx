@@ -19,7 +19,7 @@ export function ConversationStarterCard({
         <div className="mr-3 flex-shrink-0 self-start pt-0.5">
           <ChatBubbleLeftIcon className="text-lightgray h-5 w-5" />
         </div>
-        <div className="flex flex-1 flex-col justify-center">
+        <div className="flex min-w-0 flex-1 flex-col justify-center break-words">
           <div className="text-xs font-medium">{command.name}</div>
           {command.description && (
             <div className="text-lightgray text-xs">{command.description}</div>

@@ -75,6 +75,27 @@ const StyledMarkdown = styled.div<{
     padding: 8px;
   }
 
+  /* Wide tables and display math scroll inside their own box instead of
+     widening the chat (narrow sidebars, high VS Code zoom). */
+  table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    border-collapse: collapse;
+  }
+
+  th,
+  td {
+    word-break: normal;
+    overflow-wrap: break-word;
+  }
+
+  .katex-display {
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
   code {
     span.line:empty {
       display: none;

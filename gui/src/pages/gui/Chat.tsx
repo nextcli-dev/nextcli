@@ -69,8 +69,13 @@ const StepsDiv = styled.div`
     position: relative;
   }
 
+  overflow-x: hidden;
+  min-width: 0;
+
   .thread-message {
     margin: 0 0 0 1px;
+    min-width: 0;
+    max-width: 100%;
   }
 `;
 
