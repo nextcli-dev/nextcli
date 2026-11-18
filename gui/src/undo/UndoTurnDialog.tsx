@@ -1,13 +1,8 @@
 import { useEffect, useState } from "react";
-import { useAppDispatch } from "../../redux/hooks";
-import { setDialogMessage, setShowDialog } from "../../redux/slices/uiSlice";
-import {
-  applyUndo,
-  planUndo,
-  UndoMode,
-  UndoPlan,
-} from "../../redux/thunks/turnSnapshot";
-import { Button } from "../ui/Button";
+import { useAppDispatch } from "../redux/hooks";
+import { setDialogMessage, setShowDialog } from "../redux/slices/uiSlice";
+import { applyUndo, planUndo, UndoMode, UndoPlan } from "./turnSnapshot";
+import { Button } from "../components/ui/Button";
 
 const MAX_FILES_SHOWN = 12;
 

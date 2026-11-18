@@ -1,7 +1,7 @@
 import type { ChatHistoryItem } from "core";
 import { describe, expect, it } from "vitest";
-import { createMockStore, getEmptyRootState } from "../../util/test/mockStore";
-import { RootState } from "../store";
+import { createMockStore, getEmptyRootState } from "../util/test/mockStore";
+import { RootState } from "../redux/store";
 import {
   applyRedo,
   applyUndo,

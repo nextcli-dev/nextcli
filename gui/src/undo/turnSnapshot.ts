@@ -7,9 +7,9 @@ import {
   setUndoneTurn,
   truncateHistoryFrom,
   updateHistoryItemAtIndex,
-} from "../slices/sessionSlice";
-import { AppThunkDispatch, RootState, ThunkApiType } from "../store";
-import { saveCurrentSession } from "./session";
+} from "../redux/slices/sessionSlice";
+import { AppThunkDispatch, RootState, ThunkApiType } from "../redux/store";
+import { saveCurrentSession } from "../redux/thunks/session";
 
 type TurnCheckpoint = NonNullable<ChatHistoryItem["checkpoint"]>;
 type RestoreTarget = { path: string; tree: string };

@@ -6,7 +6,7 @@ import {
 } from "../slices/sessionSlice";
 import { ThunkApiType } from "../store";
 import { saveCurrentSession } from "./session";
-import { finishTurnSnapshotIfDone } from "./turnSnapshot";
+import { finishTurnSnapshotIfDone } from "../../undo/turnSnapshot";
 
 export const cancelStream = createAsyncThunk<void, undefined, ThunkApiType>(
   "chat/cancelStream",

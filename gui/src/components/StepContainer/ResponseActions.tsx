@@ -8,12 +8,12 @@ import { ChatHistoryItem } from "core";
 import { renderChatMessage } from "core/util/messageContent";
 import { useAppDispatch, useAppSelector } from "../../redux/hooks";
 import { setDialogMessage, setShowDialog } from "../../redux/slices/uiSlice";
-import { isTurnOver } from "../../redux/thunks/turnSnapshot";
+import { isTurnOver } from "../../undo/turnSnapshot";
 import { useCompactConversation } from "../../util/compactConversation";
 import { FeedbackButtons } from "../FeedbackButtons";
 import { CopyIconButton } from "../gui/CopyIconButton";
 import HeaderButtonWithToolTip from "../gui/HeaderButtonWithToolTip";
-import { UndoTurnDialog } from "../UndoTurn/UndoTurnDialog";
+import { UndoTurnDialog } from "../../undo/UndoTurnDialog";
 
 export interface ResponseActionsProps {
   isTruncated: boolean;

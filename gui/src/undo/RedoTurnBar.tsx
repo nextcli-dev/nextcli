@@ -1,7 +1,7 @@
 import { ArrowUturnRightIcon } from "@heroicons/react/24/outline";
 import { useState } from "react";
-import { useAppDispatch, useAppSelector } from "../../redux/hooks";
-import { applyRedo } from "../../redux/thunks/turnSnapshot";
+import { useAppDispatch, useAppSelector } from "../redux/hooks";
+import { applyRedo } from "./turnSnapshot";
 
 /** After an undo, offers to re-apply it until the next message is sent. */
 export function RedoTurnBar() {

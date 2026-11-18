@@ -17,7 +17,7 @@ import { ThunkApiType } from "../store";
 import { dismissOpenQuestions } from "./answerQuestion";
 import { streamNormalInput } from "./streamNormalInput";
 import { streamThunkWrapper } from "./streamThunkWrapper";
-import { beginTurnSnapshot } from "./turnSnapshot";
+import { beginTurnSnapshot } from "../../undo/turnSnapshot";
 import { updateFileSymbolsFromFiles } from "./updateFileSymbols";
 
 export const streamResponseThunk = createAsyncThunk<

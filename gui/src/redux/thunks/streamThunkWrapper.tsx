@@ -16,7 +16,7 @@ import { setDialogMessage, setShowDialog } from "../slices/uiSlice";
 import { ThunkApiType } from "../store";
 import { cancelStream } from "./cancelStream";
 import { saveCurrentSession } from "./session";
-import { finishTurnSnapshotIfDone } from "./turnSnapshot";
+import { finishTurnSnapshotIfDone } from "../../undo/turnSnapshot";
 
 export const streamThunkWrapper = createAsyncThunk<
   void,
