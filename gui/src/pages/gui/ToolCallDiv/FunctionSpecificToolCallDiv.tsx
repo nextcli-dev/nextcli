@@ -30,8 +30,6 @@ function FunctionSpecificToolCallDiv({
     ],
     [oldString, newString, replaceAll],
   );
-  const multiEdits: EditOperation[] =
-    processedArgs?.edits ?? args?.edits ?? NO_EDITS;
 
   switch (toolCall.function?.name) {
     case BuiltInToolNames.CreateNewFile:
@@ -70,7 +68,7 @@ function FunctionSpecificToolCallDiv({
           relativeFilePath={processedArgs?.filepath ?? args?.filepath ?? ""}
           fileUri={processedArgs?.fileUri ?? ""}
           newFileContents={processedArgs?.newFileContents}
-          edits={multiEdits}
+          edits={processedArgs?.edits ?? args?.edits ?? NO_EDITS}
           toolCallId={toolCall.id}
           historyIndex={historyIndex}
         />
