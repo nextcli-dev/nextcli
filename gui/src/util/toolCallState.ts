@@ -42,7 +42,12 @@ export function addToolCallDeltaToState(
   // Similar logic for args, with an extra JSON check
   let mergedArgs = currentArgs;
   try {
-    // If args is JSON parseable, it is complete, don't add to it
+    // If args is JSON parseable, it is complete, don't add to it. Only an
+    // object that ends in "}" can be complete; skip the full parse of the
+    // growing string for every other delta.
+    if (!currentArgs.trimEnd().endsWith("}")) {
+      throw new Error("incomplete");
+    }
     JSON.parse(currentArgs);
   } catch (e) {
     // Model streams in args in parts e.g. "{"file": "file1"" -> ", "line": 1}"
