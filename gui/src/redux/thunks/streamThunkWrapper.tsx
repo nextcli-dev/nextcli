@@ -16,17 +16,19 @@ import { setDialogMessage, setShowDialog } from "../slices/uiSlice";
 import { ThunkApiType } from "../store";
 import { cancelStream } from "./cancelStream";
 import { saveCurrentSession } from "./session";
+import { finishTurnSnapshotIfDone } from "./turnSnapshot";
 
 export const streamThunkWrapper = createAsyncThunk<
   void,
   () => Promise<void>,
   ThunkApiType
->("chat/streamWrapper", async (runStream, { dispatch, getState }) => {
+>("chat/streamWrapper", async (runStream, { dispatch, extra, getState }) => {
   for (let attempt = 0; attempt <= OVERLOADED_RETRIES; attempt++) {
     try {
       await runStream();
       const state = getState();
       if (!state.session.isInEdit) {
+        await finishTurnSnapshotIfDone({ dispatch, extra, getState });
         await dispatch(
           saveCurrentSession({
             openNewSession: false,

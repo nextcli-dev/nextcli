@@ -17,6 +17,7 @@ import { ThunkApiType } from "../store";
 import { dismissOpenQuestions } from "./answerQuestion";
 import { streamNormalInput } from "./streamNormalInput";
 import { streamThunkWrapper } from "./streamThunkWrapper";
+import { beginTurnSnapshot } from "./turnSnapshot";
 import { updateFileSymbolsFromFiles } from "./updateFileSymbols";
 
 export const streamResponseThunk = createAsyncThunk<
@@ -69,6 +70,12 @@ export const streamResponseThunk = createAsyncThunk<
           dispatch,
           getState,
         });
+
+        // Snapshot the work tree before any tool runs, so the turn can be
+        // undone. Quick edit (isInEdit) has its own accept/reject.
+        if (!state.session.isInEdit) {
+          await beginTurnSnapshot({ dispatch, extra, getState }, inputIndex);
+        }
 
         // symbols for both context items AND selected codeblocks
         const filesForSymbols = [

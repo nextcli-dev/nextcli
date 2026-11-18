@@ -6,6 +6,7 @@ import styled from "styled-components";
 import { useFindWidget } from "../../components/find/FindWidget";
 import { NewSessionButton } from "../../components/mainInput/belowMainInput/NewSessionButton";
 import ContinueInputBox from "../../components/mainInput/ContinueInputBox";
+import { RedoTurnBar } from "../../components/UndoTurn/RedoTurnBar";
 import { useOnboardingCard } from "../../components/OnboardingCard/hooks/useOnboardingCard";
 import { TabBar } from "../../components/TabBar/TabBar";
 import { IdeMessengerContext } from "../../context/IdeMessenger";
@@ -254,6 +255,7 @@ export function Chat() {
         )}
       </StepsDiv>
       <div className={"relative shrink-0"}>
+        <RedoTurnBar />
         <ContinueInputBox
           isMainInput
           isLastUserInput={false}

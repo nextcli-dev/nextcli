@@ -27,6 +27,8 @@ type MockResponseHandlers = Partial<{
 
 const DEFAULT_MOCK_CORE_RESPONSES: MockResponses = {
   fileExists: true,
+  // No git work tree: turns run without snapshots
+  "snapshot/capture": { roots: [] },
   getCurrentFile: {
     isUntitled: false,
     contents: "Current file contents",

@@ -244,7 +244,16 @@ type SessionState = {
   contextPercentage?: number;
   inlineErrorMessage?: InlineErrorMessageType;
   compactionLoading: Record<number, boolean>; // Track compaction loading by message index
+  /** The last undo, which Redo re-applies until the next message is sent */
+  undoneTurn?: UndoneTurn;
 };
+
+export interface UndoneTurn {
+  /** Per work tree: the files to put back and the tree that has them */
+  roots: { root: string; targets: { path: string; tree: string }[] }[];
+  /** Messages removed by the undo, put back by redo */
+  removedHistory?: ChatHistoryItemWithMessageId[];
+}
 
 export const INITIAL_SESSION_STATE: SessionState = {
   isSessionMetadataLoading: false,
@@ -443,6 +452,8 @@ export const sessionSlice = createSlice({
       }>,
     ) => {
       const { index, editorState } = payload;
+      // A new message makes the last undo final
+      state.undoneTurn = undefined;
 
       if (state.history.length && index < state.history.length) {
         // Resubmission - update input message, truncate history after resubmit with new empty response message
@@ -514,6 +525,23 @@ export const sessionSlice = createSlice({
         state.isPruned = false;
         state.contextPercentage = undefined;
       }
+    },
+    /** Undo: drops the history from this index on */
+    truncateHistoryFrom: (state, action: PayloadAction<number>) => {
+      state.history = state.history.slice(0, action.payload);
+      state.inlineErrorMessage = undefined;
+      state.isPruned = false;
+      state.contextPercentage = undefined;
+    },
+    /** Redo: puts back messages an undo removed */
+    appendHistory: (
+      state,
+      action: PayloadAction<ChatHistoryItemWithMessageId[]>,
+    ) => {
+      state.history.push(...action.payload);
+    },
+    setUndoneTurn: (state, action: PayloadAction<UndoneTurn | undefined>) => {
+      state.undoneTurn = action.payload;
     },
     deleteMessage: (state, action: PayloadAction<number>) => {
       // Deletes the current assistant message and the previous user message
@@ -776,6 +804,7 @@ export const sessionSlice = createSlice({
     },
     newSession: (state, { payload }: PayloadAction<Session | undefined>) => {
       state.lastSessionId = state.id;
+      state.undoneTurn = undefined;
 
       state.streamAborter.abort();
       state.streamAborter = new AbortController();
@@ -1156,6 +1185,9 @@ export const {
   closeTurnForLeaving,
   setMainEditorContentTrigger,
   deleteMessage,
+  truncateHistoryFrom,
+  appendHistory,
+  setUndoneTurn,
   deleteCompaction,
   setIsGatheringContext,
   resetNextCodeBlockToApplyIndex,
