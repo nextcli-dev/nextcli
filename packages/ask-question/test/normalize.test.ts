@@ -146,7 +146,7 @@ describe("normalizeQuestionArgs", () => {
       ).toBe(header);
     });
 
-    it("drops catch-all options the UI already offers", () => {
+    it("drops the Other options the UI already offers and keeps None", () => {
       const labels = normalizeQuestionArgs({
         questions: [
           {
@@ -163,7 +163,27 @@ describe("normalizeQuestionArgs", () => {
           },
         ],
       }).questions[0].options.map((o) => o.label);
-      expect(labels).toEqual(["Postgres", "Other databases"]);
+      // "None" is an answer the user picks; "Other" would show up twice
+      expect(labels).toEqual([
+        "Postgres",
+        "None of the above",
+        "None.",
+        "Other databases",
+      ]);
+    });
+
+    it("asks for free text when the only options are Other", () => {
+      expect(
+        normalizeQuestionArgs({
+          questions: [
+            { question: "Which service?", options: ["Other (specify)"] },
+          ],
+        }).questions[0],
+      ).toEqual({
+        question: "Which service?",
+        options: [],
+        multiSelect: false,
+      });
     });
 
     it("drops repeated labels and keeps the first", () => {

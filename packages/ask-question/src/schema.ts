@@ -33,7 +33,7 @@ export const ASK_QUESTION_DESCRIPTION = [
   "- Put all your questions in one call. Each question has 2 to 4 short options, or no options when the answer is free text.",
   '- Put the option you recommend first and add " (Recommended)" to its label.',
   "- Set multiSelect to true when more than one answer can apply.",
-  '- Do not add an "Other" or "None of the above" option. The user can always type their own answer.',
+  '- Do not add an "Other" option. The user can always type their own answer.',
   "- Don't use it to ask for approval of a plan or to confirm before acting.",
   "- The user may skip a question or dismiss them all. Then continue with your best judgment and state the assumption you make.",
 ].join("\n");

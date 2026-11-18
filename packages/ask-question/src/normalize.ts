@@ -30,9 +30,11 @@ function parseJsonString(value: unknown): unknown {
   }
 }
 
-// "Other", "None of the above", "Other (please specify)" and the like. Every UI
-// adds its own "Other" answer, so a model-made one would show up twice.
-const CATCH_ALL_LABEL = /^(other|none|none of the above|something else)$/;
+// "Other", "Other (please specify)", "Something else" and the like. Every UI
+// adds its own "Other" answer, so a model-made one would show up twice. "None"
+// stays: it is an answer the user can pick, not a request to type one. A
+// question left with only such options becomes a free-text question.
+const CATCH_ALL_LABEL = /^(other|something else)$/;
 
 function isCatchAll(label: string): boolean {
   const core = label
@@ -118,7 +120,7 @@ function normalizeQuestion(raw: unknown, n: number): Question {
  * - the old cn shape `{question, options: string[]}`;
  * - options as strings; `multiple` as an alias of `multiSelect`;
  * - a missing `question` when there is a `header`.
- * Catch-all options ("Other", "None of the above") and repeated labels are
+ * "Other"-style options (the UI adds its own) and repeated labels are
  * dropped, and the suggested limits on counts and lengths are not enforced.
  */
 export function normalizeQuestionArgs(raw: unknown): QuestionSet {
