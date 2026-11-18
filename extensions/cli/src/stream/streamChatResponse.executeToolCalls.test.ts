@@ -288,6 +288,27 @@ describe("executeStreamedToolCalls after an interrupt", () => {
     });
   });
 
+  it("records a result the tool returned as the turn was stopped", async () => {
+    // AskQuestion's dismiss: the answer settles the tool, then the turn aborts
+    const controller = new AbortController();
+    vi.mocked(executeToolCall).mockImplementation(async () => {
+      controller.abort();
+      return "The user dismissed your questions";
+    });
+
+    const { chatHistoryEntries } = await executeStreamedToolCalls(
+      [readCall("call_1")],
+      undefined,
+      true,
+      controller.signal,
+    );
+
+    expect(chatHistoryEntries[0]).toMatchObject({
+      status: "done",
+      content: "The user dismissed your questions",
+    });
+  });
+
   it("passes the signal to the tool", async () => {
     vi.mocked(executeToolCall).mockResolvedValue("ok");
     const controller = new AbortController();

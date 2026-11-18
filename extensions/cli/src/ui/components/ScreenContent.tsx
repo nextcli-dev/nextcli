@@ -1,3 +1,4 @@
+import type { AnswerSet } from "@nextcli/ask-question";
 import React from "react";
 
 import { UpdateServiceState } from "src/services/types.js";
@@ -37,7 +38,7 @@ interface ScreenContentProps {
     createPolicy?: boolean,
     stopStream?: boolean,
   ) => void;
-  handleQuizAnswer: (requestId: string, answer: string) => void;
+  handleQuizAnswer: (requestId: string, answers: AnswerSet) => void;
   handleUserMessage: (message: string, imageMap?: Map<string, Buffer>) => void;
   isWaitingForResponse: boolean;
   isCompacting: boolean;

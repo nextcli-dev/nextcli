@@ -1,5 +1,6 @@
 /* eslint-disable max-lines */
 /* eslint-disable max-statements   */
+import type { AnswerSet } from "@nextcli/ask-question";
 import type { ChatHistoryItem, Session } from "core/index.js";
 import { useApp } from "ink";
 import { useEffect, useRef, useState } from "react";
@@ -7,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { findCompactionIndex } from "../../compaction.js";
 import { toolPermissionManager } from "../../permissions/permissionManager.js";
 import { services } from "../../services/index.js";
+import type { QuestionAnsweredEvent } from "../../services/QuizService.js";
 import {
   createSession,
   loadSession,
@@ -207,8 +209,11 @@ export function useChat({
       setActiveQuizQuestion(pending);
     };
 
-    const onQuestionAnswered = () => {
-      setActiveQuizQuestion(null);
+    const onQuestionAnswered = (event: QuestionAnsweredEvent) => {
+      // The next queued question set may already be on screen
+      setActiveQuizQuestion((current) =>
+        current?.requestId === event.requestId ? null : current,
+      );
     };
 
     quizSvc.on("questionRequested", onQuestionRequested);
@@ -857,9 +862,21 @@ export function useChat({
     }
   };
 
-  const handleQuizAnswer = (requestId: string, answer: string) => {
+  const handleQuizAnswer = (requestId: string, answers: AnswerSet) => {
     setActiveQuizQuestion(null);
-    services.quiz.answerQuestion(requestId, answer);
+    // Answer first: AskQuestion then returns its result, which is recorded
+    // before the abort below ends the turn.
+    services.quiz.answerQuestions(requestId, answers);
+
+    // Dismissing ends the turn and gives the input back, like rejecting a
+    // tool call and stopping. wasInterrupted stays false, so an empty Enter
+    // does not resume the turn.
+    if (answers.dismissed && abortController && isWaitingForResponse) {
+      abortController.abort();
+      setIsWaitingForResponse(false);
+      setResponseStartTime(null);
+      setInputMode(true);
+    }
   };
 
   return {

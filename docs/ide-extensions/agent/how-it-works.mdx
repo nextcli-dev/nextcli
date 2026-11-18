@@ -40,6 +40,7 @@ In Plan mode, only these read-only tools are available:
 - **View repo map** (`view_repo_map`)
 - **View subdirectory** (`view_subdirectory`)
 - **Codebase tool** (`codebase_tool`)
+- **Ask question** (`ask_question`)
 
 ### What Tools Are Available in Agent Mode (All Tools)
 
@@ -50,3 +51,15 @@ In Agent mode, all tools are available including the read-only tools above plus:
 - **Run terminal command** (`run_terminal_command`): Run commands from the workspace root. Commands run without secret-like environment variables (API keys, tokens, passwords), including ones your shell profile exports. List the ones a command needs in the `continue.terminalPassEnv` setting. Only your user settings count: a workspace's `.vscode/settings.json` can't change it.
 - **Create Rule Block** (`create_rule_block`): Create a new rule block in `.continue/rules`
 - All other write/execute tools for modifying the codebase
+
+### Questions From the Agent
+
+When a decision is yours to make, the model asks with `ask_question`: up to four questions, each with a few options. The questions replace the chat input until you answer.
+
+- Click an option, or move with <kbd>↑</kbd>/<kbd>↓</kbd> and press <kbd>Enter</kbd> to pick it and go to the next question. Number keys pick an option directly.
+- When more than one answer can apply, <kbd>Space</kbd> toggles an option and <kbd>Enter</kbd> moves on.
+- Type to give your own answer in **Other**.
+- <kbd>Esc</kbd> skips a question. The model then decides on its own and says what it assumed.
+- The **×** button, or <kbd>Cmd</kbd>+<kbd>Backspace</kbd> (<kbd>Ctrl</kbd>+<kbd>Backspace</kbd> on Windows and Linux), dismisses all the questions and ends the turn, so you can answer in the chat.
+
+The tool runs without asking for approval, in both Agent and Plan mode. To turn it off, set **Ask Question** to **Excluded** in the tool settings.

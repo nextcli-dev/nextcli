@@ -1,16 +1,15 @@
 import type { ToolPolicy } from "@continuedev/terminal-security";
 
-// JSON Schema compatible parameter definition
+// JSON Schema compatible parameter definition. Nested nodes (array items, the
+// properties of an item) often have no description, as in MCP tool schemas.
 export interface ParameterSchema {
   type: string;
-  description: string;
+  description?: string;
   required?: string[];
   properties?: Record<string, ParameterSchema>;
-  items?: {
-    type: string;
-    properties?: Record<string, ParameterSchema>;
-    required?: string[];
-  };
+  items?: ParameterSchema;
+  minItems?: number;
+  maxItems?: number;
 }
 
 export interface ToolParametersSchema {

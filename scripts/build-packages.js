@@ -81,7 +81,11 @@ async function main() {
     console.log("🚀 Starting package builds...\n");
 
     // Phase 1: Build foundation packages (no local dependencies)
-    await buildPackagesInParallel(["config-types", "terminal-security"]);
+    await buildPackagesInParallel([
+      "config-types",
+      "terminal-security",
+      "ask-question",
+    ]);
 
     // Phase 2: Build packages that depend on config-types
     await buildPackagesInParallel(["fetch", "config-yaml", "llm-info"]);

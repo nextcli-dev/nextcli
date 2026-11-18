@@ -81,6 +81,10 @@ try {
         __dirname,
         "../../packages/terminal-security/dist/index.js",
       ),
+      "@nextcli/ask-question": resolve(
+        __dirname,
+        "../../packages/ask-question/dist/index.js",
+      ),
       "node-domexception": resolve(
         __dirname,
         "../../shims/node-domexception/index.js",

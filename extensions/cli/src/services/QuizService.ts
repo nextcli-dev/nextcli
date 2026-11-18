@@ -1,47 +1,35 @@
 import { EventEmitter } from "events";
 
-/**Types */
-export interface QuizQuestion {
-  question: string;
-  options?: string[];
-  defaultAnswer?: string;
+import type { AnswerSet, QuestionSet } from "@nextcli/ask-question";
+
+import { ToolInterruptedError } from "../tools/toolInterruptedError.js";
+
+export interface PendingQuestion {
+  requestId: string;
+  set: QuestionSet;
 }
 
-export interface PendingQuestion extends QuizQuestion {
-  requestId: string;
-  timestamp: number;
-}
+/** Emitted when the terminal UI should show `set`. */
+export type QuestionRequestedEvent = PendingQuestion;
 
-export interface QuizAnswer {
+/** Emitted when a question set is answered, dismissed or abandoned. */
+export interface QuestionAnsweredEvent {
   requestId: string;
-  answer: string;
-  isCustomAnswer: boolean;
 }
 
 export interface QuizServiceState {
   pendingQuestion: PendingQuestion | null;
 }
 
-export interface QuestionRequestedEvent {
-  requestId: string;
-  question: QuizQuestion;
-}
-
-export interface QuestionAnsweredEvent {
-  requestId: string;
-  answer: string;
-  isCustomAnswer: boolean;
-}
-
-/**Quiz service */
+/**
+ * Hands AskQuestion's questions to the terminal UI and waits for the answers.
+ * One question set is shown at a time: parallel AskQuestion calls wait their
+ * turn instead of replacing each other on screen.
+ */
 export class QuizService extends EventEmitter {
-  private pendingRequests = new Map<
-    string,
-    {
-      question: QuizQuestion;
-      resolve: (answer: string) => void;
-    }
-  >();
+  private pending = new Map<string, (answers: AnswerSet) => void>();
+  private nextId = 0;
+  private queue: Promise<unknown> = Promise.resolve();
 
   private currentState: QuizServiceState = {
     pendingQuestion: null,
@@ -55,64 +43,61 @@ export class QuizService extends EventEmitter {
     return this.listenerCount("questionRequested") > 0;
   }
 
-  /**set a pending question to be answered and return a promise that resolves when the question is answered */
-  async askQuestion(question: QuizQuestion): Promise<string> {
+  /**
+   * Shows `set` once earlier question sets are done and resolves with the
+   * answers. Rejects with ToolInterruptedError when `signal` aborts first.
+   */
+  askQuestions(set: QuestionSet, signal?: AbortSignal): Promise<AnswerSet> {
     // Without a listener the promise below would never settle: cn -p would
     // exit with no output, and a cn serve turn would hang.
     if (!this.canAskQuestions()) {
-      throw new Error(
-        "Nobody can answer questions in this run. Continue without asking, and state the assumptions you make.",
+      return Promise.reject(
+        new Error(
+          "Nobody can answer questions in this run. Continue without asking, and state the assumptions you make.",
+        ),
       );
     }
+    const turn = this.queue.then(() => this.show(set, signal));
+    this.queue = turn.catch(() => undefined);
+    return turn;
+  }
 
-    const requestId = `quiz-${Date.now()}`;
+  private show(set: QuestionSet, signal?: AbortSignal): Promise<AnswerSet> {
+    if (signal?.aborted) return Promise.reject(new ToolInterruptedError());
+    const requestId = `quiz-${++this.nextId}`;
 
-    return new Promise<string>((resolve) => {
-      const pendingQuestion: PendingQuestion = {
-        ...question,
-        requestId,
-        timestamp: Date.now(),
+    return new Promise<AnswerSet>((resolve, reject) => {
+      const onAbort = () => {
+        this.settle(requestId);
+        reject(new ToolInterruptedError());
       };
-
-      this.pendingRequests.set(requestId, {
-        question,
-        resolve,
+      signal?.addEventListener("abort", onAbort, { once: true });
+      this.pending.set(requestId, (answers) => {
+        signal?.removeEventListener("abort", onAbort);
+        resolve(answers);
       });
-
-      this.currentState.pendingQuestion = pendingQuestion;
-
-      const event: QuestionRequestedEvent = {
-        requestId,
-        question,
-      };
-
+      this.currentState.pendingQuestion = { requestId, set };
+      const event: QuestionRequestedEvent = { requestId, set };
       this.emit("questionRequested", event);
     });
   }
 
-  /**answer the pending question request and resolve the answer */
-  answerQuestion(
-    requestId: string,
-    answer: string,
-    isCustomAnswer = false,
-  ): boolean {
-    const pending = this.pendingRequests.get(requestId);
-    if (!pending) {
-      return false;
+  /** Forgets a request and tells the UI to close its prompt. */
+  private settle(requestId: string): boolean {
+    if (!this.pending.delete(requestId)) return false;
+    if (this.currentState.pendingQuestion?.requestId === requestId) {
+      this.currentState.pendingQuestion = null;
     }
-
-    this.pendingRequests.delete(requestId);
-    this.currentState.pendingQuestion = null;
-
-    const event: QuestionAnsweredEvent = {
-      requestId,
-      answer,
-      isCustomAnswer,
-    };
-
+    const event: QuestionAnsweredEvent = { requestId };
     this.emit("questionAnswered", event);
-    pending.resolve(answer);
+    return true;
+  }
 
+  /** Answers (or dismisses) a pending request. False if it is not pending. */
+  answerQuestions(requestId: string, answers: AnswerSet): boolean {
+    const resolve = this.pending.get(requestId);
+    if (!resolve || !this.settle(requestId)) return false;
+    resolve(answers);
     return true;
   }
 
@@ -120,7 +105,8 @@ export class QuizService extends EventEmitter {
     this.currentState = {
       pendingQuestion: null,
     };
-    this.pendingRequests.clear();
+    this.pending.clear();
+    this.queue = Promise.resolve();
     return this.currentState;
   }
 }

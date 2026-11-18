@@ -13,10 +13,11 @@ const { containerSet } = vi.hoisted(() => ({ containerSet: vi.fn() }));
 let childPermissions: ToolPermissions | undefined;
 
 // The parent: a headless run with the closed defaults
-const parent: ToolPermissions = {
+const headlessParent: ToolPermissions = {
   policies: getDefaultToolPolicies(true),
   unattended: true,
 };
+let parent = headlessParent;
 
 vi.mock("../services/ServiceContainer.js", () => ({
   serviceContainer: { get: vi.fn(), set: containerSet },
@@ -41,6 +42,7 @@ describe("executeSubAgent permissions", () => {
   beforeEach(() => {
     containerSet.mockClear();
     childPermissions = undefined;
+    parent = headlessParent;
   });
 
   it("runs the child under the parent's permissions, without another subagent", async () => {
@@ -64,5 +66,27 @@ describe("executeSubAgent permissions", () => {
     expect(childPermissions!.unattended).toBe(true);
     // A mode switch in the main session during the child's run is not undone
     expect(containerSet).not.toHaveBeenCalled();
+  });
+
+  it("keeps a subagent from asking the user, even when the main session may", async () => {
+    // The terminal UI: the main session may ask
+    parent = { policies: getDefaultToolPolicies(false) };
+    expect(
+      checkToolPermission({ name: "AskQuestion", arguments: {} }, parent)
+        .permission,
+    ).toBe("allow");
+
+    await executeSubAgent({
+      agent: { model: { name: "child" }, llmApi: {} } as any,
+      prompt: "look around",
+      parentSessionId: "parent",
+      abortController: new AbortController(),
+    });
+
+    const check = (name: string) =>
+      checkToolPermission({ name, arguments: {} }, childPermissions!)
+        .permission;
+    expect(check("AskQuestion")).toBe("exclude");
+    expect(check("Read")).toBe("allow");
   });
 });
