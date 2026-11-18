@@ -103,6 +103,27 @@ describe("ThinkingBlockPeek", () => {
     expect(screen.queryByText("Working it out")).not.toBeInTheDocument();
   });
 
+  it("keeps live reasoning in a bounded box that the user can open in full", async () => {
+    const { user } = await renderWithProviders(
+      <ThinkingBlockPeek
+        content="Long reasoning"
+        index={0}
+        prevItem={null}
+        inProgress
+      />,
+    );
+    // While the model thinks: a bounded box, so the chat doesn't grow
+    const live = screen.getByTestId("thinking-block-live");
+    expect(live.className).toMatch(/max-h-\[50vh\]/);
+    expect(live).toHaveTextContent("Long reasoning");
+
+    // Opened by hand: full height
+    await user.click(screen.getByTestId("thinking-block-peek"));
+    await user.click(screen.getByTestId("thinking-block-peek"));
+    expect(screen.queryByTestId("thinking-block-live")).not.toBeInTheDocument();
+    expect(screen.getByText("Long reasoning")).toBeVisible();
+  });
+
   it("keeps a block the user toggled while thinking in that state", async () => {
     const { user, rerender } = await renderWithProviders(
       <ThinkingBlockPeek

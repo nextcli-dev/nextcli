@@ -60,6 +60,7 @@ function ThinkingBlockPeek({
   // not what. Judged per block, so changing models doesn't change it
   const hideContent = !!hidden;
   const open = !hideContent && (userOpen ?? !!inProgress);
+  const capped = open && !!inProgress && userOpen === undefined;
   const [startTime, setStartTime] = useState<number | null>(null);
   const [elapsedTime, setElapsedTime] = useState<string>("");
   // The size of the tool call rows around it, not of the answer
@@ -139,15 +140,28 @@ function ThinkingBlockPeek({
                 Thinking content redacted due to safety reasons.
               </div>
             ) : (
-              <MarkdownWrapper>
-                <StyledMarkdownPreview
-                  isRenderingInStepContainer
-                  source={content}
-                  itemIndex={index}
-                  muted
-                  fontSize={rowFont}
-                />
-              </MarkdownWrapper>
+              <div
+                // While the model thinks (and nobody opened the block), keep
+                // the reasoning in a box that stays scrolled to its end
+                // (column-reverse anchors it there), so the chat doesn't
+                // grow and lay out again on every chunk. Full height after.
+                className={
+                  capped
+                    ? "flex max-h-[50vh] flex-col-reverse overflow-y-auto"
+                    : ""
+                }
+                data-testid={capped ? "thinking-block-live" : undefined}
+              >
+                <MarkdownWrapper>
+                  <StyledMarkdownPreview
+                    isRenderingInStepContainer
+                    source={content}
+                    itemIndex={index}
+                    muted
+                    fontSize={rowFont}
+                  />
+                </MarkdownWrapper>
+              </div>
             )}
           </div>
         )}
