@@ -20,6 +20,7 @@ import { PendingApplyStatesToolbar } from "./PendingApplyStatesToolbar";
 import { PendingToolCallToolbar } from "./PendingToolCallToolbar";
 import { StreamingToolbar } from "./StreamingToolbar";
 import { TtsActiveToolbar } from "./TtsActiveToolbar";
+import { focusChatInput } from "../../focusChatInput";
 
 // Keyboard shortcut detection utilities
 const isExecuteToolCallShortcut = (event: KeyboardEvent) => {
@@ -137,7 +138,7 @@ export function LumpToolbar() {
         } else if (firstPendingToolCall) {
           // Cancel pending tool call. If last call, focus editor
           if (pendingToolCalls.length === 1) {
-            editor.mainEditor?.commands.focus();
+            focusChatInput(editor.mainEditor);
           }
           void dispatch(
             cancelToolCall({

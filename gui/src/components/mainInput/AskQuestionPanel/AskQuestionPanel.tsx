@@ -27,7 +27,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useAppDispatch } from "../../../redux/hooks";
+import { useAppDispatch, useAppSelector } from "../../../redux/hooks";
 import {
   dismissQuestion,
   submitQuestionAnswers,
@@ -40,6 +40,7 @@ import {
 import { cn } from "../../../util/cn";
 import { Button } from "../../ui/Button";
 import { FONT_STEP, useFontSize } from "../../ui/font";
+import { QUESTION_PANEL_ATTRIBUTE } from "../focusChatInput";
 import { useMainEditor } from "../TipTapEditor/MainEditorProvider";
 import { ChoiceBadge, OptionRow } from "./OptionRow";
 
@@ -107,6 +108,7 @@ function QuestionForm({
   set: QuestionSet;
 }) {
   const dispatch = useAppDispatch();
+  const sessionId = useAppSelector((state) => state.session.id);
   const { mainEditor } = useMainEditor();
   // Question and options at the size of the chat's tool call rows
   const rowFont = useFontSize(FONT_STEP.row);
@@ -132,8 +134,8 @@ function QuestionForm({
   const answered = isDraftAnswered(question, current);
 
   useEffect(() => {
-    if (!finished.current) saveQuestionDraft(toolCallId, form);
-  }, [toolCallId, form]);
+    if (!finished.current) saveQuestionDraft(toolCallId, sessionId, form);
+  }, [toolCallId, sessionId, form]);
 
   // The editor grabs focus when streaming stops, which is exactly when the
   // panel appears, so focus is moved after the next paint.
@@ -275,6 +277,7 @@ function QuestionForm({
       role="group"
       aria-label="Questions from NextCLI"
       data-testid="ask-question-panel"
+      {...{ [QUESTION_PANEL_ATTRIBUTE]: "" }}
       className={PANEL_CLASS}
       style={{ fontSize: rowFont }}
       onKeyDown={onKeyDown}

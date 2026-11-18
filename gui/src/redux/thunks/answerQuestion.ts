@@ -6,22 +6,41 @@ import {
   normalizeQuestionArgs,
 } from "@nextcli/ask-question";
 import { ContextItem } from "core";
-import { BuiltInToolNames } from "core/tools/builtIn";
 
 import { clearQuestionDraft } from "../../util/askQuestionDrafts";
 import { selectCurrentToolCalls } from "../selectors/selectToolCalls";
-import { acceptToolCall, updateToolCallOutput } from "../slices/sessionSlice";
+import {
+  acceptToolCall,
+  cancelToolCall,
+  updateToolCallOutput,
+} from "../slices/sessionSlice";
 import { AppThunkDispatch, RootState, ThunkApiType } from "../store";
-import { findToolCallById } from "../util";
+import { findToolCallById, isQuestionCall } from "../util";
 import { saveCurrentSession } from "./session";
 import { streamResponseAfterToolCall } from "./streamResponseAfterToolCall";
 
 function isOpenQuestion(state: RootState, toolCallId: string): boolean {
   const toolCall = findToolCallById(state.session.history, toolCallId);
   return (
-    toolCall?.toolCall.function?.name === BuiltInToolNames.AskQuestion &&
-    toolCall.status === "calling"
+    !!toolCall && isQuestionCall(toolCall) && toolCall.status === "calling"
   );
+}
+
+/**
+ * The depth streamResponseAfterToolCall would have had if the question had
+ * returned at once: each tool round since the user's message adds 3 (model
+ * call, tool call, resume). Answering then counts toward the automatic-round
+ * cap instead of starting it over. Taken from the history, so it holds after
+ * a reload.
+ */
+export function resumeDepth(history: RootState["session"]["history"]): number {
+  let rounds = 0;
+  for (let i = history.length - 1; i >= 0; i--) {
+    const { message, toolCallStates } = history[i];
+    if (message.role === "user") break;
+    if (message.role === "assistant" && toolCallStates?.length) rounds++;
+  }
+  return Math.max(0, 3 * rounds - 1);
 }
 
 /**
@@ -61,14 +80,23 @@ export const submitQuestionAnswers = createAsyncThunk<
     finishQuestion(dispatch, toolCallId, content);
     // Continues once every tool call in the message is finished, and saves the
     // session when the stream ends.
-    unwrapResult(await dispatch(streamResponseAfterToolCall({ toolCallId })));
+    unwrapResult(
+      await dispatch(
+        streamResponseAfterToolCall({
+          toolCallId,
+          depth: resumeDepth(getState().session.history),
+        }),
+      ),
+    );
   },
 );
 
 /**
  * Ends the turn without an answer and gives the input back. The model reads
- * the dismissal together with the user's next message. Nothing streams, so the
- * session is saved here.
+ * the dismissal together with the user's next message. Calls next to the
+ * question that haven't run are canceled; one still running keeps its result,
+ * and streamResponseAfterToolCall doesn't continue after a dismissed question.
+ * Nothing streams, so the session is saved here.
  */
 export const dismissQuestion = createAsyncThunk<
   void,
@@ -77,6 +105,11 @@ export const dismissQuestion = createAsyncThunk<
 >("askQuestion/dismiss", async ({ toolCallId }, { dispatch, getState }) => {
   if (!isOpenQuestion(getState(), toolCallId)) return;
   finishQuestion(dispatch, toolCallId, DISMISS_TEXT);
+  for (const toolCall of selectCurrentToolCalls(getState())) {
+    if (toolCall.status === "generating" || toolCall.status === "generated") {
+      dispatch(cancelToolCall({ toolCallId: toolCall.toolCallId }));
+    }
+  }
   await dispatch(
     saveCurrentSession({ openNewSession: false, generateTitle: false }),
   );

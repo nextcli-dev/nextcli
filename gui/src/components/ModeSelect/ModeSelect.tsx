@@ -16,6 +16,7 @@ import { useMainEditor } from "../mainInput/TipTapEditor/MainEditorProvider";
 import { Listbox } from "@headlessui/react";
 import { ListboxButton, ListboxOption, ListboxOptions } from "../ui/Listbox";
 import { ModeIcon } from "./ModeIcon";
+import { focusChatInput } from "../mainInput/focusChatInput";
 
 export function ModeSelect() {
   const dispatch = useAppDispatch();
@@ -44,7 +45,7 @@ export function ModeSelect() {
     }
     // Only focus main editor if another one doesn't already have focus
     if (!document.activeElement?.classList?.contains("ProseMirror")) {
-      mainEditor?.commands.focus();
+      focusChatInput(mainEditor);
     }
   }, [mode, mainEditor]);
 
@@ -56,7 +57,7 @@ export function ModeSelect() {
 
       dispatch(setMode(newMode));
 
-      mainEditor?.commands.focus();
+      focusChatInput(mainEditor);
     },
     [mode, mainEditor],
   );

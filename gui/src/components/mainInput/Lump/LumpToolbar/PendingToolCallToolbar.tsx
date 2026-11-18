@@ -5,6 +5,7 @@ import { cancelToolCallThunk } from "../../../../redux/thunks/cancelToolCall";
 import { getMetaKeyLabel } from "../../../../util";
 import { Button } from "../../../ui/Button";
 import { useMainEditor } from "../../TipTapEditor/MainEditorProvider";
+import { focusChatInput } from "../../focusChatInput";
 
 export const generateToolCallButtonTestId = (
   action: "accept" | "reject",
@@ -29,7 +30,7 @@ export function PendingToolCallToolbar() {
   const handleReject = (toolCallId: string) => {
     // put cursor in editor after last rejection
     if (pendingToolCalls.length === 1) {
-      editor.mainEditor?.commands.focus();
+      focusChatInput(editor.mainEditor);
     }
     void dispatch(cancelToolCallThunk({ toolCallId }));
   };

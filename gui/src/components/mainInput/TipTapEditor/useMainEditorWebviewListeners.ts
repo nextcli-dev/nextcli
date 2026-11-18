@@ -12,6 +12,7 @@ import { loadSession, saveCurrentSession } from "../../../redux/thunks/session";
 import { CodeBlock } from "./extensions/CodeBlock/CodeBlock";
 import { PromptBlock } from "./extensions/Prompt/PromptBlock";
 import { insertCurrentFileContextMention } from "./utils/insertCurrentFileContextMention";
+import { focusChatInput } from "../focusChatInput";
 
 /**
  * Hook for setting up main editor specific webview listeners
@@ -74,7 +75,7 @@ export function useMainEditorWebviewListeners({
 
       setTimeout(() => {
         editor?.commands.blur();
-        editor?.commands.focus("end");
+        focusChatInput(editor, "end");
       }, 20);
     },
     [historyLength, editor, dispatch],
@@ -84,7 +85,7 @@ export function useMainEditorWebviewListeners({
     "focusContinueInputWithoutClear",
     async () => {
       setTimeout(() => {
-        editor?.commands.focus("end");
+        focusChatInput(editor, "end");
       }, 20);
     },
     [editor],
@@ -103,7 +104,7 @@ export function useMainEditorWebviewListeners({
       });
 
       setTimeout(() => {
-        editor?.commands.focus("end");
+        focusChatInput(editor, "end");
       }, 20);
     },
     [editor, dispatch, guardRunningTurn],

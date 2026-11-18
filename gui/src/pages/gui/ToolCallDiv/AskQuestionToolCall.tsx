@@ -4,13 +4,14 @@ import {
   MinusIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
-import { DISMISS_TEXT, normalizeQuestionArgs } from "@nextcli/ask-question";
+import { normalizeQuestionArgs } from "@nextcli/ask-question";
 import { ToolCallState } from "core";
 import { ComponentType, ReactNode, SVGProps, useMemo, useState } from "react";
 import Spinner from "../../../components/gui/Spinner";
 import { FONT_STEP, useFontSize } from "../../../components/ui/font";
 import { useAppSelector } from "../../../redux/hooks";
 import { selectOpenQuestion } from "../../../redux/selectors/selectToolCalls";
+import { isDismissedQuestion } from "../../../redux/util";
 import { cn } from "../../../util/cn";
 import { ToggleWithIcon } from "./ToggleWithIcon";
 import { ToolTruncateHistoryIcon } from "./ToolTruncateHistoryIcon";
@@ -82,10 +83,12 @@ export function AskQuestionToolCall({
         message = `NextCLI asked you ${asked} · not answered`;
       }
       break;
-    case "done":
-      icon = output === DISMISS_TEXT ? MinusIcon : SuccessIcon;
-      message = `NextCLI asked you ${asked}${output === DISMISS_TEXT ? " · dismissed" : ""}`;
+    case "done": {
+      const dismissed = isDismissedQuestion(toolCallState);
+      icon = dismissed ? MinusIcon : SuccessIcon;
+      message = `NextCLI asked you ${asked}${dismissed ? " · dismissed" : ""}`;
       break;
+    }
     case "errored":
       icon = ErrorIcon;
       message = "NextCLI tried to ask you a question";

@@ -8,6 +8,7 @@ import {
   streamUpdate,
 } from "../slices/sessionSlice";
 import { ThunkApiType } from "../store";
+import { isDismissedQuestion } from "../util";
 import { streamNormalInput } from "./streamNormalInput";
 import { streamThunkWrapper } from "./streamThunkWrapper";
 
@@ -73,6 +74,9 @@ export const streamResponseAfterToolCall = createAsyncThunk<
             item.toolCallStates?.some((tc) => tc.toolCallId === toolCallId),
         );
 
+        if (assistantMessage?.toolCallStates?.some(isDismissedQuestion)) {
+          return; // the user dismissed a question: the turn is over
+        }
         if (
           assistantMessage &&
           areAllToolsDoneStreaming(

@@ -1,6 +1,6 @@
 import { ALL_SKIPPED_TEXT, DISMISS_TEXT } from "@nextcli/ask-question";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
-import { ChatMessage, ToolCallState } from "core";
+import { ChatMessage, Session, ToolCallState } from "core";
 import { BuiltInToolNames } from "core/tools/builtIn";
 import { askQuestionTool } from "core/tools/definitions/askQuestion";
 import { viewDiffTool } from "core/tools/definitions/viewDiff";
@@ -10,6 +10,8 @@ import { generateToolCallButtonTestId } from "../../../components/mainInput/Lump
 import { selectActiveTools } from "../../../redux/selectors/selectActiveTools";
 import { updateConfig } from "../../../redux/slices/configSlice";
 import { newSession, setMode } from "../../../redux/slices/sessionSlice";
+import { resumeDepth } from "../../../redux/thunks/answerQuestion";
+import { loadSession, saveCurrentSession } from "../../../redux/thunks/session";
 import { setToolPolicy } from "../../../redux/slices/uiSlice";
 import { streamResponseThunk } from "../../../redux/thunks/streamResponse";
 import { addAndSelectMockLlm } from "../../../util/test/config";
@@ -54,6 +56,13 @@ const ONE_QUESTION = {
   ],
 };
 
+const FREE_TEXT = {
+  questions: [{ question: "Which table should store sessions?", options: [] }],
+};
+
+/** A view_diff call next to the question: none, waiting for approval, or running. */
+type Sibling = "none" | "approval" | "running";
+
 function askingResponse(args: unknown, withViewDiff = false): ChatMessage[] {
   return [
     { role: "assistant", content: "Two decisions first." },
@@ -83,7 +92,7 @@ function askingResponse(args: unknown, withViewDiff = false): ChatMessage[] {
   ];
 }
 
-async function renderWithQuestion(args: unknown, withViewDiff = false) {
+async function renderWithQuestion(args: unknown, sibling: Sibling = "none") {
   const rendered = await renderWithProviders(<Chat />);
   const { ideMessenger, store } = rendered;
   await act(async () => {
@@ -94,41 +103,73 @@ async function renderWithQuestion(args: unknown, withViewDiff = false) {
         tools: [serializeTool(askQuestionTool), viewDiffTool],
       }),
     );
-    // view_diff runs without asking by default; make it wait for approval
-    store.dispatch(
-      setToolPolicy({
-        toolName: viewDiffTool.function.name,
-        policy: "allowedWithPermission",
-      }),
-    );
+    if (sibling === "approval") {
+      // view_diff runs without asking by default; make it wait for approval
+      store.dispatch(
+        setToolPolicy({
+          toolName: viewDiffTool.function.name,
+          policy: "allowedWithPermission",
+        }),
+      );
+    }
   });
-  ideMessenger.responses["tools/call"] = {
+  const diffResult = {
     contextItems: [
       { name: "Diff", description: "git diff", content: "no changes" },
     ],
     errorMessage: undefined,
   };
+  // A running sibling returns only when the test calls finishSibling
+  let finishSibling = () => {};
+  if (sibling === "running") {
+    ideMessenger.responseHandlers["tools/call"] = () =>
+      new Promise((resolve) => {
+        finishSibling = () => resolve(diffResult as any);
+      });
+  } else {
+    ideMessenger.responses["tools/call"] = diffResult;
+  }
   const streamChat = vi.spyOn(ideMessenger, "llmStreamChat");
   const request = vi.spyOn(ideMessenger, "request");
 
   await sendInputWithMockedResponse(
     ideMessenger,
     "Add retries",
-    askingResponse(args, withViewDiff),
+    askingResponse(args, sibling !== "none"),
   );
   const panel = await getElementByTestId("ask-question-panel");
   // The turn after the answers
   ideMessenger.chatResponse = [{ role: "assistant", content: "Going ahead" }];
-  return { ...rendered, panel, streamChat, request };
+  return {
+    ...rendered,
+    panel,
+    streamChat,
+    request,
+    finishSibling: () => finishSibling(),
+  };
 }
 
-function questionState(
-  store: Awaited<ReturnType<typeof renderWithQuestion>>["store"],
+type Store = Awaited<ReturnType<typeof renderWithQuestion>>["store"];
+
+function toolState(
+  store: Store,
+  toolCallId: string,
 ): ToolCallState | undefined {
   return store
     .getState()
     .session.history.flatMap((item) => item.toolCallStates ?? [])
-    .find((state) => state.toolCallId === QUESTION_ID);
+    .find((state) => state.toolCallId === toolCallId);
+}
+
+function questionState(store: Store): ToolCallState | undefined {
+  return toolState(store, QUESTION_ID);
+}
+
+/** Lets a continuation that shouldn't happen get the chance to. */
+async function settle() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
 }
 
 /**
@@ -329,30 +370,58 @@ test("a new message dismisses the open question first", async () => {
   expect(lastRequestText(request)).toContain(DISMISS_TEXT);
 });
 
-test("the panel keeps the Lump's keys from rejecting another pending call", async () => {
-  const { panel, streamChat, request } = await renderWithQuestion(
+test("dismissing with the keyboard ends the turn and cancels a call waiting for approval", async () => {
+  const { panel, store, streamChat } = await renderWithQuestion(
     TWO_QUESTIONS,
-    true,
+    "approval",
   );
   await getElementByTestId(
     generateToolCallButtonTestId("accept", VIEW_DIFF_ID),
   );
   await waitFor(() => expect(panel).toHaveFocus());
+  const before = streamChat.mock.calls.length;
 
-  // In the panel, Mod+Backspace dismisses the question, not the other call
+  // The panel takes Mod+Backspace: the Lump would reject view_diff instead
+  // and leave the question open
   fireEvent.keyDown(panel, { key: "Backspace", metaKey: true, ctrlKey: true });
 
   await waitFor(() =>
-    expect(screen.queryByTestId("ask-question-panel")).not.toBeInTheDocument(),
+    expect(questionState(store)?.output?.[0].content).toBe(DISMISS_TEXT),
   );
+  expect(toolState(store, VIEW_DIFF_ID)?.status).toBe("canceled");
   expect(
-    screen.getByTestId(generateToolCallButtonTestId("accept", VIEW_DIFF_ID)),
-  ).toBeInTheDocument();
-  expect(lastRequestText(request)).not.toContain(DISMISS_TEXT);
+    screen.queryByTestId(generateToolCallButtonTestId("accept", VIEW_DIFF_ID)),
+  ).not.toBeInTheDocument();
+  await settle();
+  expect(streamChat.mock.calls.length).toBe(before);
+});
+
+test("dismissing while another call runs keeps its result and doesn't call the model again", async () => {
+  const { store, streamChat, finishSibling } = await renderWithQuestion(
+    TWO_QUESTIONS,
+    "running",
+  );
+  await waitFor(() =>
+    expect(toolState(store, VIEW_DIFF_ID)?.status).toBe("calling"),
+  );
+  const before = streamChat.mock.calls.length;
+
+  await click("ask-question-dismiss");
+  await act(async () => finishSibling());
+
+  await waitFor(() =>
+    expect(toolState(store, VIEW_DIFF_ID)?.status).toBe("done"),
+  );
+  await settle();
+  expect(streamChat.mock.calls.length).toBe(before);
+  expect(screen.getByTestId("editor-input-main")).toBeVisible();
 });
 
 test("the model continues only after the question and the other call are done", async () => {
-  const { streamChat, request } = await renderWithQuestion(TWO_QUESTIONS, true);
+  const { streamChat, request } = await renderWithQuestion(
+    TWO_QUESTIONS,
+    "approval",
+  );
   const before = streamChat.mock.calls.length;
 
   await click("ask-question-option-0");
@@ -395,6 +464,99 @@ test("a session restored with an open question shows the panel again", async () 
     "aria-checked",
     "true",
   );
+});
+
+test("a session loaded from history shows its open question, and answering continues", async () => {
+  const { store, ideMessenger } = await renderWithQuestion(TWO_QUESTIONS);
+  ideMessenger.responses["history/load"] = {
+    sessionId: "saved",
+    title: "Retries",
+    workspaceDirectory: "",
+    history: store.getState().session.history,
+  };
+  await act(async () => {
+    store.dispatch(newSession());
+  });
+  expect(screen.queryByTestId("ask-question-panel")).not.toBeInTheDocument();
+
+  await act(async () => {
+    await store.dispatch(
+      loadSession({ sessionId: "saved", saveCurrentSession: false }),
+    );
+  });
+  await getElementByTestId("ask-question-panel");
+  await click("ask-question-option-1");
+  await click("ask-question-option-0");
+  await click("ask-question-next");
+
+  await screen.findByText("Going ahead");
+});
+
+test("leaving a session closes a running tool but keeps the question open", async () => {
+  const { store, ideMessenger, request, finishSibling } =
+    await renderWithQuestion(TWO_QUESTIONS, "running");
+  await waitFor(() =>
+    expect(toolState(store, VIEW_DIFF_ID)?.status).toBe("calling"),
+  );
+  const sessionId = store.getState().session.id;
+
+  await act(async () => {
+    await store.dispatch(
+      saveCurrentSession({ openNewSession: true, generateTitle: false }),
+    );
+  });
+  const saved = request.mock.calls
+    .filter(([type]) => type === "history/save")
+    .map(([, data]) => data as Session)
+    .findLast((session) => session.sessionId === sessionId)!;
+  const savedStates = saved.history.flatMap(
+    (item) => item.toolCallStates ?? [],
+  );
+  expect(savedStates.find((tc) => tc.toolCallId === QUESTION_ID)?.status).toBe(
+    "calling",
+  );
+  expect(savedStates.find((tc) => tc.toolCallId === VIEW_DIFF_ID)?.status).toBe(
+    "errored",
+  );
+  // Its late result goes nowhere
+  await act(async () => finishSibling());
+
+  ideMessenger.responses["history/load"] = { ...saved, title: "Retries" };
+  await act(async () => {
+    await store.dispatch(loadSession({ sessionId, saveCurrentSession: false }));
+  });
+  await getElementByTestId("ask-question-panel");
+  await click("ask-question-option-1");
+  await click("ask-question-option-0");
+  await click("ask-question-next");
+
+  await screen.findByText("Going ahead");
+});
+
+test("a free-text question takes typed text, with Shift+Enter for new lines", async () => {
+  const { user, request } = await renderWithQuestion(FREE_TEXT);
+  const field = await getElementByTestId("ask-question-other");
+  await waitFor(() => expect(field).toHaveFocus());
+
+  await user.keyboard("chat{Shift>}{Enter}{/Shift}sessions");
+  expect(field).toHaveValue("chat\nsessions");
+  await user.keyboard("{Enter}");
+
+  await screen.findByText("Going ahead");
+  expect(lastRequestText(request)).toContain(
+    "Which table should store sessions?",
+  );
+  expect(lastRequestText(request)).toContain("sessions");
+});
+
+test("an answer resumes at the depth of the round that asked", async () => {
+  const { store } = await renderWithQuestion(TWO_QUESTIONS);
+  const history = store.getState().session.history;
+
+  // One tool round: model call (0), tool call (1), resume (2)
+  expect(resumeDepth(history)).toBe(2);
+  // A second round on top adds 3, and the user's message starts over
+  expect(resumeDepth([...history, ...history.slice(1)])).toBe(5);
 });
 
 test("plan mode offers the tool and chat mode doesn't", async () => {

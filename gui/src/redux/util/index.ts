@@ -1,4 +1,6 @@
+import { DISMISS_TEXT } from "@nextcli/ask-question";
 import { ContextItem, ToolCallState, ToolStatus } from "core";
+import { BuiltInToolNames } from "core/tools/builtIn";
 import { IIdeMessenger } from "../../context/IdeMessenger";
 import { ChatHistoryItemWithMessageId } from "../slices/sessionSlice";
 import { RootState } from "../store";
@@ -171,4 +173,21 @@ export function logToolUsage(
       succeeded: success,
     },
   });
+}
+
+export function isQuestionCall(toolCallState: ToolCallState): boolean {
+  return toolCallState.toolCall.function?.name === BuiltInToolNames.AskQuestion;
+}
+
+/**
+ * A question the user dismissed. Dismissing ends the turn, so the model isn't
+ * called again for the message that asked it, even when another of its tool
+ * calls finishes later.
+ */
+export function isDismissedQuestion(toolCallState: ToolCallState): boolean {
+  return (
+    isQuestionCall(toolCallState) &&
+    toolCallState.status === "done" &&
+    toolCallState.output?.[0]?.content === DISMISS_TEXT
+  );
 }

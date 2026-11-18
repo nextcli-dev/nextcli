@@ -39,7 +39,11 @@ import { toolCallCtxItemToCtxItemWithId } from "../../pages/gui/ToolCallDiv/util
 import { addToolCallDeltaToState, isEditTool } from "../../util/toolCallState";
 import { RootState } from "../store";
 import { streamResponseThunk } from "../thunks/streamResponse";
-import { findChatHistoryItemByToolCallId, findToolCallById } from "../util";
+import {
+  findChatHistoryItemByToolCallId,
+  findToolCallById,
+  isQuestionCall,
+} from "../util";
 
 /**
  * Helper function to filter out duplicate edit/search-replace tool calls.
@@ -377,8 +381,13 @@ export const sessionSlice = createSlice({
             toolCallState.status === "generated"
           ) {
             toolCallState.status = "canceled";
-          } else if (toolCallState.status === "calling") {
-            // The tool may still finish; its result goes nowhere now
+          } else if (
+            toolCallState.status === "calling" &&
+            !isQuestionCall(toolCallState)
+          ) {
+            // The tool may still finish; its result goes nowhere now. An
+            // open question stays open: it waits for the user, not a tool,
+            // and answering it after coming back continues the turn.
             toolCallState.status = "errored";
             toolCallState.output = [
               {

@@ -16,6 +16,9 @@ import {
   updateSessionMetadata,
 } from "../slices/sessionSlice";
 import { AppDispatch, RootState, ThunkApiType } from "../store";
+import { isQuestionCall } from "../util";
+import { selectCurrentToolCalls } from "../selectors/selectToolCalls";
+import { clearSessionQuestionDrafts } from "../../util/askQuestionDrafts";
 import { updateSelectedModelByRole } from "../thunks/updateSelectedModelByRole";
 
 const MAX_TITLE_LENGTH = 100;
@@ -29,7 +32,12 @@ function stopTurnBeforeLeaving(
   dispatch: AppDispatch,
   getState: () => RootState,
 ) {
-  if (!getState().session.isStreaming) return;
+  const state = getState();
+  // An open question doesn't stream, but a tool next to it may still run
+  const toolRunning = selectCurrentToolCalls(state).some(
+    (toolCall) => toolCall.status === "calling" && !isQuestionCall(toolCall),
+  );
+  if (!state.session.isStreaming && !toolRunning) return;
   dispatch(setInactive());
   dispatch(abortStream());
   dispatch(closeTurnForLeaving());
@@ -73,6 +81,7 @@ export const deleteSession = createAsyncThunk<void, string, ThunkApiType>(
   "session/delete",
   async (id, { getState, dispatch, extra }) => {
     dispatch(deleteSessionMetadata(id)); // optimistic
+    clearSessionQuestionDrafts(id);
     const state = getState();
     if (id === state.session.id) {
       await dispatch(loadLastSession());
