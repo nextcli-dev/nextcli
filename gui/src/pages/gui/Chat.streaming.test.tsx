@@ -1,4 +1,4 @@
-import { act } from "@testing-library/react";
+import { act, screen } from "@testing-library/react";
 import type { ChatHistoryItem } from "core";
 import { useCallback, useRef } from "react";
 import {
@@ -122,3 +122,30 @@ test("streaming a reply re-renders neither past messages nor every chunk", async
   expect(streamingParses.length).toBeLessThan(CHUNKS / 4);
   expect(streamingParses.at(-1)).toContain(`word${CHUNKS - 1}`);
 }, 30_000);
+
+test("uses history positions when the history holds a system message", async () => {
+  const { store } = await renderWithProviders(<Chat />);
+  await act(async () => {
+    store.dispatch(
+      newSession({
+        sessionId: "system-test",
+        title: "System",
+        workspaceDirectory: "",
+        history: [
+          {
+            message: { role: "system", content: "rules", id: "system-0" },
+            contextItems: [],
+          } as any,
+          item("user", "Think about it"),
+          item("thinking", "Reasoning so far"),
+        ],
+      }),
+    );
+    store.dispatch(setActive());
+  });
+
+  // The last item is the thinking block, so it is in progress and capped
+  expect(screen.getByTestId("thinking-block-live")).toHaveTextContent(
+    "Reasoning so far",
+  );
+});

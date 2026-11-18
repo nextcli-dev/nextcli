@@ -231,9 +231,10 @@ export function Chat() {
       >
         <DeprecationBanner dismissable={true} />
         {highlights}
-        {history
-          .filter((item) => item.message.role !== "system")
-          .map((item, index: number) => (
+        {history.map((item, index: number) =>
+          // index is the position in history, which rows and their children
+          // read from the store; system messages aren't shown
+          item.message.role === "system" ? null : (
             <ChatHistoryRow
               key={item.message.id}
               item={item}
@@ -249,7 +250,8 @@ export function Chat() {
               }
               sendInput={sendInput}
             />
-          ))}
+          ),
+        )}
       </StepsDiv>
       <div className={"relative shrink-0"}>
         <ContinueInputBox
