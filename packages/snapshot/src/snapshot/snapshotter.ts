@@ -18,22 +18,17 @@ import { preserveBeforeWrite, type PreservedTurn } from "./preserve.js";
 import { pruneStore, type PruneOptions } from "./prune.js";
 import { ShadowRepo, storeKey } from "./store.js";
 
-/** Untracked files above this size are left out of snapshots. */
 export const DEFAULT_MAX_UNTRACKED_FILE_BYTES = 2 * 1024 * 1024;
 
 const MIN_GIT: [number, number] = [2, 26];
 
 export interface OpenSnapshotterOptions {
-  /** Any directory inside the work tree. */
   cwd: string;
-  /**
-   * Directory that holds one store per work tree, e.g. `~/.continue/snapshots`.
-   * A relative path is resolved against `cwd`.
-   */
+  /** One store per work tree under it, e.g. `~/.continue/snapshots`. */
   storeRoot: string;
   gitBinary?: string;
   maxUntrackedFileBytes?: number;
-  /** Defaults to `process.env`. Inherited `GIT_*` variables are dropped. */
+  /** Inherited `GIT_*` variables are dropped. */
   env?: NodeJS.ProcessEnv;
 }
 
@@ -41,11 +36,6 @@ export type OpenSnapshotterResult =
   | { ok: true; snapshotter: Snapshotter }
   | { ok: false; reason: DisabledReason; detail?: string };
 
-/**
- * Opens (and creates on first use) the shadow repository for the git work
- * tree that contains `cwd`. Folders outside a git repository get no
- * snapshots.
- */
 export async function openSnapshotter(
   options: OpenSnapshotterOptions,
 ): Promise<OpenSnapshotterResult> {
@@ -99,9 +89,7 @@ export async function openSnapshotter(
   }
 
   try {
-    // The work tree is a real path, so the store must be one too: compared
-    // through a symlink or in another case, a store inside the work tree
-    // would not be recognised and would end up in its own snapshots.
+    // A real path, like the work tree, or a store inside it goes unnoticed
     const requestedRoot = path.resolve(options.cwd, options.storeRoot);
     await fs.mkdir(requestedRoot, { recursive: true });
     const storeRoot = await fs.realpath(requestedRoot);
@@ -129,11 +117,6 @@ export async function openSnapshotter(
   }
 }
 
-/**
- * Snapshots of one git work tree, and undo and redo between them. Every
- * operation holds the store lock, so two processes sharing a store never
- * interleave.
- */
 export class Snapshotter {
   readonly toplevel: string;
   readonly storeDir: string;
@@ -143,27 +126,16 @@ export class Snapshotter {
     this.storeDir = repo.storeDir;
   }
 
-  /**
-   * Records the current state of the work tree and returns its tree id.
-   * With `pin`, the tree is kept by `refs/cn/<date>/<pin>` until `prune`
-   * removes it.
-   */
+  /** `pin` keeps the tree (`refs/cn/<date>/<pin>`) until it is pruned. */
   capture(pin?: string): Promise<string> {
     return this.repo.lock.run(() => captureTree(this.repo, pin));
   }
 
-  /** Paths, relative to the work tree, that differ between two trees. */
   changedFiles(from: string, to: string): Promise<string[]> {
     return this.repo.changedFiles(from, to);
   }
 
-  /**
-   * Call before a tool writes `files` (absolute, or relative to the work
-   * tree), so undo also covers the ignored ones. Returns the turn's new
-   * start and `written` list; store both on the checkpoint. Changes made by
-   * shell commands can't be announced, so ignored files they write are not
-   * covered. See `snapshot/preserve.ts`.
-   */
+  /** Call before a tool writes `files`; store the result on the checkpoint. */
   preserve(
     turn: { start: string; written?: readonly string[] },
     files: readonly string[],
@@ -174,10 +146,6 @@ export class Snapshotter {
     );
   }
 
-  /**
-   * Captures the end of a turn and lists the files it changed. `written` is
-   * the turn's list from `preserve`.
-   */
   async finishTurn(
     start: string,
     pin?: string,
@@ -189,17 +157,14 @@ export class Snapshotter {
     return { end, files: await this.changedFiles(start, end) };
   }
 
-  /** See `undo/plan.ts`. */
   planRevert(turns: readonly TurnSnapshot[]): Promise<RevertPlan> {
     return this.repo.lock.run(() => planRevert(this.repo, turns));
   }
 
-  /** See `undo/restore.ts`. */
   restore(targets: readonly RestoreTarget[]): Promise<RestoreResult> {
     return this.repo.lock.run(() => restoreFiles(this.repo, targets));
   }
 
-  /** See `snapshot/prune.ts`. */
   prune(
     options: PruneOptions = {},
   ): Promise<{ deletedRefs: number; ran: boolean }> {

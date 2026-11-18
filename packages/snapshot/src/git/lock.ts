@@ -2,14 +2,9 @@ import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 
 export interface StoreLockOptions {
-  /** How long to wait for another process before giving up. */
   timeoutMs?: number;
-  /**
-   * A lock file with no readable pid that nobody refreshed for this long is
-   * taken over. A lock with a live pid never is.
-   */
+  /** Only for a lock without a readable pid; a live pid is never taken over. */
   staleMs?: number;
-  /** How often the holder refreshes the lock's mtime. */
   heartbeatMs?: number;
 }
 
@@ -21,41 +16,29 @@ function isAlive(pid: number): boolean {
     process.kill(pid, 0);
     return true;
   } catch (error) {
-    // EPERM means the process exists but belongs to someone else.
+    // EPERM: alive, owned by another user
     return (error as NodeJS.ErrnoException).code === "EPERM";
   }
 }
 
-/** The lock's content, or undefined if it is gone. */
 async function readLock(lockPath: string): Promise<string | undefined> {
   return fs.readFile(lockPath, "utf8").catch(() => undefined);
 }
 
-/** Removes the lock only if it still holds `content`. */
+/** Never removes a lock someone else has taken over since. */
 async function removeIfUnchanged(
   lockPath: string,
   content: string,
 ): Promise<void> {
-  // Another process can replace the file between the read and the unlink.
-  // The window is a few microseconds; the content check keeps a lock taken
-  // over long ago (or never ours) from being removed.
   if ((await readLock(lockPath)) === content) {
     await fs.rm(lockPath, { force: true });
   }
 }
 
 /**
- * A lock file shared by every process that uses the same snapshot store, so
- * two `cn` sessions (or `cn` and the extension) never interleave a capture
- * with a restore.
- *
- * The file holds `<pid> <token>`. It is taken over only when that process is
- * dead, however long the holder runs: `git add` on a large work tree, or a
- * laptop that slept mid-capture, must not lose the lock. While it is held
- * its mtime is refreshed, so a file without a readable pid (a crash between
- * creating and writing it) is taken over once nobody has touched it for
- * `staleMs`. Release removes the file only if it still holds this holder's
- * token, so a holder never removes a lock someone else took over.
+ * Serialises store access across processes (`cn` sessions, the extension).
+ * The file holds `<pid> <token>` and is taken over only from a dead pid, so a
+ * long capture or a sleeping laptop keeps it.
  */
 export class StoreLock {
   private queue: Promise<unknown> = Promise.resolve();
@@ -73,8 +56,6 @@ export class StoreLock {
   }
 
   run<T>(task: () => Promise<T>): Promise<T> {
-    // Serialise callers in this process first; the file only guards
-    // against other processes.
     const next = this.queue.then(() => this.withFile(task));
     this.queue = next.catch(() => {});
     return next;
@@ -117,7 +98,6 @@ export class StoreLock {
     }
   }
 
-  /** The content of the lock file if it may be taken over. */
   private async staleContent(): Promise<string | undefined> {
     try {
       const [content, stat] = await Promise.all([
@@ -126,16 +106,12 @@ export class StoreLock {
       ]);
       const pid = Number.parseInt(content, 10);
       if (!Number.isInteger(pid) || pid <= 0) {
-        // Half-written by a process that is creating it right now, or
-        // garbage. Only age makes it stale.
+        // Being written right now, or garbage: only age makes it stale
         return Date.now() - stat.mtimeMs > this.staleMs ? content : undefined;
       }
-      // A live pid keeps the lock, however old the file looks. If the pid was
-      // reused by an unrelated process, waiting times out with an error that
-      // names the lock file rather than risking two holders.
+      // A reused pid makes us time out rather than risk two holders
       return pid !== process.pid && !isAlive(pid) ? content : undefined;
     } catch {
-      // Gone already.
       return undefined;
     }
   }

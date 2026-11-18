@@ -16,9 +16,7 @@ export class GitError extends Error {
 export interface RunGitOptions {
   env: NodeJS.ProcessEnv;
   cwd?: string;
-  /** Written to stdin, then stdin is closed. */
   input?: string | Buffer;
-  /** Exit codes that are not failures. Defaults to `[0]`. */
   okCodes?: readonly number[];
 }
 
@@ -27,10 +25,7 @@ export interface RunGitResult {
   code: number;
 }
 
-/**
- * Runs git without a shell. Arguments are never interpolated into a command
- * string, so paths with spaces, quotes or `$` are passed through unchanged.
- */
+/** No shell: arguments are never interpolated into a command string. */
 export function runGit(
   gitBinary: string,
   args: readonly string[],
@@ -56,13 +51,12 @@ export function runGit(
         reject(new GitError(args, code, Buffer.concat(err).toString("utf8")));
       }
     });
-    // A git that exits early (bad object, fatal error) closes stdin first.
+    // git may exit before reading stdin
     child.stdin.on("error", () => {});
     child.stdin.end(options.input);
   });
 }
 
-/** The environment without inherited `GIT_*` variables. */
 export function cleanEnv(base: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(base)) {
@@ -85,11 +79,7 @@ export function parseGitVersion(
   return match ? [Number(match[1]), Number(match[2])] : undefined;
 }
 
-/**
- * Splits a list of arguments into chunks whose joined length stays under
- * `budget`, so a long file list never hits the command-line limit (about
- * 32 KB on Windows).
- */
+/** Keeps each git command line under the Windows limit (about 32 KB). */
 export function chunkByLength(
   items: readonly string[],
   budget = 24_000,

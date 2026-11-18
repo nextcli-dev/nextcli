@@ -3,15 +3,10 @@ import * as path from "node:path";
 
 import type { ShadowRepo } from "./store.js";
 
-// Code points HFS+ ignores when it compares names, so `.g\u200cit` is `.git`
-// there. Git's own path checks strip the same set.
+// HFS+ ignores these in names (`.g\u200cit` is `.git`); git strips the same set
 const HFS_IGNORABLE = /[\u200c-\u200f\u202a-\u202e\u206a-\u206f\ufeff]/g;
 
-/**
- * Whether a path component names git metadata on some file system: `.git`
- * in any case, with the trailing dots and spaces Windows drops, with the code
- * points HFS+ ignores, or as its NTFS short name `git~1`.
- */
+/** `.git` in any spelling a file system accepts, including `git~1`. */
 export function isGitMetadataName(component: string): boolean {
   const name = component
     .replace(HFS_IGNORABLE, "")
@@ -24,11 +19,7 @@ export function toPosix(file: string): string {
   return file.split(path.sep).join("/");
 }
 
-/**
- * Why undo must not write or delete `file` (relative to the work tree), or
- * undefined if it may. Covers paths outside the work tree, git metadata in
- * any component, and the snapshot store when it lives inside the work tree.
- */
+/** Why undo must not touch `file`, or undefined if it may. */
 export function unsafePathReason(
   repo: ShadowRepo,
   file: string,
@@ -38,14 +29,12 @@ export function unsafePathReason(
   if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) {
     return "outside the work tree";
   }
-  // Split on both separators: on Windows `\` is one, and elsewhere a name
-  // with a backslash is better refused than guessed at.
   if (file.split(/[\\/]/).some(isGitMetadataName)) {
     return "git metadata";
   }
   const storeRel = repo.config.storeRel;
   if (storeRel) {
-    // Compare case-insensitively: refusing too much here is harmless.
+    // Case-insensitive: refusing too much is harmless
     const relPosix = toPosix(rel).toLowerCase();
     const store = storeRel.toLowerCase();
     if (relPosix === store || relPosix.startsWith(store + "/")) {
@@ -55,7 +44,6 @@ export function unsafePathReason(
   return undefined;
 }
 
-/** The absolute path of `file`, or throws if undo must not touch it. */
 export function resolveSafePath(repo: ShadowRepo, file: string): string {
   const reason = unsafePathReason(repo, file);
   if (reason) {
@@ -64,11 +52,7 @@ export function resolveSafePath(repo: ShadowRepo, file: string): string {
   return path.resolve(repo.toplevel, file);
 }
 
-/**
- * Whether every folder between the work tree and `file` is a real directory.
- * A symlinked folder means the path is not in the work tree as git sees it,
- * and following it could reach files outside.
- */
+/** A symlinked parent folder could lead outside the work tree. */
 export async function hasRealParents(
   repo: ShadowRepo,
   file: string,
@@ -83,10 +67,6 @@ export async function hasRealParents(
   return true;
 }
 
-/**
- * What the work tree has at `file` without following any symlinked parent:
- * a file (or symlink), a directory, or nothing.
- */
 export async function workTreeEntry(
   repo: ShadowRepo,
   file: string,
@@ -99,11 +79,7 @@ export async function workTreeEntry(
   return stat.isDirectory() ? "directory" : "file";
 }
 
-/**
- * `file` relative to the work tree with `/` separators, or undefined if it is
- * outside. Accepts absolute paths, including ones through a symlinked or
- * differently cased folder.
- */
+/** Resolves symlinked or differently cased folders; undefined if outside. */
 export async function workTreeRelative(
   repo: ShadowRepo,
   file: string,

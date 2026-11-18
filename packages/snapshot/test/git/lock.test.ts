@@ -26,7 +26,6 @@ function lockPath(): string {
   );
 }
 
-/** A pid that belongs to a running process other than this one. */
 function livePid(): number {
   const child = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"], {
     stdio: "ignore",
@@ -35,7 +34,6 @@ function livePid(): number {
   return child.pid!;
 }
 
-/** A pid whose process has exited. */
 function deadPid(): number {
   return spawnSync(process.execPath, ["-e", "0"]).pid!;
 }

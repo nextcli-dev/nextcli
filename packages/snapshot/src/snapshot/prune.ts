@@ -4,7 +4,6 @@ import * as path from "node:path";
 import { dateSegment, REF_PREFIX } from "./capture.js";
 import type { ShadowRepo } from "./store.js";
 
-/** Pinned snapshots older than this are deleted by `prune`. */
 export const DEFAULT_MAX_AGE_DAYS = 30;
 
 const PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -16,11 +15,7 @@ export interface PruneOptions {
   now?: Date;
 }
 
-/**
- * Deletes pinned snapshots older than `maxAgeDays`, then lets git drop the
- * objects nothing refers to. Runs at most once a day unless `force`.
- * The caller holds the store lock.
- */
+/** At most once a day unless `force`. Caller holds the store lock. */
 export async function pruneStore(
   repo: ShadowRepo,
   options: PruneOptions = {},
@@ -54,8 +49,7 @@ export async function pruneStore(
       input: expired.map((ref) => `delete ${ref}\n`).join(""),
     });
   }
-  // A day of grace keeps objects that a capture in another process has
-  // written but not pinned yet.
+  // Grace for objects another process has written but not pinned yet
   await repo.git(["gc", "--quiet", "--prune=1.day.ago"]);
   await fs.writeFile(stamp, now.toISOString());
   return { deletedRefs: expired.length, ran: true };

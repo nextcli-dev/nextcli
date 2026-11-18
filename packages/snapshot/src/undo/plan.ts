@@ -3,7 +3,6 @@ import { unsafePathReason } from "../snapshot/paths.js";
 import type { ShadowRepo } from "../snapshot/store.js";
 import type { RevertPlan, TurnSnapshot } from "../types.js";
 
-/** Groups a `file → tree` map by tree. */
 export function groupByTree(map: Map<string, string>): Map<string, string[]> {
   const groups = new Map<string, string[]>();
   for (const [file, tree] of map) {
@@ -15,10 +14,8 @@ export function groupByTree(map: Map<string, string>): Map<string, string[]> {
 }
 
 /**
- * Works out how to undo `turns` (oldest first): each file the turns changed
- * goes back to its version at the start of the earliest turn that touched
- * it, and files someone changed after the agent did are reported.
- * The caller holds the store lock.
+ * `turns` oldest first. Each file goes back to its version at the start of
+ * the earliest turn that touched it. Caller holds the store lock.
  */
 export async function planRevert(
   repo: ShadowRepo,
@@ -30,7 +27,7 @@ export async function planRevert(
   const lastEnd = new Map<string, string>();
   const unfinished = new Set<string>();
   for (const [index, turn] of turns.entries()) {
-    // A turn that never finished ends where the next one starts, or now.
+    // Unfinished: ends where the next turn starts, or now
     const end = turn.end ?? turns[index + 1]?.start ?? current;
     const files = new Set([
       ...(turn.files ?? (await repo.changedFiles(turn.start, end))),
@@ -47,8 +44,7 @@ export async function planRevert(
   for (const file of target.keys()) {
     if (unsafePathReason(repo, file)) skipped.add(file);
   }
-  // Undo never moves a submodule or an embedded repository, whichever side
-  // of the change has it.
+  // Never move a submodule, on either side of the change
   for (const [tree, files] of groupByTree(target)) {
     await addGitlinks(repo, tree, files, skipped);
   }
@@ -58,8 +54,7 @@ export async function planRevert(
     lastEnd.delete(file);
   }
 
-  // A turn without an end can't say which edits were the agent's, so all of
-  // its files need confirming.
+  // Without an end, the agent's edits can't be told apart: confirm them all
   const conflicts = new Set([...unfinished].filter((f) => target.has(f)));
   for (const [end, files] of groupByTree(lastEnd)) {
     const changed = new Set(await repo.changedFiles(end, current));

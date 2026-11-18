@@ -57,7 +57,6 @@ describe("undo and redo of a turn", () => {
     expect(existsSync(path.join(f.root, "new"))).toBe(false);
     expect(result.deleted).toEqual(["new/deep/c.txt"]);
 
-    // Redo puts the turn's work back.
     await s.restore(
       plan.targets.map((t) => ({ path: t.path, tree: result.redoTree })),
     );
@@ -122,7 +121,6 @@ describe("undo and redo of a turn", () => {
 
     const plan = await s.planRevert([{ start }]);
     expect(plan.restore).toEqual(["a.txt"]);
-    // Nothing says which edits were the agent's, so all need confirming.
     expect(plan.conflicts).toEqual(["a.txt"]);
     await s.restore(plan.targets);
     expect(read(f.root, "a.txt")).toBe("a1\n");
@@ -448,7 +446,6 @@ describe("failing safely", () => {
       );
     }
     expect(read(f.root, ".git/config")).toBe(config);
-    // A checkpoint that lists such a path plans around it.
     const plan = await s.planRevert([{ start: tree, files: [".GIT/config"] }]);
     expect(plan.targets).toEqual([]);
     expect(plan.skipped).toEqual([".GIT/config"]);

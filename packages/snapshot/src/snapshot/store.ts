@@ -22,10 +22,7 @@ export interface ShadowRepoConfig {
   projectCommonDir: string;
   storeRoot: string;
   storeDir: string;
-  /**
-   * The store root relative to the work tree, with `/` separators, when the
-   * store lives inside it. Captures leave it out and undo never touches it.
-   */
+  /** Set when the store lives inside the work tree. */
   storeRel?: string;
   maxUntrackedFileBytes: number;
 }
@@ -37,24 +34,17 @@ export interface TreeEntry {
   path: string;
 }
 
-/** Name of the store directory for a work tree. */
 export function storeKey(toplevel: string): string {
   return createHash("sha256").update(toplevel).digest("hex").slice(0, 32);
 }
 
 /**
- * The shadow git repository: a store under the store root whose work tree is
- * the project. It records trees (no commits, no branches) and never touches
- * the project's own `.git`.
- *
- * Git runs with an empty global config and no system config, so filters,
- * hooks and fsmonitor commands from the user's or the project's config never
- * run, even for an untrusted checkout.
+ * A git store whose work tree is the project; it records trees only. No
+ * global or system config, so no filter, hook or fsmonitor command runs.
  */
 export class ShadowRepo {
   readonly toplevel: string;
   readonly storeDir: string;
-  /** Held around every multi-step operation on the store. */
   readonly lock: StoreLock;
   readonly env: NodeJS.ProcessEnv;
 
@@ -73,11 +63,7 @@ export class ShadowRepo {
     };
   }
 
-  /**
-   * Creates the store on first use and points it at the project's objects.
-   * Runs under the store lock: two processes opening the same store at once
-   * would otherwise race on `git init` and `git config`.
-   */
+  /** Locked: two processes opening one store would race on `git init`. */
   async init(): Promise<void> {
     await fs.mkdir(this.storeDir, { recursive: true });
     await this.lock.run(() => this.initUnlocked());
@@ -108,9 +94,7 @@ export class ShadowRepo {
         await this.git(["config", key, value]);
       }
     }
-    // Content the project already stores is read from its object database
-    // instead of being copied. A restore checks every object before it
-    // writes, in case the project pruned one.
+    // Reuse the project's objects; restore checks they still exist
     await fs.mkdir(path.join(storeDir, "objects", "info"), {
       recursive: true,
     });
@@ -120,7 +104,6 @@ export class ShadowRepo {
     );
   }
 
-  /** Runs git against the store, with the project as the work tree. */
   git(
     args: string[],
     options: {
@@ -136,7 +119,6 @@ export class ShadowRepo {
     });
   }
 
-  /** Paths, relative to the work tree, that differ between two trees. */
   async changedFiles(from: string, to: string): Promise<string[]> {
     if (from === to) return [];
     const { stdout } = await this.git([
@@ -151,16 +133,10 @@ export class ShadowRepo {
     return splitNul(stdout);
   }
 
-  /**
-   * The entries of `files` that the store's ignore rules (the project's
-   * `.gitignore` files, its `info/exclude`, the person's excludes file and
-   * the size limit) leave out. Every path must have real parent folders:
-   * git refuses a path beyond a symlink.
-   */
+  /** Paths must have real parent folders: git refuses one beyond a symlink. */
   async ignored(files: readonly string[]): Promise<Set<string>> {
     if (files.length === 0) return new Set();
-    // Exit 1 means none of the paths is ignored. check-ignore reads plain
-    // paths and rejects the literal-pathspec setting.
+    // Exit 1: none ignored. check-ignore rejects literal pathspecs.
     const { GIT_LITERAL_PATHSPECS: _literal, ...env } = this.env;
     const { stdout } = await this.git(
       ["check-ignore", "--no-index", "-z", "--stdin"],
@@ -169,15 +145,13 @@ export class ShadowRepo {
     return new Set(splitNul(stdout));
   }
 
-  /** The entries of `files` that exist in `tree`. Throws if git fails. */
   async lsTree(
     tree: string,
     files: readonly string[],
   ): Promise<Map<string, TreeEntry>> {
     const entries = new Map<string, TreeEntry>();
     for (const chunk of chunkByLength(files)) {
-      // A failure here throws. Treating it as "not in the tree" would
-      // delete files that do exist in the snapshot.
+      // Must throw: "not in the tree" would make undo delete the file
       const { stdout } = await this.git([
         "ls-tree",
         "-r",

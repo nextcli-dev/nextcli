@@ -9,12 +9,7 @@ import { EMPTY_GITCONFIG, type ShadowRepo } from "./store.js";
 
 export const REF_PREFIX = "refs/cn/";
 
-/**
- * Records the current state of the work tree and returns its tree id.
- * `include` lists paths to record even though ignore rules leave them out:
- * ignored files that a turn wrote. With `pin`, the tree is kept by
- * `refs/cn/<date>/<pin>` until it is pruned. The caller holds the store lock.
- */
+/** `include`: ignored paths to record anyway. Caller holds the store lock. */
 export async function captureTree(
   repo: ShadowRepo,
   pin?: string,
@@ -28,7 +23,6 @@ export async function captureTree(
   return tree;
 }
 
-/** Keeps `tree` by `refs/cn/<date>/<pin>` until it is pruned. */
 export async function pinTree(
   repo: ShadowRepo,
   tree: string,
@@ -41,12 +35,7 @@ export async function pinTree(
   ]);
 }
 
-/**
- * `tree` with the work tree's current version of `files`, ignore rules or
- * not. A file that is gone is dropped from the tree; a path that is now a
- * directory is left as it is. The shadow index is not changed, so later
- * captures still follow the ignore rules. The caller holds the store lock.
- */
+/** Uses a temporary index, so later captures still follow the ignore rules. */
 export async function withWorkTreePaths(
   repo: ShadowRepo,
   tree: string,
@@ -84,7 +73,6 @@ export async function withWorkTreePaths(
   }
 }
 
-/** `YYYYMMDD`, the date segment of pinned refs. */
 export function dateSegment(date: Date): string {
   return date.toISOString().slice(0, 10).replace(/-/g, "");
 }
@@ -97,10 +85,7 @@ function sanitizePin(pin: string): string {
     .join("/");
 }
 
-/**
- * Copies ignore rules that live outside the work tree into the store, and
- * leaves out large untracked files and the store itself.
- */
+/** Ignore rules outside the work tree, large untracked files, the store. */
 export async function syncExcludes(repo: ShadowRepo): Promise<void> {
   const { config } = repo;
   const lines: string[] = ["# Written by NextCLI on every capture"];
@@ -113,8 +98,6 @@ export async function syncExcludes(repo: ShadowRepo): Promise<void> {
   if (userExcludes) {
     lines.push(await fs.readFile(userExcludes, "utf8").catch(() => ""));
   }
-  // Both paths are real paths (see openSnapshotter), so a store reached
-  // through a symlink or a differently cased folder is still left out.
   if (config.storeRel) {
     lines.push("/" + escapeExcludePath(config.storeRel) + "/");
   }
@@ -137,7 +120,6 @@ const userExcludesFiles = new WeakMap<
   Promise<string | undefined>
 >();
 
-/** The `core.excludesFile` from the person's own git config, if set. */
 function userExcludesFile(repo: ShadowRepo): Promise<string | undefined> {
   let found = userExcludesFiles.get(repo);
   if (!found) {
@@ -155,10 +137,6 @@ function userExcludesFile(repo: ShadowRepo): Promise<string | undefined> {
   return found;
 }
 
-/**
- * Files that are neither in the project's index nor in an earlier snapshot,
- * and are over the size limit.
- */
 async function largeUntrackedFiles(repo: ShadowRepo): Promise<string[]> {
   const { config } = repo;
   const { stdout } = await repo.git([
@@ -169,7 +147,7 @@ async function largeUntrackedFiles(repo: ShadowRepo): Promise<string[]> {
   ]);
   const candidates: string[] = [];
   for (const file of splitNul(stdout)) {
-    // A newline can't be written as an exclude pattern; let it through.
+    // Can't be written as an exclude pattern
     if (file.includes("\n")) continue;
     const stat = await fs
       .lstat(path.join(repo.toplevel, file))
@@ -179,8 +157,7 @@ async function largeUntrackedFiles(repo: ShadowRepo): Promise<string[]> {
     }
   }
   if (candidates.length === 0) return [];
-  // The shadow index starts empty, so files the project tracks show up here
-  // on the first capture. Keep those whatever their size.
+  // Files the project tracks are kept whatever their size
   const tracked = new Set<string>();
   for (const chunk of chunkByLength(candidates)) {
     const { stdout: out } = await runGit(
@@ -202,7 +179,6 @@ async function largeUntrackedFiles(repo: ShadowRepo): Promise<string[]> {
   return candidates.filter((file) => !tracked.has(file));
 }
 
-/** Escapes a literal path for a gitignore-style exclude file. */
 export function escapeExcludePath(file: string): string {
   return file
     .replace(/[\\*?[\]!#]/g, "\\$&")

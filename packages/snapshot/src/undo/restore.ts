@@ -8,11 +8,7 @@ import type { RestoreResult, RestoreTarget } from "../types.js";
 
 import { groupByTree } from "./plan.js";
 
-/**
- * A restore that failed after it had changed files. `redoTree` still holds
- * the state from before the restore, so the caller can offer redo; `partial`
- * says what was done.
- */
+/** Failed after changing files; `redoTree` still allows redo. */
 export class RestoreError extends Error {
   constructor(
     message: string,
@@ -26,11 +22,8 @@ export class RestoreError extends Error {
 }
 
 /**
- * Puts each target path back to its version in the target tree, deleting it
- * if the tree doesn't have it. Used for undo and, with the redo tree, for
- * redo. Fails before changing any file if a path is unsafe or a needed
- * object is missing; a failure after that throws a `RestoreError`.
- * The caller holds the store lock.
+ * Used for undo and, with the redo tree, redo. Checks paths and objects
+ * before changing any file. Caller holds the store lock.
  */
 export async function restoreFiles(
   repo: ShadowRepo,
@@ -39,8 +32,6 @@ export async function restoreFiles(
   for (const target of targets) resolveSafePath(repo, target.path);
   const written = targets.filter((t) => t.written).map((t) => t.path);
   const forceDelete = new Set(written);
-  // Ignored files the turns wrote go into the redo tree too, or redo
-  // couldn't bring them back.
   const redoTree = await captureTree(
     repo,
     `redo/${Date.now()}-${process.pid}`,
@@ -86,15 +77,12 @@ export async function restoreFiles(
       result.restored.push(...paths);
     }
 
-    // Only files that are still there, under real folders, can be deleted.
-    // A path under a folder the checkout turned back into a symlink is gone
-    // from the work tree, and following the link could reach outside it.
+    // Never follow a folder the checkout turned back into a symlink
     const deletable: string[] = [];
     for (const file of absent) {
       if ((await workTreeEntry(repo, file)) === "file") deletable.push(file);
     }
-    // `.gitignore` files are back to their old version now, so this sees
-    // the rules from before the undone turns.
+    // Uses the restored `.gitignore` files, i.e. the rules from before
     const ignored = await repo.ignored(
       deletable.filter((file) => !forceDelete.has(file)),
     );
@@ -103,8 +91,6 @@ export async function restoreFiles(
         result.keptIgnored.push(file);
         continue;
       }
-      // Check again right before the unlink; nothing should have changed,
-      // but this is the step that can't be taken back.
       if ((await workTreeEntry(repo, file)) !== "file") continue;
       const full = resolveSafePath(repo, file);
       await fs.rm(full, { force: true });

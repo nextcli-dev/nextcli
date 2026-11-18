@@ -8,14 +8,8 @@ export interface PreservedTurn {
 }
 
 /**
- * Called before a tool writes `files`, so undo covers ignored files too.
- * Captures leave ignored files out, so a turn that rewrote `.env` would
- * otherwise look like it changed nothing. Each ignored path that `start`
- * doesn't hold is added to a new start tree with its current bytes (or, if
- * it doesn't exist yet, left absent so undo deletes it) and listed in
- * `written`. Paths the turn already wrote, paths that aren't ignored (a
- * capture already has them) and paths outside the work tree are skipped.
- * The caller holds the store lock.
+ * Before a tool writes `files`: adds ignored ones (which captures leave out,
+ * e.g. `.env`) to the start tree so undo covers them. Caller holds the lock.
  */
 export async function preserveBeforeWrite(
   repo: ShadowRepo,
@@ -29,15 +23,12 @@ export async function preserveBeforeWrite(
   for (const file of files) {
     const rel = await workTreeRelative(repo, file);
     if (!rel || known.has(rel) || unsafePathReason(repo, rel)) continue;
-    // A path under a symlinked folder isn't in the work tree as git sees it.
     if (!(await hasRealParents(repo, rel))) continue;
     known.add(rel);
     candidates.push(rel);
   }
   if (candidates.length === 0) return { start: turn.start, written };
 
-  // The person's excludes file and the size limit may have changed since
-  // the last capture.
   await syncExcludes(repo);
   const inStart = await repo.lsTree(turn.start, candidates);
   const ignored = await repo.ignored(

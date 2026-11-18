@@ -15,7 +15,6 @@ export interface Fixture {
   open(options?: { maxUntrackedFileBytes?: number }): Promise<Snapshotter>;
 }
 
-/** A fresh git repository with one commit, plus an isolated HOME and store. */
 export function createFixture(): Fixture {
   const base = realpathSync(mkdtempSync(path.join(tmpdir(), "cn-snapshot-")));
   const root = path.join(base, "project");
