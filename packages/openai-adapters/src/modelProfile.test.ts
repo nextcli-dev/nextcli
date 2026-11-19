@@ -1,4 +1,8 @@
-import { findModelsDevModel, SUPPLEMENT } from "@nextcli/llm-info";
+import {
+  findModelsDevModel,
+  matchCatalogs,
+  SUPPLEMENT,
+} from "@nextcli/llm-info";
 import { describe, expect, it } from "vitest";
 
 import { overriddenEfforts } from "./catalogOverrides.js";
@@ -152,6 +156,26 @@ describe("NextCLI's model supplement", () => {
     expect(
       resolveModelProfile({ ...qwen, apiBase: "https://gateway.example/v1/" })
         .catalog,
+    ).toBeUndefined();
+  });
+
+  it("prefers an entry for the model itself to a variant's", () => {
+    // Stand-ins: models.dev lists a dated snapshot, the supplement the model
+    const modelsDev = { a: { "m-2026-12-01": { context: 1 } } };
+    const supplement = { a: { m: { context: 2 }, n: { context: 3 } } };
+    const catalogs = [modelsDev, supplement];
+    expect(matchCatalogs(catalogs, "a", "m")?.model.context).toBe(2);
+    expect(matchCatalogs(catalogs, "a", "m-2026-12-01")?.model.context).toBe(1);
+    // At the same strength the earlier catalog wins
+    expect(
+      matchCatalogs([{ a: { m: { context: 4 } } }, supplement], "a", "m")?.model
+        .context,
+    ).toBe(4);
+    // A variant falls through to the next catalog only when the first has
+    // nothing for it
+    expect(matchCatalogs(catalogs, "a", "n-preview")?.model.context).toBe(3);
+    expect(
+      matchCatalogs(catalogs, "a", "n-preview", { variants: false }),
     ).toBeUndefined();
   });
 

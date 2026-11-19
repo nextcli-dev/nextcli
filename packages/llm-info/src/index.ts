@@ -31,6 +31,7 @@ export {
   findCatalogModel,
   findModelsDevModel,
   longestListedBase,
+  matchCatalogs,
   variantSuffix,
 } from "./catalog.js";
 export { SUPPLEMENT } from "./supplement.js";
@@ -66,8 +67,8 @@ export type {
   CatalogCost,
   CatalogMatch,
   CatalogModel,
+  Catalog,
   CatalogRates,
-  CatalogSource,
 } from "./catalog.js";
 export { isRetired } from "./types.js";
 export type { LlmDeprecation } from "./types.js";

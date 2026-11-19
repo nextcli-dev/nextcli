@@ -115,34 +115,31 @@ function normalize(id: string): string {
   return id.toLowerCase().replace(/\./g, "-");
 }
 
-/**
- * Where an entry comes from: the models.dev snapshot, or NextCLI's own
- * supplement (supplement.ts) for models the snapshot doesn't list
- */
-export type CatalogSource = "models.dev" | "nextcli";
+/** Models by provider and id, the shape of the snapshot and the supplement */
+export type Catalog = Record<string, Record<string, CatalogModel>>;
 
-type Models = Record<string, Record<string, CatalogModel>>;
-
-const SOURCES: Record<CatalogSource, Models> = {
-  "models.dev": CATALOG,
-  nextcli: SUPPLEMENT,
-};
-
-const normalizedIndexes = new Map<string, Map<string, string>>();
+const normalizedIndexes = new WeakMap<
+  Catalog,
+  Map<string, Map<string, string>>
+>();
 
 function normalizedIndex(
-  source: CatalogSource,
+  catalog: Catalog,
   provider: string,
 ): Map<string, string> {
-  const cacheKey = `${source}:${provider}`;
-  let index = normalizedIndexes.get(cacheKey);
+  let byProvider = normalizedIndexes.get(catalog);
+  if (!byProvider) {
+    byProvider = new Map();
+    normalizedIndexes.set(catalog, byProvider);
+  }
+  let index = byProvider.get(provider);
   if (!index) {
     index = new Map();
-    for (const id of Object.keys(SOURCES[source][provider] ?? {})) {
+    for (const id of Object.keys(catalog[provider] ?? {})) {
       const key = normalize(id);
       if (!index.has(key)) index.set(key, id);
     }
-    normalizedIndexes.set(cacheKey, index);
+    byProvider.set(provider, index);
   }
   return index;
 }
@@ -153,7 +150,6 @@ export interface CatalogMatch {
   /** The catalog's id for the model */
   id: string;
   model: CatalogModel;
-  source: CatalogSource;
 }
 
 /**
@@ -180,59 +176,101 @@ function withAliasFast(
 
 /**
  * A model's catalog entry: the models.dev snapshot's, else NextCLI's own
- * (supplement.ts). Matched by its exact id, then case and dots ignored, then
- * without a vendor prefix (`anthropic/claude-…` on a provider that isn't
- * OpenRouter), then as a dated or preview variant of a listed id (the
- * longest such id), then as an id some listed variants extend: the
- * `-latest` alias first, then the newest current snapshot (variantRank).
+ * (supplement.ts), as matchCatalogs orders them
  */
 export function findCatalogModel(
   provider: string | undefined,
   model: string,
 ): CatalogMatch | undefined {
-  return (
-    findIn("models.dev", provider, model) ?? findIn("nextcli", provider, model)
-  );
+  return matchCatalogs([CATALOG, SUPPLEMENT], provider, model);
 }
 
-/** A model's entry in the models.dev snapshot only, without the supplement */
+/**
+ * The models.dev snapshot's entry for this very model, without variant
+ * matches or the supplement
+ */
 export function findModelsDevModel(
   provider: string | undefined,
   model: string,
 ): CatalogMatch | undefined {
-  return findIn("models.dev", provider, model);
+  return matchCatalogs([CATALOG], provider, model, { variants: false });
 }
 
-function findIn(
-  source: CatalogSource,
+/**
+ * A model's entry in the first of `catalogs` that lists it, with an entry for
+ * the model itself winning over a variant's in any catalog. The model itself
+ * is matched by its exact id, then case and dots ignored, then without a
+ * vendor prefix (`anthropic/claude-…` on a provider that isn't OpenRouter).
+ * With `variants` (the default), it is then matched as a dated or preview
+ * variant of a listed id (the longest such id), then as an id some listed
+ * variants extend: the `-latest` alias first, then the newest current
+ * snapshot (variantRank).
+ */
+export function matchCatalogs(
+  catalogs: Catalog[],
   provider: string | undefined,
   model: string,
+  { variants = true }: { variants?: boolean } = {},
 ): CatalogMatch | undefined {
-  if (!provider) return undefined;
-  const models = SOURCES[source][provider];
-  if (!models || !model) return undefined;
-  const found = (id: string | undefined) =>
-    id && models[id]
-      ? { provider, id, model: withAliasFast(models, id), source }
-      : undefined;
-
-  const exact = found(model);
-  if (exact) return exact;
-
-  const index = normalizedIndex(source, provider);
+  if (!provider || !model) return undefined;
   const candidates = [normalize(model)];
   const slash = model.lastIndexOf("/");
   if (provider !== "openrouter" && slash !== -1) {
     candidates.push(normalize(model.slice(slash + 1)));
   }
+  for (const catalog of catalogs) {
+    const match = matchModel(catalog, provider, model, candidates);
+    if (match) return match;
+  }
+  if (!variants) return undefined;
+  for (const catalog of catalogs) {
+    const match = matchVariant(catalog, provider, candidates);
+    if (match) return match;
+  }
+  return undefined;
+}
+
+function entry(
+  catalog: Catalog,
+  provider: string,
+  id: string | undefined,
+): CatalogMatch | undefined {
+  const models = catalog[provider];
+  return id && models?.[id]
+    ? { provider, id, model: withAliasFast(models, id) }
+    : undefined;
+}
+
+/** The entry for the model itself: its id, normalized or without a prefix */
+function matchModel(
+  catalog: Catalog,
+  provider: string,
+  model: string,
+  candidates: string[],
+): CatalogMatch | undefined {
+  const exact = entry(catalog, provider, model);
+  if (exact) return exact;
+  const index = normalizedIndex(catalog, provider);
   for (const candidate of candidates) {
-    const direct = found(index.get(candidate));
+    const direct = entry(catalog, provider, index.get(candidate));
     if (direct) return direct;
   }
+  return undefined;
+}
+
+/** The entry of a listed id the model is a variant of, or of its variants */
+function matchVariant(
+  catalog: Catalog,
+  provider: string,
+  candidates: string[],
+): CatalogMatch | undefined {
+  const models = catalog[provider];
+  if (!models) return undefined;
+  const index = normalizedIndex(catalog, provider);
   for (const candidate of candidates) {
     // A dated variant of a listed id: the most specific listed id
     const base = longestListedBase(candidate, index.keys());
-    if (base) return found(index.get(base));
+    if (base) return entry(catalog, provider, index.get(base));
 
     // Listed variants of the id: the best ranked, then the newest
     let best: { id: string; rank: number; suffix: string } | undefined;
@@ -250,7 +288,7 @@ function findIn(
         best = { id, rank, suffix };
       }
     }
-    if (best) return found(best.id);
+    if (best) return entry(catalog, provider, best.id);
   }
   return undefined;
 }
