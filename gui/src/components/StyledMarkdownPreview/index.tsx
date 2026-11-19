@@ -14,7 +14,7 @@ import {
 } from "..";
 import useUpdatingRef from "../../hooks/useUpdatingRef";
 import { varWithFallback } from "../../styles/theme";
-import { useThrottledValue } from "../../hooks/useThrottledValue";
+import { useSmoothStreamText } from "../../hooks/useSmoothStreamText";
 import { useAppSelector } from "../../redux/hooks";
 import { selectUIConfig } from "../../redux/slices/configSlice";
 import { selectPastContextItems } from "../../redux/thunks/updateFileSymbols";
@@ -208,10 +208,6 @@ function getCodeChildrenContent(children: any) {
   }
   return undefined;
 }
-
-const MARKDOWN_THROTTLE_MS = 120;
-const isAppended = (previous: string, next: string) =>
-  next.startsWith(previous);
 
 const NO_CONTEXT_ITEMS: ReturnType<typeof selectPastContextItems>[number] = [];
 
@@ -420,14 +416,10 @@ const StyledMarkdownPreview = memo(function StyledMarkdownPreview(
   });
 
   // A streaming message grows on every chunk, and each parse covers the whole
-  // text (markdown, math, highlighting). Parse growing text at most a few
-  // times a second; the last text always lands, and text that is replaced
-  // rather than appended to renders at once.
-  const source = useThrottledValue(
-    props.source ?? "",
-    MARKDOWN_THROTTLE_MS,
-    isAppended,
-  );
+  // text (markdown, math, highlighting). Growing text types in over a few
+  // frames, parsed less often the longer it gets; the last text always
+  // lands, and text that is replaced rather than appended to renders at once.
+  const source = useSmoothStreamText(props.source ?? "");
   useEffect(() => {
     setMarkdownSource(
       // some patches to source markdown are applied here:
