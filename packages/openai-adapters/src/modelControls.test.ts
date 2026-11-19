@@ -875,10 +875,9 @@ describe("generic providers", () => {
       "medium",
       "high",
     ]);
-    expect(generic("qwen3-coder-30b").thinkingModes).toEqual([
-      "hidden",
-      "shown",
-    ]);
+    expect(generic("qwen3.8-max").thinkingModes).toEqual(["hidden", "shown"]);
+    // models.dev lists every Qwen3-Coder as non-reasoning
+    expect(generic("qwen3-coder-30b").thinkingModes).toEqual([]);
   });
 
   it("recognises current reasoning families but not retired ones", () => {
@@ -893,6 +892,7 @@ describe("generic providers", () => {
       // Qwen 3 and later are hybrid reasoning models
       "qwen3.8-max",
       "qwen4-max-preview",
+      "qwen3-vl-plus",
     ]) {
       expect(looksLikeReasoningModel(model)).toBe(true);
     }
@@ -902,6 +902,10 @@ describe("generic providers", () => {
       "deepseek-v3",
       "qwen-max",
       "qwen2.5-72b-instruct",
+      // Qwen's Coder and Instruct models don't think
+      "qwen3-coder-plus",
+      "qwen3-next-80b-a3b-instruct",
+      "qwen4-vl-instruct",
     ]) {
       expect(looksLikeReasoningModel(model)).toBe(false);
     }
