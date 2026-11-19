@@ -174,6 +174,12 @@ export class IdeMessenger implements IIdeMessenger {
     let returnVal: GeneratorReturnType<FromWebviewProtocol[T][1]> | undefined =
       undefined;
     let error: string | null = null;
+    // Resolves the loop's wait when a message for this stream arrives
+    let wake: (() => void) | undefined;
+    const notify = () => {
+      wake?.();
+      wake = undefined;
+    };
 
     // This handler receieves individual WebviewMessengerResults
     // And pushes them to buffer
@@ -184,6 +190,7 @@ export class IdeMessenger implements IIdeMessenger {
         const responseData = event.data.data;
         if ("error" in responseData) {
           error = responseData.error;
+          notify();
           return;
           // throw new Error(responseData.error);
         }
@@ -194,6 +201,7 @@ export class IdeMessenger implements IIdeMessenger {
         } else {
           buffer.push(responseData.content);
         }
+        notify();
       }
     };
     window.addEventListener("message", handler);
@@ -212,8 +220,16 @@ export class IdeMessenger implements IIdeMessenger {
           const chunks = buffer.slice(index);
           index = buffer.length;
           yield chunks;
+          continue;
         }
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        // Wait for the next message instead of polling on a timer, so a
+        // chunk reaches the chat as soon as it arrives
+        await new Promise<void>((resolve) => {
+          wake = resolve;
+        });
+        // Messages already queued behind this one land in the same batch,
+        // so a burst dispatches once rather than once per chunk
+        await new Promise((resolve) => setTimeout(resolve, 0));
       }
 
       if (buffer.length > index) {
