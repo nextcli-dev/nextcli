@@ -7,8 +7,9 @@ export const REVEAL_MS = 100;
  * every frame. */
 export const MIN_INTERVAL_MS = 33;
 export const MAX_INTERVAL_MS = 120;
-/** Text that hasn't caught up after this long (no animation frames, e.g. a
- * hidden panel) lands in full */
+/** Text still behind this long after the source last changed (no animation
+ * frames, e.g. a hidden panel) lands in full. A quiet-period timer, not a
+ * bound on lag: each change restarts it. */
 export const FALLBACK_MS = 250;
 /** How far a step may stretch to end on a word */
 const WORD_LOOKAHEAD = 12;

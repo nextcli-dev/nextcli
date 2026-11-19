@@ -15,12 +15,14 @@ class FakeResizeObserver {
 }
 
 /** A scroll container with a settable content height (jsdom has no layout) */
-function makeContainer() {
+function makeContainer(initialHeight = 1000) {
   const elem = document.createElement("div");
   elem.appendChild(document.createElement("div"));
-  let contentHeight = 1000;
+  let contentHeight = initialHeight;
   Object.defineProperty(elem, "clientHeight", { get: () => 400 });
-  Object.defineProperty(elem, "scrollHeight", { get: () => contentHeight });
+  Object.defineProperty(elem, "scrollHeight", {
+    get: () => Math.max(contentHeight, 400),
+  });
   let scrollTop = 0;
   Object.defineProperty(elem, "scrollTop", {
     get: () => scrollTop,
@@ -68,8 +70,8 @@ describe("useAutoScroll", () => {
     document.body.innerHTML = "";
   });
 
-  function setup() {
-    const container = makeContainer();
+  function setup(initialHeight?: number) {
+    const container = makeContainer(initialHeight);
     const ref = { current: container.elem };
     const hook = renderHook(({ history }) => useAutoScroll(ref, history), {
       initialProps: { history: [userMsg("u1")] },
@@ -116,6 +118,61 @@ describe("useAutoScroll", () => {
 
     // A wheel down doesn't let go
     c.userScrollTo(c.bottom());
+    c.elem.dispatchEvent(new WheelEvent("wheel", { deltaY: 40 }));
+    c.grow(300);
+    expect(c.elem.scrollTop).toBe(c.bottom());
+  });
+
+  it("keeps following when a nested box takes the wheel up", () => {
+    const c = setup();
+    // The live reasoning box: scrolls vertically, scrolled down a bit
+    const reasoning = document.createElement("div");
+    reasoning.style.overflowY = "auto";
+    Object.defineProperty(reasoning, "scrollTop", { value: 120 });
+    const line = document.createElement("p");
+    reasoning.appendChild(line);
+    c.elem.firstElementChild!.appendChild(reasoning);
+
+    line.dispatchEvent(new WheelEvent("wheel", { deltaY: -40, bubbles: true }));
+    c.grow(300);
+    expect(c.elem.scrollTop).toBe(c.bottom());
+  });
+
+  it("lets go on a wheel up through a box that only scrolls sideways", () => {
+    const c = setup();
+    // Terminal output: scrolls horizontally, its scrollTop is irrelevant
+    const terminal = document.createElement("div");
+    terminal.style.overflowX = "scroll";
+    terminal.style.overflowY = "hidden";
+    Object.defineProperty(terminal, "scrollTop", { value: 30 });
+    c.elem.firstElementChild!.appendChild(terminal);
+
+    terminal.dispatchEvent(
+      new WheelEvent("wheel", { deltaY: -40, bubbles: true }),
+    );
+    const position = c.elem.scrollTop;
+    c.grow(300);
+    expect(c.elem.scrollTop).toBe(position);
+  });
+
+  it("keeps following after a wheel up in a chat that fits the panel", () => {
+    // Nothing to scroll: no scroll event follows the wheel either
+    const c = setup(300);
+    expect(c.elem.scrollTop).toBe(0);
+    c.elem.dispatchEvent(new WheelEvent("wheel", { deltaY: -40 }));
+    c.grow(500);
+    expect(c.elem.scrollTop).toBe(c.bottom());
+  });
+
+  it("resumes following on a wheel down at the end", () => {
+    const c = setup();
+    c.elem.dispatchEvent(new WheelEvent("wheel", { deltaY: -40 }));
+    // Released at the end: the next growth stays put, then the user wheels
+    // down where nothing scrolls
+    c.grow(300);
+    expect(c.elem.scrollTop).toBe(c.bottom() - 300);
+    c.userScrollTo(c.bottom());
+    c.elem.dispatchEvent(new WheelEvent("wheel", { deltaY: -40 }));
     c.elem.dispatchEvent(new WheelEvent("wheel", { deltaY: 40 }));
     c.grow(300);
     expect(c.elem.scrollTop).toBe(c.bottom());
