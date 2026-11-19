@@ -24,18 +24,21 @@ export function updateIntervalMs(length: number) {
 
 /**
  * The end of the next prefix of `target` to show: `chars` more than
- * `shownLength`, stretched to the end of a word when one is close
+ * `shownLength`, stretched past the end of a word when one is close
  */
 export function nextRevealEnd(
   target: string,
   shownLength: number,
   chars: number,
 ) {
-  let end = shownLength + Math.max(1, Math.ceil(chars));
+  const end = shownLength + Math.max(1, Math.ceil(chars));
   if (end >= target.length) return target.length;
-  // End on a word rather than mid-word, when one is close
+  if (target[end - 1] === " ") return end;
+  // End after a word's space rather than mid-word, when one is close.
+  // Including the space matters: a chunk such as "Hello " would otherwise
+  // leave its space for a separate update, and re-parse, of its own.
   const space = target.indexOf(" ", end);
-  if (space !== -1 && space - end <= WORD_LOOKAHEAD) end = space;
+  if (space !== -1 && space - end <= WORD_LOOKAHEAD) return space + 1;
   return end;
 }
 
@@ -122,11 +125,10 @@ export function useSmoothStreamText(source: string): string {
     anchorLengthRef.current = shownRef.current.length;
     anchorTimeRef.current = now;
     rateRef.current = (source.length - shownRef.current.length) / REVEAL_MS;
+    // Starting from rest, tick still spaces updates from the last one: an
+    // old update lets the next frame show a step, a recent one waits out
+    // its interval, so a chunk after a catch-up can't re-parse early
     if (frameRef.current === undefined) {
-      // Starting from rest: the next frame shows the first step, unless
-      // the last update was less than an interval ago
-      const interval = updateIntervalMs(source.length);
-      lastEmitRef.current = Math.min(lastEmitRef.current, now - interval);
       frameRef.current = requestAnimationFrame(tick);
     }
     // Without animation frames the text would never land; restarted on
