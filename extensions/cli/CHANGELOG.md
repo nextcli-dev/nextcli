@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.16.0](https://github.com/nextcli-dev/nextcli/compare/cli-v0.15.0...cli-v0.16.0) (2026-11-19)
+
+
+### Features
+
+* **llm-info:** add a NextCLI model supplement for models models.dev lacks ([d66c3be](https://github.com/nextcli-dev/nextcli/commit/d66c3be6c1affd2461f2c7a4aa7f2505da85ea17))
+
+
+### Bug Fixes
+
+* **llm-info:** price Qwen plans as estimates and map China's DashScope host ([4b5d0dc](https://github.com/nextcli-dev/nextcli/commit/4b5d0dcb6a1261c56a4a8c3bd5606ae68557dfcc))
+* **openai-adapters:** don't treat Qwen coder and instruct models as reasoning ([cfc3f2a](https://github.com/nextcli-dev/nextcli/commit/cfc3f2a79d1cb8d781f128e123157c6e7cfdbda7))
+* **openai-adapters:** treat Qwen 3 and later as reasoning models ([ccbf498](https://github.com/nextcli-dev/nextcli/commit/ccbf49820a77df6b40577a476acd5531aada4c86))
+
 ## [0.15.0](https://github.com/nextcli-dev/nextcli/compare/cli-v0.14.0...cli-v0.15.0) (2026-11-19)
 
 
