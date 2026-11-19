@@ -324,8 +324,7 @@ export function useChat({
       historyLength: newHistory.length,
     });
 
-    // Snapshot the work tree before any tool runs, so /undo can restore it.
-    // A snapshot failure never stops the turn.
+    // Before any tool runs; a failure never stops the turn
     const snapshotTurn = isRemoteMode
       ? undefined
       : await beginTurnSnapshot().catch((error) => {
@@ -522,7 +521,6 @@ export function useChat({
     }
   };
 
-  /** Restores files (and, by mode, the conversation) from the restore screen. */
   const handleRestore = async (
     plan: Parameters<typeof applyUndo>[1],
     mode: RestoreMode,

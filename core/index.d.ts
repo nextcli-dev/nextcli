@@ -559,10 +559,7 @@ export interface ChatHistoryItem {
   thinkingHidden?: boolean;
   appliedRules?: RuleMetadata[];
   conversationSummary?: string;
-  /**
-   * On the user message of an agent turn: the work-tree snapshots taken
-   * around the turn, used to undo and redo it. Never sent to a model.
-   */
+  /** Undo snapshots of the turn this user message started. */
   checkpoint?: TurnCheckpoint;
 }
 

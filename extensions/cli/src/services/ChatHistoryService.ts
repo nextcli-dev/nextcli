@@ -364,10 +364,6 @@ export class ChatHistoryService extends BaseService<ChatHistoryState> {
     }
   }
 
-  /**
-   * Store the turn snapshots on a user message, so undo works after the
-   * session is resumed.
-   */
   setCheckpoint(index: number, checkpoint: TurnCheckpoint): void {
     const history = this.currentState.history;
     const item = history[index];

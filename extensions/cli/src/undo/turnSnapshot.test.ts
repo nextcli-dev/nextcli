@@ -53,7 +53,6 @@ beforeEach(async () => {
   await services.chatHistory.initialize(undefined, true);
 });
 
-/** Runs one turn the way useChat does: snapshot, tool writes, snapshot. */
 async function runTurn(prompt: string, write: () => void | Promise<void>) {
   services.chatHistory.setHistory([
     ...services.chatHistory.getHistory(),

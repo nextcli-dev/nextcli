@@ -57,7 +57,6 @@ interface ScreenContentProps {
   chatHistory?: ChatHistoryItem[];
   handleEditMessage?: (messageIndex: number, newContent: string) => void;
   onShowEditSelector?: () => void;
-  /** History index the restore screen undoes from */
   restoreFromIndex?: number;
   handleRestore?: (plan: UndoPlan, mode: RestoreMode) => void;
   onShowRestore?: (fromIndex: number) => void;
@@ -192,7 +191,6 @@ export const ScreenContent: React.FC<ScreenContentProps> = ({
     );
   }
 
-  // Undo: restore files from a turn snapshot
   if (isScreenActive("restore") && restoreFromIndex !== undefined) {
     return (
       <RestoreSelector

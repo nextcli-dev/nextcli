@@ -19,7 +19,6 @@ const CHOICES: { mode: RestoreMode | "cancel"; label: string }[] = [
 
 interface RestoreSelectorProps {
   chatHistory: ChatHistoryItem[];
-  /** History index of the first user message to undo. */
   fromIndex: number;
   onConfirm: (plan: UndoPlan, mode: RestoreMode) => void;
   onCancel: () => void;
@@ -51,10 +50,6 @@ function FileList({
   );
 }
 
-/**
- * Shows what undoing the turns from a message would change, then asks
- * whether to restore code and conversation, or code only.
- */
 export function RestoreSelector({
   chatHistory,
   fromIndex,

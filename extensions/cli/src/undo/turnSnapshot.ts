@@ -15,10 +15,6 @@ function lastUserIndex(history: readonly ChatHistoryItem[]): number {
   return -1;
 }
 
-/**
- * Snapshots the work tree before the turn that answers the last user message
- * and stores the snapshot on that message.
- */
 export async function beginTurnSnapshot(): Promise<OpenTurn | undefined> {
   const snapshot = services.snapshot;
   if (!snapshot.isEnabled()) return undefined;
@@ -38,7 +34,6 @@ export async function beginTurnSnapshot(): Promise<OpenTurn | undefined> {
   return turn;
 }
 
-/** The index of the user message whose checkpoint starts at `start`. */
 function messageWithStart(start: string): number {
   const history = services.chatHistory.getHistory();
   for (let i = history.length - 1; i >= 0; i--) {
@@ -49,11 +44,7 @@ function messageWithStart(start: string): number {
   return -1;
 }
 
-/**
- * Saves ignored files a tool is about to write into the turn's start, and
- * stores the new start on the turn's message straight away, so undo of an
- * interrupted turn covers them too.
- */
+/** Stored at once, so undo of an interrupted turn covers them too. */
 async function preserveBeforeWrite(
   turn: OpenTurn,
   paths: string[],
@@ -65,12 +56,11 @@ async function preserveBeforeWrite(
   if (index >= 0) services.chatHistory.setCheckpoint(index, checkpoint);
 }
 
-/** Records the end of the turn on the user message that started it. */
 export async function finishTurnSnapshot(turn: OpenTurn): Promise<void> {
   setBeforeFileWriteHook(undefined);
   const checkpoint = await services.snapshot.finishTurn(turn);
   if (!checkpoint) return;
-  // Find the message by its start snapshot: compaction may have moved it.
+  // By start snapshot: compaction may have moved the message
   const index = messageWithStart(turn.start);
   if (index >= 0) {
     services.chatHistory.setCheckpoint(index, checkpoint);
@@ -81,7 +71,6 @@ export async function finishTurnSnapshot(turn: OpenTurn): Promise<void> {
 
 export type RestoreMode = "code-and-conversation" | "code";
 
-/** What `/undo` should do with the current history. */
 export function findUndoTarget(
   history: readonly ChatHistoryItem[],
 ): { fromIndex: number } | { message: string } {
@@ -102,10 +91,6 @@ function plural(count: number, word: string): string {
   return `${count} ${word}${count === 1 ? "" : "s"}`;
 }
 
-/**
- * Restores the files of `plan` and, for "code-and-conversation", returns the
- * history without the undone turns. Returns the text to show afterwards.
- */
 export async function applyUndo(
   history: readonly ChatHistoryItem[],
   plan: UndoPlan,
@@ -141,7 +126,6 @@ export async function applyUndo(
   };
 }
 
-/** Re-applies the last undo. */
 export async function applyRedo(
   history: readonly ChatHistoryItem[],
 ): Promise<{ history?: ChatHistoryItem[]; message: string }> {

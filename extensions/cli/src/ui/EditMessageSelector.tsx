@@ -14,9 +14,7 @@ interface EditMessageSelectorProps {
   chatHistory: ChatHistoryItem[];
   onEdit: (messageIndex: number, newContent: string) => void;
   onExit: () => void;
-  /** Whether the message at this history index has a snapshot to restore */
   canRestore?: (messageIndex: number) => boolean;
-  /** Opens the restore screen for the message at this history index */
   onRestore?: (messageIndex: number) => void;
 }
 

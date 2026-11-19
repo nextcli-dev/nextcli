@@ -25,7 +25,7 @@ export interface BaseCommandOptions {
   passEnv?: string[];
   /** Let Fetch reach loopback and private addresses (--allow-private-fetch) */
   allowPrivateFetch?: boolean;
-  /** False with --no-snapshots: no work-tree snapshots, so no /undo */
+  /** False with --no-snapshots */
   snapshots?: boolean;
   /** Agent file slug from the hub (--agent) */
   agent?: string;
