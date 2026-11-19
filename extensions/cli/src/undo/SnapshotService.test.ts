@@ -21,7 +21,10 @@ vi.mock("../util/logger.js", () => ({
 }));
 
 function createRepo() {
-  const base = realpathSync(mkdtempSync(path.join(tmpdir(), "cn-undo-")));
+  // .native expands Windows short names (RUNNER~1) like the snapshotter does
+  const base = realpathSync.native(
+    mkdtempSync(path.join(tmpdir(), "cn-undo-")),
+  );
   const root = path.join(base, "repo");
   execFileSync("git", ["init", "-q", root]);
   writeFileSync(path.join(root, "a.txt"), "a1\n");
