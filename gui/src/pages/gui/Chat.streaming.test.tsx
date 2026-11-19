@@ -7,6 +7,7 @@ import {
   setInactive,
   streamUpdate,
 } from "../../redux/slices/sessionSlice";
+import { MIN_INTERVAL_MS } from "../../hooks/useSmoothStreamText";
 import { renderWithProviders } from "../../util/test/render";
 import { Chat } from "./Chat";
 
@@ -96,6 +97,7 @@ test("streaming a reply re-renders neither past messages nor every chunk", async
   renders.clear();
   parses.length = 0;
 
+  const started = performance.now();
   for (let i = 0; i < CHUNKS; i++) {
     await act(async () => {
       store.dispatch(
@@ -108,6 +110,7 @@ test("streaming a reply re-renders neither past messages nor every chunk", async
       );
     });
   }
+  const streamedMs = performance.now() - started;
   await act(async () => {
     store.dispatch(setInactive());
     await new Promise((resolve) => setTimeout(resolve, 300));
@@ -116,10 +119,14 @@ test("streaming a reply re-renders neither past messages nor every chunk", async
   // Past messages don't change, so they don't render again
   expect(pastRenders()).toBe(0);
 
-  // The streaming message parses far fewer times than it gets chunks, and
-  // its final text is parsed
+  // The streaming message parses at most once per update interval (plus the
+  // final text, after the wait above), not once per chunk, and its final
+  // text is parsed. Bounded by time: a slower machine streams for longer.
   const streamingParses = parses.filter((s) => s.startsWith(STREAMING_PREFIX));
-  expect(streamingParses.length).toBeLessThan(CHUNKS / 4);
+  expect(streamingParses.length).toBeLessThan(CHUNKS);
+  expect(streamingParses.length).toBeLessThanOrEqual(
+    Math.ceil((streamedMs + 300) / MIN_INTERVAL_MS) + 1,
+  );
   expect(streamingParses.at(-1)).toContain(`word${CHUNKS - 1}`);
 }, 30_000);
 
@@ -148,4 +155,26 @@ test("uses history positions when the history holds a system message", async () 
   expect(screen.getByTestId("thinking-block-live")).toHaveTextContent(
     "Reasoning so far",
   );
+});
+
+test("reserves no blank space under the last message", async () => {
+  const { store } = await renderWithProviders(<Chat />);
+  await act(async () => {
+    store.dispatch(
+      newSession({
+        sessionId: "blank-test",
+        title: "Blank",
+        workspaceDirectory: "",
+        history: [item("user", "Run it"), item("assistant", "")],
+      }),
+    );
+  });
+
+  // The last row is a reply that hasn't started: nothing may pad it out,
+  // or auto-scroll pins the view to a blank band above the input
+  const rows = screen.getAllByTestId("chat-history-row");
+  expect(rows).toHaveLength(2);
+  for (const row of rows) {
+    expect(row.style.minHeight).toBe("");
+  }
 });
