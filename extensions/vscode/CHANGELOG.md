@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.6.22](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.21...vscode-v1.6.22) (2026-11-19)
+
+
+### Features
+
+* **cli:** undo and redo agent turns ([#181](https://github.com/nextcli-dev/nextcli/issues/181)) ([6282cda](https://github.com/nextcli-dev/nextcli/commit/6282cdaf83295807fcb725bc902a6a0be40eb0b0))
+* **snapshot:** shadow git snapshots of a work tree ([#180](https://github.com/nextcli-dev/nextcli/issues/180)) ([7aff3c6](https://github.com/nextcli-dev/nextcli/commit/7aff3c6947b3f27dcca59fd9fd171b985056c5bf))
+* **vscode:** undo and redo agent turns ([#182](https://github.com/nextcli-dev/nextcli/issues/182)) ([6d69338](https://github.com/nextcli-dev/nextcli/commit/6d69338ac03c7e514f8bee67bada3c8d5ba7c35d))
+
+
+### Bug Fixes
+
+* **core:** move system-ca off the deprecated macOS certificate package ([#189](https://github.com/nextcli-dev/nextcli/issues/189)) ([ea8a12a](https://github.com/nextcli-dev/nextcli/commit/ea8a12a7e7d5120ee5a2e3ed7206425372562f82))
+* **gui:** stream replies smoothly and keep the chat in view ([#188](https://github.com/nextcli-dev/nextcli/issues/188)) ([a7bb051](https://github.com/nextcli-dev/nextcli/commit/a7bb05120a9b37de2ec8492ffc3d87955bc2e2ec))
+
 ## [1.6.21](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.20...vscode-v1.6.21) (2026-11-18)
 
 
