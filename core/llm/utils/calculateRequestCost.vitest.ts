@@ -791,6 +791,20 @@ describe("calculateRequestCost by host", () => {
     ).toBeDefined();
   });
 
+  it("prices Qwen on Alibaba's hosts from NextCLI's supplement", () => {
+    // qwen4-max isn't in models.dev's Alibaba catalog; supplement.ts has it
+    const qwen = findCatalogCost("alibaba", "qwen4-max")!;
+    expect(qwen).toMatchObject({ input: 1.5, output: 4.5 });
+    expect(
+      calculateRequestCost("openai", "qwen4-max-preview", usage, {
+        apiBase: "https://token-plan.maas.qwencloudapi.com/v1",
+      }),
+    ).toMatchObject({
+      cost: expect.closeTo(qwen.input + qwen.output, 6),
+      priced: "catalog",
+    });
+  });
+
   it("returns null when no table knows the model", () => {
     expect(
       calculateRequestCost("openai", "my-private-model", usage, {

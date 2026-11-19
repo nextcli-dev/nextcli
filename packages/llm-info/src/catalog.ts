@@ -1,5 +1,6 @@
 import type { CatalogModel } from "./catalogTypes.js";
 import { CATALOG, CATALOG_SYNCED_AT } from "./generated/catalog.js";
+import { SUPPLEMENT } from "./supplement.js";
 
 export type {
   CatalogCost,
@@ -114,17 +115,34 @@ function normalize(id: string): string {
   return id.toLowerCase().replace(/\./g, "-");
 }
 
+/**
+ * Where an entry comes from: the models.dev snapshot, or NextCLI's own
+ * supplement (supplement.ts) for models the snapshot doesn't list
+ */
+export type CatalogSource = "models.dev" | "nextcli";
+
+type Models = Record<string, Record<string, CatalogModel>>;
+
+const SOURCES: Record<CatalogSource, Models> = {
+  "models.dev": CATALOG,
+  nextcli: SUPPLEMENT,
+};
+
 const normalizedIndexes = new Map<string, Map<string, string>>();
 
-function normalizedIndex(provider: string): Map<string, string> {
-  let index = normalizedIndexes.get(provider);
+function normalizedIndex(
+  source: CatalogSource,
+  provider: string,
+): Map<string, string> {
+  const cacheKey = `${source}:${provider}`;
+  let index = normalizedIndexes.get(cacheKey);
   if (!index) {
     index = new Map();
-    for (const id of Object.keys(CATALOG[provider] ?? {})) {
+    for (const id of Object.keys(SOURCES[source][provider] ?? {})) {
       const key = normalize(id);
       if (!index.has(key)) index.set(key, id);
     }
-    normalizedIndexes.set(provider, index);
+    normalizedIndexes.set(cacheKey, index);
   }
   return index;
 }
@@ -135,6 +153,7 @@ export interface CatalogMatch {
   /** The catalog's id for the model */
   id: string;
   model: CatalogModel;
+  source: CatalogSource;
 }
 
 /**
@@ -160,28 +179,47 @@ function withAliasFast(
 }
 
 /**
- * A model's catalog entry, matched by its exact id, then case and dots
- * ignored, then without a vendor prefix (`anthropic/claude-…` on a provider
- * that isn't OpenRouter), then as a dated or preview variant of a listed id
- * (the longest such id), then as an id some listed variants extend: the
+ * A model's catalog entry: the models.dev snapshot's, else NextCLI's own
+ * (supplement.ts). Matched by its exact id, then case and dots ignored, then
+ * without a vendor prefix (`anthropic/claude-…` on a provider that isn't
+ * OpenRouter), then as a dated or preview variant of a listed id (the
+ * longest such id), then as an id some listed variants extend: the
  * `-latest` alias first, then the newest current snapshot (variantRank).
  */
 export function findCatalogModel(
   provider: string | undefined,
   model: string,
 ): CatalogMatch | undefined {
+  return (
+    findIn("models.dev", provider, model) ?? findIn("nextcli", provider, model)
+  );
+}
+
+/** A model's entry in the models.dev snapshot only, without the supplement */
+export function findModelsDevModel(
+  provider: string | undefined,
+  model: string,
+): CatalogMatch | undefined {
+  return findIn("models.dev", provider, model);
+}
+
+function findIn(
+  source: CatalogSource,
+  provider: string | undefined,
+  model: string,
+): CatalogMatch | undefined {
   if (!provider) return undefined;
-  const models = CATALOG[provider];
+  const models = SOURCES[source][provider];
   if (!models || !model) return undefined;
   const found = (id: string | undefined) =>
     id && models[id]
-      ? { provider, id, model: withAliasFast(models, id) }
+      ? { provider, id, model: withAliasFast(models, id), source }
       : undefined;
 
   const exact = found(model);
   if (exact) return exact;
 
-  const index = normalizedIndex(provider);
+  const index = normalizedIndex(source, provider);
   const candidates = [normalize(model)];
   const slash = model.lastIndexOf("/");
   if (provider !== "openrouter" && slash !== -1) {

@@ -140,6 +140,8 @@ npm trusted publishing is bound to `release-cli.yml`. Leave `NPM_TOKEN` unset to
 
 Other tests pin catalog values: prices in `calculateRequestCost.vitest.ts`, efforts and context windows in `modelControls.test.ts`, and more. The workflow runs the openai-adapters and core tests and lists the ones the new catalog fails in the description. Update them on `chore/sync-models`. The workflow never force-pushes and never closes the pull request, so your commits stay.
 
+`packages/llm-info/src/supplement.ts` is NextCLI's own catalog, for models models.dev doesn't list yet. It's hand-maintained and the sync never writes it. Lookups read the models.dev snapshot first and the supplement only when the snapshot has no match, so models.dev always wins. Give each entry the page its values come from and the date they were read. Leave out what the page doesn't say (no `efforts` makes the menu offer guessed levels). Once models.dev lists a model, a test in `packages/openai-adapters/src/modelProfile.test.ts` fails and the sync pull request lists it: delete the entry on that branch.
+
 A change under `packages/llm-info/` runs most of CI: the core, GUI, VS Code and CLI suites, the live provider API tests and the VS Code end-to-end tests. Re-run a job that fails for a reason the catalog can't cause.
 
 Before merging a sync pull request, check:
