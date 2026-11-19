@@ -890,10 +890,19 @@ describe("generic providers", () => {
       "o3",
       // Open-weight, still hosted by third parties
       "deepseek-v3.2",
+      // Qwen 3 and later are hybrid reasoning models
+      "qwen3.8-max",
+      "qwen4-max-preview",
     ]) {
       expect(looksLikeReasoningModel(model)).toBe(true);
     }
-    for (const model of ["grok-3", "claude-3-7-sonnet", "deepseek-v3"]) {
+    for (const model of [
+      "grok-3",
+      "claude-3-7-sonnet",
+      "deepseek-v3",
+      "qwen-max",
+      "qwen2.5-72b-instruct",
+    ]) {
       expect(looksLikeReasoningModel(model)).toBe(false);
     }
   });
