@@ -6,7 +6,6 @@ import { logger } from "../util/logger.js";
 
 import { setBeforeFileWriteHook } from "./beforeFileWrite.js";
 import type { OpenTurn, UndoPlan } from "./SnapshotService.js";
-import { describeReason } from "./SnapshotService.js";
 
 function lastUserIndex(history: readonly ChatHistoryItem[]): number {
   for (let i = history.length - 1; i >= 0; i--) {
@@ -76,9 +75,7 @@ export function findUndoTarget(
 ): { fromIndex: number } | { message: string } {
   const snapshot = services.snapshot;
   if (!snapshot.isEnabled()) {
-    return {
-      message: `Undo is off: ${describeReason(snapshot.getState().reason)}.`,
-    };
+    return { message: snapshot.offMessage("Undo") };
   }
   const fromIndex = snapshot.lastUndoableIndex(history);
   if (fromIndex === undefined) {
@@ -130,9 +127,7 @@ export async function applyRedo(
   history: readonly ChatHistoryItem[],
 ): Promise<{ history?: ChatHistoryItem[]; message: string }> {
   if (!services.snapshot.isEnabled()) {
-    return {
-      message: `Redo is off: ${describeReason(services.snapshot.getState().reason)}.`,
-    };
+    return { message: services.snapshot.offMessage("Redo") };
   }
   const redone = await services.snapshot.redo();
   if (!redone) return { message: "Nothing to redo." };

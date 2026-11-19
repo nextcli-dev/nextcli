@@ -279,7 +279,7 @@ export class SnapshotService extends BaseService<SnapshotServiceState> {
   async redo(): Promise<
     { result: RestoreResult; removedHistory?: ChatHistoryItem[] } | undefined
   > {
-    const snapshotter = this.requireSnapshotter();
+    const snapshotter = this.requireSnapshotter("Redo");
     const entry = this.redoStack.pop();
     if (!entry) return undefined;
     try {
@@ -330,17 +330,17 @@ export class SnapshotService extends BaseService<SnapshotServiceState> {
       : undefined;
   }
 
-  private requireSnapshotter(): Snapshotter {
-    if (!this.snapshotter) {
-      throw new Error(
-        `Undo is off: ${describeReason(this.currentState.reason)}`,
-      );
-    }
+  offMessage(action: "Undo" | "Redo"): string {
+    return `${action} is off: ${describeReason(this.currentState.reason)}.`;
+  }
+
+  private requireSnapshotter(action: "Undo" | "Redo" = "Undo"): Snapshotter {
+    if (!this.snapshotter) throw new Error(this.offMessage(action));
     return this.snapshotter;
   }
 }
 
-export function describeReason(reason: string | undefined): string {
+function describeReason(reason: string | undefined): string {
   switch (reason) {
     case "not-a-git-repo":
       return "this folder isn't a git repository";

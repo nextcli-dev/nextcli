@@ -182,10 +182,7 @@ export const ScreenContent: React.FC<ScreenContentProps> = ({
           closeCurrentScreen();
         }}
         onExit={closeCurrentScreen}
-        canRestore={(index) =>
-          snapshotService.isEnabled() &&
-          snapshotService.canRestore(chatHistory, index)
-        }
+        canRestore={(index) => snapshotService.canRestore(chatHistory, index)}
         onRestore={onShowRestore}
       />
     );

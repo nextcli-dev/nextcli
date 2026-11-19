@@ -78,6 +78,18 @@ describe("SnapshotService", () => {
     expect(off.isEnabled()).toBe(false);
     expect(off.getState().reason).toBe("off");
     expect(await off.beginTurn("s")).toBeUndefined();
+    const withCheckpoint = {
+      ...user("x"),
+      checkpoint: { v: 1 as const, roots: [{ root: "/repo", start: "t" }] },
+    };
+    expect(off.canRestore([withCheckpoint], 0)).toBe(false);
+    expect(off.offMessage("Redo")).toBe(
+      "Redo is off: snapshots are turned off (--no-snapshots or NEXTCLI_SNAPSHOTS=0).",
+    );
+    await expect(off.planUndo([withCheckpoint], 0)).rejects.toThrow(
+      off.offMessage("Undo"),
+    );
+    await expect(off.redo()).rejects.toThrow(off.offMessage("Redo"));
 
     const dir = mkdtempSync(path.join(tmpdir(), "cn-undo-nogit-"));
     const noGit = new SnapshotService();
