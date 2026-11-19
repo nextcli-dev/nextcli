@@ -3,6 +3,7 @@ import {
   chmodSync,
   existsSync,
   lstatSync,
+  readdirSync,
   mkdtempSync,
   readFileSync,
   readlinkSync,
@@ -219,6 +220,52 @@ describe("symlinks and directories", () => {
       expect(readFileSync(path.join(outside, "victim.txt"), "utf8")).toBe(
         "keep me\n",
       );
+    },
+  );
+
+  it("undoes a directory that the turn replaced with a file", async () => {
+    const f = createFixture();
+    f.write("dir/a.txt", "a\n");
+    const s = await f.open();
+    const start = await s.capture();
+    rmSync(path.join(f.root, "dir"), { recursive: true });
+    f.write("dir", "now a file\n");
+    const turn = await s.finishTurn(start);
+
+    await s.restore((await s.planRevert([{ start, ...turn }])).targets);
+    expect(read(f.root, "dir/a.txt")).toBe("a\n");
+  });
+
+  it("undoes a file that the turn replaced with a directory", async () => {
+    const f = createFixture();
+    f.write("thing", "a file\n");
+    const s = await f.open();
+    const start = await s.capture();
+    rmSync(path.join(f.root, "thing"));
+    f.write("thing/inner.txt", "x\n");
+    const turn = await s.finishTurn(start);
+
+    await s.restore((await s.planRevert([{ start, ...turn }])).targets);
+    expect(read(f.root, "thing")).toBe("a file\n");
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "restores under a folder that became a symlink without writing outside",
+    async () => {
+      const f = createFixture();
+      f.write("out/victim.txt", "snapshot\n");
+      const s = await f.open();
+      const start = await s.capture();
+      const outside = mkdtempSync(path.join(tmpdir(), "cn-outside-"));
+      rmSync(path.join(f.root, "out"), { recursive: true });
+      symlinkSync(outside, path.join(f.root, "out"));
+      const turn = await s.finishTurn(start);
+
+      await s.restore((await s.planRevert([{ start, ...turn }])).targets);
+      // git puts a real folder back instead of following the link
+      expect(lstatSync(path.join(f.root, "out")).isDirectory()).toBe(true);
+      expect(read(f.root, "out/victim.txt")).toBe("snapshot\n");
+      expect(readdirSync(outside)).toEqual([]);
     },
   );
 
