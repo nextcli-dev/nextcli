@@ -85,6 +85,7 @@ async function main() {
       "config-types",
       "terminal-security",
       "ask-question",
+      "snapshot",
     ]);
 
     // Phase 2: Build packages that depend on config-types
