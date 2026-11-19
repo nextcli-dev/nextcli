@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
-import { useAppDispatch } from "../redux/hooks";
+import { useAppDispatch, useAppSelector } from "../redux/hooks";
 import { setDialogMessage, setShowDialog } from "../redux/slices/uiSlice";
-import { applyUndo, planUndo, UndoMode, UndoPlan } from "./turnSnapshot";
+import {
+  applyUndo,
+  isTurnOver,
+  planUndo,
+  UndoMode,
+  UndoPlan,
+} from "./turnSnapshot";
 import { Button } from "../components/ui/Button";
 
 const MAX_FILES_SHOWN = 12;
@@ -54,6 +60,8 @@ export function UndoTurnDialog({ fromIndex }: { fromIndex: number }) {
   const [plan, setPlan] = useState<UndoPlan>();
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
+  // Same rule as the Undo button, for a dialog left open while a turn starts
+  const turnOver = useAppSelector(isTurnOver);
 
   useEffect(() => {
     dispatch(planUndo({ fromIndex }))
@@ -129,13 +137,13 @@ export function UndoTurnDialog({ fromIndex }: { fromIndex: number }) {
         </Button>
         <Button
           variant="outline"
-          disabled={!plan || busy}
+          disabled={!plan || busy || !turnOver}
           onClick={() => void confirm("code")}
         >
           Restore code only
         </Button>
         <Button
-          disabled={!plan || busy}
+          disabled={!plan || busy || !turnOver}
           onClick={() => void confirm("code-and-conversation")}
         >
           Restore code and conversation

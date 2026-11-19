@@ -259,9 +259,6 @@ export const applyUndo = createAsyncThunk<
 >(
   "snapshot/applyUndo",
   async ({ plan, mode }, { dispatch, extra, getState }) => {
-    if (!isTurnOver(getState())) {
-      throw new Error("Wait for the current turn to finish, then undo.");
-    }
     const results = await restoreAndReload(
       extra,
       plan.roots.map(({ root, plan: p }) => ({ root, targets: p.targets })),
