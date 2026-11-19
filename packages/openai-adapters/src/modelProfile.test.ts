@@ -152,6 +152,24 @@ describe("NextCLI's model supplement", () => {
     });
   });
 
+  it("reads Alibaba's catalogs from its international and China hosts", () => {
+    for (const [apiBase, catalogProvider] of [
+      ["https://dashscope-intl.aliyuncs.com/compatible-mode/v1", "alibaba"],
+      ["https://dashscope.aliyuncs.com/compatible-mode/v1", "alibaba-cn"],
+      // A subdomain of China's host, but the international coding plan
+      ["https://coding-intl.dashscope.aliyuncs.com/v1", "alibaba"],
+      ["https://coding.dashscope.aliyuncs.com/v1", "alibaba-cn"],
+    ]) {
+      const profile = resolveModelProfile({
+        ...qwen,
+        model: "qwen3.8-max",
+        apiBase,
+      });
+      expect(profile.catalogProvider, apiBase).toBe(catalogProvider);
+      expect(profile.catalog?.context, apiBase).toBe(1_000_000);
+    }
+  });
+
   it("isn't used on hosts that aren't the vendor's", () => {
     expect(
       resolveModelProfile({ ...qwen, apiBase: "https://gateway.example/v1/" })

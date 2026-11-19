@@ -48,16 +48,20 @@ export function isLocalHost(host: string): boolean {
 /**
  * Official API hosts whose catalog applies whichever provider the config
  * names: Groq or OpenRouter set up as an OpenAI-compatible endpoint is still
- * Groq or OpenRouter. Subdomains match too.
+ * Groq or OpenRouter. Subdomains match too, and the most specific domain
+ * wins.
  *
- * Alibaba's international hosts (Qwen Cloud, DashScope) take its
- * pay-as-you-go catalog, token plans included: models.dev lists token-plan
- * models at $0, and a list price overstates a plan's cost rather than
+ * Alibaba's hosts take its pay-as-you-go catalogs: the international one
+ * (Qwen Cloud, DashScope international) and China's. Its token and coding
+ * plans use them too, priced as estimates (PLAN_HOSTS): models.dev lists
+ * plan models at $0, and a list price overstates a plan's cost rather than
  * hiding it.
  */
 export const CATALOG_HOSTS: Readonly<Record<string, string>> = {
   "api.groq.com": "groq",
+  "coding-intl.dashscope.aliyuncs.com": "alibaba",
   "dashscope-intl.aliyuncs.com": "alibaba",
+  "dashscope.aliyuncs.com": "alibaba-cn",
   "openrouter.ai": "openrouter",
   "qwencloudapi.com": "alibaba",
 };
@@ -68,9 +72,30 @@ export function catalogProviderForApiBase(
 ): string | undefined {
   const host = hostOf(apiBase);
   if (!host) return undefined;
-  return Object.entries(CATALOG_HOSTS).find(([domain]) =>
-    isHostOrSubdomain(host, domain),
-  )?.[1];
+  let best: string | undefined;
+  for (const domain of Object.keys(CATALOG_HOSTS)) {
+    if (
+      isHostOrSubdomain(host, domain) &&
+      (!best || domain.length > best.length)
+    ) {
+      best = domain;
+    }
+  }
+  return best && CATALOG_HOSTS[best];
+}
+
+/**
+ * Subscription plans billed by the plan, not per token: Alibaba's token
+ * plans (token-plan.*) and coding plans (coding.dashscope.aliyuncs.com and
+ * coding-intl.dashscope.aliyuncs.com). Their catalog prices are estimates.
+ */
+const PLAN_HOSTS: readonly RegExp[] = [
+  /^token-plan\./,
+  /^coding(?:-intl)?\.dashscope\.aliyuncs\.com$/,
+];
+
+function isPlanHost(host: string | undefined): boolean {
+  return !!host && PLAN_HOSTS.some((pattern) => pattern.test(host));
 }
 
 /** Whether an API base is OneProvider's, whichever provider id the config uses */
@@ -183,8 +208,8 @@ export interface ModelEndpoint {
  * provider's own price, from the models.dev snapshot. estimated: a price for
  * a host that may charge differently (a maker's list price on another host,
  * OpenRouter's price for a model of the same name, a routed OpenRouter
- * variant, or the standard price of a fast request whose fast price isn't
- * known).
+ * variant, a list price on a subscription plan's host, or the standard price
+ * of a fast request whose fast price isn't known).
  */
 export type PriceSource = "exact" | "catalog" | "estimated";
 
@@ -240,7 +265,11 @@ function priceRouteFor(
     catalogProvider,
     model: routed ? model.replace(OPENROUTER_ROUTING, "") : model,
     source:
-      offMakerHost || routed ? "estimated" : makerHost ? "exact" : "catalog",
+      offMakerHost || routed || isPlanHost(host)
+        ? "estimated"
+        : makerHost
+          ? "exact"
+          : "catalog",
   };
 }
 
@@ -258,7 +287,8 @@ function priceRouteFor(
  *
  * Prices (`price`) come from the host's catalog, else the provider's own:
  * a maker's list price is exact on the maker's API and estimated on any
- * other host, and OpenRouter's routing variants are estimated.
+ * other host, and OpenRouter's routing variants and subscription plans'
+ * hosts are estimated.
  */
 export function resolveCatalog({
   provider,
