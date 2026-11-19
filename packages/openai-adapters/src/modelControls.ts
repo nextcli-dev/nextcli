@@ -313,9 +313,10 @@ export function looksLikeReasoningModel(model: string): boolean {
       name,
     ) ||
     /^(o\d|gpt-5|gpt-6|gpt-oss)/.test(name) ||
-    /qwen(?:[3-9]|\d{2})|phi-4-reasoning|minimax-m\d|kimi-k\d|grok-4/.test(
-      name,
-    ) ||
+    // Qwen 3 and later, but not their Coder and Instruct models, which
+    // models.dev lists as non-reasoning
+    /qwen(?:[3-9]|\d{2})(?!.*(?:coder|instruct))/.test(name) ||
+    /phi-4-reasoning|minimax-m\d|kimi-k\d|grok-4/.test(name) ||
     // V3.1/V3.2 are retired on DeepSeek's API but still open-weight and
     // hosted elsewhere (Bedrock, self-hosted), where they reason
     /deepseek-(v3\.[1-9]|v[4-9])/.test(name) ||
