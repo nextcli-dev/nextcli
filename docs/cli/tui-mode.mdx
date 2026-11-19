@@ -67,6 +67,10 @@ This restores the full conversation history, so the agent remembers prior contex
 
 Before each turn, `cn` records the state of your git work tree, so you can take back what the agent changed: edits, new files, and files that shell commands deleted or wrote.
 
+<Frame>
+  <img src="/images/cn-undo.gif" alt="cn edits src/greet.ts and creates NOTES.md; /undo puts the file back and deletes NOTES.md, and /redo re-applies both" />
+</Frame>
+
 - `/undo` shows the files it will put back, the files it will delete (the agent created them) and any file someone changed after the agent wrote it. For a turn that was interrupted, every file it touched is in that last list, because `cn` can't tell the agent's edits from later ones. Choose **Restore code and conversation** to also remove the turn from the chat (press <kbd>↑</kbd> to get the prompt back), or **Restore code only** to keep the chat.
 - `/redo` re-applies what you undid. Sending a new message makes the undo final.
 - To go back further, press <kbd>Esc</kbd> twice, select an earlier message and press <kbd>r</kbd>. Every turn from that message on is undone. <kbd>Enter</kbd> still edits the message without touching files.
