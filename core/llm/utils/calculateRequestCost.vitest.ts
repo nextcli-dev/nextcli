@@ -796,13 +796,31 @@ describe("calculateRequestCost by host", () => {
     const qwen = findCatalogCost("alibaba", "qwen4-max")!;
     expect(qwen).toMatchObject({ input: 1.5, output: 4.5 });
     expect(
-      calculateRequestCost("openai", "qwen4-max-preview", usage, {
-        apiBase: "https://token-plan.maas.qwencloudapi.com/v1",
+      calculateRequestCost("openai", "qwen4-max", usage, {
+        apiBase: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
       }),
     ).toMatchObject({
       cost: expect.closeTo(qwen.input + qwen.output, 6),
       priced: "catalog",
     });
+  });
+
+  it("estimates a subscription plan at the list price", () => {
+    // Token plans bill by the plan: the list price still counts toward
+    // --max-cost, labelled as an estimate
+    const qwen = findCatalogCost("alibaba", "qwen4-max")!;
+    for (const apiBase of [
+      "https://token-plan.maas.qwencloudapi.com/v1",
+      "https://coding-intl.dashscope.aliyuncs.com/v1",
+    ]) {
+      expect(
+        calculateRequestCost("openai", "qwen4-max-preview", usage, { apiBase }),
+        apiBase,
+      ).toMatchObject({
+        cost: expect.closeTo(qwen.input + qwen.output, 6),
+        priced: "estimated",
+      });
+    }
   });
 
   it("returns null when no table knows the model", () => {
