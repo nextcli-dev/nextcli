@@ -36,6 +36,10 @@ function makeContainer() {
       contentHeight += by;
       resizeCallbacks.forEach((cb) => cb());
     },
+    /** The content grows, but the observers haven't run yet */
+    growUnobserved(by: number) {
+      contentHeight += by;
+    },
     /** The user scrolls to a position */
     userScrollTo(top: number) {
       elem.scrollTop = top;
@@ -88,6 +92,31 @@ describe("useAutoScroll", () => {
 
     // Close enough to the end counts as at the end
     c.userScrollTo(c.bottom() - 10);
+    c.grow(300);
+    expect(c.elem.scrollTop).toBe(c.bottom());
+  });
+
+  it("keeps following when content grows before our own scroll event fires", () => {
+    const c = setup();
+    c.grow(300);
+    // The scroll event from that scroll-to-end arrives after more content
+    // rendered, so the view is no longer at the end when it is handled
+    c.growUnobserved(300);
+    c.elem.dispatchEvent(new Event("scroll"));
+    c.grow(300);
+    expect(c.elem.scrollTop).toBe(c.bottom());
+  });
+
+  it("stops following at once on a wheel up", () => {
+    const c = setup();
+    c.elem.dispatchEvent(new WheelEvent("wheel", { deltaY: -40 }));
+    const position = c.elem.scrollTop;
+    c.grow(300);
+    expect(c.elem.scrollTop).toBe(position);
+
+    // A wheel down doesn't let go
+    c.userScrollTo(c.bottom());
+    c.elem.dispatchEvent(new WheelEvent("wheel", { deltaY: 40 }));
     c.grow(300);
     expect(c.elem.scrollTop).toBe(c.bottom());
   });
