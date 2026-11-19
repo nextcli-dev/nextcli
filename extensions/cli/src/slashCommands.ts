@@ -276,6 +276,8 @@ const commandHandlers: Record<string, CommandHandler> = {
   resume: () => {
     return { openSessionSelector: true };
   },
+  undo: () => ({ undo: true }),
+  redo: () => ({ redo: true }),
   fork: handleFork,
   title: handleTitle,
   rename: handleTitle,

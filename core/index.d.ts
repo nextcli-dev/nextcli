@@ -6,6 +6,7 @@ import {
 } from "@nextcli/config-yaml";
 import { ToolPolicy } from "@continuedev/terminal-security";
 import type { ModelControls } from "@nextcli/openai-adapters";
+import type { TurnCheckpoint } from "@nextcli/snapshot";
 import { McpUiResourceMeta } from "@modelcontextprotocol/ext-apps";
 import { TextResourceContents } from "@modelcontextprotocol/sdk/types.js";
 import Parser from "web-tree-sitter";
@@ -558,6 +559,8 @@ export interface ChatHistoryItem {
   thinkingHidden?: boolean;
   appliedRules?: RuleMetadata[];
   conversationSummary?: string;
+  /** Undo snapshots of the turn this user message started. */
+  checkpoint?: TurnCheckpoint;
 }
 
 export interface LLMFullCompletionOptions extends BaseCompletionOptions {

@@ -4,6 +4,10 @@ import React from "react";
 import { UpdateServiceState } from "src/services/types.js";
 
 import type { ChatHistoryItem } from "../../../../../core/index.js";
+import { services as serviceInstances } from "../../services/index.js";
+import { RestoreSelector } from "../../undo/RestoreSelector.js";
+import type { UndoPlan } from "../../undo/SnapshotService.js";
+import type { RestoreMode } from "../../undo/turnSnapshot.js";
 import { ConfigSelector } from "../ConfigSelector.js";
 import type { NavigationScreen } from "../context/NavigationContext.js";
 import { DiffViewer } from "../DiffViewer.js";
@@ -53,7 +57,12 @@ interface ScreenContentProps {
   chatHistory?: ChatHistoryItem[];
   handleEditMessage?: (messageIndex: number, newContent: string) => void;
   onShowEditSelector?: () => void;
+  restoreFromIndex?: number;
+  handleRestore?: (plan: UndoPlan, mode: RestoreMode) => void;
+  onShowRestore?: (fromIndex: number) => void;
 }
+
+const snapshotService = serviceInstances.snapshot;
 
 function hideScreenContent(state?: UpdateServiceState) {
   return (
@@ -90,6 +99,9 @@ export const ScreenContent: React.FC<ScreenContentProps> = ({
   chatHistory = [],
   handleEditMessage,
   onShowEditSelector,
+  restoreFromIndex,
+  handleRestore,
+  onShowRestore,
 }) => {
   if (hideScreenContent(services.update)) {
     return null;
@@ -170,6 +182,22 @@ export const ScreenContent: React.FC<ScreenContentProps> = ({
           closeCurrentScreen();
         }}
         onExit={closeCurrentScreen}
+        canRestore={(index) => snapshotService.canRestore(chatHistory, index)}
+        onRestore={onShowRestore}
+      />
+    );
+  }
+
+  if (isScreenActive("restore") && restoreFromIndex !== undefined) {
+    return (
+      <RestoreSelector
+        chatHistory={chatHistory}
+        fromIndex={restoreFromIndex}
+        onConfirm={(plan, mode) => {
+          closeCurrentScreen();
+          handleRestore?.(plan, mode);
+        }}
+        onCancel={closeCurrentScreen}
       />
     );
   }

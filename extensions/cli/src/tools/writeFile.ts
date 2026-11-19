@@ -9,6 +9,7 @@ import {
   calculateLinesOfCodeDiff,
   getLanguageFromFilePath,
 } from "../telemetry/utils.js";
+import { beforeFileWrite } from "../undo/beforeFileWrite.js";
 
 import { Tool, ToolCallPreview } from "./types.js";
 
@@ -131,6 +132,7 @@ export const writeFileTool: Tool = {
       }
 
       // Write new content
+      await beforeFileWrite([args.filepath]);
       fs.writeFileSync(args.filepath, args.content, "utf-8");
 
       // Track lines of code changes if file existed before

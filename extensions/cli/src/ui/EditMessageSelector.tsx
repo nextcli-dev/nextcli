@@ -14,12 +14,16 @@ interface EditMessageSelectorProps {
   chatHistory: ChatHistoryItem[];
   onEdit: (messageIndex: number, newContent: string) => void;
   onExit: () => void;
+  canRestore?: (messageIndex: number) => boolean;
+  onRestore?: (messageIndex: number) => void;
 }
 
 export function EditMessageSelector({
   chatHistory,
   onEdit,
   onExit,
+  canRestore,
+  onRestore,
 }: EditMessageSelectorProps) {
   // Filter to only show user messages
   const userMessages = useMemo(() => {
@@ -143,6 +147,11 @@ export function EditMessageSelector({
           setCursorPosition(content.length);
           setIsEditing(true);
         }
+      } else if (input === "r" && onRestore) {
+        const message = userMessages[selectedIndex];
+        if (message && canRestore?.(message.originalIndex)) {
+          onRestore(message.originalIndex);
+        }
       } else if (key.escape || (key.ctrl && input === "d")) {
         onExit();
       }
@@ -156,6 +165,9 @@ export function EditMessageSelector({
       setSelectedIndex,
       setCursorPosition,
       setIsEditing,
+      canRestore,
+      onRestore,
+      userMessages,
     ],
   );
 
@@ -166,6 +178,12 @@ export function EditMessageSelector({
       handleNavigationInput(input, key);
     }
   });
+
+  const selectedMessage = userMessages[selectedIndex];
+  const selectedCanRestore =
+    !!onRestore &&
+    !!selectedMessage &&
+    !!canRestore?.(selectedMessage.originalIndex);
 
   if (userMessages.length === 0) {
     return (
@@ -240,7 +258,9 @@ export function EditMessageSelector({
       <Text color="gray">
         {isEditing
           ? "Enter to submit, Esc to cancel, Shift+Enter for newline"
-          : "↑/↓ to navigate, Enter to edit, Esc to exit"}
+          : `↑/↓ to navigate, Enter to edit${
+              selectedCanRestore ? ", r to restore files from before it" : ""
+            }, Esc to exit`}
       </Text>
       <Text> </Text>
 

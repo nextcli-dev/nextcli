@@ -1,3 +1,4 @@
+import type { TurnCheckpoint } from "@nextcli/snapshot";
 import type { ChatHistoryItem, Reasoning, ToolStatus } from "core/index.js";
 import { createHistoryItem } from "core/util/messageConversion.js";
 
@@ -361,6 +362,18 @@ export class ChatHistoryService extends BaseService<ChatHistoryState> {
         status,
       });
     }
+  }
+
+  setCheckpoint(index: number, checkpoint: TurnCheckpoint): void {
+    const history = this.currentState.history;
+    const item = history[index];
+    if (!item || item.message.role !== "user") {
+      logger.warn("No user message to attach a checkpoint to", { index });
+      return;
+    }
+    const next = [...history];
+    next[index] = { ...item, checkpoint };
+    this.setHistoryInternal(next, { recordUndo: false });
   }
 
   /**

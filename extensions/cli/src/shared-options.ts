@@ -130,6 +130,10 @@ export function addCommonOptions(command: Command): Command {
       "Let the Fetch tool reach localhost and private network addresses (cloud metadata addresses stay blocked)",
     )
     .option(
+      "--no-snapshots",
+      "Don't snapshot the work tree around each turn, which turns off /undo and /redo (also NEXTCLI_SNAPSHOTS=0)",
+    )
+    .option(
       "--trust-workspace",
       "Trust this folder for this run, so its .env and .continue/.env load. Never use it on code you haven't read, such as a pull request in CI",
     )

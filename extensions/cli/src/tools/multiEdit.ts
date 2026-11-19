@@ -9,6 +9,7 @@ import {
   calculateLinesOfCodeDiff,
   getLanguageFromFilePath,
 } from "../telemetry/utils.js";
+import { beforeFileWrite } from "../undo/beforeFileWrite.js";
 
 import { editTool, validateAndResolveFilePath } from "./edit.js";
 import { readFileTool } from "./readFile.js";
@@ -139,6 +140,7 @@ WARNINGS:
     editCount: number;
   }) => {
     try {
+      await beforeFileWrite([args.file_path]);
       fs.writeFileSync(args.file_path, args.newContent, "utf-8");
 
       // Get lines for telemetry

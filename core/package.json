@@ -57,6 +57,7 @@
     "@modelcontextprotocol/sdk": "^1.25.2",
     "@mozilla/readability": "^0.6.0",
     "@nextcli/ask-question": "file:../packages/ask-question",
+    "@nextcli/snapshot": "file:../packages/snapshot",
     "@nextcli/config-types": "file:../packages/config-types",
     "@nextcli/config-yaml": "file:../packages/config-yaml",
     "@nextcli/fetch": "file:../packages/fetch",

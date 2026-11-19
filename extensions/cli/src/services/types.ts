@@ -140,6 +140,7 @@ export type {
 export type { ChatHistoryState } from "./ChatHistoryService.js";
 export type { FileIndexServiceState } from "./FileIndexService.js";
 export type { GitAiIntegrationServiceState } from "./GitAiIntegrationService.js";
+export type { SnapshotServiceState } from "../undo/SnapshotService.js";
 
 /**
  * Service names as constants to prevent typos
@@ -162,6 +163,7 @@ export const SERVICE_NAMES = {
   GIT_AI_INTEGRATION: "gitAiIntegration",
   BACKGROUND_JOBS: "backgroundJobs",
   QUIZ: "quiz",
+  SNAPSHOT: "snapshot",
 } as const;
 
 /**

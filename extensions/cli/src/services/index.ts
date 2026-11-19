@@ -4,6 +4,7 @@ import {
   setBetaSubagentToolEnabled,
   setBetaUploadArtifactToolEnabled,
 } from "../tools/toolsConfig.js";
+import { shouldSnapshot, SnapshotService } from "../undo/SnapshotService.js";
 import { logger } from "../util/logger.js";
 
 import { AgentFileService } from "./AgentFileService.js";
@@ -53,6 +54,7 @@ const toolPermissionService = new ToolPermissionService();
 const systemMessageService = new SystemMessageService();
 const artifactUploadService = new ArtifactUploadService();
 const gitAiIntegrationService = new GitAiIntegrationService();
+const snapshotService = new SnapshotService();
 
 /**
  * Initialize all services and register them with the service container
@@ -304,6 +306,18 @@ export async function initializeServices(initOptions: ServiceInitOptions = {}) {
     [], // No dependencies
   );
 
+  serviceContainer.register(
+    SERVICE_NAMES.SNAPSHOT,
+    () =>
+      snapshotService.initialize({
+        enabled: shouldSnapshot({
+          headless: initOptions.headless,
+          snapshots: commandOptions.snapshots,
+        }),
+      }),
+    [],
+  );
+
   // Eagerly initialize all services to ensure they're ready when needed
   // This avoids race conditions and "service not ready" errors
   await serviceContainer.initializeAll();
@@ -369,6 +383,7 @@ export const services = {
   gitAiIntegration: gitAiIntegrationService,
   backgroundJobs: backgroundJobService,
   quiz: quizService,
+  snapshot: snapshotService,
 } as const;
 
 export type ServicesType = typeof services;

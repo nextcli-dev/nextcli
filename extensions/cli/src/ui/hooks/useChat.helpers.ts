@@ -50,6 +50,8 @@ interface ProcessSlashCommandResultOptions {
   onShowJobsSelector?: () => void;
   onShowExportSelector?: () => void;
   onClear?: () => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
 }
 
 /**
@@ -67,6 +69,8 @@ export function processSlashCommandResult({
   onShowJobsSelector,
   onShowExportSelector,
   onClear,
+  onUndo,
+  onRedo,
 }: ProcessSlashCommandResultOptions): string | null {
   if (result.exit) {
     import("../../util/exit.js").then(({ gracefulExit }) => gracefulExit(0));
@@ -104,6 +108,16 @@ export function processSlashCommandResult({
 
   if (result.openExportSelector && onShowExportSelector) {
     onShowExportSelector();
+    return null;
+  }
+
+  if (result.undo && onUndo) {
+    onUndo();
+    return null;
+  }
+
+  if (result.redo && onRedo) {
+    onRedo();
     return null;
   }
 
