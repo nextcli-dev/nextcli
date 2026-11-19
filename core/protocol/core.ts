@@ -83,15 +83,12 @@ export type ToCoreFromIdeOrWebviewProtocol = {
   "history/share": [{ id: string; outputDir?: string }, void];
   "history/clear": [undefined, void];
 
-  "snapshot/capture": [{ pin?: string }, SnapshotRoots];
+  "snapshot/capture": [undefined, SnapshotRoots];
   "snapshot/preserve": [
-    { checkpoint: TurnCheckpoint; filepaths: string[]; pin?: string },
+    { checkpoint: TurnCheckpoint; filepaths: string[] },
     TurnCheckpoint,
   ];
-  "snapshot/finishTurn": [
-    { checkpoint: TurnCheckpoint; pin?: string },
-    TurnCheckpoint,
-  ];
+  "snapshot/finishTurn": [{ checkpoint: TurnCheckpoint }, TurnCheckpoint];
   "snapshot/planRevert": [
     { checkpoints: TurnCheckpoint[] },
     SnapshotRevertPlan,

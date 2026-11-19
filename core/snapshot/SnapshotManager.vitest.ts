@@ -13,7 +13,7 @@ import { pathToFileURL } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import type { TurnCheckpoint } from "@nextcli/snapshot";
+import { storeKey, type TurnCheckpoint } from "@nextcli/snapshot";
 
 import { SnapshotManager } from "./SnapshotManager";
 
@@ -34,26 +34,49 @@ function setup() {
     async () => dirs,
     () => path.join(base, "store"),
   );
-  return { repo, manager };
+  return { repo, manager, store: path.join(base, "store") };
 }
 
 describe("SnapshotManager", () => {
   it("snapshots only local git work trees, once each", async () => {
     const { repo, manager } = setup();
-    const { roots } = await manager.capture("session/1");
+    const { roots } = await manager.capture();
     expect(roots).toEqual([{ root: repo, tree: expect.any(String) }]);
+  });
+
+  it("pins every start and end so pruning keeps them", async () => {
+    const { repo, manager, store } = setup();
+    const { roots } = await manager.capture();
+    writeFileSync(path.join(repo, "a.txt"), "a2\n");
+    const checkpoint = await manager.finishTurn({
+      v: 1,
+      roots: roots.map((r) => ({ root: r.root, start: r.tree })),
+    });
+    const refs = execFileSync(
+      "git",
+      [
+        "--git-dir",
+        path.join(store, storeKey(repo)),
+        "for-each-ref",
+        "--format=%(objectname) %(refname)",
+        "refs/cn/",
+      ],
+      { encoding: "utf8" },
+    );
+    expect(refs).toContain(`${checkpoint.roots[0].start} refs/cn/`);
+    expect(refs).toContain(`${checkpoint.roots[0].end} refs/cn/`);
   });
 
   it("undoes and redoes a turn through the protocol shapes", async () => {
     const { repo, manager } = setup();
-    const { roots } = await manager.capture("session/1");
+    const { roots } = await manager.capture();
     const started = {
       v: 1 as const,
       roots: roots.map((r) => ({ root: r.root, start: r.tree })),
     };
     writeFileSync(path.join(repo, "a.txt"), "a2\n");
     writeFileSync(path.join(repo, "b.txt"), "b\n");
-    const checkpoint = await manager.finishTurn(started, "session/1");
+    const checkpoint = await manager.finishTurn(started);
     expect(checkpoint.roots[0].files?.sort()).toEqual(["a.txt", "b.txt"]);
 
     const { roots: plans } = await manager.planRevert([checkpoint]);
@@ -86,19 +109,18 @@ describe("SnapshotManager", () => {
     const { repo, manager } = setup();
     writeFileSync(path.join(repo, ".gitignore"), ".env\n");
     writeFileSync(path.join(repo, ".env"), "v1\n");
-    const { roots } = await manager.capture("session/1");
+    const { roots } = await manager.capture();
     let checkpoint: TurnCheckpoint = {
       v: 1,
       roots: roots.map((r) => ({ root: r.root, start: r.tree })),
     };
-    checkpoint = await manager.preserve(
-      checkpoint,
-      [path.join(repo, ".env"), path.join(repo, "a.txt")],
-      "session/1",
-    );
+    checkpoint = await manager.preserve(checkpoint, [
+      path.join(repo, ".env"),
+      path.join(repo, "a.txt"),
+    ]);
     expect(checkpoint.roots[0].written).toEqual([".env"]);
     writeFileSync(path.join(repo, ".env"), "agent\n");
-    checkpoint = await manager.finishTurn(checkpoint, "session/1");
+    checkpoint = await manager.finishTurn(checkpoint);
     expect(checkpoint.roots[0].files).toEqual([".env"]);
 
     const { roots: plans } = await manager.planRevert([checkpoint]);

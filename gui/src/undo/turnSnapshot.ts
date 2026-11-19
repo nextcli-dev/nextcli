@@ -83,15 +83,12 @@ interface ThunkApi {
 }
 
 export async function beginTurnSnapshot(
-  { dispatch, extra, getState }: ThunkApi,
+  { dispatch, extra }: ThunkApi,
   index: number,
 ): Promise<void> {
-  const sessionId = getState().session.id;
   let result;
   try {
-    result = await extra.ideMessenger.request("snapshot/capture", {
-      pin: `${sessionId}/${Date.now()}`,
-    });
+    result = await extra.ideMessenger.request("snapshot/capture", undefined);
   } catch (e) {
     console.warn("Turn snapshot failed", e);
     return;
@@ -152,7 +149,6 @@ async function preserveNow(
   const result = await extra.ideMessenger.request("snapshot/preserve", {
     checkpoint,
     filepaths: [filepath],
-    pin: `${state.session.id}/${Date.now()}`,
   });
   if (result.status !== "success") return;
   if (JSON.stringify(result.content) === JSON.stringify(checkpoint)) return;
@@ -200,7 +196,6 @@ export async function finishTurnSnapshotIfDone({
     }
     const result = await extra.ideMessenger.request("snapshot/finishTurn", {
       checkpoint,
-      pin: `${state.session.id}/${Date.now()}`,
     });
     if (result.status !== "success") return false;
     const now = getState().session.history;

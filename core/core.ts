@@ -342,7 +342,7 @@ export class Core {
       historyManager.save(msg.data);
     });
 
-    on("snapshot/capture", (msg) => this.snapshotManager.capture(msg.data.pin));
+    on("snapshot/capture", () => this.snapshotManager.capture());
     on("snapshot/preserve", async (msg) => {
       const filepaths: string[] = [];
       for (const filepath of msg.data.filepaths) {
@@ -355,14 +355,10 @@ export class Core {
           filepaths.push(localPathOrUriToPath(uri));
         }
       }
-      return this.snapshotManager.preserve(
-        msg.data.checkpoint,
-        filepaths,
-        msg.data.pin,
-      );
+      return this.snapshotManager.preserve(msg.data.checkpoint, filepaths);
     });
     on("snapshot/finishTurn", (msg) =>
-      this.snapshotManager.finishTurn(msg.data.checkpoint, msg.data.pin),
+      this.snapshotManager.finishTurn(msg.data.checkpoint),
     );
     on("snapshot/planRevert", (msg) =>
       this.snapshotManager.planRevert(msg.data.checkpoints),

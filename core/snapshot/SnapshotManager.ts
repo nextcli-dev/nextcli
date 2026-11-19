@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import {
   openSnapshotter,
   RestoreError,
@@ -12,6 +14,11 @@ import {
 
 import { getSnapshotsPath } from "../util/paths";
 import { localPathOrUriToPath } from "../util/pathToUri";
+
+/** Keeps a snapshot until it is pruned; the name only has to be unique. */
+function newPin(kind: "start" | "end"): string {
+  return `${Date.now()}-${randomUUID().slice(0, 8)}/${kind}`;
+}
 
 export interface SnapshotRoots {
   /** Empty when undo is off. */
@@ -40,12 +47,13 @@ export class SnapshotManager {
     private readonly storeRoot: () => string = getSnapshotsPath,
   ) {}
 
-  async capture(pin?: string): Promise<SnapshotRoots> {
+  async capture(): Promise<SnapshotRoots> {
     const snapshotters = await this.snapshotters();
+    const pin = newPin("start");
     const roots = await Promise.all(
       snapshotters.map(async (s) => ({
         root: s.toplevel,
-        tree: await s.capture(pin ? `${pin}/start` : undefined),
+        tree: await s.capture(pin),
       })),
     );
     return { roots };
@@ -55,9 +63,9 @@ export class SnapshotManager {
   async preserve(
     checkpoint: TurnCheckpoint,
     filepaths: string[],
-    pin?: string,
   ): Promise<TurnCheckpoint> {
     const byRoot = await this.byRoot();
+    const pin = newPin("start");
     const roots = await Promise.all(
       checkpoint.roots.map(async (root) => {
         const snapshotter = byRoot.get(root.root);
@@ -65,7 +73,7 @@ export class SnapshotManager {
         const { start, written } = await snapshotter.preserve(
           root,
           filepaths,
-          pin ? `${pin}/start` : undefined,
+          pin,
         );
         return written.length > 0 ? { ...root, start, written } : root;
       }),
@@ -73,18 +81,16 @@ export class SnapshotManager {
     return { v: 1, roots };
   }
 
-  async finishTurn(
-    checkpoint: TurnCheckpoint,
-    pin?: string,
-  ): Promise<TurnCheckpoint> {
+  async finishTurn(checkpoint: TurnCheckpoint): Promise<TurnCheckpoint> {
     const byRoot = await this.byRoot();
+    const pin = newPin("end");
     const roots = await Promise.all(
       checkpoint.roots.map(async (root) => {
         const snapshotter = byRoot.get(root.root);
         if (!snapshotter) return root;
         const { end, files } = await snapshotter.finishTurn(
           root.start,
-          pin ? `${pin}/end` : undefined,
+          pin,
           root.written,
         );
         return { ...root, end, files };
