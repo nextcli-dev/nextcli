@@ -53,7 +53,6 @@ export const callToolById = createAsyncThunk<
     }),
   );
 
-  // Undo needs ignored files as they were before an edit tool writes them.
   await preserveBeforeToolWrite(
     { dispatch, extra, getState },
     toolCallState.toolCall.function.name,

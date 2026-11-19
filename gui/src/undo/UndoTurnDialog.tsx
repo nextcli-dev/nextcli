@@ -38,7 +38,6 @@ function FileList({
   );
 }
 
-/** Prefixes paths with their folder name when several repositories are open. */
 function filesOf(
   plan: UndoPlan,
   key: "restore" | "delete" | "conflicts" | "skipped",
@@ -50,10 +49,6 @@ function filesOf(
   });
 }
 
-/**
- * Shows what undoing every turn from a message on would change, then
- * restores code and conversation, or code only.
- */
 export function UndoTurnDialog({ fromIndex }: { fromIndex: number }) {
   const dispatch = useAppDispatch();
   const [plan, setPlan] = useState<UndoPlan>();

@@ -48,7 +48,6 @@ export default function ResponseActions({
   const compactConversation = useCompactConversation();
 
   const dispatch = useAppDispatch();
-  // The user message that started this turn, if its files can be restored
   const undoFromIndex = useAppSelector((state) => {
     const history = state.session.history;
     for (let i = index; i >= 0; i--) {

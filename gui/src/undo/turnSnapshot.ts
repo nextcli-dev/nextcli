@@ -38,7 +38,6 @@ function joinPath(root: string, file: string): string {
   return `${root.replace(/[\\/]+$/, "")}/${file}`;
 }
 
-/** History items from `fromIndex` that started a turn with a snapshot. */
 function checkpointsFrom(
   history: readonly ChatHistoryItem[],
   fromIndex: number,
@@ -49,7 +48,6 @@ function checkpointsFrom(
     .map((item) => item.checkpoint!);
 }
 
-/** The last user message whose turn can be undone. */
 export function lastUndoableIndex(
   history: readonly ChatHistoryItem[],
 ): number | undefined {
@@ -59,11 +57,7 @@ export function lastUndoableIndex(
   return undefined;
 }
 
-/**
- * Whether the session is between turns: nothing streams, no tool call waits
- * or runs, and every edit has been accepted or rejected. Undo needs this,
- * and so does the end-of-turn snapshot.
- */
+/** Nothing streams, no tool call waits or runs, every edit is closed. */
 export function isTurnOver(state: RootState): boolean {
   const { session } = state;
   if (session.isStreaming) return false;
@@ -81,12 +75,7 @@ export function isTurnOver(state: RootState): boolean {
   return !toolBusy && !applyBusy;
 }
 
-/**
- * Snapshots every git work tree before the turn for the user message at
- * `index` runs a tool. A snapshot failure never stops the turn.
- */
-// The two turn hooks are plain functions, not thunks: with no work tree to
-// snapshot they dispatch nothing, so a turn's actions stay as they were.
+// Plain functions, not thunks: without a work tree they dispatch nothing
 interface ThunkApi {
   dispatch: AppThunkDispatch;
   getState: () => RootState;
@@ -126,7 +115,6 @@ export async function beginTurnSnapshot(
   );
 }
 
-/** Edit tools whose `filepath` argument names the file they write. */
 const FILE_WRITING_TOOLS = new Set<string>([
   BuiltInToolNames.CreateNewFile,
   BuiltInToolNames.EditExistingFile,
@@ -134,15 +122,10 @@ const FILE_WRITING_TOOLS = new Set<string>([
   BuiltInToolNames.MultiEdit,
 ]);
 
-// Preserves run one at a time: each replaces the turn's checkpoint.
+// One at a time: each replaces the turn's checkpoint
 let preserving: Promise<unknown> = Promise.resolve();
 
-/**
- * Called before a tool runs. If it is an edit tool, saves the file it will
- * write when git ignores it (snapshots leave ignored files out), so undo
- * can put it back. Stores the updated checkpoint on the turn's message.
- * Never throws: a tool never fails because of a snapshot.
- */
+/** Saves an ignored file an edit tool will write. Never throws. */
 export function preserveBeforeToolWrite(
   api: ThunkApi,
   toolName: string,
@@ -188,10 +171,8 @@ async function preserveNow(
 const finishing = new Set<string>();
 
 /**
- * When the turn is over, captures its end and the files it changed. Edit
- * tools resume a turn from separate events, so this runs after every part of
- * the turn; a later part (after a retry, say) updates the end again.
- * Returns whether it stored an end.
+ * Edit tools resume a turn from separate events, so this runs after every
+ * part of it; a later part updates the end. Returns whether it stored one.
  */
 export async function finishTurnSnapshotIfDone({
   dispatch,
@@ -222,7 +203,6 @@ export async function finishTurnSnapshotIfDone({
       pin: `${state.session.id}/${Date.now()}`,
     });
     if (result.status !== "success") return false;
-    // The history may have moved on while the snapshot ran.
     const now = getState().session.history;
     const at = now.findIndex((item) => item.checkpoint === checkpoint);
     if (at < 0) return false;
@@ -241,7 +221,6 @@ export async function finishTurnSnapshotIfDone({
   }
 }
 
-/** Works out what undoing every turn from `fromIndex` on would change. */
 export const planUndo = createAsyncThunk<
   UndoPlan,
   { fromIndex: number },
@@ -278,7 +257,6 @@ async function restoreAndReload(
   return result.content.roots;
 }
 
-/** Restores the files of a plan and, by mode, removes the undone turns. */
 export const applyUndo = createAsyncThunk<
   void,
   { plan: UndoPlan; mode: UndoMode },
@@ -296,12 +274,11 @@ export const applyUndo = createAsyncThunk<
     const failure = results.find((r) => r.error);
     const history = getState().session.history;
     let removedHistory: ChatHistoryItemWithMessageId[] | undefined;
-    // A failed undo keeps the conversation: its turns are only partly undone.
+    // Partly undone: keep the conversation
     if (mode === "code-and-conversation" && !failure) {
       removedHistory = history.slice(plan.fromIndex);
       dispatch(truncateHistoryFrom(plan.fromIndex));
     }
-    // Redo also covers what a failed undo changed before it stopped.
     const roots = results.flatMap(({ root, result }) =>
       result
         ? [
@@ -329,7 +306,6 @@ export const applyUndo = createAsyncThunk<
   },
 );
 
-/** Re-applies the last undo: its files and, if removed, its messages. */
 export const applyRedo = createAsyncThunk<void, undefined, ThunkApiType>(
   "snapshot/applyRedo",
   async (_, { dispatch, extra, getState }) => {

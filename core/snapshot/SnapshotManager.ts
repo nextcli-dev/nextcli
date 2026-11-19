@@ -14,7 +14,7 @@ import { getSnapshotsPath } from "../util/paths";
 import { localPathOrUriToPath } from "../util/pathToUri";
 
 export interface SnapshotRoots {
-  /** One tree per git work tree in the workspace. Empty when undo is off. */
+  /** Empty when undo is off. */
   roots: { root: string; tree: string }[];
 }
 
@@ -27,20 +27,11 @@ export interface SnapshotRestoreRequest {
 }
 
 export interface SnapshotRestoreResult {
-  /**
-   * One entry per work tree restored, in request order. A restore that
-   * failed is the last entry, with `error`; it has a `result` (with the redo
-   * tree) only if it changed files before it failed. Later roots are not
-   * attempted.
-   */
+  /** A failed root is the last entry, with `error`; later roots are skipped. */
   roots: { root: string; result?: RestoreResult; error?: string }[];
 }
 
-/**
- * Snapshots every git work tree open in the IDE, so the extension can undo
- * and redo agent turns. Folders outside git and remote (non-file) folders
- * are left out.
- */
+/** One snapshotter per local git work tree open in the IDE. */
 export class SnapshotManager {
   private readonly opened = new Map<string, Promise<OpenSnapshotterResult>>();
 
@@ -60,11 +51,7 @@ export class SnapshotManager {
     return { roots };
   }
 
-  /**
-   * Called before an edit tool writes `filepaths` (absolute local paths).
-   * Saves the ignored ones, which snapshots leave out, into each work
-   * tree's start, so undo covers them. Returns the updated checkpoint.
-   */
+  /** Before an edit tool writes `filepaths` (absolute local paths). */
   async preserve(
     checkpoint: TurnCheckpoint,
     filepaths: string[],
@@ -86,7 +73,6 @@ export class SnapshotManager {
     return { v: 1, roots };
   }
 
-  /** Captures the end of a turn and the files it changed, per work tree. */
   async finishTurn(
     checkpoint: TurnCheckpoint,
     pin?: string,
@@ -107,7 +93,6 @@ export class SnapshotManager {
     return { v: 1, roots };
   }
 
-  /** Plans undoing these turns (oldest first) in every work tree. */
   async planRevert(
     checkpoints: readonly TurnCheckpoint[],
   ): Promise<SnapshotRevertPlan> {
@@ -136,11 +121,6 @@ export class SnapshotManager {
     return { roots };
   }
 
-  /**
-   * Restores files; used for undo and, with the redo trees, for redo. Stops
-   * at the first work tree that fails and reports it, so the caller can
-   * still offer redo for what was changed.
-   */
   async restore(
     request: SnapshotRestoreRequest,
   ): Promise<SnapshotRestoreResult> {
@@ -176,7 +156,6 @@ export class SnapshotManager {
       .filter((dir) => !dir.includes("://") || dir.startsWith("file://"))
       .map(localPathOrUriToPath);
     const results = await Promise.all(dirs.map((dir) => this.open(dir)));
-    // Two folders of the same repository share one snapshotter.
     const unique = new Map<string, Snapshotter>();
     for (const result of results) {
       if (result.ok && !unique.has(result.snapshotter.toplevel)) {
@@ -192,10 +171,9 @@ export class SnapshotManager {
       opened = openSnapshotter({ cwd: dir, storeRoot: this.storeRoot() }).then(
         (result) => {
           if (result.ok) {
-            // Drop snapshots older than the retention period, at most daily.
             result.snapshotter.prune().catch(() => {});
           } else {
-            // Try again next time: the folder may become a repository.
+            // Retry later: the folder may become a repository
             this.opened.delete(dir);
           }
           return result;

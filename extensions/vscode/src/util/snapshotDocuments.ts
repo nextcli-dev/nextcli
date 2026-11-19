@@ -7,14 +7,8 @@ function toUri(filepath: string): vscode.Uri {
 }
 
 /**
- * Keeps open editors in step with turn snapshots, which read and write the
- * files on disk.
- *
- * - "save": the agent's accepted edits can sit unsaved in an editor that
- *   isn't visible; save them so the end-of-turn snapshot sees them.
- * - "reload": after an undo, VS Code reloads clean editors by itself. Put
- *   the restored text into dirty ones too, so a later save doesn't write the
- *   undone content back.
+ * "save": accepted edits can sit unsaved in a hidden editor. "reload": VS Code
+ * reloads clean editors itself; dirty ones would save the undone text back.
  */
 export async function syncSnapshotDocuments(
   filepaths: readonly string[],
@@ -35,7 +29,6 @@ export async function syncSnapshotDocuments(
         await vscode.workspace.fs.readFile(document.uri),
       );
     } catch {
-      // The undo deleted the file; leave the editor as VS Code shows it.
       continue;
     }
     const edit = new vscode.WorkspaceEdit();

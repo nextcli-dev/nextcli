@@ -342,10 +342,8 @@ export class Core {
       historyManager.save(msg.data);
     });
 
-    // Snapshots for undoing agent turns
     on("snapshot/capture", (msg) => this.snapshotManager.capture(msg.data.pin));
     on("snapshot/preserve", async (msg) => {
-      // Resolve the paths the way the edit tools do, existing or new.
       const filepaths: string[] = [];
       for (const filepath of msg.data.filepaths) {
         const uri =

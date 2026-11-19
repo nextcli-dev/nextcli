@@ -3,7 +3,6 @@ import { useState } from "react";
 import { useAppDispatch, useAppSelector } from "../redux/hooks";
 import { applyRedo } from "./turnSnapshot";
 
-/** After an undo, offers to re-apply it until the next message is sent. */
 export function RedoTurnBar() {
   const dispatch = useAppDispatch();
   const undoneTurn = useAppSelector((state) => state.session.undoneTurn);

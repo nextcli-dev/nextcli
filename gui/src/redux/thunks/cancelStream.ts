@@ -18,8 +18,7 @@ export const cancelStream = createAsyncThunk<void, undefined, ThunkApiType>(
     // Clear any dangling incomplete tool calls, thinking messages, etc.
     dispatch(clearDanglingMessages());
 
-    // A stopped turn still gets its end snapshot, so it can be undone.
-    // Webview load also lands here; with nothing streaming there is no turn.
+    // Webview load also lands here, with no turn to finish
     if (wasStreaming) {
       void finishTurnSnapshotIfDone({ dispatch, extra, getState }).then(
         (stored) => {

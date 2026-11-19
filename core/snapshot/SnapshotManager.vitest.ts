@@ -26,7 +26,6 @@ function setup() {
   writeFileSync(path.join(repo, "a.txt"), "a1\n");
   const dirs = [
     pathToFileURL(repo).toString(),
-    // A second folder of the same repository shares its snapshots.
     pathToFileURL(repo).toString() + "/",
     pathToFileURL(plain).toString(),
     "vscode-remote://ssh-remote+host/home/project",

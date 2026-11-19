@@ -81,7 +81,6 @@ export function getSessionsFolderPath(): string {
   return sessionsPath;
 }
 
-/** Shadow git stores for undoing agent turns, one per work tree */
 export function getSnapshotsPath(): string {
   return path.join(getContinueGlobalPath(), "snapshots");
 }

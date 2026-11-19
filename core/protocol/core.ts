@@ -83,7 +83,6 @@ export type ToCoreFromIdeOrWebviewProtocol = {
   "history/share": [{ id: string; outputDir?: string }, void];
   "history/clear": [undefined, void];
 
-  // Snapshots for undoing agent turns
   "snapshot/capture": [{ pin?: string }, SnapshotRoots];
   "snapshot/preserve": [
     { checkpoint: TurnCheckpoint; filepaths: string[]; pin?: string },

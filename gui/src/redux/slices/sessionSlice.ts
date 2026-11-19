@@ -244,17 +244,15 @@ type SessionState = {
   contextPercentage?: number;
   inlineErrorMessage?: InlineErrorMessageType;
   compactionLoading: Record<number, boolean>; // Track compaction loading by message index
-  /** The last undo, which Redo re-applies until the next message is sent */
+  /** Redo is offered until the next message */
   undoneTurn?: UndoneTurn;
 };
 
 export interface UndoneTurn {
-  /** Per work tree: the files to put back and the tree that has them */
   roots: {
     root: string;
     targets: { path: string; tree: string; written?: boolean }[];
   }[];
-  /** Messages removed by the undo, put back by redo */
   removedHistory?: ChatHistoryItemWithMessageId[];
 }
 
@@ -529,14 +527,12 @@ export const sessionSlice = createSlice({
         state.contextPercentage = undefined;
       }
     },
-    /** Undo: drops the history from this index on */
     truncateHistoryFrom: (state, action: PayloadAction<number>) => {
       state.history = state.history.slice(0, action.payload);
       state.inlineErrorMessage = undefined;
       state.isPruned = false;
       state.contextPercentage = undefined;
     },
-    /** Redo: puts back messages an undo removed */
     appendHistory: (
       state,
       action: PayloadAction<ChatHistoryItemWithMessageId[]>,

@@ -71,8 +71,7 @@ export const streamResponseThunk = createAsyncThunk<
           getState,
         });
 
-        // Snapshot the work tree before any tool runs, so the turn can be
-        // undone. Quick edit (isInEdit) has its own accept/reject.
+        // Quick edit has its own accept/reject
         if (!state.session.isInEdit) {
           await beginTurnSnapshot({ dispatch, extra, getState }, inputIndex);
         }
