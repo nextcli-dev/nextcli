@@ -104,7 +104,6 @@ export async function openSnapshotter(
       toplevel,
       projectGitDir: gitDir,
       projectCommonDir: commonDir,
-      storeRoot,
       storeDir: path.join(storeRoot, storeKey(toplevel)),
       storeRel,
       maxUntrackedFileBytes:

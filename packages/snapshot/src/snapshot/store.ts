@@ -20,7 +20,6 @@ export interface ShadowRepoConfig {
   toplevel: string;
   projectGitDir: string;
   projectCommonDir: string;
-  storeRoot: string;
   storeDir: string;
   /** Set when the store lives inside the work tree. */
   storeRel?: string;
@@ -28,7 +27,6 @@ export interface ShadowRepoConfig {
 }
 
 export interface TreeEntry {
-  mode: string;
   type: string;
   object: string;
   path: string;
@@ -163,10 +161,10 @@ export class ShadowRepo {
       ]);
       for (const line of splitNul(stdout)) {
         const tab = line.indexOf("\t");
-        const [mode, type, object] = line.slice(0, tab).split(" ");
+        const [, type, object] = line.slice(0, tab).split(" ");
         const file = line.slice(tab + 1);
-        if (mode && type && object) {
-          entries.set(file, { mode, type, object, path: file });
+        if (type && object) {
+          entries.set(file, { type, object, path: file });
         }
       }
     }
