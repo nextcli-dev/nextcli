@@ -31,6 +31,8 @@ const OUTPUT = join(
 // models.dev provider ids kept in the snapshot. The NextCLI provider names
 // that use them are in packages/llm-info/src/catalog.ts (CATALOG_PROVIDERS).
 const PROVIDERS = [
+  // Pay-as-you-go prices; the token-plan catalogs list $0
+  "alibaba",
   "amazon-bedrock",
   "anthropic",
   "azure",

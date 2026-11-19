@@ -136,6 +136,18 @@ describe("NextCLI's model supplement", () => {
     ]);
   });
 
+  it("leaves models models.dev lists to models.dev", () => {
+    const identity = { ...qwen, model: "qwen3.8-max" };
+    expect(resolveModelProfile(identity).catalogProvider).toBe("alibaba");
+    expect(findModelsDevModel("alibaba", "qwen3.8-max")).toBeDefined();
+    // models.dev's own levels, not a guess
+    expect(getModelControls(identity)).toMatchObject({
+      efforts: ["low", "medium", "xhigh"],
+      experimental: false,
+      maxContextLength: 1_000_000,
+    });
+  });
+
   it("isn't used on hosts that aren't the vendor's", () => {
     expect(
       resolveModelProfile({ ...qwen, apiBase: "https://gateway.example/v1/" })
