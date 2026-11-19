@@ -16,6 +16,7 @@ import { describe, expect, it } from "vitest";
 
 import { openSnapshotter } from "../../src/index.js";
 import { escapeExcludePath } from "../../src/snapshot/capture.js";
+import { isOutside } from "../../src/snapshot/paths.js";
 import { createFixture } from "../helpers.js";
 
 const read = (root: string, file: string) =>
@@ -239,5 +240,17 @@ describe("escapeExcludePath", () => {
     expect(escapeExcludePath("a*b?[c]!#\\d  ")).toBe(
       "a\\*b\\?\\[c\\]\\!\\#\\\\d\\ \\ ",
     );
+  });
+});
+
+describe("isOutside", () => {
+  it("looks for a .. segment, not a name that starts with two dots", () => {
+    expect(isOutside("..data")).toBe(false);
+    expect(isOutside("src/..data")).toBe(false);
+    expect(isOutside("..")).toBe(true);
+    expect(isOutside(path.join("..", "data"))).toBe(true);
+    expect(isOutside("../data")).toBe(true);
+    expect(isOutside("")).toBe(true);
+    expect(isOutside(path.resolve("/abs"))).toBe(true);
   });
 });

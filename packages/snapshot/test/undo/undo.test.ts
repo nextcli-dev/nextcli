@@ -428,6 +428,21 @@ describe("failing safely", () => {
     );
   });
 
+  it("undoes a top-level file whose name starts with two dots", async () => {
+    const f = createFixture();
+    f.write("..data", "v1\n");
+    const s = await f.open();
+    const start = await s.capture();
+    f.write("..data", "v2\n");
+    const turn = await s.finishTurn(start);
+
+    const plan = await s.planRevert([{ start, ...turn }]);
+    expect(plan.restore).toEqual(["..data"]);
+    expect(plan.skipped).toEqual([]);
+    await s.restore(plan.targets);
+    expect(read(f.root, "..data")).toBe("v1\n");
+  });
+
   it("refuses git metadata in any case or spelling, and leaves .git alone", async () => {
     const f = createFixture();
     const s = await f.open();

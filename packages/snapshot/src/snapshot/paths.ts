@@ -15,6 +15,11 @@ export function isGitMetadataName(component: string): boolean {
   return name === ".git" || name === "git~1";
 }
 
+/** For a `path.relative` result; `..data` is inside, `../data` is not. */
+export function isOutside(rel: string): boolean {
+  return !rel || /^\.\.(?:[\\/]|$)/.test(rel) || path.isAbsolute(rel);
+}
+
 export function toPosix(file: string): string {
   return file.split(path.sep).join("/");
 }
@@ -26,7 +31,7 @@ export function unsafePathReason(
 ): string | undefined {
   const full = path.resolve(repo.toplevel, file);
   const rel = path.relative(repo.toplevel, full);
-  if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) {
+  if (isOutside(rel)) {
     return "outside the work tree";
   }
   if (file.split(/[\\/]/).some(isGitMetadataName)) {
@@ -88,6 +93,6 @@ export async function workTreeRelative(
   const dir = await fs.realpath(path.dirname(full)).catch(() => undefined);
   if (dir) full = path.join(dir, path.basename(full));
   const rel = path.relative(repo.toplevel, full);
-  if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) return undefined;
+  if (isOutside(rel)) return undefined;
   return toPosix(rel);
 }

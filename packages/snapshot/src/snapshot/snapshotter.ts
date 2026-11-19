@@ -13,7 +13,7 @@ import { planRevert } from "../undo/plan.js";
 import { restoreFiles } from "../undo/restore.js";
 
 import { captureTree } from "./capture.js";
-import { toPosix } from "./paths.js";
+import { isOutside, toPosix } from "./paths.js";
 import { preserveBeforeWrite, type PreservedTurn } from "./preserve.js";
 import { pruneStore, type PruneOptions } from "./prune.js";
 import { ShadowRepo, storeKey } from "./store.js";
@@ -94,10 +94,7 @@ export async function openSnapshotter(
     await fs.mkdir(requestedRoot, { recursive: true });
     const storeRoot = await fs.realpath(requestedRoot);
     const rel = path.relative(toplevel, storeRoot);
-    const storeRel =
-      rel && !rel.startsWith("..") && !path.isAbsolute(rel)
-        ? toPosix(rel)
-        : undefined;
+    const storeRel = isOutside(rel) ? undefined : toPosix(rel);
     const repo = new ShadowRepo({
       gitBinary,
       baseEnv,
