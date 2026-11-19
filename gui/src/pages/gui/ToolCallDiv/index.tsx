@@ -28,11 +28,9 @@ export function ToolCallDiv({
 
   if (!toolCallStates?.length) return null;
 
-  const isStreamingComplete = toolCallStates.every(
-    (toolCall) => toolCall.status !== "generating",
-  );
-
-  const shouldShowGroupedUI = toolCallStates.length > 1 && isStreamingComplete;
+  // Grouped as soon as there are several calls, also while their arguments
+  // stream, so the calls don't re-layout into the group when they finish
+  const shouldShowGroupedUI = toolCallStates.length > 1;
   const activeCalls = toolCallStates.filter(
     (call) => call.status !== "canceled",
   );
@@ -124,11 +122,9 @@ export function ToolCallDiv({
           open={open}
           onToggle={() => setOpen(!open)}
         />
-        <div
-          className={`overflow-y-auto transition-all duration-300 ease-in-out ${
-            open ? "max-h-[50vh] opacity-100" : "max-h-0 opacity-0"
-          }`}
-        >
+        {/* As tall as its calls: the chat is the only scroll, so live
+            output stays in view instead of growing inside a capped box */}
+        <div data-testid="tool-call-group-body" hidden={!open}>
           {toolCallStates.map((toolCallState) => (
             <div className="py-1 pl-6" key={toolCallState.toolCallId}>
               {renderToolCall(toolCallState)}
