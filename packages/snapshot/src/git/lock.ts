@@ -25,7 +25,7 @@ async function readLock(lockPath: string): Promise<string | undefined> {
   return fs.readFile(lockPath, "utf8").catch(() => undefined);
 }
 
-/** Never removes a lock someone else has taken over since. */
+/** Best effort: the read and the removal are not one atomic step. */
 async function removeIfUnchanged(
   lockPath: string,
   content: string,
@@ -37,8 +37,8 @@ async function removeIfUnchanged(
 
 /**
  * Serialises store access across processes (`cn` sessions, the extension).
- * The file holds `<pid> <token>` and is taken over only from a dead pid, so a
- * long capture or a sleeping laptop keeps it.
+ * The file holds `<pid> <token>`. A live pid keeps it however long it runs;
+ * a dead pid loses it, and one without a readable pid only after `staleMs`.
  */
 export class StoreLock {
   private queue: Promise<unknown> = Promise.resolve();

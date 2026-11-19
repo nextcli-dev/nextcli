@@ -89,7 +89,8 @@ export async function openSnapshotter(
   }
 
   try {
-    // A real path, like the work tree, or a store inside it goes unnoticed
+    // Real paths on both sides, or a store inside the work tree that is
+    // reached through a symlink or another case would go unnoticed
     const requestedRoot = path.resolve(options.cwd, options.storeRoot);
     await fs.mkdir(requestedRoot, { recursive: true });
     const storeRoot = await fs.realpath(requestedRoot);
