@@ -146,7 +146,9 @@ export const ChatHistoryRow = memo(function ChatHistoryRow({
   }
 
   return (
-    <div style={{ minHeight: isLast ? "200px" : 0 }}>
+    // No reserved height: the last row is often a tool result or a reply that
+    // hasn't started yet, and auto-scroll would pin the view to the blank
+    <div data-testid="chat-history-row">
       <ErrorBoundary FallbackComponent={fallbackRender} onReset={onReset}>
         {content}
       </ErrorBoundary>
