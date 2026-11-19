@@ -82,3 +82,16 @@ You can use tool policies to exclude or make usage automatic for specific tools.
 Any data returned from a tool call is automatically fed back into the model as a context item. Most errors are also caught and returned, so that Agent mode can decide how to proceed.
 
 ![agent response](/images/ide-extensions/agent/images/agent-response-c7287c82aac93fb4376f9d85b352b2d7.png)
+
+## How to Undo a Turn
+
+Before each turn, the extension records the state of every git repository in your workspace, so you can take back what Agent mode changed: edits, new files, and changes made by terminal commands.
+
+Hover over the agent's last reply in a turn and click the **Undo** arrow. A dialog lists the files it will put back, the files it will delete (the agent created them), and any file someone changed after the agent wrote it. Then choose:
+
+- **Restore code and conversation**: puts the files back and removes the turn from the chat.
+- **Restore code only**: puts the files back and keeps the chat.
+
+The arrow on an earlier turn undoes every turn from that one on. After an undo, **Redo** above the input re-applies it, until you send the next message.
+
+Undo restores only the files the undone turns changed, and replaces unsaved changes in those files. It doesn't undo files outside git, submodules, anything inside `.git`, or anything outside your files, such as commits. Files git ignores and untracked files over 2 MB are covered only when Agent mode wrote them with its edit tools, not when a terminal command did. If a turn was interrupted, the dialog lists all its files as changed since the agent wrote them, because the extension can't tell the agent's edits from later ones. Snapshots need git 2.26 or later, live in `~/.continue/snapshots`, and are deleted after 30 days. The [`cn` CLI](/cli/tui-mode#undo-a-turn) has the same undo with `/undo` and `/redo`.

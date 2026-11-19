@@ -1,15 +1,19 @@
 import {
   ArrowsPointingInIcon,
+  ArrowUturnLeftIcon,
   BarsArrowDownIcon,
   TrashIcon,
 } from "@heroicons/react/24/outline";
 import { ChatHistoryItem } from "core";
 import { renderChatMessage } from "core/util/messageContent";
-import { useAppSelector } from "../../redux/hooks";
+import { useAppDispatch, useAppSelector } from "../../redux/hooks";
+import { setDialogMessage, setShowDialog } from "../../redux/slices/uiSlice";
+import { isTurnOver } from "../../undo/turnSnapshot";
 import { useCompactConversation } from "../../util/compactConversation";
 import { FeedbackButtons } from "../FeedbackButtons";
 import { CopyIconButton } from "../gui/CopyIconButton";
 import HeaderButtonWithToolTip from "../gui/HeaderButtonWithToolTip";
+import { UndoTurnDialog } from "../../undo/UndoTurnDialog";
 
 export interface ResponseActionsProps {
   isTruncated: boolean;
@@ -42,6 +46,18 @@ export default function ResponseActions({
   const showLabel = isLast && (isPruned || percent >= 60);
 
   const compactConversation = useCompactConversation();
+
+  const dispatch = useAppDispatch();
+  const undoFromIndex = useAppSelector((state) => {
+    const history = state.session.history;
+    for (let i = index; i >= 0; i--) {
+      if (history[i].message.role === "user") {
+        return history[i].checkpoint ? i : undefined;
+      }
+    }
+    return undefined;
+  });
+  const canUndo = useAppSelector(isTurnOver);
 
   return (
     <div className="text-description-muted mx-2 flex cursor-default items-center justify-end space-x-1 bg-transparent pb-0 text-xs">
@@ -76,6 +92,27 @@ export default function ResponseActions({
           onClick={onContinueGeneration}
         >
           <BarsArrowDownIcon className="text-description-muted h-3.5 w-3.5" />
+        </HeaderButtonWithToolTip>
+      )}
+
+      {undoFromIndex !== undefined && (
+        <HeaderButtonWithToolTip
+          testId={`undo-turn-button-${index}`}
+          text={
+            isLast
+              ? "Undo this turn"
+              : "Undo from this turn on (files and chat)"
+          }
+          tabIndex={-1}
+          disabled={!canUndo}
+          onClick={() => {
+            dispatch(
+              setDialogMessage(<UndoTurnDialog fromIndex={undoFromIndex} />),
+            );
+            dispatch(setShowDialog(true));
+          }}
+        >
+          <ArrowUturnLeftIcon className="text-description-muted h-3.5 w-3.5" />
         </HeaderButtonWithToolTip>
       )}
 

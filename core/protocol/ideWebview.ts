@@ -38,6 +38,11 @@ export type ToIdeFromWebviewProtocol = ToIdeFromWebviewOrCoreProtocol & {
   "edit/addCurrentSelection": [undefined, void];
   "edit/clearDecorations": [undefined, void];
   "session/share": [{ sessionId: string }, void];
+  /** "save" before the end of a turn is captured, "reload" after an undo. */
+  "snapshot/syncDocuments": [
+    { filepaths: string[]; action: "save" | "reload" },
+    void,
+  ];
 };
 
 export type ToWebviewFromIdeProtocol = ToWebviewFromIdeOrCoreProtocol & {

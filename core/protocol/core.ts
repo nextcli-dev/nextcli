@@ -48,6 +48,13 @@ import { AutocompleteCodeSnippet } from "../autocomplete/snippets/types";
 import { GetLspDefinitionsFunction } from "../autocomplete/types";
 import { ConfigHandler } from "../config/ConfigHandler";
 import { ProcessedItem } from "../nextEdit/NextEditPrefetchQueue";
+import type {
+  SnapshotRestoreRequest,
+  SnapshotRestoreResult,
+  SnapshotRevertPlan,
+  SnapshotRoots,
+} from "../snapshot/SnapshotManager";
+import type { TurnCheckpoint } from "@nextcli/snapshot";
 import { NextEditOutcome } from "../nextEdit/types";
 import { ContinueErrorReason } from "../util/errors";
 
@@ -75,6 +82,18 @@ export type ToCoreFromIdeOrWebviewProtocol = {
   "history/save": [Session, void];
   "history/share": [{ id: string; outputDir?: string }, void];
   "history/clear": [undefined, void];
+
+  "snapshot/capture": [undefined, SnapshotRoots];
+  "snapshot/preserve": [
+    { checkpoint: TurnCheckpoint; filepaths: string[] },
+    TurnCheckpoint,
+  ];
+  "snapshot/finishTurn": [{ checkpoint: TurnCheckpoint }, TurnCheckpoint];
+  "snapshot/planRevert": [
+    { checkpoints: TurnCheckpoint[] },
+    SnapshotRevertPlan,
+  ];
+  "snapshot/restore": [SnapshotRestoreRequest, SnapshotRestoreResult];
   "devdata/log": [DevDataLogEvent, void];
   "config/addOpenAiKey": [string, void];
   "config/addModel": [
