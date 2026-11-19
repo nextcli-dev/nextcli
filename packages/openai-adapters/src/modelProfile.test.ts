@@ -1,6 +1,8 @@
+import { findModelsDevModel, SUPPLEMENT } from "@nextcli/llm-info";
 import { describe, expect, it } from "vitest";
 
 import { overriddenEfforts } from "./catalogOverrides.js";
+import { getContextOptions, getModelControls } from "./modelControls.js";
 import { resolveModelProfile, vendorCatalogProvider } from "./modelProfile.js";
 
 describe("resolveModelProfile", () => {
@@ -102,6 +104,56 @@ describe("resolveModelProfile", () => {
         apiBase: "https://api.oneprovider.dev",
       }).fim,
     ).toBe(false);
+  });
+});
+
+describe("NextCLI's model supplement", () => {
+  // Qwen Cloud's token plan, set up as an OpenAI-compatible endpoint
+  const qwen = {
+    provider: "openai",
+    model: "qwen4-max-preview",
+    apiBase: "https://token-plan.maas.qwencloudapi.com/v1/",
+  };
+
+  it("describes a model models.dev doesn't list on its vendor's host", () => {
+    const profile = resolveModelProfile(qwen);
+    expect(profile).toMatchObject({
+      format: "generic",
+      catalogProvider: "alibaba",
+    });
+    expect(profile.catalog).toMatchObject({ context: 1_000_000 });
+
+    // The menu gets thinking, guessed efforts and the model's own window
+    const controls = getModelControls(qwen);
+    expect(controls).toMatchObject({
+      efforts: ["low", "medium", "high"],
+      experimental: true,
+      thinkingModes: ["hidden", "shown"],
+      maxContextLength: 983_000,
+    });
+    expect(getContextOptions(controls.maxContextLength, 32_768)).toEqual([
+      32_768, 64_000, 128_000, 200_000, 256_000, 400_000, 983_000,
+    ]);
+  });
+
+  it("isn't used on hosts that aren't the vendor's", () => {
+    expect(
+      resolveModelProfile({ ...qwen, apiBase: "https://gateway.example/v1/" })
+        .catalog,
+    ).toBeUndefined();
+  });
+
+  // models.dev wins once it lists a model, so the supplement's entry is dead
+  // weight: delete it from packages/llm-info/src/supplement.ts
+  it("only lists models the models.dev snapshot doesn't", () => {
+    for (const [provider, models] of Object.entries(SUPPLEMENT)) {
+      for (const id of Object.keys(models)) {
+        expect(
+          findModelsDevModel(provider, id),
+          `models.dev now lists ${provider}/${id}`,
+        ).toBeUndefined();
+      }
+    }
   });
 });
 

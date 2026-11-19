@@ -29,9 +29,11 @@ export {
   catalogPromptLimit,
   catalogProviderFor,
   findCatalogModel,
+  findModelsDevModel,
   longestListedBase,
   variantSuffix,
 } from "./catalog.js";
+export { SUPPLEMENT } from "./supplement.js";
 export {
   baseModelName,
   CATALOG_HOSTS,
@@ -65,6 +67,7 @@ export type {
   CatalogMatch,
   CatalogModel,
   CatalogRates,
+  CatalogSource,
 } from "./catalog.js";
 export { isRetired } from "./types.js";
 export type { LlmDeprecation } from "./types.js";

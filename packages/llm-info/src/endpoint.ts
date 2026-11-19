@@ -49,10 +49,17 @@ export function isLocalHost(host: string): boolean {
  * Official API hosts whose catalog applies whichever provider the config
  * names: Groq or OpenRouter set up as an OpenAI-compatible endpoint is still
  * Groq or OpenRouter. Subdomains match too.
+ *
+ * Alibaba's international hosts (Qwen Cloud, DashScope) take its
+ * pay-as-you-go catalog, token plans included: models.dev lists token-plan
+ * models at $0, and a list price overstates a plan's cost rather than
+ * hiding it.
  */
 export const CATALOG_HOSTS: Readonly<Record<string, string>> = {
   "api.groq.com": "groq",
+  "dashscope-intl.aliyuncs.com": "alibaba",
   "openrouter.ai": "openrouter",
+  "qwencloudapi.com": "alibaba",
 };
 
 /** The models.dev provider of an API base's host, if it is an official one */
