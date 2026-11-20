@@ -51,9 +51,9 @@ describe("compaction infinite loop prevention", () => {
       },
     );
 
-    // History that can't be pruned further (only system message)
+    // History that can't be pruned further (one request, nothing older)
     const history = convertToUnifiedHistory([
-      { role: "system", content: "System message" },
+      { role: "user", content: "Hello" },
     ]);
 
     // This should not hang - it should break out of the loop

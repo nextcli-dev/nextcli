@@ -37,6 +37,7 @@ vi.mock("../compaction.js", () => ({
   ),
   getAutoCompactMessage: vi.fn(() => "Compacting"),
   countSystemMessageTokens: vi.fn(async () => 0),
+  isCompactionAborted: (error: Error) => error?.name === "AbortError",
 }));
 
 vi.mock("../util/tokenizer.js", () => ({
@@ -164,5 +165,32 @@ describe("compaction helpers", () => {
       });
     }
     expect(compactChatHistory).not.toHaveBeenCalled();
+  });
+
+  it("stop on Escape during a compaction without failing the turn", async () => {
+    const abortController = new AbortController();
+    vi.mocked(compactChatHistory).mockImplementation(async () => {
+      abortController.abort();
+      throw Object.assign(new Error("Compaction cancelled"), {
+        name: "AbortError",
+      });
+    });
+    const withController = { ...options(false), abortController };
+
+    // Over the limit after a tool: a failed compaction throws, a cancel doesn't
+    const postTool = await handlePostToolValidation(
+      toolCalls,
+      longHistory,
+      withController,
+    );
+    const preApi = await handlePreApiCompaction(longHistory, withController);
+
+    expect(postTool).toEqual({ chatHistory: longHistory, wasCompacted: false });
+    expect(preApi).toEqual({ chatHistory: longHistory, wasCompacted: false });
+    // The summary call got the turn's controller; once aborted, none starts
+    expect(compactChatHistory).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(compactChatHistory).mock.calls[0][3]).toMatchObject({
+      abortController,
+    });
   });
 });

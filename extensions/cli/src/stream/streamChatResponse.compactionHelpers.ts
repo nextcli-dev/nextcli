@@ -20,6 +20,8 @@ export interface CompactionHelperOptions {
   callbacks?: StreamCallbacks;
   systemMessage: string;
   tools?: ChatCompletionTool[];
+  /** The turn's controller: Escape stops a compaction as well as the turn */
+  abortController?: AbortController;
 }
 
 /**
@@ -54,6 +56,7 @@ export async function handlePreApiCompaction(
     callbacks,
     systemMessage,
     tools,
+    abortController,
   } = options;
 
   if (isCompacting) {
@@ -69,6 +72,7 @@ export async function handlePreApiCompaction(
       },
       systemMessage,
       tools,
+      abortController,
     });
 
   if (wasCompacted) {
@@ -98,6 +102,7 @@ export async function handlePostToolValidation(
     callbacks,
     systemMessage,
     tools,
+    abortController,
   } = options;
 
   // Never compact inside a compaction
@@ -140,7 +145,13 @@ export async function handlePostToolValidation(
         },
         systemMessage,
         tools,
+        abortController,
       });
+
+    // Escape during the compaction: the turn stops, nothing to fix
+    if (!wasCompacted && abortController?.signal.aborted) {
+      return { chatHistory, wasCompacted: false };
+    }
 
     if (wasCompacted) {
       chatHistory = commitCompacted(compactedHistory);
@@ -200,6 +211,7 @@ export async function handleNormalAutoCompaction(
     callbacks,
     systemMessage,
     tools,
+    abortController,
   } = options;
 
   // Never compact inside a compaction
@@ -224,6 +236,7 @@ export async function handleNormalAutoCompaction(
       },
       systemMessage,
       tools,
+      abortController,
     });
 
   if (wasCompacted) {

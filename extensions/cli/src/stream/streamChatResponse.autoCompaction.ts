@@ -8,6 +8,7 @@ import {
   compactChatHistory,
   countSystemMessageTokens,
   getAutoCompactMessage,
+  isCompactionAborted,
   shouldAutoCompact,
 } from "../compaction.js";
 import { updateSessionHistory } from "../session.js";
@@ -33,6 +34,8 @@ interface AutoCompactionOptions {
   callbacks?: AutoCompactionCallbacks;
   systemMessage?: string;
   tools?: ChatCompletionTool[];
+  /** Escape aborts it: the summary call stops and the history stays as it was */
+  abortController?: AbortController;
 }
 
 /**
@@ -140,10 +143,12 @@ export async function handleAutoCompaction(
     callbacks,
     systemMessage: providedSystemMessage,
     tools,
+    abortController,
   } = options;
 
   if (
     !model ||
+    abortController?.signal.aborted ||
     !shouldAutoCompact({
       chatHistory,
       model,
@@ -176,6 +181,7 @@ export async function handleAutoCompaction(
             onStreamComplete: () => {},
           },
       systemMessageTokens,
+      abortController,
     });
 
     // Save the compacted session
@@ -190,6 +196,11 @@ export async function handleAutoCompaction(
       wasCompacted: true,
     };
   } catch (error: any) {
+    // Cancelled by the user: nothing to report, the history is unchanged
+    if (isCompactionAborted(error)) {
+      logger.info("Auto-compaction cancelled");
+      return { chatHistory, compactionIndex: null, wasCompacted: false };
+    }
     // Handle error notification
     handleCompactionError(error, isHeadless, callbacks);
 

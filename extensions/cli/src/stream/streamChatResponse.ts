@@ -7,7 +7,7 @@ import type {
   ChatCompletionTool,
 } from "openai/resources.mjs";
 
-import { pruneLastMessage } from "../compaction.js";
+import { pruneOldestTurns } from "../compaction.js";
 import type { ToolPermissionsSource } from "../permissions/types.js";
 import { services } from "../services/index.js";
 import { applyChatCompletionToolOverrides } from "../tools/applyToolOverrides.js";
@@ -177,36 +177,31 @@ export async function processStreamingResponse(
     systemMessage,
   } = options;
 
-  let chatHistory = historySentToModel(options.chatHistory);
-
   // Safety buffer to account for tokenization estimation errors
   const SAFETY_BUFFER = 100;
 
   // Validate context length INCLUDING system message and tools
-  let validation = validateContextLength({
-    chatHistory,
-    model,
-    safetyBuffer: SAFETY_BUFFER,
-    systemMessage,
-    tools,
-  });
-
-  // Prune last messages until valid (excluding system message)
-  while (chatHistory.length > 1 && !validation.isValid) {
-    const prunedChatHistory = pruneLastMessage(chatHistory);
-    if (prunedChatHistory.length === chatHistory.length) {
-      break;
-    }
-    chatHistory = prunedChatHistory;
-
-    // Re-validate with system message and tools
-    validation = validateContextLength({
-      chatHistory,
+  const validate = (history: ChatHistoryItem[]) =>
+    validateContextLength({
+      chatHistory: history,
       model,
       safetyBuffer: SAFETY_BUFFER,
       systemMessage,
       tools,
     });
+
+  // Too long for the window: leave the oldest turns out of this request (the
+  // history keeps them), never the newest user message
+  const pruned = pruneOldestTurns(
+    historySentToModel(options.chatHistory),
+    (history) => validate(history).isValid,
+  );
+  const chatHistory = pruned.history;
+  const validation = validate(chatHistory);
+  if (pruned.removed > 0 && validation.isValid) {
+    const notice = `Context window full: the ${pruned.removed} oldest messages were left out of this request.`;
+    logger.warn(notice);
+    callbacks?.onSystemMessage?.(notice);
   }
 
   if (!validation.isValid) {
@@ -470,6 +465,7 @@ export async function streamChatResponse(
         callbacks,
         systemMessage,
         tools,
+        abortController,
       };
 
       // Pre-API auto-compaction checkpoint (now includes tools). Not before

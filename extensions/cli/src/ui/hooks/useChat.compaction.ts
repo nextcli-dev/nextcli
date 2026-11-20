@@ -131,7 +131,7 @@ export async function handleAutoCompaction({
   compactionIndex: _compactionIndex,
   setChatHistory,
   setCompactionIndex,
-  abortController: _abortController,
+  abortController,
 }: HandleAutoCompactionOptions): Promise<{
   currentChatHistory: ChatHistoryItem[];
   currentCompactionIndex: number | null;
@@ -145,6 +145,7 @@ export async function handleAutoCompaction({
       setChatHistory,
       setCompactionIndex,
     },
+    abortController,
   });
 
   if (!result.wasCompacted) {

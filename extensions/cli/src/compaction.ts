@@ -14,6 +14,7 @@ import {
   countTotalInputTokens,
   getModelContextLimit,
   getModelMaxTokens,
+  historySentToModel,
 } from "./util/tokenizer.js";
 
 // Buffer cap/ratio for auto-compaction threshold calculation
@@ -92,39 +93,27 @@ export async function compactChatHistory(
     contextItems: [],
   };
 
-  // Check if the history with compaction prompt is too long, prune if necessary
-  let historyToUse = chatHistory;
-  let historyForCompaction = [...historyToUse, compactionPrompt];
-
   const contextLimit = getModelContextLimit(model);
   const maxTokens = getModelMaxTokens(model);
 
   const availableForInput =
     contextLimit - maxTokens - systemMessageTokens - COMPACTION_PROMPT_TOKENS;
 
-  // Check if we need to prune to fit within context
-  while (
-    countChatHistoryTokens(historyForCompaction, model) > availableForInput &&
-    historyToUse.length > 0
-  ) {
-    logger.debug("Compaction history too long, pruning last message", {
-      tokenCount: countChatHistoryTokens(historyForCompaction, model),
+  // Too long to summarize whole: leave the oldest turns out, so the summary
+  // still covers the latest request and the work on it
+  const pruned = pruneOldestTurns(
+    historySentToModel(chatHistory),
+    (history) =>
+      countChatHistoryTokens([...history, compactionPrompt], model) <=
       availableForInput,
-      historyLength: historyToUse.length,
+  );
+  if (pruned.removed > 0) {
+    logger.warn("Compaction input too long, left the oldest messages out", {
+      removed: pruned.removed,
+      availableForInput,
     });
-    const prunedHistory = pruneLastMessage(historyToUse);
-
-    // Break if pruning didn't change the history (prevents infinite loop)
-    if (prunedHistory.length === historyToUse.length) {
-      logger.warn(
-        "Cannot prune history further while maintaining valid conversation structure",
-      );
-      break;
-    }
-
-    historyToUse = prunedHistory;
-    historyForCompaction = [...historyToUse, compactionPrompt];
   }
+  const historyForCompaction = [...pruned.history, compactionPrompt];
 
   // Stream the compaction response (service drives updates; this collects content locally)
   const controller = abortController || new AbortController();
@@ -150,6 +139,11 @@ export async function compactChatHistory(
       true,
     );
 
+    // An aborted stream returns what it had so far: never keep a partial summary
+    if (controller.signal.aborted) {
+      throw compactionAbortedError();
+    }
+
     // The system prompt isn't part of the history (role:"system" items are
     // TUI notices), so the summary is the whole compacted history
     const compactionMessage: ChatHistoryItem = {
@@ -167,6 +161,9 @@ export async function compactChatHistory(
       compactionIndex: 0,
     };
   } catch (error) {
+    if (isCompactionAborted(error)) {
+      throw error;
+    }
     logger.error("Compaction failed", error);
     callbacks?.onError?.(error as Error);
     throw error;
@@ -187,45 +184,112 @@ export function findCompactionIndex(
   return compactedIndex === -1 ? null : compactedIndex;
 }
 
+/** Starts the note that stands in for messages left out of a request */
+export const PRUNED_HISTORY_NOTE_PREFIX = "[Context note:";
+
+/**
+ * The history with a note in front saying how many messages are gone. The
+ * note joins a leading user message, so roles still alternate for providers
+ * that require it.
+ */
+function withPrunedNote(
+  history: ChatHistoryItem[],
+  removed: number,
+): ChatHistoryItem[] {
+  const note = `${PRUNED_HISTORY_NOTE_PREFIX} the ${removed} oldest messages of this conversation were left out to fit the context window. Continue from the messages below.]`;
+  const [first, ...rest] = history;
+  if (first?.message.role !== "user") {
+    return [
+      { message: { role: "user", content: note }, contextItems: [] },
+      ...history,
+    ];
+  }
+  const content = first.message.content;
+  return [
+    {
+      ...first,
+      message: {
+        ...first.message,
+        content:
+          typeof content === "string"
+            ? `${note}\n\n${content}`
+            : [{ type: "text", text: note }, ...content],
+      },
+    },
+    ...rest,
+  ];
+}
+
+/**
+ * The history without its oldest part: the oldest whole turn (a user message
+ * and everything up to the next one) while an older turn than the newest one
+ * exists, then the oldest step of the newest turn (an assistant message and
+ * its tool results). Never the newest user message or the last step; null
+ * when nothing else is left.
+ */
+function dropOldestPart(history: ChatHistoryItem[]): ChatHistoryItem[] | null {
+  const isUser = (item: ChatHistoryItem) => item.message.role === "user";
+  const nextUser = history.findIndex((item, i) => i > 0 && isUser(item));
+  if (nextUser > 0) {
+    return history.slice(nextUser);
+  }
+  // Only the newest turn is left: keep its user message, drop its oldest step
+  const stepStart = isUser(history[0]) ? 1 : 0;
+  let stepEnd = stepStart + 1;
+  while (stepEnd < history.length && history[stepEnd].message.role === "tool") {
+    stepEnd++;
+  }
+  if (stepEnd >= history.length) {
+    return null;
+  }
+  return [...history.slice(0, stepStart), ...history.slice(stepEnd)];
+}
+
+/**
+ * Leaves the oldest messages out until the history fits, oldest turns first,
+ * and puts a note in front saying how many are gone. A tool call keeps its
+ * results and the newest user message stays. Returns the history as given
+ * when it fits, or the shortest one when nothing more can go.
+ * @param chatHistory The history to send
+ * @param fits Whether a history fits the request
+ */
+export function pruneOldestTurns(
+  chatHistory: ChatHistoryItem[],
+  fits: (history: ChatHistoryItem[]) => boolean,
+): { history: ChatHistoryItem[]; removed: number } {
+  if (chatHistory.length === 0 || fits(chatHistory)) {
+    return { history: chatHistory, removed: 0 };
+  }
+  let kept = chatHistory;
+  let candidate = chatHistory;
+  for (let next = dropOldestPart(kept); next; next = dropOldestPart(kept)) {
+    kept = next;
+    candidate = withPrunedNote(kept, chatHistory.length - kept.length);
+    if (fits(candidate)) {
+      break;
+    }
+  }
+  return { history: candidate, removed: chatHistory.length - kept.length };
+}
+
+/** The error a cancelled compaction throws */
+function compactionAbortedError(): Error {
+  const error = new Error("Compaction cancelled");
+  error.name = "AbortError";
+  return error;
+}
+
+/** Whether an error is a compaction the user cancelled */
+export function isCompactionAborted(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
 /**
  * Gets the history to send to the LLM, taking compaction into account
  * @param fullHistory The complete chat history
  * @param compactionIndex The index of the compaction message, if any
  * @returns The history to send to the LLM
  */
-/**
- * Prunes chat history by removing messages from the end while ensuring
- * the history ends with either an assistant message or a tool result message
- * @param chatHistory The chat history to prune
- * @returns The pruned chat history ending with assistant or tool message
- */
-export function pruneLastMessage(
-  chatHistory: ChatHistoryItem[],
-): ChatHistoryItem[] {
-  if (chatHistory.length === 0) {
-    return chatHistory;
-  }
-
-  if (chatHistory.length === 1) {
-    // Only one message - always return empty array
-    return [];
-  }
-
-  const secondToLastIndex = chatHistory.length - 2;
-  const secondToLastItem = chatHistory[secondToLastIndex];
-
-  if (
-    secondToLastItem.message.role === "assistant" &&
-    (secondToLastItem.message as any).toolCalls?.length > 0
-  ) {
-    return chatHistory.slice(0, -2);
-  } else if (secondToLastItem.message.role === "user") {
-    return chatHistory.slice(0, -2);
-  }
-
-  return chatHistory.slice(0, -1);
-}
-
 export function getHistoryForLLM(
   fullHistory: ChatHistoryItem[],
   compactionIndex: number | null,

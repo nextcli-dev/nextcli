@@ -10,6 +10,7 @@ vi.mock("../compaction.js", () => ({
   countSystemMessageTokens: vi.fn(async () => 100),
   shouldAutoCompact: vi.fn(),
   getAutoCompactMessage: vi.fn(),
+  isCompactionAborted: (error: Error) => error?.name === "AbortError",
 }));
 
 vi.mock("../session.js", () => ({
@@ -223,6 +224,44 @@ describe("handleAutoCompaction", () => {
       compactionIndex: null,
       wasCompacted: false,
     });
+  });
+
+  it("returns the history unchanged and warns nobody when cancelled", async () => {
+    const { compactChatHistory, shouldAutoCompact } = await import(
+      "../compaction.js"
+    );
+    const { updateSessionHistory } = await import("../session.js");
+    const abortController = new AbortController();
+    vi.mocked(shouldAutoCompact).mockReturnValue(true);
+    vi.mocked(compactChatHistory).mockImplementation(async () => {
+      abortController.abort();
+      throw Object.assign(new Error("Compaction cancelled"), {
+        name: "AbortError",
+      });
+    });
+    const onSystemMessage = vi.fn();
+
+    const result = await handleAutoCompaction(
+      mockChatHistory,
+      mockModel,
+      mockLlmApi,
+      { callbacks: { onSystemMessage }, abortController },
+    );
+
+    expect(result).toEqual({
+      chatHistory: mockChatHistory,
+      compactionIndex: null,
+      wasCompacted: false,
+    });
+    expect(vi.mocked(compactChatHistory).mock.calls[0][3]).toMatchObject({
+      abortController,
+    });
+    expect(updateSessionHistory).not.toHaveBeenCalled();
+    // Only the start notice: no "Auto-compaction error" warning
+    expect(onSystemMessage).toHaveBeenCalledTimes(1);
+    expect(onSystemMessage).not.toHaveBeenCalledWith(
+      expect.stringContaining("error"),
+    );
   });
 
   it("should not call system message callback in headless mode", async () => {

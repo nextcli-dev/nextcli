@@ -6,13 +6,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { abortAll, resetAbortRegistryForTests } from "../util/abortRegistry.js";
 
 import { handleToolCalls } from "./handleToolCalls.js";
+import { handlePreApiCompaction } from "./streamChatResponse.compactionHelpers.js";
 import { streamChatResponse } from "./streamChatResponse.js";
 
 const sessionUsage = { promptTokens: 0, completionTokens: 0, totalCost: 0 };
 
 vi.mock("../compaction.js", () => ({
   compactChatHistory: vi.fn(),
-  pruneLastMessage: vi.fn((history) => history.slice(0, -1)),
+  pruneOldestTurns: vi.fn((history) => ({ history, removed: 0 })),
   shouldAutoCompact: vi.fn(),
   getAutoCompactMessage: vi.fn(() => "Auto-compacting..."),
 }));
@@ -151,6 +152,29 @@ describe("streamChatResponse - interrupt", () => {
     await streamChatResponse([], model, llmApi, new AbortController());
 
     expect(handleToolCalls).not.toHaveBeenCalled();
+  });
+
+  it("ends the turn without a model call when Escape stops a compaction", async () => {
+    const llmApi = {
+      chatCompletionStream: vi.fn().mockImplementation(async function* () {
+        yield chunk({ content: "should not be asked" });
+      }),
+    } as unknown as BaseLlmApi;
+    const abortController = new AbortController();
+    vi.mocked(handlePreApiCompaction).mockImplementationOnce(
+      async (chatHistory, options) => {
+        // Escape while the summary streams
+        options.abortController?.abort();
+        return { chatHistory, wasCompacted: false };
+      },
+    );
+
+    await streamChatResponse([], model, llmApi, abortController);
+
+    expect(
+      vi.mocked(handlePreApiCompaction).mock.calls[0][1].abortController,
+    ).toBe(abortController);
+    expect(llmApi.chatCompletionStream).not.toHaveBeenCalled();
   });
 
   it("passes the turn's signal to tool dispatch", async () => {

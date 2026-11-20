@@ -8,6 +8,8 @@ import {
   compactChatHistory,
   findCompactionIndex,
   getHistoryForLLM,
+  isCompactionAborted,
+  PRUNED_HISTORY_NOTE_PREFIX,
 } from "./compaction.js";
 import { streamChatResponse } from "./stream/streamChatResponse.js";
 
@@ -367,6 +369,24 @@ describe("compaction", () => {
         expect(sentHistoryLength()).toBeLessThan(history.length + 1);
       });
 
+      it("leaves the oldest turns out and keeps the newest ones", async () => {
+        currentSystemPrompt.text = " hello".repeat(4_000);
+
+        await compactChatHistory(history, smallModel, mockLlmApi);
+
+        const sent = vi.mocked(streamChatResponse).mock.calls.at(-1)![0];
+        expect(String(sent[0].message.content)).toContain(
+          PRUNED_HISTORY_NOTE_PREFIX,
+        );
+        // Newest message, then the compaction prompt
+        expect(sent.at(-2)).toBe(history.at(-1));
+        expect(String(sent[0].message.content)).toContain(" hello hello");
+        expect(sent.at(-1)!.message.content).toContain("concise summary");
+        // A whole turn went: the note joins the user message that now leads
+        expect(sent[0].message.role).toBe("user");
+        expect(sent[1].message.role).toBe("assistant");
+      });
+
       it("sends the whole history when it fits beside the prompt", async () => {
         currentSystemPrompt.text = "System prompt";
 
@@ -506,6 +526,32 @@ describe("compaction", () => {
       expect(result.compactedHistory[0].message.content).toBe("");
     });
 
+    it("throws instead of keeping a partial summary when aborted", async () => {
+      const controller = new AbortController();
+      const onError = vi.fn();
+      vi.mocked(streamChatResponse).mockImplementation(
+        async (history, model, api, ctrl, callbacks) => {
+          callbacks?.onContent?.("Partial sum");
+          // Escape: the stream returns what it had so far
+          controller.abort();
+          return "Partial sum";
+        },
+      );
+      const history = convertToUnifiedHistory([
+        { role: "user", content: "Hello" },
+        { role: "assistant", content: "Hi" },
+      ]);
+
+      await expect(
+        compactChatHistory(history, mockModel, mockLlmApi, {
+          abortController: controller,
+          callbacks: { onError },
+        }),
+      ).rejects.toSatisfy(isCompactionAborted);
+      // A cancel isn't reported as a failure
+      expect(onError).not.toHaveBeenCalled();
+    });
+
     it("should correctly construct prompt for compaction", async () => {
       const mockStreamResponse = vi.mocked(streamChatResponse);
       let capturedHistory: ChatHistoryItem[] = [];
@@ -527,9 +573,9 @@ describe("compaction", () => {
 
       await compactChatHistory(history, mockModel, mockLlmApi);
 
-      // Should have original history plus the compaction prompt
-      expect(capturedHistory).toHaveLength(4);
-      expect(capturedHistory[3].message).toEqual({
+      // The conversation plus the compaction prompt; the TUI notice isn't sent
+      expect(capturedHistory).toHaveLength(3);
+      expect(capturedHistory[2].message).toEqual({
         role: "user",
         content: expect.stringContaining("provide a concise summary"),
       });

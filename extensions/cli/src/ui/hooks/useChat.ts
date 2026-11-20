@@ -659,6 +659,11 @@ export function useChat({
         setCompactionAbortController(null);
       }
 
+      // Escape during the compaction: the message isn't sent
+      if (compactionController.signal.aborted) {
+        return;
+      }
+
       // Add the formatted queued message to history after compaction completes
       const newHistory = [...currentChatHistory, formattedQueuedMessage];
       setChatHistory(newHistory);
@@ -724,6 +729,11 @@ export function useChat({
         setIsCompacting(false);
         setCompactionStartTime(null);
         setCompactionAbortController(null);
+      }
+
+      // Escape during the compaction: the message isn't sent
+      if (compactionController.signal.aborted) {
+        return;
       }
 
       // Add the formatted user message to history
