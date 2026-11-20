@@ -155,7 +155,7 @@ describe("compaction", () => {
       expect(result).toEqual(history);
     });
 
-    it("should return compacted history with system message", () => {
+    it("should drop TUI notices before the compaction point", () => {
       const history = convertToUnifiedHistory([
         { role: "system", content: "System message" },
         { role: "user", content: "Hello" },
@@ -169,10 +169,6 @@ describe("compaction", () => {
 
       const result = getHistoryForLLM(history, 3);
       expect(result).toEqual([
-        {
-          message: { role: "system", content: "System message" },
-          contextItems: [],
-        },
         {
           message: {
             role: "assistant",
@@ -304,10 +300,6 @@ describe("compaction", () => {
       const result = getHistoryForLLM(history, 3);
       expect(result).toEqual([
         {
-          message: { role: "system", content: "System" },
-          contextItems: [],
-        },
-        {
           message: {
             role: "assistant",
             content: `\nSummary`,
@@ -351,15 +343,9 @@ describe("compaction", () => {
 
       const result = await compactChatHistory(history, mockModel, mockLlmApi);
 
-      expect(result.compactedHistory).toHaveLength(2);
+      // The "system" item is a TUI notice: the summary replaces it too
+      expect(result.compactedHistory).toHaveLength(1);
       expect(result.compactedHistory[0]).toEqual({
-        message: {
-          role: "system",
-          content: "System message",
-        },
-        contextItems: [],
-      });
-      expect(result.compactedHistory[1]).toEqual({
         message: {
           role: "assistant",
           content: mockContent,
@@ -367,7 +353,7 @@ describe("compaction", () => {
         contextItems: [],
         conversationSummary: mockContent,
       });
-      expect(result.compactionIndex).toBe(1);
+      expect(result.compactionIndex).toBe(0);
       expect(result.compactionContent).toBe(mockContent);
     });
 
@@ -440,12 +426,8 @@ describe("compaction", () => {
 
       const result = await compactChatHistory(history, mockModel, mockLlmApi);
 
-      expect(result.compactedHistory).toHaveLength(2);
-      expect(result.compactedHistory[0].message).toEqual({
-        role: "system",
-        content: "You are a helpful assistant",
-      });
-      expect(result.compactedHistory[1].message.content).toContain(
+      expect(result.compactedHistory).toHaveLength(1);
+      expect(result.compactedHistory[0].message.content).toContain(
         "Summary of system setup",
       );
     });
@@ -522,7 +504,7 @@ describe("compaction", () => {
 
       const result = await compactChatHistory(history, mockModel, mockLlmApi);
 
-      expect(result.compactedHistory).toHaveLength(2);
+      expect(result.compactedHistory).toHaveLength(1);
       expect(result.compactionContent).toBe(mockContent);
     });
 
@@ -555,8 +537,8 @@ describe("compaction", () => {
 
       const result = await compactChatHistory(history, mockModel, mockLlmApi);
 
-      expect(result.compactedHistory).toHaveLength(2); // System + compaction
-      expect(result.compactionIndex).toBe(1);
+      expect(result.compactedHistory).toHaveLength(1);
+      expect(result.compactionIndex).toBe(0);
     });
 
     it("should handle history without system message", async () => {
@@ -625,17 +607,10 @@ describe("compaction", () => {
       });
     });
 
-    it("getHistoryForLLM should always include system message if it exists at index 0", () => {
-      const systemMessage: ChatHistoryItem = {
-        message: {
-          role: "system",
-          content: "System",
-        },
-        contextItems: [],
-      };
+    it("getHistoryForLLM starts at the compaction point, without earlier notices", () => {
       const testCases: Array<{
         history: ChatHistoryItem[];
-        compactionIndex: number | null;
+        compactionIndex: number;
       }> = [
         {
           history: convertToUnifiedHistory([
@@ -656,14 +631,10 @@ describe("compaction", () => {
 
       testCases.forEach(({ history, compactionIndex }) => {
         const result = getHistoryForLLM(history, compactionIndex);
-
-        if (
-          history[0]?.message?.role === "system" &&
-          compactionIndex !== null &&
-          compactionIndex > 0
-        ) {
-          expect(result[0]).toEqual(history[0]);
-        }
+        expect(result[0]).toBe(history[compactionIndex]);
+        expect(result.some((item) => item.message.role === "system")).toBe(
+          false,
+        );
       });
     });
 
@@ -739,7 +710,7 @@ describe("compaction", () => {
       }
     });
 
-    it("system message should always be preserved in the same position", async () => {
+    it("a TUI notice is never kept as the system message", async () => {
       const mockStreamResponse = vi.mocked(streamChatResponse);
 
       mockStreamResponse.mockImplementation(
@@ -758,8 +729,9 @@ describe("compaction", () => {
 
       const result = await compactChatHistory(history, mockModel, mockLlmApi);
 
-      // System message should still be at index 0
-      expect(result.compactedHistory[0]).toEqual(history[0]);
+      expect(
+        result.compactedHistory.some((item) => item.message.role === "system"),
+      ).toBe(false);
     });
 
     it("findCompactionIndex should be consistent with compactChatHistory result", async () => {

@@ -238,14 +238,16 @@ export function countChatHistoryTokens(
   chatHistory: ChatHistoryItem[],
   model: ModelConfig,
 ): number {
+  // role:"system" items are notices shown in the TUI; they aren't sent
+  const sent = chatHistory.filter((item) => item.message.role !== "system");
   let totalTokens = 0;
 
-  for (const historyItem of chatHistory) {
+  for (const historyItem of sent) {
     totalTokens += countChatHistoryItemTokens(historyItem, model);
   }
 
   // Add some overhead for message structure (roughly 3 tokens per message)
-  totalTokens += chatHistory.length * 3;
+  totalTokens += sent.length * 3;
 
   return totalTokens;
 }
@@ -375,15 +377,9 @@ export function countTotalInputTokens(params: TotalInputTokenParams): number {
 
   let totalTokens = countChatHistoryTokens(chatHistory, params.model);
 
-  // Add system message tokens if provided and not already in history
   if (systemMessage) {
-    const hasSystemInHistory = chatHistory.some(
-      (item) => item.message.role === "system",
-    );
-    if (!hasSystemInHistory) {
-      totalTokens += encode(systemMessage).length;
-      totalTokens += 4; // Message structure overhead (role + formatting)
-    }
+    totalTokens += encode(systemMessage).length;
+    totalTokens += 4; // Message structure overhead (role + formatting)
   }
 
   // Add tool definition tokens
@@ -427,11 +423,9 @@ export function validateContextLength(params: ValidateContextLengthParams): {
     model,
   });
   const contextLimit = getModelContextLimit(model);
-  const maxTokens = model.defaultCompletionOptions?.maxTokens || 0;
-
-  // If maxTokens is not set, use 35% default reservation for output
-  const reservedForOutput =
-    maxTokens > 0 ? maxTokens : Math.ceil(contextLimit * 0.35);
+  // The same reserve compaction plans with, so a history that compaction
+  // let through also passes here
+  const reservedForOutput = getModelMaxTokens(model);
   const totalRequired = inputTokens + reservedForOutput + safetyBuffer;
 
   if (totalRequired > contextLimit) {

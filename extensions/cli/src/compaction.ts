@@ -73,21 +73,8 @@ export async function compactChatHistory(
   const contextLimit = getModelContextLimit(model);
   const maxTokens = getModelMaxTokens(model);
 
-  // Check if system message is already in the history to avoid double-counting
-  const hasSystemMessageInHistory = chatHistory.some(
-    (item) => item.message.role === "system",
-  );
-
-  // Account for system message (if not already in history) AND compaction prompt
-  const systemMessageReservation = hasSystemMessageInHistory
-    ? 0
-    : systemMessageTokens;
-
   const availableForInput =
-    contextLimit -
-    maxTokens -
-    systemMessageReservation -
-    COMPACTION_PROMPT_TOKENS;
+    contextLimit - maxTokens - systemMessageTokens - COMPACTION_PROMPT_TOKENS;
 
   // Check if we need to prune to fit within context
   while (
@@ -137,10 +124,8 @@ export async function compactChatHistory(
       true,
     );
 
-    // Create the compacted history with a special marker
-    const systemMessage = chatHistory.find(
-      (item) => item.message.role === "system",
-    );
+    // The system prompt isn't part of the history (role:"system" items are
+    // TUI notices), so the summary is the whole compacted history
     const compactionMessage: ChatHistoryItem = {
       message: {
         role: "assistant",
@@ -150,14 +135,10 @@ export async function compactChatHistory(
       conversationSummary: compactionContent,
     };
 
-    const compactedHistory: ChatHistoryItem[] = systemMessage
-      ? [systemMessage, compactionMessage]
-      : [compactionMessage];
-
     return {
-      compactedHistory,
+      compactedHistory: [compactionMessage],
       compactionContent,
-      compactionIndex: systemMessage ? 1 : 0,
+      compactionIndex: 0,
     };
   } catch (error) {
     logger.error("Compaction failed", error);
@@ -226,15 +207,7 @@ export function getHistoryForLLM(
   if (compactionIndex === null || compactionIndex >= fullHistory.length) {
     return fullHistory;
   }
-
-  // Include system message (if at index 0) and everything from compaction index forward
-  const systemMessage =
-    fullHistory[0]?.message?.role === "system" ? fullHistory[0] : null;
-  const messagesFromCompaction = fullHistory.slice(compactionIndex);
-
-  return systemMessage && compactionIndex > 0
-    ? [systemMessage, ...messagesFromCompaction]
-    : messagesFromCompaction;
+  return fullHistory.slice(compactionIndex);
 }
 
 /**
@@ -280,17 +253,19 @@ export function shouldAutoCompact(params: AutoCompactParams): boolean {
     (1 - AUTO_COMPACT_BUFFER_RATIO) * (contextLimit - maxTokens),
   );
   const safeCompactionBuffer = Math.max(maxTokens, ratioCompactionBuffer);
+  // At most half the room left after the reserve, so a small window with a
+  // large max_tokens (8K of 16K) still gets a positive threshold
   const compactionBuffer = Math.min(
     safeCompactionBuffer,
     AUTO_COMPACT_BUFFER_CAP,
+    Math.floor((contextLimit - maxTokens) / 2),
   );
 
   const compactionThreshold = contextLimit - maxTokens - compactionBuffer;
 
-  // Ensure we have positive space available for input
   if (compactionThreshold <= 0) {
     throw new Error(
-      `max_tokens is larger than context_length, which should not be possible. Please check your configuration.`,
+      `max_tokens (${maxTokens}) leaves no room for input in a ${contextLimit}-token context window. Lower maxTokens or raise contextLength in your configuration.`,
     );
   }
 

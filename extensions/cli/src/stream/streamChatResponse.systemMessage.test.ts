@@ -111,6 +111,50 @@ describe("streamChatResponse system message validation", () => {
     expect(services.systemMessage.getSystemMessage).not.toHaveBeenCalled();
   });
 
+  it("sends exactly one system message when history holds TUI notices", async () => {
+    const model = {
+      model: "test-model",
+      defaultCompletionOptions: { contextLength: 10_000, maxTokens: 100 },
+    } as ModelConfig;
+    const chatHistory: ChatHistoryItem[] = [
+      {
+        message: { role: "system", content: "Model switched" },
+        contextItems: [],
+      },
+      { message: { role: "user", content: "hello" }, contextItems: [] },
+      { message: { role: "assistant", content: "hi" }, contextItems: [] },
+      {
+        message: { role: "system", content: "Chat history compacted" },
+        contextItems: [],
+      },
+      { message: { role: "user", content: "next" }, contextItems: [] },
+    ];
+    const mockStream = {
+      [Symbol.asyncIterator]: async function* () {
+        yield { choices: [{ delta: { content: "ok" } }] };
+      },
+    };
+    mockLlmApi.chatCompletionStream = vi.fn().mockResolvedValue(mockStream);
+
+    const result = await processStreamingResponse({
+      chatHistory,
+      model,
+      llmApi: mockLlmApi,
+      abortController,
+      systemMessage: "System instructions",
+    });
+
+    expect(result.content).toBe("ok");
+    const request = vi.mocked(mockLlmApi.chatCompletionStream).mock.calls[0][0];
+    expect(request.messages.map((m) => m.role)).toEqual([
+      "system",
+      "user",
+      "assistant",
+      "user",
+    ]);
+    expect(request.messages[0].content).toBe("System instructions");
+  });
+
   it("should pass validation when system message + history fits", async () => {
     const model = {
       model: "test-model",

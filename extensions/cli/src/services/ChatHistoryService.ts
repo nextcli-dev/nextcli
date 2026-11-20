@@ -433,11 +433,7 @@ export class ChatHistoryService extends BaseService<ChatHistoryState> {
     if (index === null || index === undefined || index >= full.length) {
       return this.getHistory();
     }
-    const systemMessage = full[0]?.message?.role === "system" ? full[0] : null;
-    const messagesFromCompaction = full.slice(index);
-    return systemMessage && index > 0
-      ? [systemMessage, ...messagesFromCompaction]
-      : messagesFromCompaction;
+    return full.slice(index);
   }
 
   /**

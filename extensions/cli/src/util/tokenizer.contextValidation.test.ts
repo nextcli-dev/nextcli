@@ -1,7 +1,7 @@
 import { ModelConfig } from "@nextcli/config-yaml";
 import { describe, expect, it } from "vitest";
 
-import { validateContextLength } from "./tokenizer.js";
+import { getModelMaxTokens, validateContextLength } from "./tokenizer.js";
 
 describe("validateContextLength", () => {
   const createMockModel = (
@@ -26,6 +26,18 @@ describe("validateContextLength", () => {
       contextItems: [],
     }));
   };
+
+  it("reserves the same output tokens as compaction plans with", () => {
+    // 500K window, no maxTokens: compaction reserves min(35%, 64K) = 64K,
+    // so a 300K history must pass here too (35% uncapped would be 175K)
+    const model = createMockModel(500_000);
+    const chatHistory = createMockHistory(1, 1);
+
+    const result = validateContextLength({ chatHistory, model });
+
+    expect(result.maxTokens).toBe(getModelMaxTokens(model));
+    expect(result.maxTokens).toBe(64_000);
+  });
 
   it("should pass validation when within context limits", () => {
     const model = createMockModel(1000, 200);
