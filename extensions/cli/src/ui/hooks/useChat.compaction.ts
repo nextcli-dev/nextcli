@@ -152,7 +152,7 @@ export async function handleAutoCompaction({
       setCompactionIndex,
     },
     abortController,
-    // The summary is sized to fit with the message after it
+    // The summary must fit with the message after it
     followedBy: [message],
   });
 
@@ -167,7 +167,7 @@ export async function handleAutoCompaction({
     };
   }
 
-  // Shown, never sent: says the history was compacted and what it lost
+  // Shown in the TUI, never sent to the model
   const notice: ChatHistoryItem = {
     message: {
       role: "system",

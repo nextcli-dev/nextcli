@@ -211,7 +211,7 @@ describe("streamChatResponse - interrupt", () => {
 
     expect(calls).toBe(2);
     expect(abortController.signal.aborted).toBe(true);
-    // Only the summary was saved; the tool call after the exit never ran
+    // The tool call that arrived after the exit never ran
     const dispatched = vi
       .mocked(handleToolCalls)
       .mock.calls.flatMap(([options]) => options.toolCalls);

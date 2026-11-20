@@ -6,6 +6,7 @@ import type { ChatCompletionCreateParamsStreaming } from "openai/resources/chat/
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { compactChatHistory } from "./compaction.js";
+import { services } from "./services/index.js";
 
 // The summary request goes through the real agent loop to a fake provider,
 // so the test sees the messages that would be sent.
@@ -19,14 +20,20 @@ vi.mock("./services/index.js", () => ({
       getState: vi.fn(() => ({ currentMode: "enabled" })),
       isHeadless: vi.fn(() => true),
     },
-    chatHistory: { isReady: vi.fn(() => false) },
+    // Ready, as in the CLI: a write before the check would land here
+    chatHistory: {
+      isReady: vi.fn(() => true),
+      getHistory: vi.fn(() => []),
+      addAssistantMessage: vi.fn(),
+      setHistory: vi.fn(),
+    },
   },
 }));
 
 // The next request's tools, which the summary is sized to fit; none here
-vi.mock("./stream/handleToolCalls.js", () => ({
+vi.mock("./stream/handleToolCalls.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./stream/handleToolCalls.js")>()),
   getRequestTools: vi.fn(async () => []),
-  handleToolCalls: vi.fn(async () => false),
 }));
 
 vi.mock("./session.js", () => ({
@@ -166,9 +173,8 @@ describe("the summary request compaction sends", () => {
   });
 
   it("leaves out nothing the request itself has room for", async () => {
-    // Claude counts get a multiplier. Compaction used it on the system prompt
-    // where the request check doesn't, and counted the instruction twice, so
-    // this history was cut although the request fit.
+    // Claude counts carry a multiplier. Compaction must use the request's own
+    // check, so a history the request has room for is sent whole.
     const claude = {
       ...model,
       model: "claude-test",
@@ -219,6 +225,8 @@ describe("the summary request compaction sends", () => {
       expect(sentRequest().max_tokens).toBeLessThan(4_000);
       expect(sentRequest().max_tokens).toBeGreaterThan(3_500);
       expect(result.compactionContent).toBe("Summary");
+      // Returned, not stored: the caller writes it
+      expect(services.chatHistory.addAssistantMessage).not.toHaveBeenCalled();
     });
 
     it("fails, and returns nothing to write, when the summary is too long anyway", async () => {
@@ -251,6 +259,9 @@ describe("the summary request compaction sends", () => {
       ).rejects.toThrow(
         /The summary \([\d,]+ tokens\) doesn't fit the request after it/,
       );
+      // The summary stream wrote nothing to the live history either
+      expect(services.chatHistory.addAssistantMessage).not.toHaveBeenCalled();
+      expect(services.chatHistory.setHistory).not.toHaveBeenCalled();
     });
 
     it("fails before any call when the next request leaves no room", async () => {

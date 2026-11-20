@@ -28,8 +28,8 @@ export interface CompactionHelperOptions {
 }
 
 /**
- * What follows the summary in the next request: the user turn
- * commitCompacted appends. Built here, not with resumeAfterCompaction, which
+ * What follows the summary in the next request: the user turn that
+ * commitCompacted appends. Not built with resumeAfterCompaction, which
  * writes to the history service.
  */
 const NEXT_AFTER_SUMMARY: ChatHistoryItem[] = [
@@ -174,7 +174,7 @@ export async function handlePostToolValidation(
     }
 
     if (!wasCompacted) {
-      // The session is as it was before the compaction, so the run can resume
+      // Nothing was written, so the run can be resumed
       logger.error("Failed to compact history after tool execution overflow");
       throw new Error(
         `Context limit exceeded and compaction failed: ${error?.message ?? "no summary"}`,

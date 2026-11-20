@@ -354,8 +354,9 @@ describe("streamChatResponse - agent loop limits", () => {
       expect(getRequestTools).not.toHaveBeenCalled();
       const calls = vi.mocked(llmApi.chatCompletionStream).mock.calls;
       expect(calls[0][0].tools).toBeUndefined();
-      expect(handleToolCalls).toHaveBeenCalledTimes(1);
-      expect(vi.mocked(handleToolCalls).mock.calls[0][0].toolCalls).toEqual([]);
+      // The tool call isn't run, and the summary isn't stored: its caller
+      // stores it once it passes the next-request check
+      expect(handleToolCalls).not.toHaveBeenCalled();
       expect(getLimitReached()).toBeUndefined();
     });
 

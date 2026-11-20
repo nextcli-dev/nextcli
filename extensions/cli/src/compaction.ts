@@ -35,7 +35,7 @@ export interface CompactionResult {
   compactionContent: string;
   /** Earlier messages the summary request had no room for; not in the summary */
   omittedMessages: number;
-  /** Tool outputs the summary request held only the start of */
+  /** Tool outputs cut to their start in the summary request */
   shortenedOutputs: number;
 }
 
@@ -50,24 +50,24 @@ export interface CompactionOptions {
   abortController?: AbortController;
   /** The system prompt the summary request goes with; the current one by default */
   systemMessage?: string;
-  /** The tools the request after the summary carries; a normal request's by default */
+  /** The next request's tools; a normal request's by default */
   tools?: ChatCompletionTool[];
   /**
-   * What follows the summary in that request: the continue prompt in the
-   * agent loop, the person's message before a TUI send. Nothing by default.
+   * What follows the summary in the next request: the continue prompt in the
+   * agent loop, or the person's message before a TUI send. None by default.
    */
   followedBy?: ChatHistoryItem[];
 }
 
 // A summary shorter than this can't carry the work forward
 const MIN_SUMMARY_TOKENS = 1_000;
-// The highest explicit max_tokens a summary is sent with, the same ceiling a
-// run's final answer has (FINAL_ANSWER_TOKENS)
+// The highest max_tokens a summary is sent with, the same as a final answer's
+// (FINAL_ANSWER_TOKENS)
 const MAX_CAPPED_SUMMARY_TOKENS = 16_000;
-// The summary item's own message overhead
+// Message overhead of the summary item
 const SUMMARY_ITEM_TOKENS = 10;
 
-/** The request after the summary: what it sizes the summary for */
+/** The request after the summary, which the summary must fit */
 interface NextRequest {
   systemMessage: string;
   tools: ChatCompletionTool[];
@@ -95,9 +95,8 @@ async function currentRequestTools(
 }
 
 /**
- * The tokens the request after the summary leaves for it: the window less
- * the room kept for the answer, the safety buffer, the system prompt, the
- * tools and what follows the summary
+ * Tokens the next request leaves for the summary: the window less the answer
+ * reserve, the safety buffer, the system prompt, the tools and what follows
  */
 function roomForSummary(model: ModelConfig, next: NextRequest): number {
   const rest = countTotalInputTokens({
@@ -115,7 +114,7 @@ function roomForSummary(model: ModelConfig, next: NextRequest): number {
   );
 }
 
-/** Why there's no room for a summary, with the sizes that take the window */
+/** The error for no room, with the sizes that fill the window */
 function noRoomForSummary(
   model: ModelConfig,
   next: NextRequest,
@@ -133,7 +132,7 @@ function noRoomForSummary(
   return `Can't compact: ${parts.join(", ")} leave ${tokens(Math.max(room, 0))} of the ${tokens(getModelContextLimit(model))} window for a summary, less than the ${tokens(MIN_SUMMARY_TOKENS)} one needs. The conversation was left as it is. Raise contextLength, lower maxTokens or turn off tools you don't need.`;
 }
 
-/** The model with its answer capped, so a summary fits the request after it */
+/** The model with its answer capped at maxTokens */
 function withAnswerCap(model: ModelConfig, maxTokens: number): ModelConfig {
   const { reasoningBudgetTokens, ...options } =
     model.defaultCompletionOptions ?? {};
@@ -149,7 +148,7 @@ function withAnswerCap(model: ModelConfig, maxTokens: number): ModelConfig {
   };
 }
 
-/** Why a summary request can't be made: the parts that are never left out, and their sizes */
+/** The error for a summary request that can't fit: the kept parts and their sizes */
 function summaryRequestTooLong(
   history: ChatHistoryItem[],
   model: ModelConfig,
@@ -177,7 +176,7 @@ function summaryRequestTooLong(
  * @param chatHistory The current chat history to compact
  * @param model The model configuration
  * @param llmApi The LLM API instance
- * @param options Optional configuration including callbacks, abort controller, and system message tokens
+ * @param options Callbacks, the abort controller, and the request after the summary
  * @returns The compacted history with compaction index
  */
 export async function compactChatHistory(
@@ -201,9 +200,8 @@ export async function compactChatHistory(
     throw error;
   };
 
-  // The summary replaces the session, so it has to fit the request after
-  // it: that request's room caps the summary call's answer. Nothing is
-  // written before the result is checked below.
+  // The summary replaces the session, so it must fit the next request: that
+  // request's room caps the summary's length
   const room = roomForSummary(model, next);
   if (room < MIN_SUMMARY_TOKENS) {
     fail(noRoomForSummary(model, next, room));
@@ -222,9 +220,8 @@ export async function compactChatHistory(
     contextItems: [],
   };
 
-  // The check the summary request itself passes (it has no tools), so what
-  // fits here is what gets sent. The instruction is counted, never a turn to
-  // keep, and the request isn't fitted again on the way out.
+  // The same check the summary request passes (it has no tools). The
+  // instruction is counted but never kept as a turn.
   const validate = (history: ChatHistoryItem[]) =>
     validateContextLength({
       chatHistory: [...history, compactionPrompt],
@@ -232,14 +229,10 @@ export async function compactChatHistory(
       systemMessage,
       safetyBuffer: REQUEST_SAFETY_BUFFER,
     });
-  // Too long to summarize whole: shorten older tool outputs, then leave
-  // earlier messages out, so the summary still covers the latest request
   const fitted = fitHistory(
     historySentToModel(chatHistory),
     (history) => validate(history).isValid,
   );
-  // The summary replaces the session: fail, and keep the session as it is,
-  // rather than summarize less than the newest turn
   if (!fitted.fits) {
     fail(
       summaryRequestTooLong(
@@ -278,14 +271,14 @@ export async function compactChatHistory(
       true,
     );
 
-    // An aborted stream returns what it had so far: never keep a partial summary
+    // An aborted stream returns its partial text: never keep it
     if (controller.signal.aborted) {
       const cancelled = new Error("Compaction cancelled");
       cancelled.name = "AbortError";
       throw cancelled;
     }
 
-    // A provider that ends the stream without text gave no summary
+    // A stream that ends without text gives no summary
     if (!compactionContent.trim()) {
       throw new Error(
         "The model returned an empty summary, so the conversation was left as it is.",
@@ -303,8 +296,8 @@ export async function compactChatHistory(
       conversationSummary: compactionContent,
     };
 
-    // A provider that ignores max_tokens, or an estimate that drifted: the
-    // session stays as it is rather than hold a summary it can't send
+    // Catches a provider that ignores max_tokens, or estimate drift. Callers
+    // write only what this returns.
     const nextCheck = validateContextLength({
       chatHistory: [compactionMessage, ...next.followedBy],
       model,
@@ -349,8 +342,8 @@ export function findCompactionIndex(
 }
 
 /**
- * What to tell the person once a compaction is done, including what didn't
- * fit the summary request: it is in neither the summary nor the session
+ * The notice for a finished compaction, with what didn't fit the summary
+ * request (it is in neither the summary nor the session)
  */
 export function compactionDoneMessage(
   result: Pick<CompactionResult, "omittedMessages" | "shortenedOutputs">,

@@ -158,9 +158,9 @@ interface ProcessStreamingResponseOptions {
   /** Turns thinking off for this call, for a model that can */
   thinkingOff?: boolean;
   /**
-   * A summary request, already cut to fit by compactChatHistory. It is sent
-   * whole or not at all: pruning it again would keep the instruction as the
-   * newest turn and drop the conversation it summarizes.
+   * A summary request, already fitted by compactChatHistory. It is sent whole
+   * or fails: fitting it again would keep the instruction as the newest turn
+   * and drop the conversation.
    */
   isCompacting?: boolean;
 }
@@ -197,9 +197,8 @@ export async function processStreamingResponse(
       tools,
     });
 
-  // Too long for the window: shorten older tool outputs, then leave older
-  // turns out of this request (the session keeps them), never the newest
-  // user message
+  // Too long for the window: fit this request only (the session keeps
+  // everything)
   const sent = historySentToModel(options.chatHistory);
   const fitted = options.isCompacting
     ? { history: sent, removed: 0, shortened: 0 }
@@ -399,8 +398,8 @@ export async function processStreamingResponse(
 }
 
 /**
- * The tools a normal request of this session carries, with the model's
- * overrides. Compaction sizes its summary for the request after it with these.
+ * The tools a normal request carries, with the model's overrides. Compaction
+ * sizes its summary with them.
  */
 export async function requestTools(
   model: ModelConfig,
@@ -493,7 +492,7 @@ export async function streamChatResponse(
       // Pre-API auto-compaction checkpoint (now includes tools). Not before
       // a run's last call: the limit left room for that call only, and the
       // request for the answer would go into the summary. processStreaming-
-      // Response prunes a history that doesn't fit.
+      // Response fits a history that is too long.
       if (!wrapUp) {
         chatHistory = (await handlePreApiCompaction(chatHistory, compaction))
           .chatHistory;
@@ -536,6 +535,12 @@ export async function streamChatResponse(
       }
 
       // Tool calls in it are dropped, not run
+      if (isCompacting) {
+        // A summary is stored by compactChatHistory's caller, after it passes
+        // the next-request check; storing it here would write before that
+        handleContentDisplay(content, callbacks, isHeadless);
+        return content || finalResponse || fullResponse;
+      }
       if (onlyCall) {
         await saveFinalAnswer({
           chatHistory,

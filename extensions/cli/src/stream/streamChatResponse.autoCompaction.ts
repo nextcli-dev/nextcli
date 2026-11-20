@@ -70,7 +70,7 @@ function handleCompactionSuccess(
   const successMessage = compactionDoneMessage(result, true);
 
   if (isHeadless) {
-    // An unattended run still says what the summary lost, on stderr
+    // Headless: report what the summary lost on stderr
     if (result.omittedMessages > 0 || result.shortenedOutputs > 0) {
       safeStderr(`Warning: ${successMessage}\n`);
     }
@@ -110,7 +110,7 @@ function handleCompactionError(
   const errorMessage = `Auto-compaction error: ${formatError(error)}`;
   logger.error(errorMessage);
 
-  // An unattended run still says why, where a person can see it later
+  // Headless: report the reason on stderr
   if (isHeadless) {
     safeStderr(`Warning: ${errorMessage}\n`);
     return;
@@ -201,8 +201,8 @@ export async function handleAutoCompaction(
       abortController,
     });
 
-    // Written only now: compactChatHistory returns a summary the next request
-    // can carry, or throws and leaves the session as it was
+    // Written only after compactChatHistory returns: it throws, and nothing is
+    // written, if the summary wouldn't fit the next request
     updateSessionHistory(result.compactedHistory);
 
     // Handle success notification

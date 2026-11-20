@@ -336,8 +336,7 @@ describe("fitHistory", () => {
 
       const result = fitHistory(history, atMostChars(10_500));
 
-      // a1's output was cut, then its turn left out: it isn't counted, since
-      // the history sent has no cut output in it
+      // a1's output was cut and then its turn left out, so it isn't counted
       expect(result).toMatchObject({ removed: 3, shortened: 0, fits: true });
       expect(contents(result.history)).toEqual(["u2", "a2"]);
       expect(outputOf(result.history[1])).toBe(big);

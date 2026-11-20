@@ -8,10 +8,9 @@ export const REQUEST_SAFETY_BUFFER = 100;
 /** Starts the note that stands in for messages left out of a request */
 export const PRUNED_HISTORY_NOTE_PREFIX = "[Context note:";
 
-// When a history doesn't fit, tool outputs are cut to their start, all to one
-// cap: the largest that fits, never below this floor. A tool can be run
-// again; a message can't be fetched again, so outputs shrink before any
-// message is left out.
+// Tool outputs are cut to one cap, the largest that fits, but never below this
+// floor. They shrink before any message is left out: a tool can be run
+// again, a message can't be fetched again.
 const MIN_OUTPUT_CHARS = 500;
 // An output is cut only when that saves more than the truncation note adds
 const TRUNCATION_NOTE_ROOM = 100;
@@ -34,7 +33,7 @@ interface OutputRef {
   length: number;
 }
 
-/** The tool outputs of the items from `from` up to `to` */
+/** The tool outputs of history[from..to) */
 function toolOutputs(
   history: ChatHistoryItem[],
   from: number,
@@ -68,7 +67,7 @@ function toolOutputs(
 const longest = (refs: OutputRef[]) =>
   refs.reduce((max, ref) => Math.max(max, ref.length), 0);
 
-/** The start of a text, by characters only, so a lower cap always means less */
+/** The start of a text, cut by characters only, so a lower cap is always shorter */
 function cut(text: string, cap: number): string {
   return truncateByLinesAndChars(
     text,
@@ -80,8 +79,8 @@ function cut(text: string, cap: number): string {
 
 /**
  * A copy of the history with each listed output longer than the cap cut to
- * it; the input is left as it is. The outputs it cuts go into `cutOutputs`,
- * so the result can count the ones still in the history it returns.
+ * it. Cut outputs are recorded in `cutOutputs`, so the result can count the
+ * ones it still holds.
  */
 function withCap(
   history: ChatHistoryItem[],
@@ -258,16 +257,15 @@ function largestFitting(
 /**
  * Makes a history fit, giving up as little as it can, in this order:
  * 1. cut the tool outputs before the last step to one cap, the largest that
- *    fits: the longest outputs shrink first, short ones stay whole;
- * 2. with those outputs at the floor, leave out older turns, then older steps
- *    of the newest turn, with a note in front saying how many messages are
- *    gone;
+ *    fits, so the longest shrink first and short ones stay whole;
+ * 2. with those at the floor, leave out older turns, then older steps of the
+ *    newest turn, with a note in front saying how many messages are gone;
  * 3. cut the last step's tool outputs the same way.
- * A leading summary from an earlier compaction, the newest user message and
- * the last step are never left out, a tool call keeps its results, and text
- * other than tool output is never cut. Returns the history as given when it
- * fits, else the smallest one it can make, with `fits: false` when even that
- * doesn't fit. The counts describe the returned history.
+ * Never left out: a leading summary from an earlier compaction, the newest
+ * user message and the last step. A tool call keeps its results, and only
+ * tool output is cut. Returns the history as given when it fits, else the
+ * smallest it can make, with `fits: false` if even that doesn't fit. The
+ * counts describe the returned history.
  * @param chatHistory The history to send
  * @param fits Whether a history fits the request
  */
@@ -332,7 +330,7 @@ export function fitHistory(
     );
   }
 
-  // 3. The last step's tool outputs, which is never left out
+  // 3. The last step's tool outputs (the step itself always stays)
   const kept = drops.at(-1) ?? floorBody;
   const removed = body.length - kept.length;
   const newest = toolOutputs(kept, lastStepStart(kept), kept.length);
