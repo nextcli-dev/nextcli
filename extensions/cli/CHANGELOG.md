@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.16.1](https://github.com/nextcli-dev/nextcli/compare/cli-v0.16.0...cli-v0.16.1) (2026-11-20)
+
+
+### Bug Fixes
+
+* **cli:** cancel auto-compaction on Escape and prune the oldest turns, not the newest ([#196](https://github.com/nextcli-dev/nextcli/issues/196)) ([5de68b2](https://github.com/nextcli-dev/nextcli/commit/5de68b219bb37098c42900aaa9f8de925adcc6b8))
+* **cli:** count context honestly and keep display notices out of model requests ([3ebf853](https://github.com/nextcli-dev/nextcli/commit/3ebf85361f733ef7ff08ef99988ce40fb5c6d5b9))
+* **cli:** reserve the system prompt in every compaction and share the sent-history rule ([fae9746](https://github.com/nextcli-dev/nextcli/commit/fae97464f2596308809c1b9c58188481ea1c41f8))
+
 ## [0.16.0](https://github.com/nextcli-dev/nextcli/compare/cli-v0.15.0...cli-v0.16.0) (2026-11-19)
 
 
