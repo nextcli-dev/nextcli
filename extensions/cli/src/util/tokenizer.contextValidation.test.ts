@@ -27,16 +27,24 @@ describe("validateContextLength", () => {
     }));
   };
 
-  it("reserves the same output tokens as compaction plans with", () => {
-    // 500K window, no maxTokens: compaction reserves min(35%, 64K) = 64K,
-    // so a 300K history must pass here too (35% uncapped would be 175K)
-    const model = createMockModel(500_000);
-    const chatHistory = createMockHistory(1, 1);
+  it("accepts a history that fits beside the 64K reserve compaction plans with", () => {
+    // 200K window, no maxTokens: compaction reserves min(35%, 64K) = 64K.
+    // 133K of input fits beside 64K but not beside an uncapped 35% (70K).
+    const model = createMockModel(200_000);
+    const chatHistory = [
+      {
+        message: { role: "user" as const, content: " hello".repeat(133_000) },
+        contextItems: [],
+      },
+    ];
 
     const result = validateContextLength({ chatHistory, model });
 
+    expect(result.isValid).toBe(true);
     expect(result.maxTokens).toBe(getModelMaxTokens(model));
-    expect(result.maxTokens).toBe(64_000);
+    expect(result.inputTokens! + Math.ceil(200_000 * 0.35)).toBeGreaterThan(
+      200_000,
+    );
   });
 
   it("should pass validation when within context limits", () => {

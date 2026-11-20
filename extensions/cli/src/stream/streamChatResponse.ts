@@ -21,6 +21,7 @@ import {
 import { logger } from "../util/logger.js";
 import {
   countTotalInputTokens,
+  historySentToModel,
   validateContextLength,
 } from "../util/tokenizer.js";
 
@@ -176,11 +177,7 @@ export async function processStreamingResponse(
     systemMessage,
   } = options;
 
-  // role:"system" history items are TUI notices (and, in `cn serve`, a copy
-  // of the system prompt); the system prompt is sent separately below
-  let chatHistory = options.chatHistory.filter(
-    (item) => item.message.role !== "system",
-  );
+  let chatHistory = historySentToModel(options.chatHistory);
 
   // Safety buffer to account for tokenization estimation errors
   const SAFETY_BUFFER = 100;

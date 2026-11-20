@@ -234,12 +234,23 @@ export function countChatHistoryItemTokens(
  * @param chatHistory The chat history to count tokens for
  * @returns The estimated total token count
  */
+/**
+ * The history items a model request carries. role:"system" items are TUI
+ * notices, plus in `cn serve` a copy of the system prompt, which every request
+ * sends separately. Requests and token counts both go through this, so they
+ * agree on what is sent.
+ */
+export function historySentToModel(
+  chatHistory: ChatHistoryItem[],
+): ChatHistoryItem[] {
+  return chatHistory.filter((item) => item.message.role !== "system");
+}
+
 export function countChatHistoryTokens(
   chatHistory: ChatHistoryItem[],
   model: ModelConfig,
 ): number {
-  // role:"system" items are notices shown in the TUI; they aren't sent
-  const sent = chatHistory.filter((item) => item.message.role !== "system");
+  const sent = historySentToModel(chatHistory);
   let totalTokens = 0;
 
   for (const historyItem of sent) {

@@ -12,6 +12,8 @@ vi.mock("./stream/streamChatResponse.js", () => ({
 }));
 
 vi.mock("./util/tokenizer.js", () => ({
+  historySentToModel: (history: { message: { role: string } }[]) =>
+    history.filter((item) => item.message.role !== "system"),
   countChatHistoryTokens: vi.fn(),
   getModelContextLimit: vi.fn(),
   getModelMaxTokens: vi.fn(),
@@ -55,7 +57,9 @@ describe("compaction infinite loop prevention", () => {
     ]);
 
     // This should not hang - it should break out of the loop
-    const result = await compactChatHistory(history, mockModel, mockLlmApi);
+    const result = await compactChatHistory(history, mockModel, mockLlmApi, {
+      systemMessageTokens: 0,
+    });
 
     // Should complete successfully even though token count is still too high
     expect(result.compactedHistory).toBeDefined();
@@ -89,7 +93,9 @@ describe("compaction infinite loop prevention", () => {
     ]);
 
     // This should not hang
-    const result = await compactChatHistory(history, mockModel, mockLlmApi);
+    const result = await compactChatHistory(history, mockModel, mockLlmApi, {
+      systemMessageTokens: 0,
+    });
 
     expect(result.compactedHistory).toBeDefined();
   });
@@ -130,7 +136,9 @@ describe("compaction infinite loop prevention", () => {
       { role: "user", content: "Another question" },
     ]);
 
-    const result = await compactChatHistory(history, mockModel, mockLlmApi);
+    const result = await compactChatHistory(history, mockModel, mockLlmApi, {
+      systemMessageTokens: 0,
+    });
 
     expect(result.compactedHistory).toBeDefined();
     // The function will call countTokens multiple times during the process

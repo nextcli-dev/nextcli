@@ -32,6 +32,8 @@ vi.mock("../session.js", () => ({
 }));
 
 vi.mock("../util/tokenizer.js", () => ({
+  historySentToModel: (history: { message: { role: string } }[]) =>
+    history.filter((item) => item.message.role !== "system"),
   countChatHistoryItemTokens: vi.fn(() => 100),
   countTotalInputTokens: vi.fn(() => 1000),
   getModelMaxTokens: vi.fn(() => 100_000),

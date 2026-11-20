@@ -36,9 +36,12 @@ vi.mock("../compaction.js", () => ({
     }),
   ),
   getAutoCompactMessage: vi.fn(() => "Compacting"),
+  countSystemMessageTokens: vi.fn(async () => 0),
 }));
 
 vi.mock("../util/tokenizer.js", () => ({
+  historySentToModel: (history: { message: { role: string } }[]) =>
+    history.filter((item) => item.message.role !== "system"),
   validateContextLength: vi.fn(({ chatHistory }) =>
     isOverLimit(chatHistory)
       ? {

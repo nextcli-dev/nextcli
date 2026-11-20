@@ -7,6 +7,7 @@ import { handleAutoCompaction } from "./streamChatResponse.autoCompaction.js";
 // Mock dependencies
 vi.mock("../compaction.js", () => ({
   compactChatHistory: vi.fn(),
+  countSystemMessageTokens: vi.fn(async () => 100),
   shouldAutoCompact: vi.fn(),
   getAutoCompactMessage: vi.fn(),
 }));
@@ -24,6 +25,8 @@ vi.mock("../session.js", () => ({
 }));
 
 vi.mock("../util/tokenizer.js", () => ({
+  historySentToModel: (history: { message: { role: string } }[]) =>
+    history.filter((item) => item.message.role !== "system"),
   countChatHistoryItemTokens: vi.fn(() => 100), // Mock return value
 }));
 
