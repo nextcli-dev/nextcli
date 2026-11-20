@@ -177,6 +177,48 @@ describe("streamChatResponse - interrupt", () => {
     expect(llmApi.chatCompletionStream).not.toHaveBeenCalled();
   });
 
+  it("still aborts the turn on exit after a compaction ran inside it", async () => {
+    let calls = 0;
+    const llmApi = {
+      chatCompletionStream: vi.fn().mockImplementation(async function* () {
+        calls++;
+        if (calls === 1) {
+          // The summary request
+          yield chunk({ content: "Summary" });
+          return;
+        }
+        yield chunk({ content: "Working on it" });
+        abortAll();
+        yield touchMarker;
+      }),
+    } as unknown as BaseLlmApi;
+    const abortController = new AbortController();
+    // The summary runs as a nested stream with the turn's controller
+    vi.mocked(handlePreApiCompaction).mockImplementationOnce(
+      async (chatHistory, options) => {
+        await streamChatResponse(
+          chatHistory,
+          model,
+          llmApi,
+          options.abortController!,
+          undefined,
+          true,
+        );
+        return { chatHistory, wasCompacted: false };
+      },
+    );
+
+    await streamChatResponse([], model, llmApi, abortController);
+
+    expect(calls).toBe(2);
+    expect(abortController.signal.aborted).toBe(true);
+    // Only the summary was saved; the tool call after the exit never ran
+    const dispatched = vi
+      .mocked(handleToolCalls)
+      .mock.calls.flatMap(([options]) => options.toolCalls);
+    expect(dispatched).toEqual([]);
+  });
+
   it("passes the turn's signal to tool dispatch", async () => {
     const llmApi = {
       chatCompletionStream: vi.fn().mockImplementation(async function* () {

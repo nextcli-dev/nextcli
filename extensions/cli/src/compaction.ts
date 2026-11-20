@@ -155,7 +155,9 @@ export async function compactChatHistory(
 
     // An aborted stream returns what it had so far: never keep a partial summary
     if (controller.signal.aborted) {
-      throw compactionAbortedError();
+      const cancelled = new Error("Compaction cancelled");
+      cancelled.name = "AbortError";
+      throw cancelled;
     }
 
     // The system prompt isn't part of the history (role:"system" items are
@@ -176,11 +178,10 @@ export async function compactChatHistory(
       omittedMessages: pruned.removed,
     };
   } catch (error) {
-    if (isCompactionAborted(error)) {
-      throw error;
+    if (!isCompactionAborted(error)) {
+      logger.error("Compaction failed", error);
+      callbacks?.onError?.(error as Error);
     }
-    logger.error("Compaction failed", error);
-    callbacks?.onError?.(error as Error);
     throw error;
   }
 }
@@ -319,13 +320,6 @@ export function compactionDoneMessage(
   return result.omittedMessages > 0
     ? `${done} The ${result.omittedMessages} oldest messages didn't fit the summary request and aren't in the summary.`
     : done;
-}
-
-/** The error a cancelled compaction throws */
-function compactionAbortedError(): Error {
-  const error = new Error("Compaction cancelled");
-  error.name = "AbortError";
-  return error;
 }
 
 /** Whether an error is a compaction the user cancelled */

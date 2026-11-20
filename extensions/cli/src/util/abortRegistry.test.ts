@@ -33,6 +33,33 @@ describe("abortRegistry", () => {
     expect(controller.signal.aborted).toBe(false);
   });
 
+  it("keeps a controller registered while a nested registration ends", () => {
+    // A turn's summary request runs a nested stream with the same controller
+    const controller = new AbortController();
+    const unregisterTurn = registerAbortController(controller);
+    const unregisterNested = registerAbortController(controller);
+    unregisterNested();
+    // A second call of the same unregister changes nothing
+    unregisterNested();
+
+    abortAll();
+
+    expect(controller.signal.aborted).toBe(true);
+    unregisterTurn();
+  });
+
+  it("unregisters a controller once every registration ended", () => {
+    const controller = new AbortController();
+    const unregisterTurn = registerAbortController(controller);
+    const unregisterNested = registerAbortController(controller);
+    unregisterNested();
+    unregisterTurn();
+
+    abortAll();
+
+    expect(controller.signal.aborted).toBe(false);
+  });
+
   it("aborts a controller registered after shutdown began", () => {
     abortAll();
 

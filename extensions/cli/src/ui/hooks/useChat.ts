@@ -634,9 +634,9 @@ export function useChat({
       };
       setQueuedMessages((prev) => [...prev, queuedMessageForDisplay]);
 
-      let currentChatHistory, currentCompactionIndex;
+      let compacted;
       try {
-        const result = await handleAutoCompaction({
+        compacted = await handleAutoCompaction({
           chatHistory: currentHistory,
           model,
           llmApi,
@@ -644,9 +644,8 @@ export function useChat({
           setChatHistory: setChatHistory,
           setCompactionIndex,
           abortController: compactionController,
+          message: formattedQueuedMessage,
         });
-        currentChatHistory = result.currentChatHistory;
-        currentCompactionIndex = result.currentCompactionIndex;
       } catch (error) {
         // If compaction fails, remove the queued message from display
         setQueuedMessages((prev) =>
@@ -660,13 +659,12 @@ export function useChat({
       }
 
       // Escape during the compaction: the message isn't sent
-      if (compactionController.signal.aborted) {
+      if (!compacted) {
         return;
       }
 
       // Add the formatted queued message to history after compaction completes
-      const newHistory = [...currentChatHistory, formattedQueuedMessage];
-      setChatHistory(newHistory);
+      setChatHistory(compacted.newHistory);
 
       // Remove the queued message from display since it's now in chat history
       setQueuedMessages((prev) =>
@@ -674,7 +672,10 @@ export function useChat({
       );
 
       // Execute the streaming response with the updated history
-      await executeStreamingResponse(newHistory, currentCompactionIndex);
+      await executeStreamingResponse(
+        compacted.newHistory,
+        compacted.currentCompactionIndex,
+      );
     } else {
       // Format message with attached files and images
       logger.debug("Processing message with images", {
@@ -706,9 +707,9 @@ export function useChat({
       };
       setQueuedMessages((prev) => [...prev, compactionQueuedMessage]);
 
-      let currentChatHistory, currentCompactionIndex;
+      let compacted;
       try {
-        const result = await handleAutoCompaction({
+        compacted = await handleAutoCompaction({
           chatHistory: currentHistory,
           model,
           llmApi,
@@ -716,9 +717,8 @@ export function useChat({
           setChatHistory: setChatHistory,
           setCompactionIndex,
           abortController: compactionController,
+          message: newUserMessage,
         });
-        currentChatHistory = result.currentChatHistory;
-        currentCompactionIndex = result.currentCompactionIndex;
       } catch (error) {
         // If compaction fails, remove the triggering message from queue display
         setQueuedMessages((prev) =>
@@ -732,13 +732,12 @@ export function useChat({
       }
 
       // Escape during the compaction: the message isn't sent
-      if (compactionController.signal.aborted) {
+      if (!compacted) {
         return;
       }
 
       // Add the formatted user message to history
-      const newHistory = [...currentChatHistory, newUserMessage];
-      setChatHistory(newHistory);
+      setChatHistory(compacted.newHistory);
 
       // Remove the triggering message from queue display since it's now in chat history
       setQueuedMessages((prev) =>
@@ -746,7 +745,10 @@ export function useChat({
       );
 
       // Execute the streaming response
-      await executeStreamingResponse(newHistory, currentCompactionIndex);
+      await executeStreamingResponse(
+        compacted.newHistory,
+        compacted.currentCompactionIndex,
+      );
     }
   };
 
