@@ -38,6 +38,8 @@ interface AutoCompactionOptions {
   tools?: ChatCompletionTool[];
   /** Escape aborts it: the summary call stops and the history stays as it was */
   abortController?: AbortController;
+  /** What follows the summary in the next request, which it is sized to fit */
+  followedBy?: ChatHistoryItem[];
 }
 
 /**
@@ -108,7 +110,11 @@ function handleCompactionError(
   const errorMessage = `Auto-compaction error: ${formatError(error)}`;
   logger.error(errorMessage);
 
-  if (isHeadless) return;
+  // An unattended run still says why, where a person can see it later
+  if (isHeadless) {
+    safeStderr(`Warning: ${errorMessage}\n`);
+    return;
+  }
 
   const warningMessage = `Warning: ${errorMessage}. Continuing without compaction...`;
 
@@ -148,6 +154,8 @@ export async function handleAutoCompaction(
   /** What didn't fit the summary request, when compacted */
   omittedMessages?: number;
   shortenedOutputs?: number;
+  /** Why it didn't compact, when it tried and failed */
+  error?: Error;
 }> {
   const {
     isHeadless = false,
@@ -155,6 +163,7 @@ export async function handleAutoCompaction(
     systemMessage: providedSystemMessage,
     tools,
     abortController,
+    followedBy,
   } = options;
 
   if (
@@ -187,10 +196,13 @@ export async function handleAutoCompaction(
             onStreamComplete: () => {},
           },
       systemMessage: providedSystemMessage,
+      tools,
+      followedBy,
       abortController,
     });
 
-    // Save the compacted session
+    // Written only now: compactChatHistory returns a summary the next request
+    // can carry, or throws and leaves the session as it was
     updateSessionHistory(result.compactedHistory);
 
     // Handle success notification
@@ -213,6 +225,11 @@ export async function handleAutoCompaction(
     handleCompactionError(error, isHeadless, callbacks);
 
     // Continue without compaction on error
-    return { chatHistory, compactionIndex: null, wasCompacted: false };
+    return {
+      chatHistory,
+      compactionIndex: null,
+      wasCompacted: false,
+      error: error instanceof Error ? error : new Error(String(error)),
+    };
   }
 }

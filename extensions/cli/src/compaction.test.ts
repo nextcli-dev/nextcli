@@ -17,6 +17,8 @@ import { streamChatResponse } from "./stream/streamChatResponse.js";
 // Mock the streamChatResponse function
 vi.mock("./stream/streamChatResponse.js", () => ({
   streamChatResponse: vi.fn(),
+  // The next request's tools; none here
+  requestTools: vi.fn(async () => []),
 }));
 
 // The current system prompt, which /compact reserves room for
@@ -26,7 +28,10 @@ vi.mock("./services/index.js", () => ({
     systemMessage: {
       getSystemMessage: vi.fn(async () => currentSystemPrompt.text),
     },
-    toolPermissions: { getState: vi.fn(() => ({ currentMode: "normal" })) },
+    toolPermissions: {
+      getState: vi.fn(() => ({ currentMode: "normal" })),
+      isHeadless: vi.fn(() => false),
+    },
   },
 }));
 

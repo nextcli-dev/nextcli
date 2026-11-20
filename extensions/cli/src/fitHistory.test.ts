@@ -271,29 +271,34 @@ describe("fitHistory", () => {
     const atMostChars = (n: number) => (history: ChatHistoryItem[]) =>
       size(history) <= n;
 
-    it("shortens an older output before leaving out any message", () => {
+    it("cuts an older output only as far as needed before leaving out any message", () => {
       const history = [
         user("u1"),
         step("a1", "c1", big),
         user("u2"),
         step("a2", "c2", "ok"),
       ];
+      const room = size(history) - 5_000;
 
-      const result = fitHistory(history, atMostChars(size(history) - 5_000));
+      const result = fitHistory(history, atMostChars(room));
 
       expect(result).toMatchObject({ removed: 0, shortened: 1, fits: true });
       expect(contents(result.history)).toEqual(["u1", "a1", "u2", "a2"]);
-      expect(outputOf(result.history[1]).length).toBeLessThan(2_100);
-      expect(outputOf(result.history[1])).toMatch(/^x+/);
-      expect(outputOf(result.history[1])).toContain("tool output truncated");
+      const output = outputOf(result.history[1]);
+      expect(output).toMatch(/^x+/);
+      expect(output).toContain("tool output truncated");
+      // The largest cap that fits: about 5,000 characters, not a fixed excerpt
+      expect(output.length).toBeGreaterThan(4_500);
+      expect(size(result.history)).toBeLessThanOrEqual(room);
       // The history it came from is left as it was
       expect(outputOf(history[1])).toBe(big);
     });
 
-    it("shortens the oldest output first", () => {
+    it("cuts the largest output first and leaves a short one whole", () => {
+      const short = "z".repeat(3_000);
       const history = [
         user("u1"),
-        step("a1", "c1", big),
+        step("a1", "c1", short),
         user("u2"),
         step("a2", "c2", big),
         user("u3"),
@@ -302,12 +307,25 @@ describe("fitHistory", () => {
 
       const result = fitHistory(history, atMostChars(size(history) - 5_000));
 
-      expect(result).toMatchObject({ removed: 0, shortened: 1 });
-      expect(outputOf(result.history[1])).not.toBe(big);
-      expect(outputOf(result.history[3])).toBe(big);
+      expect(result).toMatchObject({ removed: 0, shortened: 1, fits: true });
+      expect(outputOf(result.history[1])).toBe(short);
+      expect(outputOf(result.history[3])).not.toBe(big);
     });
 
-    it("leaves older turns out before shortening the newest step's output", () => {
+    it("cuts an output under 4,000 characters instead of leaving its turn out", () => {
+      const history = [
+        user("u1"),
+        step("a1", "c1", "x".repeat(3_999)),
+        user("u2"),
+      ];
+
+      const result = fitHistory(history, atMostChars(size(history) - 1_000));
+
+      expect(result).toMatchObject({ removed: 0, shortened: 1, fits: true });
+      expect(contents(result.history)).toEqual(["u1", "a1", "u2"]);
+    });
+
+    it("leaves older turns out before cutting the newest step's output", () => {
       const history = [
         user("u1"),
         step("a1", "c1", big),
@@ -318,19 +336,21 @@ describe("fitHistory", () => {
 
       const result = fitHistory(history, atMostChars(10_500));
 
-      expect(result).toMatchObject({ removed: 3, shortened: 1, fits: true });
+      // a1's output was cut, then its turn left out: it isn't counted, since
+      // the history sent has no cut output in it
+      expect(result).toMatchObject({ removed: 3, shortened: 0, fits: true });
       expect(contents(result.history)).toEqual(["u2", "a2"]);
       expect(outputOf(result.history[1])).toBe(big);
     });
 
-    it("shortens the newest step's output when nothing else can go", () => {
+    it("cuts the newest step's output when nothing else can go", () => {
       const history = [user("task"), step("a1", "c1", big)];
 
       const result = fitHistory(history, atMostChars(3_000));
 
       expect(result).toMatchObject({ removed: 0, shortened: 1, fits: true });
       expect(contents(result.history)).toEqual(["task", "a1"]);
-      expect(outputOf(result.history[1]).length).toBeLessThan(2_100);
+      expect(size(result.history)).toBeLessThanOrEqual(3_000);
     });
 
     it("fits a kept summary beside a step whose output alone fills the room", () => {
@@ -348,18 +368,29 @@ describe("fitHistory", () => {
       expect(contents(result.history).slice(1)).toEqual(["go on", "a1"]);
     });
 
-    it("leaves an output that is barely over the limit as it is", () => {
-      // Cutting it would save almost nothing
+    it("never cuts text that isn't tool output", () => {
+      const reply = "y".repeat(5_000);
+      const history = [user("u1"), assistant(reply)];
+
+      const result = fitHistory(history, atMostChars(1_000));
+
+      expect(result).toMatchObject({ removed: 0, shortened: 0, fits: false });
+      expect(result.history[1].message.content).toBe(reply);
+    });
+
+    it("stops cutting at the floor and leaves older turns out instead", () => {
       const history = [
         user("u1"),
-        step("a1", "c1", "x".repeat(3_000)),
+        step("a1", "c1", big),
         user("u2"),
+        step("a2", "c2", "ok"),
       ];
 
-      const result = fitHistory(history, atMostChars(size(history) - 1));
+      // Even a 500-character excerpt of a1's output is too much
+      const result = fitHistory(history, atMostChars(300));
 
-      expect(result.shortened).toBe(0);
-      expect(result.removed).toBe(2);
+      expect(result).toMatchObject({ removed: 2, shortened: 0, fits: true });
+      expect(contents(result.history)).toEqual(["u2", "a2"]);
     });
   });
 });

@@ -57,9 +57,11 @@ describe("TUI auto-compaction before a message", () => {
 
     const result = await run();
 
-    // The compaction got the controller Escape aborts
+    // The compaction got the controller Escape aborts, and sizes the summary
+    // to fit with the message after it
     expect(vi.mocked(coreHandleAutoCompaction).mock.calls[0][3]).toMatchObject({
       abortController,
+      followedBy: [message],
     });
     // No history with the message, so no turn starts
     expect(result).toBeNull();

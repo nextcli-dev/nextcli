@@ -9,7 +9,10 @@ import {
   fitHistory,
   REQUEST_SAFETY_BUFFER,
 } from "./fitHistory.js";
-import { streamChatResponse } from "./stream/streamChatResponse.js";
+import {
+  requestTools,
+  streamChatResponse,
+} from "./stream/streamChatResponse.js";
 import { StreamCallbacks } from "./stream/streamChatResponse.types.js";
 import { logger } from "./util/logger.js";
 import {
@@ -47,6 +50,28 @@ export interface CompactionOptions {
   abortController?: AbortController;
   /** The system prompt the summary request goes with; the current one by default */
   systemMessage?: string;
+  /** The tools the request after the summary carries; a normal request's by default */
+  tools?: ChatCompletionTool[];
+  /**
+   * What follows the summary in that request: the continue prompt in the
+   * agent loop, the person's message before a TUI send. Nothing by default.
+   */
+  followedBy?: ChatHistoryItem[];
+}
+
+// A summary shorter than this can't carry the work forward
+const MIN_SUMMARY_TOKENS = 1_000;
+// The highest explicit max_tokens a summary is sent with, the same ceiling a
+// run's final answer has (FINAL_ANSWER_TOKENS)
+const MAX_CAPPED_SUMMARY_TOKENS = 16_000;
+// The summary item's own message overhead
+const SUMMARY_ITEM_TOKENS = 10;
+
+/** The request after the summary: what it sizes the summary for */
+interface NextRequest {
+  systemMessage: string;
+  tools: ChatCompletionTool[];
+  followedBy: ChatHistoryItem[];
 }
 
 const COMPACTION_PROMPT =
@@ -59,6 +84,69 @@ async function currentSystemMessage(): Promise<string> {
   return services.systemMessage.getSystemMessage(
     services.toolPermissions.getState().currentMode,
   );
+}
+
+/** The tools a normal request would carry now */
+async function currentRequestTools(
+  model: ModelConfig,
+): Promise<ChatCompletionTool[]> {
+  const { services } = await import("./services/index.js");
+  return requestTools(model, services.toolPermissions.isHeadless());
+}
+
+/**
+ * The tokens the request after the summary leaves for it: the window less
+ * the room kept for the answer, the safety buffer, the system prompt, the
+ * tools and what follows the summary
+ */
+function roomForSummary(model: ModelConfig, next: NextRequest): number {
+  const rest = countTotalInputTokens({
+    chatHistory: next.followedBy,
+    systemMessage: next.systemMessage,
+    tools: next.tools,
+    model,
+  });
+  return (
+    getModelContextLimit(model) -
+    getModelMaxTokens(model) -
+    REQUEST_SAFETY_BUFFER -
+    rest -
+    SUMMARY_ITEM_TOKENS
+  );
+}
+
+/** Why there's no room for a summary, with the sizes that take the window */
+function noRoomForSummary(
+  model: ModelConfig,
+  next: NextRequest,
+  room: number,
+): string {
+  const tokens = (n: number) => `${n.toLocaleString()} tokens`;
+  const parts = [
+    `the system prompt (${tokens(encode(next.systemMessage).length)})`,
+    next.tools.length > 0 &&
+      `the tools (${tokens(countToolDefinitionTokens(next.tools))})`,
+    next.followedBy.length > 0 &&
+      `what follows the summary (${tokens(countChatHistoryTokens(next.followedBy, model))})`,
+    `the room kept for the answer (${tokens(getModelMaxTokens(model))})`,
+  ].filter((part): part is string => typeof part === "string");
+  return `Can't compact: ${parts.join(", ")} leave ${tokens(Math.max(room, 0))} of the ${tokens(getModelContextLimit(model))} window for a summary, less than the ${tokens(MIN_SUMMARY_TOKENS)} one needs. The conversation was left as it is. Raise contextLength, lower maxTokens or turn off tools you don't need.`;
+}
+
+/** The model with its answer capped, so a summary fits the request after it */
+function withAnswerCap(model: ModelConfig, maxTokens: number): ModelConfig {
+  const { reasoningBudgetTokens, ...options } =
+    model.defaultCompletionOptions ?? {};
+  return {
+    ...model,
+    defaultCompletionOptions: {
+      ...options,
+      maxTokens,
+      // A thinking budget must stay below max_tokens
+      ...(reasoningBudgetTokens !== undefined &&
+        reasoningBudgetTokens < maxTokens && { reasoningBudgetTokens }),
+    },
+  };
 }
 
 /** Why a summary request can't be made: the parts that are never left out, and their sizes */
@@ -101,6 +189,30 @@ export async function compactChatHistory(
   const { callbacks, abortController } = options || {};
   const systemMessage =
     options?.systemMessage ?? (await currentSystemMessage());
+  const next: NextRequest = {
+    systemMessage,
+    tools: options?.tools ?? (await currentRequestTools(model)),
+    followedBy: options?.followedBy ?? [],
+  };
+  const fail = (message: string): never => {
+    const error = new Error(message);
+    logger.error("Compaction failed", error);
+    callbacks?.onError?.(error);
+    throw error;
+  };
+
+  // The summary replaces the session, so it has to fit the request after
+  // it: that request's room caps the summary call's answer. Nothing is
+  // written before the result is checked below.
+  const room = roomForSummary(model, next);
+  if (room < MIN_SUMMARY_TOKENS) {
+    fail(noRoomForSummary(model, next, room));
+  }
+  const summaryModel =
+    room < getModelMaxTokens(model)
+      ? withAnswerCap(model, Math.min(room, MAX_CAPPED_SUMMARY_TOKENS))
+      : model;
+
   // Create a prompt to summarize the conversation
   const compactionPrompt: ChatHistoryItem = {
     message: {
@@ -116,7 +228,7 @@ export async function compactChatHistory(
   const validate = (history: ChatHistoryItem[]) =>
     validateContextLength({
       chatHistory: [...history, compactionPrompt],
-      model,
+      model: summaryModel,
       systemMessage,
       safetyBuffer: REQUEST_SAFETY_BUFFER,
     });
@@ -129,16 +241,13 @@ export async function compactChatHistory(
   // The summary replaces the session: fail, and keep the session as it is,
   // rather than summarize less than the newest turn
   if (!fitted.fits) {
-    const error = new Error(
+    fail(
       summaryRequestTooLong(
         fitted.history,
         model,
         validate(fitted.history).error,
       ),
     );
-    logger.error("Compaction failed", error);
-    callbacks?.onError?.(error);
-    throw error;
   }
   if (fitted.removed > 0 || fitted.shortened > 0) {
     logger.warn(`Compaction input too long: ${describeFit(fitted)}`);
@@ -162,7 +271,7 @@ export async function compactChatHistory(
   try {
     await streamChatResponse(
       historyForCompaction,
-      model,
+      summaryModel,
       llmApi,
       controller,
       streamCallbacks,
@@ -193,6 +302,21 @@ export async function compactChatHistory(
       contextItems: [],
       conversationSummary: compactionContent,
     };
+
+    // A provider that ignores max_tokens, or an estimate that drifted: the
+    // session stays as it is rather than hold a summary it can't send
+    const nextCheck = validateContextLength({
+      chatHistory: [compactionMessage, ...next.followedBy],
+      model,
+      systemMessage,
+      tools: next.tools,
+      safetyBuffer: REQUEST_SAFETY_BUFFER,
+    });
+    if (!nextCheck.isValid) {
+      throw new Error(
+        `The summary (${countChatHistoryTokens([compactionMessage], model).toLocaleString()} tokens) doesn't fit the request after it (${nextCheck.error}), so the conversation was left as it is.`,
+      );
+    }
 
     return {
       compactedHistory: [compactionMessage],

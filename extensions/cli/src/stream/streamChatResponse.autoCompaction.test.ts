@@ -226,6 +226,8 @@ describe("handleAutoCompaction", () => {
       chatHistory: mockChatHistory,
       compactionIndex: null,
       wasCompacted: false,
+      // The reason goes back to the caller, which may stop the run with it
+      error: new Error("Compaction failed"),
     });
   });
 
@@ -281,6 +283,31 @@ describe("handleAutoCompaction", () => {
     expect(safeStderr).toHaveBeenCalledWith(
       expect.stringMatching(/^Warning: .*2 tool outputs were shortened/),
     );
+  });
+
+  it("says on stderr why an unattended run's compaction failed, and writes nothing", async () => {
+    const { compactChatHistory, shouldAutoCompact } = await import(
+      "../compaction.js"
+    );
+    const { safeStderr } = await import("../init.js");
+    const { updateSessionHistory } = await import("../session.js");
+    vi.mocked(shouldAutoCompact).mockReturnValue(true);
+    vi.mocked(compactChatHistory).mockRejectedValue(
+      new Error("No room for a summary"),
+    );
+
+    const result = await handleAutoCompaction(
+      mockChatHistory,
+      mockModel,
+      mockLlmApi,
+      { isHeadless: true },
+    );
+
+    expect(safeStderr).toHaveBeenCalledWith(
+      expect.stringContaining("Auto-compaction error: No room for a summary"),
+    );
+    expect(updateSessionHistory).not.toHaveBeenCalled();
+    expect(result.error?.message).toBe("No room for a summary");
   });
 
   it("says nothing on stderr when the summary covers everything", async () => {

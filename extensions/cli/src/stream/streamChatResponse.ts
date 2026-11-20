@@ -398,6 +398,21 @@ export async function processStreamingResponse(
   };
 }
 
+/**
+ * The tools a normal request of this session carries, with the model's
+ * overrides. Compaction sizes its summary for the request after it with these.
+ */
+export async function requestTools(
+  model: ModelConfig,
+  isHeadless: boolean,
+  getPermissions?: ToolPermissionsSource,
+): Promise<ChatCompletionTool[]> {
+  return applyChatCompletionToolOverrides(
+    await getRequestTools(isHeadless, getPermissions),
+    model.chatOptions?.toolOverrides,
+  );
+}
+
 // Main function that handles the conversation loop
 // eslint-disable-next-line max-params
 export async function streamChatResponse(
@@ -459,10 +474,9 @@ export async function streamChatResponse(
 
       // Recompute tools on each iteration to handle mode changes during
       // streaming. A run's last call and a compaction get none.
-      const tools = applyChatCompletionToolOverrides(
-        onlyCall ? [] : await getRequestTools(isHeadless, getPermissions),
-        model.chatOptions?.toolOverrides,
-      );
+      const tools = onlyCall
+        ? []
+        : await requestTools(model, isHeadless, getPermissions);
 
       // A compaction below leaves a history that ends with a user turn
       const compaction = {

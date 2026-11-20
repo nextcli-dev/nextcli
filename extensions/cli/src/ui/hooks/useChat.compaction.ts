@@ -152,6 +152,8 @@ export async function handleAutoCompaction({
       setCompactionIndex,
     },
     abortController,
+    // The summary is sized to fit with the message after it
+    followedBy: [message],
   });
 
   if (abortController.signal.aborted) {

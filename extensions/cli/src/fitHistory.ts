@@ -8,11 +8,13 @@ export const REQUEST_SAFETY_BUFFER = 100;
 /** Starts the note that stands in for messages left out of a request */
 export const PRUNED_HISTORY_NOTE_PREFIX = "[Context note:";
 
-// A tool output over twice this length is cut to its start when the history
-// doesn't fit. Outputs can be fetched again by running the tool; messages
-// can't, so outputs shrink before any message is left out.
-const SHORTENED_OUTPUT_MAX_CHARS = 2_000;
-const SHORTENED_OUTPUT_MAX_LINES = 50;
+// When a history doesn't fit, tool outputs are cut to their start, all to one
+// cap: the largest that fits, never below this floor. A tool can be run
+// again; a message can't be fetched again, so outputs shrink before any
+// message is left out.
+const MIN_OUTPUT_CHARS = 500;
+// An output is cut only when that saves more than the truncation note adds
+const TRUNCATION_NOTE_ROOM = 100;
 
 export interface FittedHistory {
   history: ChatHistoryItem[];
@@ -23,71 +25,118 @@ export interface FittedHistory {
   fits: boolean;
 }
 
-/** Where a tool output long enough to shorten sits in a history */
+/** Where a tool output sits in a history, and its length */
 interface OutputRef {
   item: number;
   /** Index in the item's toolCallStates and in that state's output; none for a tool message */
   state?: number;
   part?: number;
+  length: number;
 }
 
-const isLong = (text: unknown): text is string =>
-  typeof text === "string" && text.length > 2 * SHORTENED_OUTPUT_MAX_CHARS;
-
-function longOutputs(history: ChatHistoryItem[]): OutputRef[] {
+/** The tool outputs of the items from `from` up to `to` */
+function toolOutputs(
+  history: ChatHistoryItem[],
+  from: number,
+  to: number,
+): OutputRef[] {
   const refs: OutputRef[] = [];
-  history.forEach((item, i) => {
-    if (item.message.role === "tool" && isLong(item.message.content)) {
-      refs.push({ item: i });
+  for (let i = from; i < to; i++) {
+    const item = history[i];
+    if (
+      item.message.role === "tool" &&
+      typeof item.message.content === "string"
+    ) {
+      refs.push({ item: i, length: item.message.content.length });
     }
     item.toolCallStates?.forEach((state, s) =>
       state.output?.forEach((output, p) => {
-        if (isLong(output.content)) {
-          refs.push({ item: i, state: s, part: p });
+        if (typeof output.content === "string") {
+          refs.push({
+            item: i,
+            state: s,
+            part: p,
+            length: output.content.length,
+          });
         }
       }),
     );
-  });
+  }
   return refs;
 }
 
-function shorten(text: string): string {
+const longest = (refs: OutputRef[]) =>
+  refs.reduce((max, ref) => Math.max(max, ref.length), 0);
+
+/** The start of a text, by characters only, so a lower cap always means less */
+function cut(text: string, cap: number): string {
   return truncateByLinesAndChars(
     text,
-    SHORTENED_OUTPUT_MAX_LINES,
-    SHORTENED_OUTPUT_MAX_CHARS,
+    Number.MAX_SAFE_INTEGER,
+    cap,
     "tool output",
   ).output;
 }
 
-/** A copy of the history with these outputs shortened; the input is left as it is */
-function withShortened(
+/**
+ * A copy of the history with each listed output longer than the cap cut to
+ * it; the input is left as it is. The outputs it cuts go into `cutOutputs`,
+ * so the result can count the ones still in the history it returns.
+ */
+function withCap(
   history: ChatHistoryItem[],
   refs: OutputRef[],
+  cap: number,
+  cutOutputs: WeakSet<object>,
 ): ChatHistoryItem[] {
   const copy = [...history];
   for (const ref of refs) {
+    if (ref.length <= cap + TRUNCATION_NOTE_ROOM) {
+      continue;
+    }
     const item = copy[ref.item];
     if (ref.state === undefined || ref.part === undefined) {
-      copy[ref.item] = {
+      const shortened = {
         ...item,
         message: {
           ...item.message,
-          content: shorten(item.message.content as string),
+          content: cut(item.message.content as string, cap),
         },
       } as ChatHistoryItem;
+      cutOutputs.add(shortened);
+      copy[ref.item] = shortened;
       continue;
     }
     const states = [...item.toolCallStates!];
     const output = [...states[ref.state].output!];
     output[ref.part] = {
       ...output[ref.part],
-      content: shorten(output[ref.part].content),
+      content: cut(output[ref.part].content, cap),
     };
+    cutOutputs.add(output[ref.part]);
     states[ref.state] = { ...states[ref.state], output };
     copy[ref.item] = { ...item, toolCallStates: states };
   }
   return copy;
+}
+
+/** How many cut outputs a history still holds */
+function countCut(
+  history: ChatHistoryItem[],
+  cutOutputs: WeakSet<object>,
+): number {
+  let count = 0;
+  for (const item of history) {
+    if (cutOutputs.has(item)) {
+      count++;
+    }
+    for (const state of item.toolCallStates ?? []) {
+      count += (state.output ?? []).filter((output) =>
+        cutOutputs.has(output),
+      ).length;
+    }
+  }
+  return count;
 }
 
 /**
@@ -125,6 +174,9 @@ function withPrunedNote(
 
 /** Where the last step starts: the last item that isn't a tool result */
 function lastStepStart(history: ChatHistoryItem[]): number {
+  if (history.length === 0) {
+    return 0;
+  }
   let i = history.length - 1;
   while (i > 0 && history[i].message.role === "tool") {
     i--;
@@ -181,16 +233,41 @@ function smallestFitting(
   return low;
 }
 
+/** The largest cap in min..max for which fits(cap) holds, or null; fits shrinks as the cap grows */
+function largestFitting(
+  min: number,
+  max: number,
+  fits: (cap: number) => boolean,
+): number | null {
+  if (max < min || !fits(min)) {
+    return null;
+  }
+  let low = min;
+  let high = max;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (fits(middle)) {
+      low = middle;
+    } else {
+      high = middle - 1;
+    }
+  }
+  return low;
+}
+
 /**
  * Makes a history fit, giving up as little as it can, in this order:
- * 1. shorten tool outputs before the last step, oldest first;
- * 2. leave out older turns, then older steps of the newest turn, with a note
- *    in front saying how many messages are gone;
- * 3. shorten the last step's outputs.
+ * 1. cut the tool outputs before the last step to one cap, the largest that
+ *    fits: the longest outputs shrink first, short ones stay whole;
+ * 2. with those outputs at the floor, leave out older turns, then older steps
+ *    of the newest turn, with a note in front saying how many messages are
+ *    gone;
+ * 3. cut the last step's tool outputs the same way.
  * A leading summary from an earlier compaction, the newest user message and
- * the last step are never left out, and a tool call keeps its results.
- * Returns the history as given when it fits, else the smallest one it can
- * make, with `fits: false` when even that doesn't fit.
+ * the last step are never left out, a tool call keeps its results, and text
+ * other than tool output is never cut. Returns the history as given when it
+ * fits, else the smallest one it can make, with `fits: false` when even that
+ * doesn't fit. The counts describe the returned history.
  * @param chatHistory The history to send
  * @param fits Whether a history fits the request
  */
@@ -207,33 +284,36 @@ export function fitHistory(
       ? []
       : chatHistory.slice(0, 1);
   const body = chatHistory.slice(summary.length);
-  const outputs = longOutputs(body);
-  const lastStep = lastStepStart(body);
-  const older = outputs.filter((ref) => ref.item < lastStep);
-  const newest = outputs.filter((ref) => ref.item >= lastStep);
+  const cutOutputs = new WeakSet<object>();
+  const result = (
+    history: ChatHistoryItem[],
+    removed: number,
+    fitted: boolean,
+  ): FittedHistory => ({
+    history,
+    removed,
+    shortened: countCut(history, cutOutputs),
+    fits: fitted,
+  });
 
-  // 1. Older tool outputs
-  const olderShortened = (n: number) => [
+  // 1. The tool outputs before the last step
+  const older = toolOutputs(body, 0, lastStepStart(body));
+  const olderCapped = (cap: number) => [
     ...summary,
-    ...withShortened(body, older.slice(0, n)),
+    ...withCap(body, older, cap, cutOutputs),
   ];
-  const shortenedOlder = smallestFitting(older.length, (n) =>
-    fits(olderShortened(n)),
+  const olderCap = largestFitting(MIN_OUTPUT_CHARS, longest(older), (cap) =>
+    fits(olderCapped(cap)),
   );
-  if (shortenedOlder !== null) {
-    return {
-      history: olderShortened(shortenedOlder),
-      removed: 0,
-      shortened: shortenedOlder,
-      fits: true,
-    };
+  if (olderCap !== null) {
+    return result(olderCapped(olderCap), 0, true);
   }
 
   // 2. Older messages
-  const shortenedBody = withShortened(body, older);
+  const floorBody = withCap(body, older, MIN_OUTPUT_CHARS, cutOutputs);
   const drops: ChatHistoryItem[][] = [];
   for (
-    let next = dropOldestPart(shortenedBody);
+    let next = dropOldestPart(floorBody);
     next;
     next = dropOldestPart(next)
   ) {
@@ -245,39 +325,32 @@ export function fitHistory(
   ];
   const dropped = smallestFitting(drops.length, (n) => fits(afterDrops(n)));
   if (dropped !== null) {
-    return {
-      history: afterDrops(dropped),
-      removed: body.length - drops[dropped - 1].length,
-      shortened: older.length,
-      fits: true,
-    };
+    return result(
+      afterDrops(dropped),
+      body.length - drops[dropped - 1].length,
+      true,
+    );
   }
 
-  // 3. The last step's outputs. The last step is never dropped, so it keeps
-  // its distance from the end.
-  const kept = drops.at(-1) ?? shortenedBody;
+  // 3. The last step's tool outputs, which is never left out
+  const kept = drops.at(-1) ?? floorBody;
   const removed = body.length - kept.length;
-  const newestInKept = newest.map((ref) => ({
-    ...ref,
-    item: kept.length - (body.length - ref.item),
-  }));
-  const newestShortened = (n: number) => {
-    const history = withShortened(kept, newestInKept.slice(0, n));
+  const newest = toolOutputs(kept, lastStepStart(kept), kept.length);
+  const newestCapped = (cap: number) => {
+    const history = withCap(kept, newest, cap, cutOutputs);
     return [
       ...summary,
       ...(removed > 0 ? withPrunedNote(history, removed) : history),
     ];
   };
-  const shortenedNewest = smallestFitting(newest.length, (n) =>
-    fits(newestShortened(n)),
+  const newestCap = largestFitting(MIN_OUTPUT_CHARS, longest(newest), (cap) =>
+    fits(newestCapped(cap)),
   );
-  const n = shortenedNewest ?? newest.length;
-  return {
-    history: newestShortened(n),
+  return result(
+    newestCapped(newestCap ?? MIN_OUTPUT_CHARS),
     removed,
-    shortened: older.length + n,
-    fits: shortenedNewest !== null,
-  };
+    newestCap !== null,
+  );
 }
 
 /** "3 earlier messages were left out and 1 tool output was shortened" */

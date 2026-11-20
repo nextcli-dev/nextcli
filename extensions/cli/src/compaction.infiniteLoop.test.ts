@@ -9,6 +9,8 @@ import { streamChatResponse } from "./stream/streamChatResponse.js";
 // Mock the dependencies
 vi.mock("./stream/streamChatResponse.js", () => ({
   streamChatResponse: vi.fn(),
+  // The next request's tools; none here
+  requestTools: vi.fn(async () => []),
 }));
 
 vi.mock("./util/tokenizer.js", () => {
@@ -19,6 +21,8 @@ vi.mock("./util/tokenizer.js", () => {
     historySentToModel: (history: { message: { role: string } }[]) =>
       history.filter((item) => item.message.role !== "system"),
     countChatHistoryTokens,
+    // The next request holds nothing but the summary here
+    countTotalInputTokens: () => 0,
     getModelContextLimit,
     getModelMaxTokens,
     // The request's own check, on the counts each test sets
@@ -87,6 +91,7 @@ describe("compaction infinite loop prevention", () => {
     await expect(
       compactChatHistory(history, mockModel, mockLlmApi, {
         systemMessage: "",
+        tools: [],
       }),
     ).rejects.toThrow("left as it is");
     expect(mockCountTokens).toHaveBeenCalled();
@@ -123,6 +128,7 @@ describe("compaction infinite loop prevention", () => {
     await expect(
       compactChatHistory(history, mockModel, mockLlmApi, {
         systemMessage: "",
+        tools: [],
       }),
     ).rejects.toThrow("left as it is");
   });
@@ -165,6 +171,7 @@ describe("compaction infinite loop prevention", () => {
 
     const result = await compactChatHistory(history, mockModel, mockLlmApi, {
       systemMessage: "",
+      tools: [],
     });
 
     expect(result.compactedHistory).toBeDefined();

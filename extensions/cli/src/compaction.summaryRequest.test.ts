@@ -23,6 +23,12 @@ vi.mock("./services/index.js", () => ({
   },
 }));
 
+// The next request's tools, which the summary is sized to fit; none here
+vi.mock("./stream/handleToolCalls.js", () => ({
+  getRequestTools: vi.fn(async () => []),
+  handleToolCalls: vi.fn(async () => false),
+}));
+
 vi.mock("./session.js", () => ({
   updateSessionHistory: vi.fn(),
   trackSessionUsage: vi.fn(),
@@ -151,8 +157,10 @@ describe("the summary request compaction sends", () => {
       "tool",
       "user",
     ]);
+    // Cut only as far as the request needs
     const toolResult = String(messages[3].content);
-    expect(toolResult.length).toBeLessThan(2_200);
+    expect(toolResult.length).toBeLessThan(100_000);
+    expect(toolResult.length).toBeGreaterThan(10_000);
     expect(toolResult).toContain("tool output truncated");
     expect(result).toMatchObject({ omittedMessages: 0, shortenedOutputs: 1 });
   });
@@ -177,5 +185,91 @@ describe("the summary request compaction sends", () => {
 
     expect(sentMessages()).toHaveLength(5);
     expect(result).toMatchObject({ omittedMessages: 0, shortenedOutputs: 0 });
+  });
+
+  describe("sized for the request after it", () => {
+    // A 6K answer reserve in a 10K window: a summary that used it all
+    // wouldn't fit beside the next request's own reserve
+    const bigReserve = {
+      ...model,
+      defaultCompletionOptions: { contextLength: 10_000, maxTokens: 6_000 },
+    } as ModelConfig;
+    const tool = {
+      type: "function" as const,
+      function: {
+        name: "Read",
+        description: "Read a file",
+        parameters: { type: "object", properties: {} },
+      },
+    };
+    const next = { tools: [tool], followedBy: [user("go on")] };
+    const sentRequest = () =>
+      vi.mocked(llmApi.chatCompletionStream).mock
+        .calls[0][0] as ChatCompletionCreateParamsStreaming;
+
+    it("caps the summary at the room the next request leaves", async () => {
+      const result = await compactChatHistory(
+        [user("the task"), assistant("done")],
+        bigReserve,
+        llmApi,
+        next,
+      );
+
+      // 10,000 - 6,000 reserve - 100 buffer - the prompt, tool and "go on"
+      expect(sentRequest().max_tokens).toBeLessThan(4_000);
+      expect(sentRequest().max_tokens).toBeGreaterThan(3_500);
+      expect(result.compactionContent).toBe("Summary");
+    });
+
+    it("fails, and returns nothing to write, when the summary is too long anyway", async () => {
+      // A provider that ignores max_tokens
+      vi.mocked(llmApi.chatCompletionStream).mockImplementation(
+        async function* () {
+          yield {
+            id: "1",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: "gpt-4o",
+            choices: [
+              {
+                index: 0,
+                delta: { content: " word".repeat(5_000) },
+                finish_reason: null,
+              },
+            ],
+          };
+        } as never,
+      );
+
+      await expect(
+        compactChatHistory(
+          [user("the task"), assistant("done")],
+          bigReserve,
+          llmApi,
+          next,
+        ),
+      ).rejects.toThrow(
+        /The summary \([\d,]+ tokens\) doesn't fit the request after it/,
+      );
+    });
+
+    it("fails before any call when the next request leaves no room", async () => {
+      const noRoom = {
+        ...model,
+        defaultCompletionOptions: { contextLength: 10_000, maxTokens: 9_000 },
+      } as ModelConfig;
+
+      await expect(
+        compactChatHistory(
+          [user("the task"), assistant("done")],
+          noRoom,
+          llmApi,
+          next,
+        ),
+      ).rejects.toThrow(
+        /the tools \([\d,]+ tokens\).*the room kept for the answer \(9,000 tokens\)/,
+      );
+      expect(llmApi.chatCompletionStream).not.toHaveBeenCalled();
+    });
   });
 });
