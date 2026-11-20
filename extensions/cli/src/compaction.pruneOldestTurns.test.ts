@@ -43,13 +43,14 @@ describe("pruneOldestTurns", () => {
 
     const result = pruneOldestTurns(history, () => true);
 
-    expect(result).toEqual({ history, removed: 0 });
+    expect(result).toEqual({ history, removed: 0, fits: true });
   });
 
   it("returns an empty history as it is", () => {
     expect(pruneOldestTurns([], () => false)).toEqual({
       history: [],
       removed: 0,
+      fits: false,
     });
   });
 
@@ -66,7 +67,9 @@ describe("pruneOldestTurns", () => {
 
     expect(result.removed).toBe(2);
     expect(isNote(result.history[0])).toBe(true);
-    expect(String(result.history[0].message.content)).toContain("2 oldest");
+    expect(String(result.history[0].message.content)).toContain(
+      "2 earlier messages",
+    );
     expect(contents(result.history)).toEqual(["u2", "a2", "u3"]);
   });
 
@@ -111,17 +114,38 @@ describe("pruneOldestTurns", () => {
     expect(result.history[1].message.role).toBe("assistant");
   });
 
-  it("drops a leading summary before the first turn", () => {
+  it("keeps a leading summary and drops the turns after it", () => {
+    // The summary is the only record of the conversation before it
     const summary: ChatHistoryItem = {
       ...assistant("summary"),
       conversationSummary: "summary",
     };
-    const history = [summary, user("u1"), assistant("a1")];
+    const history = [
+      summary,
+      user("u1"),
+      assistant("a1", "c1"),
+      tool("c1"),
+      user("u2"),
+      assistant("a2"),
+    ];
 
-    const result = pruneOldestTurns(history, (h) => !h.includes(summary));
+    const result = pruneOldestTurns(history, atMost(3));
 
-    expect(result.removed).toBe(1);
-    expect(contents(result.history)).toEqual(["u1", "a1"]);
+    expect(result).toMatchObject({ removed: 3, fits: true });
+    expect(result.history[0]).toBe(summary);
+    expect(contents(result.history)).toEqual(["summary", "u2", "a2"]);
+    expect(isNote(result.history[1])).toBe(true);
+  });
+
+  it("does not fit a summary alone that is too long", () => {
+    const summary: ChatHistoryItem = {
+      ...assistant("summary"),
+      conversationSummary: "summary",
+    };
+
+    const result = pruneOldestTurns([summary], () => false);
+
+    expect(result).toEqual({ history: [summary], removed: 0, fits: false });
   });
 
   it("keeps the newest request and the last step when nothing fits", () => {
@@ -137,6 +161,7 @@ describe("pruneOldestTurns", () => {
     const result = pruneOldestTurns(history, () => false);
 
     expect(result.removed).toBe(4);
+    expect(result.fits).toBe(false);
     expect(contents(result.history)).toEqual(["u2", "s2"]);
   });
 
@@ -145,7 +170,7 @@ describe("pruneOldestTurns", () => {
 
     const result = pruneOldestTurns(history, () => false);
 
-    expect(result).toEqual({ history, removed: 0 });
+    expect(result).toEqual({ history, removed: 0, fits: false });
   });
 
   it("joins the note to the first user message, so roles still alternate", () => {
@@ -158,7 +183,7 @@ describe("pruneOldestTurns", () => {
       "assistant",
     ]);
     expect(String(result.history[0].message.content)).toMatch(
-      /^\[Context note: the 2 oldest .*\]\n\nu2$/s,
+      /^\[Context note: 2 earlier .*\]\n\nu2$/s,
     );
     // The history it came from is left as it was
     expect(history[2].message.content).toBe("u2");

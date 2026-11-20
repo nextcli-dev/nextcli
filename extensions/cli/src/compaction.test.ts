@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   compactChatHistory,
   findCompactionIndex,
+  compactionDoneMessage,
   getHistoryForLLM,
   isCompactionAborted,
   PRUNED_HISTORY_NOTE_PREFIX,
@@ -385,6 +386,93 @@ describe("compaction", () => {
         // A whole turn went: the note joins the user message that now leads
         expect(sent[0].message.role).toBe("user");
         expect(sent[1].message.role).toBe("assistant");
+      });
+
+      it("reports how many of the oldest messages it left out", async () => {
+        currentSystemPrompt.text = " hello".repeat(4_000);
+
+        const result = await compactChatHistory(
+          history,
+          smallModel,
+          mockLlmApi,
+        );
+
+        const sent = vi.mocked(streamChatResponse).mock.calls.at(-1)![0];
+        // The kept messages and the instruction; the rest is left out
+        expect(result.omittedMessages).toBe(history.length - (sent.length - 1));
+        expect(result.omittedMessages).toBeGreaterThan(0);
+        expect(compactionDoneMessage(result)).toContain(
+          `The ${result.omittedMessages} oldest messages didn't fit`,
+        );
+      });
+
+      it("keeps the previous summary in the summary request", async () => {
+        currentSystemPrompt.text = " hello".repeat(4_000);
+        const previous: ChatHistoryItem = {
+          message: { role: "assistant", content: "Earlier work" },
+          contextItems: [],
+          conversationSummary: "Earlier work",
+        };
+
+        await compactChatHistory(
+          [previous, ...history],
+          smallModel,
+          mockLlmApi,
+        );
+
+        const sent = vi.mocked(streamChatResponse).mock.calls.at(-1)![0];
+        expect(sent[0]).toBe(previous);
+        expect(sent.at(-2)).toBe(history.at(-1));
+      });
+
+      describe("fails and keeps the session when the newest turn doesn't fit", () => {
+        // More than the whole window
+        const huge = " hello".repeat(12_000);
+        const cases: [string, ChatHistoryItem[]][] = [
+          [
+            "a newest user message after an older turn",
+            [
+              { message: { role: "user", content: "old" }, contextItems: [] },
+              {
+                message: { role: "assistant", content: "ok" },
+                contextItems: [],
+              },
+              { message: { role: "user", content: huge }, contextItems: [] },
+              {
+                message: { role: "assistant", content: "ok" },
+                contextItems: [],
+              },
+            ],
+          ],
+          [
+            "a single user message",
+            [{ message: { role: "user", content: huge }, contextItems: [] }],
+          ],
+          [
+            "a last step with a large result",
+            [
+              { message: { role: "user", content: "task" }, contextItems: [] },
+              {
+                message: { role: "assistant", content: huge },
+                contextItems: [],
+              },
+            ],
+          ],
+        ];
+
+        it.each(cases)("%s", async (_, tooLong) => {
+          currentSystemPrompt.text = "System prompt";
+          const onError = vi.fn();
+
+          await expect(
+            compactChatHistory(tooLong, smallModel, mockLlmApi, {
+              callbacks: { onError },
+            }),
+          ).rejects.toThrow("left as it is");
+          // No summary request, so nothing replaces the session
+          expect(streamChatResponse).not.toHaveBeenCalled();
+          expect(onError).toHaveBeenCalled();
+        });
       });
 
       it("sends the whole history when it fits beside the prompt", async () => {

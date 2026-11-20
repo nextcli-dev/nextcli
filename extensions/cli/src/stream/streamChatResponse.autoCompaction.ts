@@ -6,6 +6,7 @@ import React from "react";
 
 import {
   compactChatHistory,
+  compactionDoneMessage,
   countSystemMessageTokens,
   getAutoCompactMessage,
   isCompactionAborted,
@@ -65,7 +66,7 @@ function handleCompactionSuccess(
 ) {
   if (isHeadless) return;
 
-  const successMessage = "Chat history auto-compacted successfully.";
+  const successMessage = compactionDoneMessage(result, true);
 
   if (callbacks?.onSystemMessage) {
     callbacks.onSystemMessage(successMessage);

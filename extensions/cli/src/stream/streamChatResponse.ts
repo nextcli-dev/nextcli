@@ -153,6 +153,12 @@ interface ProcessStreamingResponseOptions {
   maxTokens?: number;
   /** Turns thinking off for this call, for a model that can */
   thinkingOff?: boolean;
+  /**
+   * A summary request, already cut to fit by compactChatHistory. It is sent
+   * whole or not at all: pruning it again would keep the instruction as the
+   * newest turn and drop the conversation it summarizes.
+   */
+  isCompacting?: boolean;
 }
 
 // Process a single streaming response and return whether we need to continue
@@ -192,10 +198,10 @@ export async function processStreamingResponse(
 
   // Too long for the window: leave the oldest turns out of this request (the
   // history keeps them), never the newest user message
-  const pruned = pruneOldestTurns(
-    historySentToModel(options.chatHistory),
-    (history) => validate(history).isValid,
-  );
+  const sent = historySentToModel(options.chatHistory);
+  const pruned = options.isCompacting
+    ? { history: sent, removed: 0 }
+    : pruneOldestTurns(sent, (history) => validate(history).isValid);
   const chatHistory = pruned.history;
   const validation = validate(chatHistory);
   if (pruned.removed > 0 && validation.isValid) {
@@ -505,6 +511,7 @@ export async function streamChatResponse(
             // The last call writes the answer and a compaction a summary: no
             // tokens spent on thinking
             thinkingOff: onlyCall,
+            isCompacting,
           }),
         );
 

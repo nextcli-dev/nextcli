@@ -5,7 +5,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { handleAutoCompaction } from "./streamChatResponse.autoCompaction.js";
 
 // Mock dependencies
-vi.mock("../compaction.js", () => ({
+vi.mock("../compaction.js", async (importOriginal) => ({
+  compactionDoneMessage: (
+    await importOriginal<typeof import("../compaction.js")>()
+  ).compactionDoneMessage,
   compactChatHistory: vi.fn(),
   countSystemMessageTokens: vi.fn(async () => 100),
   shouldAutoCompact: vi.fn(),
@@ -224,6 +227,28 @@ describe("handleAutoCompaction", () => {
       compactionIndex: null,
       wasCompacted: false,
     });
+  });
+
+  it("says how many of the oldest messages the summary left out", async () => {
+    const { compactChatHistory, shouldAutoCompact } = await import(
+      "../compaction.js"
+    );
+    vi.mocked(shouldAutoCompact).mockReturnValue(true);
+    vi.mocked(compactChatHistory).mockResolvedValue({
+      compactedHistory: [],
+      compactionIndex: 0,
+      compactionContent: "Summary",
+      omittedMessages: 3,
+    });
+    const onSystemMessage = vi.fn();
+
+    await handleAutoCompaction(mockChatHistory, mockModel, mockLlmApi, {
+      callbacks: { onSystemMessage },
+    });
+
+    expect(onSystemMessage).toHaveBeenLastCalledWith(
+      "Chat history auto-compacted successfully. The 3 oldest messages didn't fit the summary request and aren't in the summary.",
+    );
   });
 
   it("returns the history unchanged and warns nobody when cancelled", async () => {

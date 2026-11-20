@@ -1,7 +1,7 @@
 import { ModelConfig } from "@nextcli/config-yaml";
 import { BaseLlmApi } from "@nextcli/openai-adapters";
 import { convertToUnifiedHistory } from "core/util/messageConversion.js";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { compactChatHistory } from "./compaction.js";
 import { streamChatResponse } from "./stream/streamChatResponse.js";
@@ -16,7 +16,7 @@ vi.mock("./util/tokenizer.js", () => ({
     history.filter((item) => item.message.role !== "system"),
   countChatHistoryTokens: vi.fn(),
   getModelContextLimit: vi.fn(),
-  getModelMaxTokens: vi.fn(),
+  getModelMaxTokens: vi.fn(() => 1000),
 }));
 
 describe("compaction infinite loop prevention", () => {
@@ -31,6 +31,10 @@ describe("compaction infinite loop prevention", () => {
   } as ModelConfig;
 
   const mockLlmApi = {} as BaseLlmApi;
+
+  beforeEach(() => {
+    vi.mocked(streamChatResponse).mockReset();
+  });
 
   it("should not loop infinitely when pruning doesn't reduce history size", async () => {
     const { countChatHistoryTokens, getModelContextLimit } = await import(
@@ -56,14 +60,15 @@ describe("compaction infinite loop prevention", () => {
       { role: "user", content: "Hello" },
     ]);
 
-    // This should not hang - it should break out of the loop
-    const result = await compactChatHistory(history, mockModel, mockLlmApi, {
-      systemMessageTokens: 0,
-    });
-
-    // Should complete successfully even though token count is still too high
-    expect(result.compactedHistory).toBeDefined();
+    // This should not hang: it stops, and fails rather than summarize less
+    // than the newest turn
+    await expect(
+      compactChatHistory(history, mockModel, mockLlmApi, {
+        systemMessageTokens: 0,
+      }),
+    ).rejects.toThrow("left as it is");
     expect(mockCountTokens).toHaveBeenCalled();
+    expect(mockStreamResponse).not.toHaveBeenCalled();
   });
 
   it("should not loop infinitely with history ending in assistant message", async () => {
@@ -92,12 +97,12 @@ describe("compaction infinite loop prevention", () => {
       { role: "assistant", content: "Hi there" },
     ]);
 
-    // This should not hang
-    const result = await compactChatHistory(history, mockModel, mockLlmApi, {
-      systemMessageTokens: 0,
-    });
-
-    expect(result.compactedHistory).toBeDefined();
+    // This should not hang, and fails rather than summarize a cut-down turn
+    await expect(
+      compactChatHistory(history, mockModel, mockLlmApi, {
+        systemMessageTokens: 0,
+      }),
+    ).rejects.toThrow("left as it is");
   });
 
   it("should successfully prune when pruning actually reduces size", async () => {
@@ -116,7 +121,7 @@ describe("compaction infinite loop prevention", () => {
     mockCountTokens.mockImplementation(() => {
       callCount++;
       if (callCount === 1) return 5000; // Initial too big
-      if (callCount === 2) return 3000; // After pruning, fits
+      if (callCount === 2) return 2000; // After pruning, fits (room: 2,850)
       return 2000; // Subsequent calls
     });
 

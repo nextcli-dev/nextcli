@@ -193,7 +193,7 @@ describe("streamChatResponse system message validation", () => {
     const contents = request.messages.map((m) => m.content);
     // The system prompt, then the newest request with the note in front
     expect(contents).toHaveLength(2);
-    expect(contents[1]).toContain("2 oldest messages");
+    expect(contents[1]).toContain("2 earlier messages");
     expect(contents[1]).toMatch(/newest question$/);
     // The person sees it too
     expect(onSystemMessage).toHaveBeenCalledWith(
@@ -201,6 +201,39 @@ describe("streamChatResponse system message validation", () => {
     );
     // The caller's history keeps every message
     expect(chatHistory).toHaveLength(3);
+  });
+
+  it("sends a summary request whole or fails, never prunes it again", async () => {
+    const model = {
+      model: "test-model",
+      defaultCompletionOptions: { contextLength: 1000, maxTokens: 100 },
+    } as ModelConfig;
+    // The newest turn is too long; the summary instruction comes after it
+    const chatHistory: ChatHistoryItem[] = [
+      { message: { role: "user", content: "the task" }, contextItems: [] },
+      {
+        message: { role: "assistant", content: " hello".repeat(950) },
+        contextItems: [],
+      },
+      {
+        message: { role: "user", content: "Please provide a concise summary" },
+        contextItems: [],
+      },
+    ];
+    mockLlmApi.chatCompletionStream = vi.fn();
+
+    await expect(
+      processStreamingResponse({
+        chatHistory,
+        model,
+        llmApi: mockLlmApi,
+        abortController,
+        systemMessage: "System instructions",
+        isCompacting: true,
+      }),
+    ).rejects.toThrow("Context length validation failed");
+    // Not a summary of the instruction alone
+    expect(mockLlmApi.chatCompletionStream).not.toHaveBeenCalled();
   });
 
   it("should pass validation when system message + history fits", async () => {

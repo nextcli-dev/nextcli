@@ -1,6 +1,6 @@
 import type { ChatHistoryItem, Session } from "core/index.js";
 
-import { compactChatHistory } from "../../compaction.js";
+import { compactChatHistory, compactionDoneMessage } from "../../compaction.js";
 import { updateSessionHistory } from "../../session.js";
 import { handleAutoCompaction as coreHandleAutoCompaction } from "../../stream/streamChatResponse.autoCompaction.js";
 import { formatError } from "../../util/formatError.js";
@@ -71,7 +71,7 @@ export async function handleCompactCommand({
       {
         message: {
           role: "system",
-          content: "Chat history compacted successfully.",
+          content: compactionDoneMessage(result),
         },
         contextItems: [],
       },
