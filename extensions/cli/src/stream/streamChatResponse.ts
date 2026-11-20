@@ -7,7 +7,11 @@ import type {
   ChatCompletionTool,
 } from "openai/resources.mjs";
 
-import { pruneOldestTurns } from "../compaction.js";
+import {
+  describeFit,
+  fitHistory,
+  REQUEST_SAFETY_BUFFER,
+} from "../fitHistory.js";
 import type { ToolPermissionsSource } from "../permissions/types.js";
 import { services } from "../services/index.js";
 import { applyChatCompletionToolOverrides } from "../tools/applyToolOverrides.js";
@@ -183,29 +187,27 @@ export async function processStreamingResponse(
     systemMessage,
   } = options;
 
-  // Safety buffer to account for tokenization estimation errors
-  const SAFETY_BUFFER = 100;
-
   // Validate context length INCLUDING system message and tools
   const validate = (history: ChatHistoryItem[]) =>
     validateContextLength({
       chatHistory: history,
       model,
-      safetyBuffer: SAFETY_BUFFER,
+      safetyBuffer: REQUEST_SAFETY_BUFFER,
       systemMessage,
       tools,
     });
 
-  // Too long for the window: leave the oldest turns out of this request (the
-  // history keeps them), never the newest user message
+  // Too long for the window: shorten older tool outputs, then leave older
+  // turns out of this request (the session keeps them), never the newest
+  // user message
   const sent = historySentToModel(options.chatHistory);
-  const pruned = options.isCompacting
-    ? { history: sent, removed: 0 }
-    : pruneOldestTurns(sent, (history) => validate(history).isValid);
-  const chatHistory = pruned.history;
+  const fitted = options.isCompacting
+    ? { history: sent, removed: 0, shortened: 0 }
+    : fitHistory(sent, (history) => validate(history).isValid);
+  const chatHistory = fitted.history;
   const validation = validate(chatHistory);
-  if (pruned.removed > 0 && validation.isValid) {
-    const notice = `Context window full: the ${pruned.removed} oldest messages were left out of this request.`;
+  if ((fitted.removed > 0 || fitted.shortened > 0) && validation.isValid) {
+    const notice = `Context window full: in this request, ${describeFit(fitted)}. The session keeps them in full.`;
     logger.warn(notice);
     callbacks?.onSystemMessage?.(notice);
   }

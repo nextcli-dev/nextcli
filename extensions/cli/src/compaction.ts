@@ -4,17 +4,22 @@ import type { ChatHistoryItem } from "core/index.js";
 import { encode } from "gpt-tokenizer";
 import { ChatCompletionTool } from "openai/resources.mjs";
 
+import {
+  describeFit,
+  fitHistory,
+  REQUEST_SAFETY_BUFFER,
+} from "./fitHistory.js";
 import { streamChatResponse } from "./stream/streamChatResponse.js";
 import { StreamCallbacks } from "./stream/streamChatResponse.types.js";
 import { logger } from "./util/logger.js";
 import {
-  countChatHistoryItemTokens,
   countChatHistoryTokens,
   countToolDefinitionTokens,
   countTotalInputTokens,
   getModelContextLimit,
   getModelMaxTokens,
   historySentToModel,
+  validateContextLength,
 } from "./util/tokenizer.js";
 
 // Buffer cap/ratio for auto-compaction threshold calculation
@@ -25,8 +30,10 @@ export interface CompactionResult {
   compactedHistory: ChatHistoryItem[];
   compactionIndex: number;
   compactionContent: string;
-  /** The oldest messages the summary request had no room for; not in the summary */
+  /** Earlier messages the summary request had no room for; not in the summary */
   omittedMessages: number;
+  /** Tool outputs the summary request held only the start of */
+  shortenedOutputs: number;
 }
 
 export interface CompactionCallbacks {
@@ -38,34 +45,43 @@ export interface CompactionCallbacks {
 export interface CompactionOptions {
   callbacks?: CompactionCallbacks;
   abortController?: AbortController;
-  systemMessageTokens?: number;
+  /** The system prompt the summary request goes with; the current one by default */
+  systemMessage?: string;
 }
 
 const COMPACTION_PROMPT =
   "Please provide a concise summary of our conversation so far, capturing the key context, decisions made, and current state. Format this as a single comprehensive message that preserves all important information needed to continue our work. You do not need to recap the system message, as this will remain. Make sure it is clear what the current stream of work was at the very end prior to compaction so that you can continue exactly where you left off without missing any information.";
 
-const COMPACTION_PROMPT_TOKENS = 150; // rough generous token count of ^
-
-/**
- * Tokens of the system prompt a request is sent with: the given prompt, else
- * the current one for the current mode
- */
-export async function countSystemMessageTokens(
-  model: ModelConfig,
-  systemMessage?: string,
-): Promise<number> {
-  let prompt = systemMessage;
-  if (prompt === undefined) {
-    // Imported here: services import this module
-    const { services } = await import("./services/index.js");
-    prompt = await services.systemMessage.getSystemMessage(
-      services.toolPermissions.getState().currentMode,
-    );
-  }
-  return countChatHistoryItemTokens(
-    { message: { role: "system", content: prompt }, contextItems: [] },
-    model,
+/** The system prompt for the current mode */
+async function currentSystemMessage(): Promise<string> {
+  // Imported here: services import this module
+  const { services } = await import("./services/index.js");
+  return services.systemMessage.getSystemMessage(
+    services.toolPermissions.getState().currentMode,
   );
+}
+
+/** Why a summary request can't be made: the parts that are never left out, and their sizes */
+function summaryRequestTooLong(
+  history: ChatHistoryItem[],
+  model: ModelConfig,
+  detail?: string,
+): string {
+  const size = (items: ChatHistoryItem[]) =>
+    `${countChatHistoryTokens(items, model).toLocaleString()} tokens`;
+  const newest = history.findLastIndex((item) => item.message.role === "user");
+  const parts = [
+    history[0]?.conversationSummary !== undefined &&
+      `the previous summary (${size(history.slice(0, 1))})`,
+    newest >= 0 && `the newest request (${size([history[newest]])})`,
+    newest < history.length - 1 &&
+      `the last step (${size(history.slice(newest + 1))})`,
+  ].filter((part): part is string => typeof part === "string");
+  const kept =
+    parts.length > 1
+      ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`
+      : (parts[0] ?? "the history");
+  return `Can't compact: even with tool outputs shortened and earlier messages left out, ${kept} don't fit beside the system prompt and the room kept for the answer (${detail}). The conversation was left as it is. Raise contextLength, lower maxTokens or start a new session.`;
 }
 
 /**
@@ -83,9 +99,8 @@ export async function compactChatHistory(
   options?: CompactionOptions,
 ): Promise<CompactionResult> {
   const { callbacks, abortController } = options || {};
-  // The summary request carries the system prompt too (/compact passes no count)
-  const systemMessageTokens =
-    options?.systemMessageTokens ?? (await countSystemMessageTokens(model));
+  const systemMessage =
+    options?.systemMessage ?? (await currentSystemMessage());
   // Create a prompt to summarize the conversation
   const compactionPrompt: ChatHistoryItem = {
     message: {
@@ -95,39 +110,40 @@ export async function compactChatHistory(
     contextItems: [],
   };
 
-  const contextLimit = getModelContextLimit(model);
-  const maxTokens = getModelMaxTokens(model);
-
-  const availableForInput =
-    contextLimit - maxTokens - systemMessageTokens - COMPACTION_PROMPT_TOKENS;
-
-  // Too long to summarize whole: leave the oldest turns out, so the summary
-  // still covers the latest request and the work on it. The instruction is
-  // only counted here, never a turn to keep, and the request isn't pruned
-  // again on the way out.
-  const pruned = pruneOldestTurns(
+  // The check the summary request itself passes (it has no tools), so what
+  // fits here is what gets sent. The instruction is counted, never a turn to
+  // keep, and the request isn't fitted again on the way out.
+  const validate = (history: ChatHistoryItem[]) =>
+    validateContextLength({
+      chatHistory: [...history, compactionPrompt],
+      model,
+      systemMessage,
+      safetyBuffer: REQUEST_SAFETY_BUFFER,
+    });
+  // Too long to summarize whole: shorten older tool outputs, then leave
+  // earlier messages out, so the summary still covers the latest request
+  const fitted = fitHistory(
     historySentToModel(chatHistory),
-    (history) =>
-      countChatHistoryTokens([...history, compactionPrompt], model) <=
-      availableForInput,
+    (history) => validate(history).isValid,
   );
   // The summary replaces the session: fail, and keep the session as it is,
   // rather than summarize less than the newest turn
-  if (!pruned.fits) {
+  if (!fitted.fits) {
     const error = new Error(
-      `The newest turn doesn't fit the ${availableForInput}-token room for a summary request, so the conversation was left as it is. Raise contextLength, lower maxTokens or start a new session.`,
+      summaryRequestTooLong(
+        fitted.history,
+        model,
+        validate(fitted.history).error,
+      ),
     );
     logger.error("Compaction failed", error);
     callbacks?.onError?.(error);
     throw error;
   }
-  if (pruned.removed > 0) {
-    logger.warn("Compaction input too long, left the oldest messages out", {
-      removed: pruned.removed,
-      availableForInput,
-    });
+  if (fitted.removed > 0 || fitted.shortened > 0) {
+    logger.warn(`Compaction input too long: ${describeFit(fitted)}`);
   }
-  const historyForCompaction = [...pruned.history, compactionPrompt];
+  const historyForCompaction = [...fitted.history, compactionPrompt];
 
   // Stream the compaction response (service drives updates; this collects content locally)
   const controller = abortController || new AbortController();
@@ -160,6 +176,13 @@ export async function compactChatHistory(
       throw cancelled;
     }
 
+    // A provider that ends the stream without text gave no summary
+    if (!compactionContent.trim()) {
+      throw new Error(
+        "The model returned an empty summary, so the conversation was left as it is.",
+      );
+    }
+
     // The system prompt isn't part of the history (role:"system" items are
     // TUI notices), so the summary is the whole compacted history
     const compactionMessage: ChatHistoryItem = {
@@ -175,7 +198,8 @@ export async function compactChatHistory(
       compactedHistory: [compactionMessage],
       compactionContent,
       compactionIndex: 0,
-      omittedMessages: pruned.removed,
+      omittedMessages: fitted.removed,
+      shortenedOutputs: fitted.shortened,
     };
   } catch (error) {
     if (!isCompactionAborted(error)) {
@@ -200,125 +224,21 @@ export function findCompactionIndex(
   return compactedIndex === -1 ? null : compactedIndex;
 }
 
-/** Starts the note that stands in for messages left out of a request */
-export const PRUNED_HISTORY_NOTE_PREFIX = "[Context note:";
-
 /**
- * The history with a note in front saying how many messages are gone. The
- * note joins a leading user message, so roles still alternate for providers
- * that require it.
- */
-function withPrunedNote(
-  history: ChatHistoryItem[],
-  removed: number,
-): ChatHistoryItem[] {
-  const note = `${PRUNED_HISTORY_NOTE_PREFIX} ${removed} earlier messages of this conversation were left out to fit the context window. Continue from the messages below.]`;
-  const [first, ...rest] = history;
-  if (first?.message.role !== "user") {
-    return [
-      { message: { role: "user", content: note }, contextItems: [] },
-      ...history,
-    ];
-  }
-  const content = first.message.content;
-  return [
-    {
-      ...first,
-      message: {
-        ...first.message,
-        content:
-          typeof content === "string"
-            ? `${note}\n\n${content}`
-            : [{ type: "text", text: note }, ...content],
-      },
-    },
-    ...rest,
-  ];
-}
-
-/**
- * The history without its oldest part: the oldest whole turn (a user message
- * and everything up to the next one) while an older turn than the newest one
- * exists, then the oldest step of the newest turn (an assistant message and
- * its tool results). Never the newest user message or the last step; null
- * when nothing else is left.
- */
-function dropOldestPart(history: ChatHistoryItem[]): ChatHistoryItem[] | null {
-  if (history.length === 0) {
-    return null;
-  }
-  const isUser = (item: ChatHistoryItem) => item.message.role === "user";
-  const nextUser = history.findIndex((item, i) => i > 0 && isUser(item));
-  if (nextUser > 0) {
-    return history.slice(nextUser);
-  }
-  // Only the newest turn is left: keep its user message, drop its oldest step
-  const stepStart = isUser(history[0]) ? 1 : 0;
-  let stepEnd = stepStart + 1;
-  while (stepEnd < history.length && history[stepEnd].message.role === "tool") {
-    stepEnd++;
-  }
-  if (stepEnd >= history.length) {
-    return null;
-  }
-  return [...history.slice(0, stepStart), ...history.slice(stepEnd)];
-}
-
-/**
- * Leaves the oldest messages out until the history fits, oldest turns first,
- * and puts a note in front saying how many are gone. A tool call keeps its
- * results, the newest user message stays, and so does a leading summary from
- * an earlier compaction: it is the only record of what came before it.
- * Returns the history as given when it fits, else the shortest one with
- * `fits: false` when nothing more can go.
- * @param chatHistory The history to send
- * @param fits Whether a history fits the request
- */
-export function pruneOldestTurns(
-  chatHistory: ChatHistoryItem[],
-  fits: (history: ChatHistoryItem[]) => boolean,
-): { history: ChatHistoryItem[]; removed: number; fits: boolean } {
-  if (fits(chatHistory)) {
-    return { history: chatHistory, removed: 0, fits: true };
-  }
-  const summary =
-    chatHistory[0]?.conversationSummary === undefined
-      ? []
-      : chatHistory.slice(0, 1);
-  const body = chatHistory.slice(summary.length);
-  let kept = body;
-  let candidate = chatHistory;
-  let fitted = false;
-  while (!fitted) {
-    const next = dropOldestPart(kept);
-    if (!next) {
-      break;
-    }
-    kept = next;
-    candidate = [
-      ...summary,
-      ...withPrunedNote(kept, body.length - kept.length),
-    ];
-    fitted = fits(candidate);
-  }
-  return {
-    history: candidate,
-    removed: body.length - kept.length,
-    fits: fitted,
-  };
-}
-
-/**
- * What to tell the person once a compaction is done, including the oldest
- * messages it had no room for: they are in neither the summary nor the session
+ * What to tell the person once a compaction is done, including what didn't
+ * fit the summary request: it is in neither the summary nor the session
  */
 export function compactionDoneMessage(
-  result: Pick<CompactionResult, "omittedMessages">,
+  result: Pick<CompactionResult, "omittedMessages" | "shortenedOutputs">,
   auto = false,
 ): string {
   const done = `Chat history ${auto ? "auto-" : ""}compacted successfully.`;
-  return result.omittedMessages > 0
-    ? `${done} The ${result.omittedMessages} oldest messages didn't fit the summary request and aren't in the summary.`
+  const lost = describeFit({
+    removed: result.omittedMessages,
+    shortened: result.shortenedOutputs,
+  });
+  return lost
+    ? `${done} To fit the summary request, ${lost}. What was cut isn't in the summary.`
     : done;
 }
 

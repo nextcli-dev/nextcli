@@ -6,12 +6,13 @@ import React from "react";
 
 import {
   compactChatHistory,
+  type CompactionResult,
   compactionDoneMessage,
-  countSystemMessageTokens,
   getAutoCompactMessage,
   isCompactionAborted,
   shouldAutoCompact,
 } from "../compaction.js";
+import { safeStderr } from "../init.js";
 import { updateSessionHistory } from "../session.js";
 import { formatError } from "../util/formatError.js";
 import { logger } from "../util/logger.js";
@@ -60,13 +61,19 @@ function notifyCompactionStart(
  * Handle successful compaction state updates
  */
 function handleCompactionSuccess(
-  result: any,
+  result: CompactionResult,
   isHeadless: boolean,
   callbacks?: AutoCompactionCallbacks,
 ) {
-  if (isHeadless) return;
-
   const successMessage = compactionDoneMessage(result, true);
+
+  if (isHeadless) {
+    // An unattended run still says what the summary lost, on stderr
+    if (result.omittedMessages > 0 || result.shortenedOutputs > 0) {
+      safeStderr(`Warning: ${successMessage}\n`);
+    }
+    return;
+  }
 
   if (callbacks?.onSystemMessage) {
     callbacks.onSystemMessage(successMessage);
@@ -138,6 +145,9 @@ export async function handleAutoCompaction(
   chatHistory: ChatHistoryItem[];
   compactionIndex: number | null;
   wasCompacted: boolean;
+  /** What didn't fit the summary request, when compacted */
+  omittedMessages?: number;
+  shortenedOutputs?: number;
 }> {
   const {
     isHeadless = false,
@@ -168,11 +178,6 @@ export async function handleAutoCompaction(
   notifyCompactionStart(getAutoCompactMessage(model), isHeadless, callbacks);
 
   try {
-    const systemMessageTokens = await countSystemMessageTokens(
-      model,
-      providedSystemMessage,
-    );
-
     // Compact the history
     const result = await compactChatHistory(chatHistory, model, llmApi, {
       callbacks: isHeadless
@@ -181,7 +186,7 @@ export async function handleAutoCompaction(
             onStreamContent: callbacks?.onContent,
             onStreamComplete: () => {},
           },
-      systemMessageTokens,
+      systemMessage: providedSystemMessage,
       abortController,
     });
 
@@ -195,6 +200,8 @@ export async function handleAutoCompaction(
       chatHistory: result.compactedHistory,
       compactionIndex: result.compactionIndex,
       wasCompacted: true,
+      omittedMessages: result.omittedMessages,
+      shortenedOutputs: result.shortenedOutputs,
     };
   } catch (error: any) {
     // Cancelled by the user: nothing to report, the history is unchanged

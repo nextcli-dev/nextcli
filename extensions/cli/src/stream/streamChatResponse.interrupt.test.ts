@@ -13,7 +13,6 @@ const sessionUsage = { promptTokens: 0, completionTokens: 0, totalCost: 0 };
 
 vi.mock("../compaction.js", () => ({
   compactChatHistory: vi.fn(),
-  pruneOldestTurns: vi.fn((history) => ({ history, removed: 0 })),
   shouldAutoCompact: vi.fn(),
   getAutoCompactMessage: vi.fn(() => "Auto-compacting..."),
 }));

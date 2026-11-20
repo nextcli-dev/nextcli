@@ -10,11 +10,12 @@ vi.mock("../compaction.js", async (importOriginal) => ({
     await importOriginal<typeof import("../compaction.js")>()
   ).compactionDoneMessage,
   compactChatHistory: vi.fn(),
-  countSystemMessageTokens: vi.fn(async () => 100),
   shouldAutoCompact: vi.fn(),
   getAutoCompactMessage: vi.fn(),
   isCompactionAborted: (error: Error) => error?.name === "AbortError",
 }));
+
+vi.mock("../init.js", () => ({ safeStderr: vi.fn() }));
 
 vi.mock("../session.js", () => ({
   createSession: vi.fn((history) => ({
@@ -167,7 +168,6 @@ describe("handleAutoCompaction", () => {
       mockLlmApi,
       expect.objectContaining({
         callbacks: expect.any(Object),
-        systemMessageTokens: expect.any(Number),
       }),
     );
     expect(updateSessionHistory).toHaveBeenCalledWith(
@@ -239,16 +239,69 @@ describe("handleAutoCompaction", () => {
       compactionIndex: 0,
       compactionContent: "Summary",
       omittedMessages: 3,
+      shortenedOutputs: 1,
     });
     const onSystemMessage = vi.fn();
 
-    await handleAutoCompaction(mockChatHistory, mockModel, mockLlmApi, {
-      callbacks: { onSystemMessage },
+    const result = await handleAutoCompaction(
+      mockChatHistory,
+      mockModel,
+      mockLlmApi,
+      { callbacks: { onSystemMessage }, systemMessage: "Loop prompt" },
+    );
+
+    // The summary request goes with the prompt the loop sends
+    expect(vi.mocked(compactChatHistory).mock.calls[0][3]).toMatchObject({
+      systemMessage: "Loop prompt",
+    });
+    expect(onSystemMessage).toHaveBeenLastCalledWith(
+      "Chat history auto-compacted successfully. To fit the summary request, 3 earlier messages were left out and 1 tool output was shortened. What was cut isn't in the summary.",
+    );
+    expect(result).toMatchObject({ omittedMessages: 3, shortenedOutputs: 1 });
+  });
+
+  it("says on stderr what an unattended run's summary lost", async () => {
+    const { compactChatHistory, shouldAutoCompact } = await import(
+      "../compaction.js"
+    );
+    const { safeStderr } = await import("../init.js");
+    vi.mocked(shouldAutoCompact).mockReturnValue(true);
+    vi.mocked(compactChatHistory).mockResolvedValue({
+      compactedHistory: [],
+      compactionIndex: 0,
+      compactionContent: "Summary",
+      omittedMessages: 0,
+      shortenedOutputs: 2,
     });
 
-    expect(onSystemMessage).toHaveBeenLastCalledWith(
-      "Chat history auto-compacted successfully. The 3 oldest messages didn't fit the summary request and aren't in the summary.",
+    await handleAutoCompaction(mockChatHistory, mockModel, mockLlmApi, {
+      isHeadless: true,
+    });
+
+    expect(safeStderr).toHaveBeenCalledWith(
+      expect.stringMatching(/^Warning: .*2 tool outputs were shortened/),
     );
+  });
+
+  it("says nothing on stderr when the summary covers everything", async () => {
+    const { compactChatHistory, shouldAutoCompact } = await import(
+      "../compaction.js"
+    );
+    const { safeStderr } = await import("../init.js");
+    vi.mocked(shouldAutoCompact).mockReturnValue(true);
+    vi.mocked(compactChatHistory).mockResolvedValue({
+      compactedHistory: [],
+      compactionIndex: 0,
+      compactionContent: "Summary",
+      omittedMessages: 0,
+      shortenedOutputs: 0,
+    });
+
+    await handleAutoCompaction(mockChatHistory, mockModel, mockLlmApi, {
+      isHeadless: true,
+    });
+
+    expect(safeStderr).not.toHaveBeenCalled();
   });
 
   it("returns the history unchanged and warns nobody when cancelled", async () => {

@@ -27,6 +27,7 @@ const summary = convertToUnifiedHistory([
 ]);
 
 vi.mock("../compaction.js", () => ({
+  compactionDoneMessage: vi.fn(() => "Chat history auto-compacted."),
   shouldAutoCompact: vi.fn(({ chatHistory }) => isOverLimit(chatHistory)),
   compactChatHistory: vi.fn(() =>
     Promise.resolve({
@@ -36,7 +37,6 @@ vi.mock("../compaction.js", () => ({
     }),
   ),
   getAutoCompactMessage: vi.fn(() => "Compacting"),
-  countSystemMessageTokens: vi.fn(async () => 0),
   isCompactionAborted: (error: Error) => error?.name === "AbortError",
 }));
 

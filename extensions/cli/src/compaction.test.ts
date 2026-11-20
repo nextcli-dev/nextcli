@@ -10,8 +10,8 @@ import {
   compactionDoneMessage,
   getHistoryForLLM,
   isCompactionAborted,
-  PRUNED_HISTORY_NOTE_PREFIX,
 } from "./compaction.js";
+import { PRUNED_HISTORY_NOTE_PREFIX } from "./fitHistory.js";
 import { streamChatResponse } from "./stream/streamChatResponse.js";
 
 // Mock the streamChatResponse function
@@ -358,7 +358,12 @@ describe("compaction", () => {
 
       beforeEach(() => {
         vi.mocked(streamChatResponse).mockReset();
-        vi.mocked(streamChatResponse).mockResolvedValue("Summary");
+        vi.mocked(streamChatResponse).mockImplementation(
+          async (history, model, api, controller, callbacks) => {
+            callbacks?.onContent?.("Summary");
+            return "Summary";
+          },
+        );
       });
 
       it("reserves the current system prompt when the caller passes no count", async () => {
@@ -402,7 +407,7 @@ describe("compaction", () => {
         expect(result.omittedMessages).toBe(history.length - (sent.length - 1));
         expect(result.omittedMessages).toBeGreaterThan(0);
         expect(compactionDoneMessage(result)).toContain(
-          `The ${result.omittedMessages} oldest messages didn't fit`,
+          `${result.omittedMessages} earlier messages were left out`,
         );
       });
 
@@ -423,6 +428,27 @@ describe("compaction", () => {
         const sent = vi.mocked(streamChatResponse).mock.calls.at(-1)![0];
         expect(sent[0]).toBe(previous);
         expect(sent.at(-2)).toBe(history.at(-1));
+      });
+
+      it("names the kept summary when it is what doesn't fit", async () => {
+        currentSystemPrompt.text = "System prompt";
+        const previous: ChatHistoryItem = {
+          message: { role: "assistant", content: " hello".repeat(12_000) },
+          contextItems: [],
+          conversationSummary: "Earlier work",
+        };
+
+        await expect(
+          compactChatHistory(
+            [
+              previous,
+              { message: { role: "user", content: "go on" }, contextItems: [] },
+            ],
+            smallModel,
+            mockLlmApi,
+          ),
+        ).rejects.toThrow(/the previous summary \([\d,]+ tokens\)/);
+        expect(streamChatResponse).not.toHaveBeenCalled();
       });
 
       describe("fails and keeps the session when the newest turn doesn't fit", () => {
@@ -593,8 +619,9 @@ describe("compaction", () => {
       );
     });
 
-    it("should handle empty content from stream", async () => {
+    it("fails and keeps the session when the summary is empty", async () => {
       const mockStreamResponse = vi.mocked(streamChatResponse);
+      const onError = vi.fn();
 
       mockStreamResponse.mockImplementation(
         async (history, model, api, controller, callbacks) => {
@@ -608,10 +635,13 @@ describe("compaction", () => {
         { role: "user", content: "Hello" },
       ]);
 
-      const result = await compactChatHistory(history, mockModel, mockLlmApi);
-
-      expect(result.compactionContent).toBe("");
-      expect(result.compactedHistory[0].message.content).toBe("");
+      // No result, so nothing replaces the session
+      await expect(
+        compactChatHistory(history, mockModel, mockLlmApi, {
+          callbacks: { onError },
+        }),
+      ).rejects.toThrow("empty summary");
+      expect(onError).toHaveBeenCalled();
     });
 
     it("throws instead of keeping a partial summary when aborted", async () => {

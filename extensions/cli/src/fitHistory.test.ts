@@ -1,7 +1,7 @@
 import type { ChatHistoryItem } from "core/index.js";
 import { describe, expect, it } from "vitest";
 
-import { PRUNED_HISTORY_NOTE_PREFIX, pruneOldestTurns } from "./compaction.js";
+import { fitHistory, PRUNED_HISTORY_NOTE_PREFIX } from "./fitHistory.js";
 
 const user = (content: string): ChatHistoryItem => ({
   message: { role: "user", content },
@@ -37,19 +37,20 @@ const isNote = (item: ChatHistoryItem) =>
 const atMost = (n: number) => (history: ChatHistoryItem[]) =>
   history.length <= n;
 
-describe("pruneOldestTurns", () => {
+describe("fitHistory", () => {
   it("returns a history that fits as it is", () => {
     const history = [user("u1"), assistant("a1")];
 
-    const result = pruneOldestTurns(history, () => true);
+    const result = fitHistory(history, () => true);
 
-    expect(result).toEqual({ history, removed: 0, fits: true });
+    expect(result).toEqual({ history, removed: 0, shortened: 0, fits: true });
   });
 
   it("returns an empty history as it is", () => {
-    expect(pruneOldestTurns([], () => false)).toEqual({
+    expect(fitHistory([], () => false)).toEqual({
       history: [],
       removed: 0,
+      shortened: 0,
       fits: false,
     });
   });
@@ -63,7 +64,7 @@ describe("pruneOldestTurns", () => {
       user("u3"),
     ];
 
-    const result = pruneOldestTurns(history, atMost(4));
+    const result = fitHistory(history, atMost(4));
 
     expect(result.removed).toBe(2);
     expect(isNote(result.history[0])).toBe(true);
@@ -82,7 +83,7 @@ describe("pruneOldestTurns", () => {
       assistant("a2"),
     ];
 
-    const result = pruneOldestTurns(history, atMost(3));
+    const result = fitHistory(history, atMost(3));
 
     expect(result.removed).toBe(3);
     expect(contents(result.history)).toEqual(["u2", "a2"]);
@@ -100,7 +101,7 @@ describe("pruneOldestTurns", () => {
       tool("c3"),
     ];
 
-    const result = pruneOldestTurns(history, atMost(6));
+    const result = fitHistory(history, atMost(6));
 
     expect(result.removed).toBe(2);
     expect(contents(result.history)).toEqual([
@@ -129,7 +130,7 @@ describe("pruneOldestTurns", () => {
       assistant("a2"),
     ];
 
-    const result = pruneOldestTurns(history, atMost(3));
+    const result = fitHistory(history, atMost(3));
 
     expect(result).toMatchObject({ removed: 3, fits: true });
     expect(result.history[0]).toBe(summary);
@@ -143,9 +144,14 @@ describe("pruneOldestTurns", () => {
       conversationSummary: "summary",
     };
 
-    const result = pruneOldestTurns([summary], () => false);
+    const result = fitHistory([summary], () => false);
 
-    expect(result).toEqual({ history: [summary], removed: 0, fits: false });
+    expect(result).toEqual({
+      history: [summary],
+      removed: 0,
+      shortened: 0,
+      fits: false,
+    });
   });
 
   it("keeps the newest request and the last step when nothing fits", () => {
@@ -158,7 +164,7 @@ describe("pruneOldestTurns", () => {
       assistant("s2"),
     ];
 
-    const result = pruneOldestTurns(history, () => false);
+    const result = fitHistory(history, () => false);
 
     expect(result.removed).toBe(4);
     expect(result.fits).toBe(false);
@@ -168,15 +174,15 @@ describe("pruneOldestTurns", () => {
   it("leaves a single step that does not fit unchanged", () => {
     const history = [user("u1"), assistant("a1")];
 
-    const result = pruneOldestTurns(history, () => false);
+    const result = fitHistory(history, () => false);
 
-    expect(result).toEqual({ history, removed: 0, fits: false });
+    expect(result).toEqual({ history, removed: 0, shortened: 0, fits: false });
   });
 
   it("joins the note to the first user message, so roles still alternate", () => {
     const history = [user("u1"), assistant("a1"), user("u2"), assistant("a2")];
 
-    const result = pruneOldestTurns(history, atMost(2));
+    const result = fitHistory(history, atMost(2));
 
     expect(result.history.map((item) => item.message.role)).toEqual([
       "user",
@@ -202,7 +208,7 @@ describe("pruneOldestTurns", () => {
     };
     const history = [user("u1"), assistant("a1"), image, assistant("a2")];
 
-    const result = pruneOldestTurns(history, atMost(2));
+    const result = fitHistory(history, atMost(2));
 
     const parts = result.history[0].message.content as {
       type: string;
@@ -221,7 +227,7 @@ describe("pruneOldestTurns", () => {
     // After an earlier compaction, a turn can start with assistant steps
     const history = [assistant("s1", "c1"), tool("c1"), assistant("s2")];
 
-    const result = pruneOldestTurns(history, atMost(2));
+    const result = fitHistory(history, atMost(2));
 
     expect(result.removed).toBe(2);
     expect(isNote(result.history[0])).toBe(true);
@@ -229,5 +235,131 @@ describe("pruneOldestTurns", () => {
       "user",
       "assistant",
     ]);
+  });
+
+  describe("tool outputs", () => {
+    const big = "x".repeat(10_000);
+    const step = (content: string, id: string, output: string) =>
+      ({
+        message: { role: "assistant", content },
+        contextItems: [],
+        toolCallStates: [
+          {
+            toolCallId: id,
+            toolCall: {
+              id,
+              type: "function",
+              function: { name: "Read", arguments: "{}" },
+            },
+            status: "done",
+            parsedArgs: {},
+            output: [{ name: "Read", description: "", content: output }],
+          },
+        ],
+      }) as unknown as ChatHistoryItem;
+    const outputOf = (item: ChatHistoryItem) =>
+      item.toolCallStates![0].output![0].content;
+    // Characters of messages and tool outputs
+    const size = (history: ChatHistoryItem[]) =>
+      history.reduce(
+        (sum, item) =>
+          sum +
+          String(item.message.content).length +
+          (item.toolCallStates?.[0]?.output?.[0]?.content.length ?? 0),
+        0,
+      );
+    const atMostChars = (n: number) => (history: ChatHistoryItem[]) =>
+      size(history) <= n;
+
+    it("shortens an older output before leaving out any message", () => {
+      const history = [
+        user("u1"),
+        step("a1", "c1", big),
+        user("u2"),
+        step("a2", "c2", "ok"),
+      ];
+
+      const result = fitHistory(history, atMostChars(size(history) - 5_000));
+
+      expect(result).toMatchObject({ removed: 0, shortened: 1, fits: true });
+      expect(contents(result.history)).toEqual(["u1", "a1", "u2", "a2"]);
+      expect(outputOf(result.history[1]).length).toBeLessThan(2_100);
+      expect(outputOf(result.history[1])).toMatch(/^x+/);
+      expect(outputOf(result.history[1])).toContain("tool output truncated");
+      // The history it came from is left as it was
+      expect(outputOf(history[1])).toBe(big);
+    });
+
+    it("shortens the oldest output first", () => {
+      const history = [
+        user("u1"),
+        step("a1", "c1", big),
+        user("u2"),
+        step("a2", "c2", big),
+        user("u3"),
+        assistant("done"),
+      ];
+
+      const result = fitHistory(history, atMostChars(size(history) - 5_000));
+
+      expect(result).toMatchObject({ removed: 0, shortened: 1 });
+      expect(outputOf(result.history[1])).not.toBe(big);
+      expect(outputOf(result.history[3])).toBe(big);
+    });
+
+    it("leaves older turns out before shortening the newest step's output", () => {
+      const history = [
+        user("u1"),
+        step("a1", "c1", big),
+        assistant("y".repeat(6_000)),
+        user("u2"),
+        step("a2", "c2", big),
+      ];
+
+      const result = fitHistory(history, atMostChars(10_500));
+
+      expect(result).toMatchObject({ removed: 3, shortened: 1, fits: true });
+      expect(contents(result.history)).toEqual(["u2", "a2"]);
+      expect(outputOf(result.history[1])).toBe(big);
+    });
+
+    it("shortens the newest step's output when nothing else can go", () => {
+      const history = [user("task"), step("a1", "c1", big)];
+
+      const result = fitHistory(history, atMostChars(3_000));
+
+      expect(result).toMatchObject({ removed: 0, shortened: 1, fits: true });
+      expect(contents(result.history)).toEqual(["task", "a1"]);
+      expect(outputOf(result.history[1]).length).toBeLessThan(2_100);
+    });
+
+    it("fits a kept summary beside a step whose output alone fills the room", () => {
+      // Each fits alone; together they did not, and nothing could be left out
+      const summary: ChatHistoryItem = {
+        ...assistant("s".repeat(3_000)),
+        conversationSummary: "s".repeat(3_000),
+      };
+      const history = [summary, user("go on"), step("a1", "c1", big)];
+
+      const result = fitHistory(history, atMostChars(10_000));
+
+      expect(result).toMatchObject({ removed: 0, shortened: 1, fits: true });
+      expect(result.history[0]).toBe(summary);
+      expect(contents(result.history).slice(1)).toEqual(["go on", "a1"]);
+    });
+
+    it("leaves an output that is barely over the limit as it is", () => {
+      // Cutting it would save almost nothing
+      const history = [
+        user("u1"),
+        step("a1", "c1", "x".repeat(3_000)),
+        user("u2"),
+      ];
+
+      const result = fitHistory(history, atMostChars(size(history) - 1));
+
+      expect(result.shortened).toBe(0);
+      expect(result.removed).toBe(2);
+    });
   });
 });

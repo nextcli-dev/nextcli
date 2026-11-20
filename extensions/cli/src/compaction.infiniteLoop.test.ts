@@ -11,13 +11,35 @@ vi.mock("./stream/streamChatResponse.js", () => ({
   streamChatResponse: vi.fn(),
 }));
 
-vi.mock("./util/tokenizer.js", () => ({
-  historySentToModel: (history: { message: { role: string } }[]) =>
-    history.filter((item) => item.message.role !== "system"),
-  countChatHistoryTokens: vi.fn(),
-  getModelContextLimit: vi.fn(),
-  getModelMaxTokens: vi.fn(() => 1000),
-}));
+vi.mock("./util/tokenizer.js", () => {
+  const countChatHistoryTokens = vi.fn();
+  const getModelContextLimit = vi.fn();
+  const getModelMaxTokens = vi.fn(() => 1000);
+  return {
+    historySentToModel: (history: { message: { role: string } }[]) =>
+      history.filter((item) => item.message.role !== "system"),
+    countChatHistoryTokens,
+    getModelContextLimit,
+    getModelMaxTokens,
+    // The request's own check, on the counts each test sets
+    validateContextLength: ({
+      chatHistory,
+      model,
+      safetyBuffer = 0,
+    }: {
+      chatHistory: unknown[];
+      model: unknown;
+      safetyBuffer?: number;
+    }) => ({
+      isValid:
+        countChatHistoryTokens(chatHistory, model) +
+          getModelMaxTokens() +
+          safetyBuffer <=
+        getModelContextLimit(model),
+      error: "over the limit",
+    }),
+  };
+});
 
 describe("compaction infinite loop prevention", () => {
   const mockModel: ModelConfig = {
@@ -64,7 +86,7 @@ describe("compaction infinite loop prevention", () => {
     // than the newest turn
     await expect(
       compactChatHistory(history, mockModel, mockLlmApi, {
-        systemMessageTokens: 0,
+        systemMessage: "",
       }),
     ).rejects.toThrow("left as it is");
     expect(mockCountTokens).toHaveBeenCalled();
@@ -100,7 +122,7 @@ describe("compaction infinite loop prevention", () => {
     // This should not hang, and fails rather than summarize a cut-down turn
     await expect(
       compactChatHistory(history, mockModel, mockLlmApi, {
-        systemMessageTokens: 0,
+        systemMessage: "",
       }),
     ).rejects.toThrow("left as it is");
   });
@@ -121,7 +143,7 @@ describe("compaction infinite loop prevention", () => {
     mockCountTokens.mockImplementation(() => {
       callCount++;
       if (callCount === 1) return 5000; // Initial too big
-      if (callCount === 2) return 2000; // After pruning, fits (room: 2,850)
+      if (callCount === 2) return 2000; // After pruning, fits (room: 2,900)
       return 2000; // Subsequent calls
     });
 
@@ -142,7 +164,7 @@ describe("compaction infinite loop prevention", () => {
     ]);
 
     const result = await compactChatHistory(history, mockModel, mockLlmApi, {
-      systemMessageTokens: 0,
+      systemMessage: "",
     });
 
     expect(result.compactedHistory).toBeDefined();

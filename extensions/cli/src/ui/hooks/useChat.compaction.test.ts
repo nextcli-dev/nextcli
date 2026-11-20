@@ -78,7 +78,7 @@ describe("TUI auto-compaction before a message", () => {
     });
   });
 
-  it("sends the message after the summary once compacted", async () => {
+  it("sends the message after the summary and a notice once compacted", async () => {
     vi.mocked(coreHandleAutoCompaction).mockResolvedValue({
       chatHistory: [summary],
       compactionIndex: 0,
@@ -86,8 +86,37 @@ describe("TUI auto-compaction before a message", () => {
     });
 
     expect(await run()).toEqual({
-      newHistory: [summary, message],
+      newHistory: [
+        summary,
+        {
+          message: {
+            role: "system",
+            content: "Chat history auto-compacted successfully.",
+          },
+          contextItems: [],
+        },
+        message,
+      ],
       currentCompactionIndex: 0,
     });
+  });
+
+  it("tells the person what the summary lost", async () => {
+    vi.mocked(coreHandleAutoCompaction).mockResolvedValue({
+      chatHistory: [summary],
+      compactionIndex: 0,
+      wasCompacted: true,
+      omittedMessages: 2,
+      shortenedOutputs: 0,
+    });
+
+    const result = await run();
+
+    // Shown in the TUI; role:"system" items are never sent to the model
+    expect(result?.newHistory[1].message).toEqual({
+      role: "system",
+      content: expect.stringContaining("2 earlier messages were left out"),
+    });
+    expect(result?.newHistory.at(-1)).toBe(message);
   });
 });

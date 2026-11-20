@@ -1,6 +1,7 @@
 import { ModelConfig } from "@nextcli/config-yaml";
 import { BaseLlmApi } from "@nextcli/openai-adapters";
 import type { ChatHistoryItem } from "core/index.js";
+import { convertToUnifiedHistory } from "core/util/messageConversion.js";
 import type { ChatCompletionCreateParamsStreaming } from "openai/resources/chat/completions.mjs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -119,5 +120,62 @@ describe("the summary request compaction sends", () => {
       "left as it is",
     );
     expect(llmApi.chatCompletionStream).not.toHaveBeenCalled();
+  });
+
+  it("shortens a tool result that alone fills the window, instead of failing", async () => {
+    // One task, one step whose Read result is 100,000 characters: more than
+    // this window holds, and nothing older to leave out
+    const history = convertToUnifiedHistory([
+      { role: "user", content: "the task" },
+      {
+        role: "assistant",
+        content: "",
+        tool_calls: [
+          {
+            id: "c1",
+            type: "function",
+            function: { name: "Read", arguments: "{}" },
+          },
+        ],
+      },
+      { role: "tool", tool_call_id: "c1", content: " word".repeat(20_000) },
+    ]);
+
+    const result = await compactChatHistory(history, model, llmApi);
+
+    const messages = sentMessages();
+    expect(messages.map((m) => m.role)).toEqual([
+      "system",
+      "user",
+      "assistant",
+      "tool",
+      "user",
+    ]);
+    const toolResult = String(messages[3].content);
+    expect(toolResult.length).toBeLessThan(2_200);
+    expect(toolResult).toContain("tool output truncated");
+    expect(result).toMatchObject({ omittedMessages: 0, shortenedOutputs: 1 });
+  });
+
+  it("leaves out nothing the request itself has room for", async () => {
+    // Claude counts get a multiplier. Compaction used it on the system prompt
+    // where the request check doesn't, and counted the instruction twice, so
+    // this history was cut although the request fit.
+    const claude = {
+      ...model,
+      model: "claude-test",
+    } as ModelConfig;
+    const history = [
+      user(" hello".repeat(1_800)),
+      assistant(" hello".repeat(1_800)),
+      user("go on"),
+    ];
+
+    const result = await compactChatHistory(history, claude, llmApi, {
+      systemMessage: " hello".repeat(4_000),
+    });
+
+    expect(sentMessages()).toHaveLength(5);
+    expect(result).toMatchObject({ omittedMessages: 0, shortenedOutputs: 0 });
   });
 });

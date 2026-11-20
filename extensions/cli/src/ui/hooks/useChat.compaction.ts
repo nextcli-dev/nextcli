@@ -165,8 +165,22 @@ export async function handleAutoCompaction({
     };
   }
 
+  // Shown, never sent: says the history was compacted and what it lost
+  const notice: ChatHistoryItem = {
+    message: {
+      role: "system",
+      content: compactionDoneMessage(
+        {
+          omittedMessages: result.omittedMessages ?? 0,
+          shortenedOutputs: result.shortenedOutputs ?? 0,
+        },
+        true,
+      ),
+    },
+    contextItems: [],
+  };
   return {
-    newHistory: [...result.chatHistory, message],
+    newHistory: [...result.chatHistory, notice, message],
     currentCompactionIndex: result.compactionIndex,
   };
 }
