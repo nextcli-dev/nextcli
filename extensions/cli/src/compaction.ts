@@ -8,6 +8,7 @@ import { streamChatResponse } from "./stream/streamChatResponse.js";
 import { StreamCallbacks } from "./stream/streamChatResponse.types.js";
 import { logger } from "./util/logger.js";
 import {
+  countChatHistoryItemTokens,
   countChatHistoryTokens,
   countToolDefinitionTokens,
   countTotalInputTokens,
@@ -43,6 +44,28 @@ const COMPACTION_PROMPT =
 const COMPACTION_PROMPT_TOKENS = 150; // rough generous token count of ^
 
 /**
+ * Tokens of the system prompt a request is sent with: the given prompt, else
+ * the current one for the current mode
+ */
+export async function countSystemMessageTokens(
+  model: ModelConfig,
+  systemMessage?: string,
+): Promise<number> {
+  let prompt = systemMessage;
+  if (prompt === undefined) {
+    // Imported here: services import this module
+    const { services } = await import("./services/index.js");
+    prompt = await services.systemMessage.getSystemMessage(
+      services.toolPermissions.getState().currentMode,
+    );
+  }
+  return countChatHistoryItemTokens(
+    { message: { role: "system", content: prompt }, contextItems: [] },
+    model,
+  );
+}
+
+/**
  * Compacts a chat history into a summarized form
  * @param chatHistory The current chat history to compact
  * @param model The model configuration
@@ -56,7 +79,10 @@ export async function compactChatHistory(
   llmApi: BaseLlmApi,
   options?: CompactionOptions,
 ): Promise<CompactionResult> {
-  const { callbacks, abortController, systemMessageTokens = 0 } = options || {};
+  const { callbacks, abortController } = options || {};
+  // The summary request carries the system prompt too (/compact passes no count)
+  const systemMessageTokens =
+    options?.systemMessageTokens ?? (await countSystemMessageTokens(model));
   // Create a prompt to summarize the conversation
   const compactionPrompt: ChatHistoryItem = {
     message: {

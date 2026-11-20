@@ -6,6 +6,7 @@ import React from "react";
 
 import {
   compactChatHistory,
+  countSystemMessageTokens,
   getAutoCompactMessage,
   shouldAutoCompact,
 } from "../compaction.js";
@@ -161,29 +162,9 @@ export async function handleAutoCompaction(
   notifyCompactionStart(getAutoCompactMessage(model), isHeadless, callbacks);
 
   try {
-    // Get system message to calculate its token count for compaction pruning
-    // Use provided message if available, otherwise fetch it (for backward compatibility)
-    const systemMessage =
-      providedSystemMessage ??
-      (async () => {
-        const { services } = await import("../services/index.js");
-        return services.systemMessage.getSystemMessage(
-          services.toolPermissions.getState().currentMode,
-        );
-      })();
-    const resolvedSystemMessage =
-      typeof systemMessage === "string" ? systemMessage : await systemMessage;
-
-    const { countChatHistoryItemTokens } = await import("../util/tokenizer.js");
-    const systemMessageTokens = countChatHistoryItemTokens(
-      {
-        message: {
-          role: "system",
-          content: resolvedSystemMessage,
-        },
-        contextItems: [],
-      },
+    const systemMessageTokens = await countSystemMessageTokens(
       model,
+      providedSystemMessage,
     );
 
     // Compact the history

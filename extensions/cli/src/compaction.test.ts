@@ -2,7 +2,7 @@ import { ModelConfig } from "@nextcli/config-yaml";
 import { BaseLlmApi } from "@nextcli/openai-adapters";
 import type { ChatHistoryItem } from "core/index.js";
 import { convertToUnifiedHistory } from "core/util/messageConversion.js";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   compactChatHistory,
@@ -14,6 +14,17 @@ import { streamChatResponse } from "./stream/streamChatResponse.js";
 // Mock the streamChatResponse function
 vi.mock("./stream/streamChatResponse.js", () => ({
   streamChatResponse: vi.fn(),
+}));
+
+// The current system prompt, which /compact reserves room for
+const currentSystemPrompt = vi.hoisted(() => ({ text: "System prompt" }));
+vi.mock("./services/index.js", () => ({
+  services: {
+    systemMessage: {
+      getSystemMessage: vi.fn(async () => currentSystemPrompt.text),
+    },
+    toolPermissions: { getState: vi.fn(() => ({ currentMode: "normal" })) },
+  },
 }));
 
 describe("compaction", () => {
@@ -323,6 +334,48 @@ describe("compaction", () => {
   });
 
   describe("compactChatHistory", () => {
+    describe("room for the system prompt", () => {
+      // 10K window, 1K output: 8,850 tokens for history without a prompt
+      const smallModel = {
+        name: "small",
+        provider: "openai",
+        model: "gpt-4o",
+        defaultCompletionOptions: { contextLength: 10_000, maxTokens: 1_000 },
+      } as ModelConfig;
+      // 12 messages of about 500 tokens: about 6,000 tokens of history
+      const history: ChatHistoryItem[] = Array.from({ length: 12 }, (_, i) => ({
+        message: {
+          role: i % 2 === 0 ? ("user" as const) : ("assistant" as const),
+          content: " hello".repeat(500),
+        },
+        contextItems: [],
+      }));
+      const sentHistoryLength = () =>
+        vi.mocked(streamChatResponse).mock.calls.at(-1)![0].length;
+
+      beforeEach(() => {
+        vi.mocked(streamChatResponse).mockReset();
+        vi.mocked(streamChatResponse).mockResolvedValue("Summary");
+      });
+
+      it("reserves the current system prompt when the caller passes no count", async () => {
+        currentSystemPrompt.text = " hello".repeat(4_000);
+
+        await compactChatHistory(history, smallModel, mockLlmApi);
+
+        // 4K of prompt leaves about 4,850 tokens: the history is cut to fit
+        expect(sentHistoryLength()).toBeLessThan(history.length + 1);
+      });
+
+      it("sends the whole history when it fits beside the prompt", async () => {
+        currentSystemPrompt.text = "System prompt";
+
+        await compactChatHistory(history, smallModel, mockLlmApi);
+
+        expect(sentHistoryLength()).toBe(history.length + 1);
+      });
+    });
+
     it("should compact chat history successfully", async () => {
       const mockStreamResponse = vi.mocked(streamChatResponse);
       const mockContent = "This is a summary of the conversation";
