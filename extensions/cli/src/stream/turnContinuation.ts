@@ -78,7 +78,7 @@ export function outputCapMessage(): string | undefined {
 }
 
 /** Sent after a compaction, so the next call answers a user turn */
-export const COMPACTION_CONTINUE_PROMPT =
+export const COMPACTION_NEXT_PROMPT =
   "Continue from where the summary above leaves off. Don't redo work it lists as done.";
 
 /**
@@ -92,7 +92,7 @@ export function resumeAfterCompaction(
 ): ChatHistoryItem[] {
   logger.debug("Continuing after compaction");
   // A copy: without the history service, addUserMessage appends in place
-  return addUserMessage([...chatHistory], COMPACTION_CONTINUE_PROMPT);
+  return addUserMessage([...chatHistory], COMPACTION_NEXT_PROMPT);
 }
 
 /** What one turn of the agent loop carries into the next. */

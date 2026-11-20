@@ -10,7 +10,10 @@ import { validateContextLength } from "../util/tokenizer.js";
 
 import { handleAutoCompaction } from "./streamChatResponse.autoCompaction.js";
 import { StreamCallbacks } from "./streamChatResponse.types.js";
-import { resumeAfterCompaction } from "./turnContinuation.js";
+import {
+  COMPACTION_NEXT_PROMPT,
+  resumeAfterCompaction,
+} from "./turnContinuation.js";
 
 export interface CompactionHelperOptions {
   model: ModelConfig;
@@ -20,7 +23,21 @@ export interface CompactionHelperOptions {
   callbacks?: StreamCallbacks;
   systemMessage: string;
   tools?: ChatCompletionTool[];
+  /** The turn's controller: Escape stops a compaction as well as the turn */
+  abortController?: AbortController;
 }
+
+/**
+ * What follows the summary in the next request: the user turn that
+ * commitCompacted appends. Not built with resumeAfterCompaction, which
+ * writes to the history service.
+ */
+const NEXT_AFTER_SUMMARY: ChatHistoryItem[] = [
+  {
+    message: { role: "user", content: COMPACTION_NEXT_PROMPT },
+    contextItems: [],
+  },
+];
 
 /**
  * Makes a compacted history the conversation: writes it to the history
@@ -54,6 +71,7 @@ export async function handlePreApiCompaction(
     callbacks,
     systemMessage,
     tools,
+    abortController,
   } = options;
 
   if (isCompacting) {
@@ -69,6 +87,8 @@ export async function handlePreApiCompaction(
       },
       systemMessage,
       tools,
+      abortController,
+      followedBy: NEXT_AFTER_SUMMARY,
     });
 
   if (wasCompacted) {
@@ -98,6 +118,7 @@ export async function handlePostToolValidation(
     callbacks,
     systemMessage,
     tools,
+    abortController,
   } = options;
 
   // Never compact inside a compaction
@@ -131,54 +152,41 @@ export async function handlePostToolValidation(
     });
 
     // Force compaction (compaction now accounts for system message during pruning)
-    const { wasCompacted, chatHistory: compactedHistory } =
-      await handleAutoCompaction(chatHistory, model, llmApi, {
-        isHeadless,
-        callbacks: {
-          onSystemMessage: callbacks?.onSystemMessage,
-          onContent: callbacks?.onContent,
-        },
-        systemMessage,
-        tools,
-      });
+    const {
+      wasCompacted,
+      chatHistory: compactedHistory,
+      error,
+    } = await handleAutoCompaction(chatHistory, model, llmApi, {
+      isHeadless,
+      callbacks: {
+        onSystemMessage: callbacks?.onSystemMessage,
+        onContent: callbacks?.onContent,
+      },
+      systemMessage,
+      tools,
+      abortController,
+      followedBy: NEXT_AFTER_SUMMARY,
+    });
 
-    if (wasCompacted) {
-      chatHistory = commitCompacted(compactedHistory);
+    // Escape during the compaction: the turn stops, nothing to fix
+    if (!wasCompacted && abortController?.signal.aborted) {
+      return { chatHistory, wasCompacted: false };
+    }
 
-      // Verify compaction brought us under the limit
-      const postCompactionValidation = validateContextLength({
-        chatHistory,
-        model,
-        safetyBuffer: SAFETY_BUFFER,
-        systemMessage,
-        tools,
-      });
-
-      if (!postCompactionValidation.isValid) {
-        logger.error(
-          "Compaction failed to bring context under limit, stopping execution",
-          {
-            inputTokens: postCompactionValidation.inputTokens,
-            contextLimit: postCompactionValidation.contextLimit,
-          },
-        );
-        throw new Error(
-          `Context limit exceeded even after compaction: ${postCompactionValidation.error}`,
-        );
-      }
-
-      logger.info("Successfully compacted after tool overflow", {
-        inputTokens: postCompactionValidation.inputTokens,
-        contextLimit: postCompactionValidation.contextLimit,
-      });
-      return { chatHistory, wasCompacted: true };
-    } else {
-      // Compaction failed, cannot continue
+    if (!wasCompacted) {
+      // Nothing was written, so the run can be resumed
       logger.error("Failed to compact history after tool execution overflow");
       throw new Error(
-        "Context limit exceeded and compaction failed. Unable to continue.",
+        `Context limit exceeded and compaction failed: ${error?.message ?? "no summary"}`,
       );
     }
+
+    // compactChatHistory already checked that this request fits
+    logger.info("Compacted after tool overflow");
+    return {
+      chatHistory: commitCompacted(compactedHistory),
+      wasCompacted: true,
+    };
   }
 
   return { chatHistory, wasCompacted: false };
@@ -200,6 +208,7 @@ export async function handleNormalAutoCompaction(
     callbacks,
     systemMessage,
     tools,
+    abortController,
   } = options;
 
   // Never compact inside a compaction
@@ -224,6 +233,8 @@ export async function handleNormalAutoCompaction(
       },
       systemMessage,
       tools,
+      abortController,
+      followedBy: NEXT_AFTER_SUMMARY,
     });
 
   if (wasCompacted) {

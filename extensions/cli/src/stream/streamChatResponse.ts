@@ -7,7 +7,11 @@ import type {
   ChatCompletionTool,
 } from "openai/resources.mjs";
 
-import { pruneLastMessage } from "../compaction.js";
+import {
+  describeFit,
+  fitHistory,
+  REQUEST_SAFETY_BUFFER,
+} from "../fitHistory.js";
 import type { ToolPermissionsSource } from "../permissions/types.js";
 import { services } from "../services/index.js";
 import { applyChatCompletionToolOverrides } from "../tools/applyToolOverrides.js";
@@ -153,6 +157,12 @@ interface ProcessStreamingResponseOptions {
   maxTokens?: number;
   /** Turns thinking off for this call, for a model that can */
   thinkingOff?: boolean;
+  /**
+   * A summary request, already fitted by compactChatHistory. It is sent whole
+   * or fails: fitting it again would keep the instruction as the newest turn
+   * and drop the conversation.
+   */
+  isCompacting?: boolean;
 }
 
 // Process a single streaming response and return whether we need to continue
@@ -177,36 +187,28 @@ export async function processStreamingResponse(
     systemMessage,
   } = options;
 
-  let chatHistory = historySentToModel(options.chatHistory);
-
-  // Safety buffer to account for tokenization estimation errors
-  const SAFETY_BUFFER = 100;
-
   // Validate context length INCLUDING system message and tools
-  let validation = validateContextLength({
-    chatHistory,
-    model,
-    safetyBuffer: SAFETY_BUFFER,
-    systemMessage,
-    tools,
-  });
-
-  // Prune last messages until valid (excluding system message)
-  while (chatHistory.length > 1 && !validation.isValid) {
-    const prunedChatHistory = pruneLastMessage(chatHistory);
-    if (prunedChatHistory.length === chatHistory.length) {
-      break;
-    }
-    chatHistory = prunedChatHistory;
-
-    // Re-validate with system message and tools
-    validation = validateContextLength({
-      chatHistory,
+  const validate = (history: ChatHistoryItem[]) =>
+    validateContextLength({
+      chatHistory: history,
       model,
-      safetyBuffer: SAFETY_BUFFER,
+      safetyBuffer: REQUEST_SAFETY_BUFFER,
       systemMessage,
       tools,
     });
+
+  // Too long for the window: fit this request only (the session keeps
+  // everything)
+  const sent = historySentToModel(options.chatHistory);
+  const fitted = options.isCompacting
+    ? { history: sent, removed: 0, shortened: 0 }
+    : fitHistory(sent, (history) => validate(history).isValid);
+  const chatHistory = fitted.history;
+  const validation = validate(chatHistory);
+  if ((fitted.removed > 0 || fitted.shortened > 0) && validation.isValid) {
+    const notice = `Context window full: in this request, ${describeFit(fitted)}. The session keeps them in full.`;
+    logger.warn(notice);
+    callbacks?.onSystemMessage?.(notice);
   }
 
   if (!validation.isValid) {
@@ -395,6 +397,21 @@ export async function processStreamingResponse(
   };
 }
 
+/**
+ * The tools a normal request carries, with the model's overrides. Compaction
+ * sizes its summary with them.
+ */
+export async function requestTools(
+  model: ModelConfig,
+  isHeadless: boolean,
+  getPermissions?: ToolPermissionsSource,
+): Promise<ChatCompletionTool[]> {
+  return applyChatCompletionToolOverrides(
+    await getRequestTools(isHeadless, getPermissions),
+    model.chatOptions?.toolOverrides,
+  );
+}
+
 // Main function that handles the conversation loop
 // eslint-disable-next-line max-params
 export async function streamChatResponse(
@@ -456,10 +473,9 @@ export async function streamChatResponse(
 
       // Recompute tools on each iteration to handle mode changes during
       // streaming. A run's last call and a compaction get none.
-      const tools = applyChatCompletionToolOverrides(
-        onlyCall ? [] : await getRequestTools(isHeadless, getPermissions),
-        model.chatOptions?.toolOverrides,
-      );
+      const tools = onlyCall
+        ? []
+        : await requestTools(model, isHeadless, getPermissions);
 
       // A compaction below leaves a history that ends with a user turn
       const compaction = {
@@ -470,12 +486,13 @@ export async function streamChatResponse(
         callbacks,
         systemMessage,
         tools,
+        abortController,
       };
 
       // Pre-API auto-compaction checkpoint (now includes tools). Not before
       // a run's last call: the limit left room for that call only, and the
       // request for the answer would go into the summary. processStreaming-
-      // Response prunes a history that doesn't fit.
+      // Response fits a history that is too long.
       if (!wrapUp) {
         chatHistory = (await handlePreApiCompaction(chatHistory, compaction))
           .chatHistory;
@@ -509,6 +526,7 @@ export async function streamChatResponse(
             // The last call writes the answer and a compaction a summary: no
             // tokens spent on thinking
             thinkingOff: onlyCall,
+            isCompacting,
           }),
         );
 
@@ -517,6 +535,12 @@ export async function streamChatResponse(
       }
 
       // Tool calls in it are dropped, not run
+      if (isCompacting) {
+        // A summary is stored by compactChatHistory's caller, after it passes
+        // the next-request check; storing it here would write before that
+        handleContentDisplay(content, callbacks, isHeadless);
+        return content || finalResponse || fullResponse;
+      }
       if (onlyCall) {
         await saveFinalAnswer({
           chatHistory,

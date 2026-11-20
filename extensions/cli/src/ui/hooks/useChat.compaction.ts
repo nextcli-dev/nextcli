@@ -1,6 +1,6 @@
 import type { ChatHistoryItem, Session } from "core/index.js";
 
-import { compactChatHistory } from "../../compaction.js";
+import { compactChatHistory, compactionDoneMessage } from "../../compaction.js";
 import { updateSessionHistory } from "../../session.js";
 import { handleAutoCompaction as coreHandleAutoCompaction } from "../../stream/streamChatResponse.autoCompaction.js";
 import { formatError } from "../../util/formatError.js";
@@ -71,7 +71,7 @@ export async function handleCompactCommand({
       {
         message: {
           role: "system",
-          content: "Chat history compacted successfully.",
+          content: compactionDoneMessage(result),
         },
         contextItems: [],
       },
@@ -118,24 +118,30 @@ interface HandleAutoCompactionOptions {
   compactionIndex: number | null;
   setChatHistory: React.Dispatch<React.SetStateAction<ChatHistoryItem[]>>;
   setCompactionIndex: React.Dispatch<React.SetStateAction<number | null>>;
-  abortController?: AbortController;
+  /** Escape aborts it */
+  abortController: AbortController;
+  /** The message the compaction runs before */
+  message: ChatHistoryItem;
 }
 
 /**
- * Handle auto-compaction when approaching context limit - TUI wrapper
+ * Auto-compacts before a message when approaching the context limit - TUI
+ * wrapper. Returns the history to send, ending with the message, or null
+ * when Escape cancelled the compaction: the message is then not sent.
  */
 export async function handleAutoCompaction({
   chatHistory,
   model,
   llmApi,
-  compactionIndex: _compactionIndex,
+  compactionIndex,
   setChatHistory,
   setCompactionIndex,
-  abortController: _abortController,
+  abortController,
+  message,
 }: HandleAutoCompactionOptions): Promise<{
-  currentChatHistory: ChatHistoryItem[];
+  newHistory: ChatHistoryItem[];
   currentCompactionIndex: number | null;
-}> {
+} | null> {
   // Delegate to core handleAutoCompaction which decides whether compaction is needed
   // Note: TUI mode doesn't have access to tools/systemMessage at this point,
   // so the core function uses a simplified check.
@@ -145,17 +151,38 @@ export async function handleAutoCompaction({
       setChatHistory,
       setCompactionIndex,
     },
+    abortController,
+    // The summary must fit with the message after it
+    followedBy: [message],
   });
+
+  if (abortController.signal.aborted) {
+    return null;
+  }
 
   if (!result.wasCompacted) {
     return {
-      currentChatHistory: chatHistory,
-      currentCompactionIndex: _compactionIndex,
+      newHistory: [...chatHistory, message],
+      currentCompactionIndex: compactionIndex,
     };
   }
 
+  // Shown in the TUI, never sent to the model
+  const notice: ChatHistoryItem = {
+    message: {
+      role: "system",
+      content: compactionDoneMessage(
+        {
+          omittedMessages: result.omittedMessages ?? 0,
+          shortenedOutputs: result.shortenedOutputs ?? 0,
+        },
+        true,
+      ),
+    },
+    contextItems: [],
+  };
   return {
-    currentChatHistory: result.chatHistory,
+    newHistory: [...result.chatHistory, notice, message],
     currentCompactionIndex: result.compactionIndex,
   };
 }

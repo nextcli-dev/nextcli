@@ -6,10 +6,13 @@ import React from "react";
 
 import {
   compactChatHistory,
-  countSystemMessageTokens,
+  type CompactionResult,
+  compactionDoneMessage,
   getAutoCompactMessage,
+  isCompactionAborted,
   shouldAutoCompact,
 } from "../compaction.js";
+import { safeStderr } from "../init.js";
 import { updateSessionHistory } from "../session.js";
 import { formatError } from "../util/formatError.js";
 import { logger } from "../util/logger.js";
@@ -33,6 +36,10 @@ interface AutoCompactionOptions {
   callbacks?: AutoCompactionCallbacks;
   systemMessage?: string;
   tools?: ChatCompletionTool[];
+  /** Escape aborts it: the summary call stops and the history stays as it was */
+  abortController?: AbortController;
+  /** What follows the summary in the next request, which it is sized to fit */
+  followedBy?: ChatHistoryItem[];
 }
 
 /**
@@ -56,13 +63,19 @@ function notifyCompactionStart(
  * Handle successful compaction state updates
  */
 function handleCompactionSuccess(
-  result: any,
+  result: CompactionResult,
   isHeadless: boolean,
   callbacks?: AutoCompactionCallbacks,
 ) {
-  if (isHeadless) return;
+  const successMessage = compactionDoneMessage(result, true);
 
-  const successMessage = "Chat history auto-compacted successfully.";
+  if (isHeadless) {
+    // Headless: report what the summary lost on stderr
+    if (result.omittedMessages > 0 || result.shortenedOutputs > 0) {
+      safeStderr(`Warning: ${successMessage}\n`);
+    }
+    return;
+  }
 
   if (callbacks?.onSystemMessage) {
     callbacks.onSystemMessage(successMessage);
@@ -97,7 +110,11 @@ function handleCompactionError(
   const errorMessage = `Auto-compaction error: ${formatError(error)}`;
   logger.error(errorMessage);
 
-  if (isHeadless) return;
+  // Headless: report the reason on stderr
+  if (isHeadless) {
+    safeStderr(`Warning: ${errorMessage}\n`);
+    return;
+  }
 
   const warningMessage = `Warning: ${errorMessage}. Continuing without compaction...`;
 
@@ -134,16 +151,24 @@ export async function handleAutoCompaction(
   chatHistory: ChatHistoryItem[];
   compactionIndex: number | null;
   wasCompacted: boolean;
+  /** What didn't fit the summary request, when compacted */
+  omittedMessages?: number;
+  shortenedOutputs?: number;
+  /** Why it didn't compact, when it tried and failed */
+  error?: Error;
 }> {
   const {
     isHeadless = false,
     callbacks,
     systemMessage: providedSystemMessage,
     tools,
+    abortController,
+    followedBy,
   } = options;
 
   if (
     !model ||
+    abortController?.signal.aborted ||
     !shouldAutoCompact({
       chatHistory,
       model,
@@ -162,11 +187,6 @@ export async function handleAutoCompaction(
   notifyCompactionStart(getAutoCompactMessage(model), isHeadless, callbacks);
 
   try {
-    const systemMessageTokens = await countSystemMessageTokens(
-      model,
-      providedSystemMessage,
-    );
-
     // Compact the history
     const result = await compactChatHistory(chatHistory, model, llmApi, {
       callbacks: isHeadless
@@ -175,10 +195,14 @@ export async function handleAutoCompaction(
             onStreamContent: callbacks?.onContent,
             onStreamComplete: () => {},
           },
-      systemMessageTokens,
+      systemMessage: providedSystemMessage,
+      tools,
+      followedBy,
+      abortController,
     });
 
-    // Save the compacted session
+    // Written only after compactChatHistory returns: it throws, and nothing is
+    // written, if the summary wouldn't fit the next request
     updateSessionHistory(result.compactedHistory);
 
     // Handle success notification
@@ -188,12 +212,24 @@ export async function handleAutoCompaction(
       chatHistory: result.compactedHistory,
       compactionIndex: result.compactionIndex,
       wasCompacted: true,
+      omittedMessages: result.omittedMessages,
+      shortenedOutputs: result.shortenedOutputs,
     };
   } catch (error: any) {
+    // Cancelled by the user: nothing to report, the history is unchanged
+    if (isCompactionAborted(error)) {
+      logger.info("Auto-compaction cancelled");
+      return { chatHistory, compactionIndex: null, wasCompacted: false };
+    }
     // Handle error notification
     handleCompactionError(error, isHeadless, callbacks);
 
     // Continue without compaction on error
-    return { chatHistory, compactionIndex: null, wasCompacted: false };
+    return {
+      chatHistory,
+      compactionIndex: null,
+      wasCompacted: false,
+      error: error instanceof Error ? error : new Error(String(error)),
+    };
   }
 }

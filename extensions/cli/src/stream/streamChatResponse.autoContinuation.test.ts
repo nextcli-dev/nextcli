@@ -14,7 +14,6 @@ import { EMPTY_ANSWER_PROMPT, requireFinalAnswer } from "./turnContinuation.js";
 // Mock all dependencies
 vi.mock("../compaction.js", () => ({
   compactChatHistory: vi.fn(),
-  pruneLastMessage: vi.fn((history) => history.slice(0, -1)),
   shouldAutoCompact: vi.fn(),
   getAutoCompactMessage: vi.fn(() => "Auto-compacting..."),
 }));

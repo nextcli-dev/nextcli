@@ -4,16 +4,25 @@ import type { ChatHistoryItem } from "core/index.js";
 import { encode } from "gpt-tokenizer";
 import { ChatCompletionTool } from "openai/resources.mjs";
 
-import { streamChatResponse } from "./stream/streamChatResponse.js";
+import {
+  describeFit,
+  fitHistory,
+  REQUEST_SAFETY_BUFFER,
+} from "./fitHistory.js";
+import {
+  requestTools,
+  streamChatResponse,
+} from "./stream/streamChatResponse.js";
 import { StreamCallbacks } from "./stream/streamChatResponse.types.js";
 import { logger } from "./util/logger.js";
 import {
-  countChatHistoryItemTokens,
   countChatHistoryTokens,
   countToolDefinitionTokens,
   countTotalInputTokens,
   getModelContextLimit,
   getModelMaxTokens,
+  historySentToModel,
+  validateContextLength,
 } from "./util/tokenizer.js";
 
 // Buffer cap/ratio for auto-compaction threshold calculation
@@ -24,6 +33,10 @@ export interface CompactionResult {
   compactedHistory: ChatHistoryItem[];
   compactionIndex: number;
   compactionContent: string;
+  /** Earlier messages the summary request had no room for; not in the summary */
+  omittedMessages: number;
+  /** Tool outputs cut to their start in the summary request */
+  shortenedOutputs: number;
 }
 
 export interface CompactionCallbacks {
@@ -35,34 +48,127 @@ export interface CompactionCallbacks {
 export interface CompactionOptions {
   callbacks?: CompactionCallbacks;
   abortController?: AbortController;
-  systemMessageTokens?: number;
+  /** The system prompt the summary request goes with; the current one by default */
+  systemMessage?: string;
+  /** The next request's tools; a normal request's by default */
+  tools?: ChatCompletionTool[];
+  /**
+   * What follows the summary in the next request: the continue prompt in the
+   * agent loop, or the person's message before a TUI send. None by default.
+   */
+  followedBy?: ChatHistoryItem[];
+}
+
+// A summary shorter than this can't carry the work forward
+const MIN_SUMMARY_TOKENS = 1_000;
+// The highest max_tokens a summary is sent with, the same as a final answer's
+// (FINAL_ANSWER_TOKENS)
+const MAX_CAPPED_SUMMARY_TOKENS = 16_000;
+// Message overhead of the summary item
+const SUMMARY_ITEM_TOKENS = 10;
+
+/** The request after the summary, which the summary must fit */
+interface NextRequest {
+  systemMessage: string;
+  tools: ChatCompletionTool[];
+  followedBy: ChatHistoryItem[];
 }
 
 const COMPACTION_PROMPT =
   "Please provide a concise summary of our conversation so far, capturing the key context, decisions made, and current state. Format this as a single comprehensive message that preserves all important information needed to continue our work. You do not need to recap the system message, as this will remain. Make sure it is clear what the current stream of work was at the very end prior to compaction so that you can continue exactly where you left off without missing any information.";
 
-const COMPACTION_PROMPT_TOKENS = 150; // rough generous token count of ^
+/** The system prompt for the current mode */
+async function currentSystemMessage(): Promise<string> {
+  // Imported here: services import this module
+  const { services } = await import("./services/index.js");
+  return services.systemMessage.getSystemMessage(
+    services.toolPermissions.getState().currentMode,
+  );
+}
+
+/** The tools a normal request would carry now */
+async function currentRequestTools(
+  model: ModelConfig,
+): Promise<ChatCompletionTool[]> {
+  const { services } = await import("./services/index.js");
+  return requestTools(model, services.toolPermissions.isHeadless());
+}
 
 /**
- * Tokens of the system prompt a request is sent with: the given prompt, else
- * the current one for the current mode
+ * Tokens the next request leaves for the summary: the window less the answer
+ * reserve, the safety buffer, the system prompt, the tools and what follows
  */
-export async function countSystemMessageTokens(
-  model: ModelConfig,
-  systemMessage?: string,
-): Promise<number> {
-  let prompt = systemMessage;
-  if (prompt === undefined) {
-    // Imported here: services import this module
-    const { services } = await import("./services/index.js");
-    prompt = await services.systemMessage.getSystemMessage(
-      services.toolPermissions.getState().currentMode,
-    );
-  }
-  return countChatHistoryItemTokens(
-    { message: { role: "system", content: prompt }, contextItems: [] },
+function roomForSummary(model: ModelConfig, next: NextRequest): number {
+  const rest = countTotalInputTokens({
+    chatHistory: next.followedBy,
+    systemMessage: next.systemMessage,
+    tools: next.tools,
     model,
+  });
+  return (
+    getModelContextLimit(model) -
+    getModelMaxTokens(model) -
+    REQUEST_SAFETY_BUFFER -
+    rest -
+    SUMMARY_ITEM_TOKENS
   );
+}
+
+/** The error for no room, with the sizes that fill the window */
+function noRoomForSummary(
+  model: ModelConfig,
+  next: NextRequest,
+  room: number,
+): string {
+  const tokens = (n: number) => `${n.toLocaleString()} tokens`;
+  const parts = [
+    `the system prompt (${tokens(encode(next.systemMessage).length)})`,
+    next.tools.length > 0 &&
+      `the tools (${tokens(countToolDefinitionTokens(next.tools))})`,
+    next.followedBy.length > 0 &&
+      `what follows the summary (${tokens(countChatHistoryTokens(next.followedBy, model))})`,
+    `the room kept for the answer (${tokens(getModelMaxTokens(model))})`,
+  ].filter((part): part is string => typeof part === "string");
+  return `Can't compact: ${parts.join(", ")} leave ${tokens(Math.max(room, 0))} of the ${tokens(getModelContextLimit(model))} window for a summary, less than the ${tokens(MIN_SUMMARY_TOKENS)} one needs. The conversation was left as it is. Raise contextLength, lower maxTokens or turn off tools you don't need.`;
+}
+
+/** The model with its answer capped at maxTokens */
+function withAnswerCap(model: ModelConfig, maxTokens: number): ModelConfig {
+  const { reasoningBudgetTokens, ...options } =
+    model.defaultCompletionOptions ?? {};
+  return {
+    ...model,
+    defaultCompletionOptions: {
+      ...options,
+      maxTokens,
+      // A thinking budget must stay below max_tokens
+      ...(reasoningBudgetTokens !== undefined &&
+        reasoningBudgetTokens < maxTokens && { reasoningBudgetTokens }),
+    },
+  };
+}
+
+/** The error for a summary request that can't fit: the kept parts and their sizes */
+function summaryRequestTooLong(
+  history: ChatHistoryItem[],
+  model: ModelConfig,
+  detail?: string,
+): string {
+  const size = (items: ChatHistoryItem[]) =>
+    `${countChatHistoryTokens(items, model).toLocaleString()} tokens`;
+  const newest = history.findLastIndex((item) => item.message.role === "user");
+  const parts = [
+    history[0]?.conversationSummary !== undefined &&
+      `the previous summary (${size(history.slice(0, 1))})`,
+    newest >= 0 && `the newest request (${size([history[newest]])})`,
+    newest < history.length - 1 &&
+      `the last step (${size(history.slice(newest + 1))})`,
+  ].filter((part): part is string => typeof part === "string");
+  const kept =
+    parts.length > 1
+      ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`
+      : (parts[0] ?? "the history");
+  return `Can't compact: even with tool outputs shortened and earlier messages left out, ${kept} don't fit beside the system prompt and the room kept for the answer (${detail}). The conversation was left as it is. Raise contextLength, lower maxTokens or start a new session.`;
 }
 
 /**
@@ -70,7 +176,7 @@ export async function countSystemMessageTokens(
  * @param chatHistory The current chat history to compact
  * @param model The model configuration
  * @param llmApi The LLM API instance
- * @param options Optional configuration including callbacks, abort controller, and system message tokens
+ * @param options Callbacks, the abort controller, and the request after the summary
  * @returns The compacted history with compaction index
  */
 export async function compactChatHistory(
@@ -80,9 +186,31 @@ export async function compactChatHistory(
   options?: CompactionOptions,
 ): Promise<CompactionResult> {
   const { callbacks, abortController } = options || {};
-  // The summary request carries the system prompt too (/compact passes no count)
-  const systemMessageTokens =
-    options?.systemMessageTokens ?? (await countSystemMessageTokens(model));
+  const systemMessage =
+    options?.systemMessage ?? (await currentSystemMessage());
+  const next: NextRequest = {
+    systemMessage,
+    tools: options?.tools ?? (await currentRequestTools(model)),
+    followedBy: options?.followedBy ?? [],
+  };
+  const fail = (message: string): never => {
+    const error = new Error(message);
+    logger.error("Compaction failed", error);
+    callbacks?.onError?.(error);
+    throw error;
+  };
+
+  // The summary replaces the session, so it must fit the next request: that
+  // request's room caps the summary's length
+  const room = roomForSummary(model, next);
+  if (room < MIN_SUMMARY_TOKENS) {
+    fail(noRoomForSummary(model, next, room));
+  }
+  const summaryModel =
+    room < getModelMaxTokens(model)
+      ? withAnswerCap(model, Math.min(room, MAX_CAPPED_SUMMARY_TOKENS))
+      : model;
+
   // Create a prompt to summarize the conversation
   const compactionPrompt: ChatHistoryItem = {
     message: {
@@ -92,39 +220,32 @@ export async function compactChatHistory(
     contextItems: [],
   };
 
-  // Check if the history with compaction prompt is too long, prune if necessary
-  let historyToUse = chatHistory;
-  let historyForCompaction = [...historyToUse, compactionPrompt];
-
-  const contextLimit = getModelContextLimit(model);
-  const maxTokens = getModelMaxTokens(model);
-
-  const availableForInput =
-    contextLimit - maxTokens - systemMessageTokens - COMPACTION_PROMPT_TOKENS;
-
-  // Check if we need to prune to fit within context
-  while (
-    countChatHistoryTokens(historyForCompaction, model) > availableForInput &&
-    historyToUse.length > 0
-  ) {
-    logger.debug("Compaction history too long, pruning last message", {
-      tokenCount: countChatHistoryTokens(historyForCompaction, model),
-      availableForInput,
-      historyLength: historyToUse.length,
+  // The same check the summary request passes (it has no tools). The
+  // instruction is counted but never kept as a turn.
+  const validate = (history: ChatHistoryItem[]) =>
+    validateContextLength({
+      chatHistory: [...history, compactionPrompt],
+      model: summaryModel,
+      systemMessage,
+      safetyBuffer: REQUEST_SAFETY_BUFFER,
     });
-    const prunedHistory = pruneLastMessage(historyToUse);
-
-    // Break if pruning didn't change the history (prevents infinite loop)
-    if (prunedHistory.length === historyToUse.length) {
-      logger.warn(
-        "Cannot prune history further while maintaining valid conversation structure",
-      );
-      break;
-    }
-
-    historyToUse = prunedHistory;
-    historyForCompaction = [...historyToUse, compactionPrompt];
+  const fitted = fitHistory(
+    historySentToModel(chatHistory),
+    (history) => validate(history).isValid,
+  );
+  if (!fitted.fits) {
+    fail(
+      summaryRequestTooLong(
+        fitted.history,
+        model,
+        validate(fitted.history).error,
+      ),
+    );
   }
+  if (fitted.removed > 0 || fitted.shortened > 0) {
+    logger.warn(`Compaction input too long: ${describeFit(fitted)}`);
+  }
+  const historyForCompaction = [...fitted.history, compactionPrompt];
 
   // Stream the compaction response (service drives updates; this collects content locally)
   const controller = abortController || new AbortController();
@@ -143,12 +264,26 @@ export async function compactChatHistory(
   try {
     await streamChatResponse(
       historyForCompaction,
-      model,
+      summaryModel,
       llmApi,
       controller,
       streamCallbacks,
       true,
     );
+
+    // An aborted stream returns its partial text: never keep it
+    if (controller.signal.aborted) {
+      const cancelled = new Error("Compaction cancelled");
+      cancelled.name = "AbortError";
+      throw cancelled;
+    }
+
+    // A stream that ends without text gives no summary
+    if (!compactionContent.trim()) {
+      throw new Error(
+        "The model returned an empty summary, so the conversation was left as it is.",
+      );
+    }
 
     // The system prompt isn't part of the history (role:"system" items are
     // TUI notices), so the summary is the whole compacted history
@@ -161,14 +296,33 @@ export async function compactChatHistory(
       conversationSummary: compactionContent,
     };
 
+    // Catches a provider that ignores max_tokens, or estimate drift. Callers
+    // write only what this returns.
+    const nextCheck = validateContextLength({
+      chatHistory: [compactionMessage, ...next.followedBy],
+      model,
+      systemMessage,
+      tools: next.tools,
+      safetyBuffer: REQUEST_SAFETY_BUFFER,
+    });
+    if (!nextCheck.isValid) {
+      throw new Error(
+        `The summary (${countChatHistoryTokens([compactionMessage], model).toLocaleString()} tokens) doesn't fit the request after it (${nextCheck.error}), so the conversation was left as it is.`,
+      );
+    }
+
     return {
       compactedHistory: [compactionMessage],
       compactionContent,
       compactionIndex: 0,
+      omittedMessages: fitted.removed,
+      shortenedOutputs: fitted.shortened,
     };
   } catch (error) {
-    logger.error("Compaction failed", error);
-    callbacks?.onError?.(error as Error);
+    if (!isCompactionAborted(error)) {
+      logger.error("Compaction failed", error);
+      callbacks?.onError?.(error as Error);
+    }
     throw error;
   }
 }
@@ -188,44 +342,34 @@ export function findCompactionIndex(
 }
 
 /**
+ * The notice for a finished compaction, with what didn't fit the summary
+ * request (it is in neither the summary nor the session)
+ */
+export function compactionDoneMessage(
+  result: Pick<CompactionResult, "omittedMessages" | "shortenedOutputs">,
+  auto = false,
+): string {
+  const done = `Chat history ${auto ? "auto-" : ""}compacted successfully.`;
+  const lost = describeFit({
+    removed: result.omittedMessages,
+    shortened: result.shortenedOutputs,
+  });
+  return lost
+    ? `${done} To fit the summary request, ${lost}. What was cut isn't in the summary.`
+    : done;
+}
+
+/** Whether an error is a compaction the user cancelled */
+export function isCompactionAborted(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+/**
  * Gets the history to send to the LLM, taking compaction into account
  * @param fullHistory The complete chat history
  * @param compactionIndex The index of the compaction message, if any
  * @returns The history to send to the LLM
  */
-/**
- * Prunes chat history by removing messages from the end while ensuring
- * the history ends with either an assistant message or a tool result message
- * @param chatHistory The chat history to prune
- * @returns The pruned chat history ending with assistant or tool message
- */
-export function pruneLastMessage(
-  chatHistory: ChatHistoryItem[],
-): ChatHistoryItem[] {
-  if (chatHistory.length === 0) {
-    return chatHistory;
-  }
-
-  if (chatHistory.length === 1) {
-    // Only one message - always return empty array
-    return [];
-  }
-
-  const secondToLastIndex = chatHistory.length - 2;
-  const secondToLastItem = chatHistory[secondToLastIndex];
-
-  if (
-    secondToLastItem.message.role === "assistant" &&
-    (secondToLastItem.message as any).toolCalls?.length > 0
-  ) {
-    return chatHistory.slice(0, -2);
-  } else if (secondToLastItem.message.role === "user") {
-    return chatHistory.slice(0, -2);
-  }
-
-  return chatHistory.slice(0, -1);
-}
-
 export function getHistoryForLLM(
   fullHistory: ChatHistoryItem[],
   compactionIndex: number | null,

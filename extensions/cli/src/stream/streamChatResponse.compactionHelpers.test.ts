@@ -5,6 +5,7 @@ import { convertToUnifiedHistory } from "core/util/messageConversion.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { compactChatHistory } from "../compaction.js";
+import { updateSessionHistory } from "../session.js";
 import { ToolCall } from "../tools/index.js";
 
 import {
@@ -12,7 +13,7 @@ import {
   handlePostToolValidation,
   handlePreApiCompaction,
 } from "./streamChatResponse.compactionHelpers.js";
-import { COMPACTION_CONTINUE_PROMPT } from "./turnContinuation.js";
+import { COMPACTION_NEXT_PROMPT } from "./turnContinuation.js";
 
 // A history is over the limit while it holds this message. The summary that
 // replaces it is under, so each check below decides from the history it gets.
@@ -27,6 +28,7 @@ const summary = convertToUnifiedHistory([
 ]);
 
 vi.mock("../compaction.js", () => ({
+  compactionDoneMessage: vi.fn(() => "Chat history auto-compacted."),
   shouldAutoCompact: vi.fn(({ chatHistory }) => isOverLimit(chatHistory)),
   compactChatHistory: vi.fn(() =>
     Promise.resolve({
@@ -36,7 +38,7 @@ vi.mock("../compaction.js", () => ({
     }),
   ),
   getAutoCompactMessage: vi.fn(() => "Compacting"),
-  countSystemMessageTokens: vi.fn(async () => 0),
+  isCompactionAborted: (error: Error) => error?.name === "AbortError",
 }));
 
 vi.mock("../util/tokenizer.js", () => ({
@@ -117,7 +119,7 @@ describe("compaction helpers", () => {
   const summaryAndContinue: ChatHistoryItem[] = [
     ...summary,
     {
-      message: { role: "user", content: COMPACTION_CONTINUE_PROMPT },
+      message: { role: "user", content: COMPACTION_NEXT_PROMPT },
       contextItems: [],
     },
   ];
@@ -164,5 +166,70 @@ describe("compaction helpers", () => {
       });
     }
     expect(compactChatHistory).not.toHaveBeenCalled();
+  });
+
+  it("stop on Escape during a compaction without failing the turn", async () => {
+    const abortController = new AbortController();
+    vi.mocked(compactChatHistory).mockImplementation(async () => {
+      abortController.abort();
+      throw Object.assign(new Error("Compaction cancelled"), {
+        name: "AbortError",
+      });
+    });
+    const withController = { ...options(false), abortController };
+
+    // Over the limit after a tool: a failed compaction throws, a cancel doesn't
+    const postTool = await handlePostToolValidation(
+      toolCalls,
+      longHistory,
+      withController,
+    );
+    const preApi = await handlePreApiCompaction(longHistory, withController);
+
+    expect(postTool).toEqual({ chatHistory: longHistory, wasCompacted: false });
+    expect(preApi).toEqual({ chatHistory: longHistory, wasCompacted: false });
+    // The summary call got the turn's controller; once aborted, none starts
+    expect(compactChatHistory).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(compactChatHistory).mock.calls[0][3]).toMatchObject({
+      abortController,
+    });
+  });
+
+  it("stop a run whose compaction fails with the reason, having written nothing", async () => {
+    vi.mocked(compactChatHistory).mockRejectedValueOnce(
+      new Error(
+        "The summary (12,000 tokens) doesn't fit the request after it, so the conversation was left as it is.",
+      ),
+    );
+
+    await expect(
+      handlePostToolValidation(toolCalls, longHistory, options(false)),
+    ).rejects.toThrow(
+      "Context limit exceeded and compaction failed: The summary (12,000 tokens) doesn't fit",
+    );
+    expect(updateSessionHistory).not.toHaveBeenCalled();
+  });
+
+  it("size the summary for the user turn that follows it", async () => {
+    vi.mocked(compactChatHistory).mockResolvedValue({
+      compactedHistory: summary,
+      compactionIndex: 0,
+      compactionContent: "Summary",
+      omittedMessages: 0,
+      shortenedOutputs: 0,
+    });
+    await runBoth(longHistory, false);
+    await handlePreApiCompaction(longHistory, options(false));
+
+    expect(compactChatHistory).toHaveBeenCalledTimes(3);
+    for (const [, , , compactionOptions] of vi.mocked(compactChatHistory).mock
+      .calls) {
+      expect(compactionOptions?.followedBy).toEqual([
+        {
+          message: { role: "user", content: COMPACTION_NEXT_PROMPT },
+          contextItems: [],
+        },
+      ]);
+    }
   });
 });

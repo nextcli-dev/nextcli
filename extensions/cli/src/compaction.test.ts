@@ -7,13 +7,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   compactChatHistory,
   findCompactionIndex,
+  compactionDoneMessage,
   getHistoryForLLM,
+  isCompactionAborted,
 } from "./compaction.js";
+import { PRUNED_HISTORY_NOTE_PREFIX } from "./fitHistory.js";
 import { streamChatResponse } from "./stream/streamChatResponse.js";
 
 // Mock the streamChatResponse function
 vi.mock("./stream/streamChatResponse.js", () => ({
   streamChatResponse: vi.fn(),
+  // The next request's tools; none here
+  requestTools: vi.fn(async () => []),
 }));
 
 // The current system prompt, which /compact reserves room for
@@ -23,7 +28,10 @@ vi.mock("./services/index.js", () => ({
     systemMessage: {
       getSystemMessage: vi.fn(async () => currentSystemPrompt.text),
     },
-    toolPermissions: { getState: vi.fn(() => ({ currentMode: "normal" })) },
+    toolPermissions: {
+      getState: vi.fn(() => ({ currentMode: "normal" })),
+      isHeadless: vi.fn(() => false),
+    },
   },
 }));
 
@@ -355,7 +363,12 @@ describe("compaction", () => {
 
       beforeEach(() => {
         vi.mocked(streamChatResponse).mockReset();
-        vi.mocked(streamChatResponse).mockResolvedValue("Summary");
+        vi.mocked(streamChatResponse).mockImplementation(
+          async (history, model, api, controller, callbacks) => {
+            callbacks?.onContent?.("Summary");
+            return "Summary";
+          },
+        );
       });
 
       it("reserves the current system prompt when the caller passes no count", async () => {
@@ -365,6 +378,132 @@ describe("compaction", () => {
 
         // 4K of prompt leaves about 4,850 tokens: the history is cut to fit
         expect(sentHistoryLength()).toBeLessThan(history.length + 1);
+      });
+
+      it("leaves the oldest turns out and keeps the newest ones", async () => {
+        currentSystemPrompt.text = " hello".repeat(4_000);
+
+        await compactChatHistory(history, smallModel, mockLlmApi);
+
+        const sent = vi.mocked(streamChatResponse).mock.calls.at(-1)![0];
+        expect(String(sent[0].message.content)).toContain(
+          PRUNED_HISTORY_NOTE_PREFIX,
+        );
+        // Newest message, then the compaction prompt
+        expect(sent.at(-2)).toBe(history.at(-1));
+        expect(String(sent[0].message.content)).toContain(" hello hello");
+        expect(sent.at(-1)!.message.content).toContain("concise summary");
+        // A whole turn went: the note joins the user message that now leads
+        expect(sent[0].message.role).toBe("user");
+        expect(sent[1].message.role).toBe("assistant");
+      });
+
+      it("reports how many of the oldest messages it left out", async () => {
+        currentSystemPrompt.text = " hello".repeat(4_000);
+
+        const result = await compactChatHistory(
+          history,
+          smallModel,
+          mockLlmApi,
+        );
+
+        const sent = vi.mocked(streamChatResponse).mock.calls.at(-1)![0];
+        // The kept messages and the instruction; the rest is left out
+        expect(result.omittedMessages).toBe(history.length - (sent.length - 1));
+        expect(result.omittedMessages).toBeGreaterThan(0);
+        expect(compactionDoneMessage(result)).toContain(
+          `${result.omittedMessages} earlier messages were left out`,
+        );
+      });
+
+      it("keeps the previous summary in the summary request", async () => {
+        currentSystemPrompt.text = " hello".repeat(4_000);
+        const previous: ChatHistoryItem = {
+          message: { role: "assistant", content: "Earlier work" },
+          contextItems: [],
+          conversationSummary: "Earlier work",
+        };
+
+        await compactChatHistory(
+          [previous, ...history],
+          smallModel,
+          mockLlmApi,
+        );
+
+        const sent = vi.mocked(streamChatResponse).mock.calls.at(-1)![0];
+        expect(sent[0]).toBe(previous);
+        expect(sent.at(-2)).toBe(history.at(-1));
+      });
+
+      it("names the kept summary when it is what doesn't fit", async () => {
+        currentSystemPrompt.text = "System prompt";
+        const previous: ChatHistoryItem = {
+          message: { role: "assistant", content: " hello".repeat(12_000) },
+          contextItems: [],
+          conversationSummary: "Earlier work",
+        };
+
+        await expect(
+          compactChatHistory(
+            [
+              previous,
+              { message: { role: "user", content: "go on" }, contextItems: [] },
+            ],
+            smallModel,
+            mockLlmApi,
+          ),
+        ).rejects.toThrow(/the previous summary \([\d,]+ tokens\)/);
+        expect(streamChatResponse).not.toHaveBeenCalled();
+      });
+
+      describe("fails and keeps the session when the newest turn doesn't fit", () => {
+        // More than the whole window
+        const huge = " hello".repeat(12_000);
+        const cases: [string, ChatHistoryItem[]][] = [
+          [
+            "a newest user message after an older turn",
+            [
+              { message: { role: "user", content: "old" }, contextItems: [] },
+              {
+                message: { role: "assistant", content: "ok" },
+                contextItems: [],
+              },
+              { message: { role: "user", content: huge }, contextItems: [] },
+              {
+                message: { role: "assistant", content: "ok" },
+                contextItems: [],
+              },
+            ],
+          ],
+          [
+            "a single user message",
+            [{ message: { role: "user", content: huge }, contextItems: [] }],
+          ],
+          [
+            "a last step with a large result",
+            [
+              { message: { role: "user", content: "task" }, contextItems: [] },
+              {
+                message: { role: "assistant", content: huge },
+                contextItems: [],
+              },
+            ],
+          ],
+        ];
+
+        it.each(cases)("%s", async (_, tooLong) => {
+          currentSystemPrompt.text = "System prompt";
+          const onError = vi.fn();
+
+          await expect(
+            compactChatHistory(tooLong, smallModel, mockLlmApi, {
+              callbacks: { onError },
+            }),
+          ).rejects.toThrow("left as it is");
+          // No summary request, so nothing replaces the session
+          expect(streamChatResponse).not.toHaveBeenCalled();
+          expect(onError).toHaveBeenCalled();
+        });
       });
 
       it("sends the whole history when it fits beside the prompt", async () => {
@@ -485,8 +624,9 @@ describe("compaction", () => {
       );
     });
 
-    it("should handle empty content from stream", async () => {
+    it("fails and keeps the session when the summary is empty", async () => {
       const mockStreamResponse = vi.mocked(streamChatResponse);
+      const onError = vi.fn();
 
       mockStreamResponse.mockImplementation(
         async (history, model, api, controller, callbacks) => {
@@ -500,10 +640,39 @@ describe("compaction", () => {
         { role: "user", content: "Hello" },
       ]);
 
-      const result = await compactChatHistory(history, mockModel, mockLlmApi);
+      // No result, so nothing replaces the session
+      await expect(
+        compactChatHistory(history, mockModel, mockLlmApi, {
+          callbacks: { onError },
+        }),
+      ).rejects.toThrow("empty summary");
+      expect(onError).toHaveBeenCalled();
+    });
 
-      expect(result.compactionContent).toBe("");
-      expect(result.compactedHistory[0].message.content).toBe("");
+    it("throws instead of keeping a partial summary when aborted", async () => {
+      const controller = new AbortController();
+      const onError = vi.fn();
+      vi.mocked(streamChatResponse).mockImplementation(
+        async (history, model, api, ctrl, callbacks) => {
+          callbacks?.onContent?.("Partial sum");
+          // Escape: the stream returns what it had so far
+          controller.abort();
+          return "Partial sum";
+        },
+      );
+      const history = convertToUnifiedHistory([
+        { role: "user", content: "Hello" },
+        { role: "assistant", content: "Hi" },
+      ]);
+
+      await expect(
+        compactChatHistory(history, mockModel, mockLlmApi, {
+          abortController: controller,
+          callbacks: { onError },
+        }),
+      ).rejects.toSatisfy(isCompactionAborted);
+      // A cancel isn't reported as a failure
+      expect(onError).not.toHaveBeenCalled();
     });
 
     it("should correctly construct prompt for compaction", async () => {
@@ -527,9 +696,9 @@ describe("compaction", () => {
 
       await compactChatHistory(history, mockModel, mockLlmApi);
 
-      // Should have original history plus the compaction prompt
-      expect(capturedHistory).toHaveLength(4);
-      expect(capturedHistory[3].message).toEqual({
+      // The conversation plus the compaction prompt; the TUI notice isn't sent
+      expect(capturedHistory).toHaveLength(3);
+      expect(capturedHistory[2].message).toEqual({
         role: "user",
         content: expect.stringContaining("provide a concise summary"),
       });

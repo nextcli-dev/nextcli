@@ -1,14 +1,17 @@
 // Abort controllers of in-flight conversation turns. On exit they are all
 // aborted synchronously, so a tool call that arrives while the CLI is shutting
 // down (e.g. during the telemetry flush after SIGINT) is never executed.
-const controllers = new Set<AbortController>();
+// Counted: a summary request runs a nested stream with its turn's controller,
+// and its unregister must leave the turn registered.
+const controllers = new Map<AbortController, number>();
 
 let shuttingDown = false;
 
 /**
  * Registers a controller to be aborted on exit. Returns a function that
- * unregisters it. A controller registered after shutdown began is aborted
- * immediately.
+ * undoes this registration once; the controller stays registered while any
+ * other registration of it is open. A controller registered after shutdown
+ * began is aborted immediately.
  */
 export function registerAbortController(
   controller: AbortController,
@@ -17,9 +20,19 @@ export function registerAbortController(
     controller.abort();
     return () => {};
   }
-  controllers.add(controller);
+  controllers.set(controller, (controllers.get(controller) ?? 0) + 1);
+  let registered = true;
   return () => {
-    controllers.delete(controller);
+    if (!registered) {
+      return;
+    }
+    registered = false;
+    const count = (controllers.get(controller) ?? 0) - 1;
+    if (count > 0) {
+      controllers.set(controller, count);
+    } else {
+      controllers.delete(controller);
+    }
   };
 }
 
@@ -28,7 +41,7 @@ export function registerAbortController(
  */
 export function abortAll(): void {
   shuttingDown = true;
-  for (const controller of controllers) {
+  for (const controller of controllers.keys()) {
     controller.abort();
   }
   controllers.clear();
