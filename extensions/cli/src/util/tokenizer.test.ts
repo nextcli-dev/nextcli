@@ -16,6 +16,7 @@ import {
   countReasoningTokens,
   countChatHistoryTokens,
   countToolDefinitionTokens,
+  countTotalInputTokens,
   getModelContextLimit,
 } from "./tokenizer.js";
 
@@ -260,6 +261,45 @@ describe("tokenizer", () => {
     });
   });
 
+  describe("TUI notices", () => {
+    const model: ModelConfig = {
+      name: "test-model",
+      model: "gpt-4",
+      provider: "openai",
+    };
+    const user: ChatHistoryItem = {
+      message: { role: "user", content: "hello there" },
+      contextItems: [],
+    };
+    const notice: ChatHistoryItem = {
+      message: { role: "system", content: "Model switched to gpt-4" },
+      contextItems: [],
+    };
+
+    it("aren't counted as history", () => {
+      expect(countChatHistoryTokens([notice, user], model)).toBe(
+        countChatHistoryTokens([user], model),
+      );
+    });
+
+    it("don't stop the system prompt from being counted", () => {
+      const systemMessage = "You are a careful coding agent.";
+      const withNotice = countTotalInputTokens({
+        chatHistory: [notice, user],
+        model,
+        systemMessage,
+      });
+      const withoutPrompt = countTotalInputTokens({
+        chatHistory: [user],
+        model,
+      });
+      expect(withNotice).toBeGreaterThan(withoutPrompt);
+      expect(withNotice).toBe(
+        countTotalInputTokens({ chatHistory: [user], model, systemMessage }),
+      );
+    });
+  });
+
   describe("calculateContextUsagePercentage", () => {
     it("should calculate percentage correctly", () => {
       const model: ModelConfig = {
@@ -359,17 +399,17 @@ describe("tokenizer", () => {
       expect(shouldAutoCompact({ chatHistory, model })).toBe(false);
     });
 
-    it("should throw error when threshold becomes zero or negative", () => {
-      // With extremely high maxTokens relative to context, threshold can become <= 0
-      const model = createModel(1000, 800); // maxTokens is 80% of context
-      // ratioBuffer = ceil(0.2 * 200) = 40, safeBuffer = max(800, 40) = 800
-      // compactionBuffer = min(800, 15k) = 800
-      // Threshold: 1000 - 800 - 800 = -600 (negative!)
-      const chatHistory = createChatHistory(1); // Minimal input
+    it("keeps a positive threshold when maxTokens is most of a small window", () => {
+      // 800 of 1000 reserved: the buffer is capped at half of the 200 left,
+      // so compaction runs from 100 tokens instead of throwing
+      const model = createModel(1000, 800);
 
-      expect(() => shouldAutoCompact({ chatHistory, model })).toThrow(
-        "max_tokens is larger than context_length, which should not be possible. Please check your configuration.",
-      );
+      expect(
+        shouldAutoCompact({ chatHistory: createChatHistory(1), model }),
+      ).toBe(false);
+      expect(
+        shouldAutoCompact({ chatHistory: createChatHistory(400), model }),
+      ).toBe(true);
     });
 
     it("should throw error when maxTokens equals contextLength", () => {
@@ -377,7 +417,7 @@ describe("tokenizer", () => {
       const chatHistory = createChatHistory(1); // Minimal input
 
       expect(() => shouldAutoCompact({ chatHistory, model })).toThrow(
-        "max_tokens is larger than context_length, which should not be possible. Please check your configuration.",
+        "leaves no room for input",
       );
     });
 
@@ -386,7 +426,7 @@ describe("tokenizer", () => {
       const chatHistory = createChatHistory(1); // Minimal input
 
       expect(() => shouldAutoCompact({ chatHistory, model })).toThrow(
-        "max_tokens is larger than context_length, which should not be possible. Please check your configuration.",
+        "leaves no room for input",
       );
     });
 
