@@ -1,6 +1,6 @@
 ---
 name: precheck
-description: Self-review a nextcli diff with the repo's .checks/*.md and AGENTS.md review rules, fix what they flag, and report. Use before every push.
+description: Self-review a nextcli diff with the repo's .claude/checks/*.md and AGENTS.md review rules, fix what they flag, and report. Use before every push.
 ---
 
 # Precheck the diff
@@ -24,10 +24,9 @@ repository.
 
 ## 2. Pick the checks
 
-Read the frontmatter of every `.checks/*.md`. A check applies when one of its
+Read the frontmatter of every `.claude/checks/*.md`. A check applies when one of its
 `paths:` globs matches a changed file. Also apply the "Reviewing changes"
-section of `AGENTS.md`. Ignore `.continue/checks/` and `.continue/agents/`:
-they are inherited and not what CI runs.
+section of `AGENTS.md`.
 
 ## 3. Apply each check to the diff
 

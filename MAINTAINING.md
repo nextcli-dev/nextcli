@@ -65,16 +65,16 @@ Pull request titles must follow [Conventional Commits](https://www.conventionalc
 
 Other workflows:
 
-| Workflow                     | Runs                               | Does                                                                  |
-| ---------------------------- | ---------------------------------- | --------------------------------------------------------------------- |
-| `ai-checks.yml`              | `ai-review` label, or manually     | AI checks from `.checks/` via nextcli-checks, one job per check       |
-| `release-prs.yml`            | push to `main`                     | Keeps the Release PRs up to date and creates releases when they merge |
-| `publish-vscode.yaml`        | VS Code release, or manually       | Builds 8 targets, publishes to Open VSX and the Marketplace           |
-| `release-cli.yml`            | CLI release, or manually (dry run) | Publishes `@nextcli/cli` to npm                                       |
-| `sync-models.yml`            | Mondays, or manually               | Refreshes the models.dev catalog and opens a PR when it changed       |
-| `cla.yaml`                   | PR opened or updated, PR comments  | CLA signatures, stored on the `cla-signatures` branch                 |
-| `stale-issue-helper.yaml`    | daily                              | Marks and closes inactive issues and PRs                              |
-| `delete-stale-branches.yaml` | weekdays                           | Deletes branches inactive for 60 days, except `backup/*`              |
+| Workflow                     | Runs                               | Does                                                                   |
+| ---------------------------- | ---------------------------------- | ---------------------------------------------------------------------- |
+| `ai-checks.yml`              | `ai-review` label, or manually     | AI checks from `.claude/checks/` via nextcli-checks, one job per check |
+| `release-prs.yml`            | push to `main`                     | Keeps the Release PRs up to date and creates releases when they merge  |
+| `publish-vscode.yaml`        | VS Code release, or manually       | Builds 8 targets, publishes to Open VSX and the Marketplace            |
+| `release-cli.yml`            | CLI release, or manually (dry run) | Publishes `@nextcli/cli` to npm                                        |
+| `sync-models.yml`            | Mondays, or manually               | Refreshes the models.dev catalog and opens a PR when it changed        |
+| `cla.yaml`                   | PR opened or updated, PR comments  | CLA signatures, stored on the `cla-signatures` branch                  |
+| `stale-issue-helper.yaml`    | daily                              | Marks and closes inactive issues and PRs                               |
+| `delete-stale-branches.yaml` | weekdays                           | Deletes branches inactive for 60 days, except `backup/*`               |
 
 Upstream workflows that NextCLI doesn't use yet are parked in `.github/workflows-archive/`, which GitHub does not run. Its README says what each needs to be revived.
 

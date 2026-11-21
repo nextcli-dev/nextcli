@@ -1,3 +1,9 @@
+---
+globs: "docs/**/*.mdx"
+paths:
+  - "**/docs/**/*.mdx"
+---
+
 # Mintlify Documentation Formatting Rules
 
 ## Component Formatting

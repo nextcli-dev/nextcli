@@ -1,7 +1,9 @@
 ---
-globs: docs/\*_/_.{md,mdx}
+globs: "docs/**/*.{md,mdx}"
 description: This style guide should be used as a reference for maintaining consistency across all Continue documentation
 alwaysApply: false
+paths:
+  - "**/docs/**/*.{md,mdx}"
 ---
 
 # Continue Documentation Style Guide
