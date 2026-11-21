@@ -1,6 +1,11 @@
 import { ModelRole } from "@nextcli/config-yaml";
 import { fetchwithRequestOptions } from "@nextcli/fetch";
-import { findLlmInfo, isOneProviderBase } from "@nextcli/llm-info";
+import {
+  findLlmInfo,
+  hostOf,
+  isLocalHost,
+  isOneProviderBase,
+} from "@nextcli/llm-info";
 import {
   BaseLlmApi,
   buildModelControlFields,
@@ -1099,6 +1104,12 @@ export abstract class BaseLLM implements ILLM {
     return { role: "assistant" as const, content: completion };
   }
 
+  /** Whether the API base is on this machine, as pricing decides it */
+  private isLocalEndpoint(): boolean {
+    const host = hostOf(this.apiBase);
+    return host !== undefined && isLocalHost(host);
+  }
+
   compileChatMessages(
     message: ChatMessage[],
     options: LLMFullCompletionOptions,
@@ -1113,6 +1124,7 @@ export abstract class BaseLLM implements ILLM {
       maxTokens: completionOptions.maxTokens ?? DEFAULT_MAX_TOKENS,
       supportsImages: this.supportsImages(),
       tools: options.tools,
+      localEndpoint: this.isLocalEndpoint(),
     });
   }
 
@@ -1143,7 +1155,10 @@ export abstract class BaseLLM implements ILLM {
     let usage: Usage | null = null;
 
     if (chunk.role === "assistant") {
-      completion.push(this._formatChatMessage(chunk));
+      // A message that only carries usage has nothing to log as completion
+      if (renderChatMessage(chunk) || chunk.toolCalls?.length) {
+        completion.push(this._formatChatMessage(chunk));
+      }
     } else if (chunk.role === "thinking" && typeof chunk.content === "string") {
       thinking.push(chunk.content);
     }
@@ -1236,7 +1251,8 @@ export abstract class BaseLLM implements ILLM {
     options: CompletionOptions,
   ): AsyncGenerator<ChatMessage> {
     const msg = await (this as any)._responses(messages, signal, options);
-    yield msg as ChatMessage;
+    // Reasoning, text and usage can come as several messages
+    yield* [msg as ChatMessage | ChatMessage[]].flat();
   }
 
   /** Applies this model's tool overrides, warning about unknown tool names. */
@@ -1324,6 +1340,7 @@ export abstract class BaseLLM implements ILLM {
         maxTokens: completionOptions.maxTokens ?? DEFAULT_MAX_TOKENS,
         supportsImages: this.supportsImages(),
         tools: optionsWithOverrides.tools,
+        localEndpoint: this.isLocalEndpoint(),
       });
 
       messages = compiledChatMessages;
@@ -1513,6 +1530,7 @@ export abstract class BaseLLM implements ILLM {
       modelProvider: this.underlyingProviderName,
       prompt,
       completion: completion.join(""),
+      ...(usage && { usage }),
       ...(streamEnd && {
         finishReason: streamEnd.finishReason,
         streamEndedWithoutFinish: !streamEnd.finishReason,

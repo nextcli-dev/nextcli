@@ -426,6 +426,7 @@ function compileChatMessages({
   maxTokens,
   supportsImages,
   tools,
+  localEndpoint = false,
 }: {
   modelName: string;
   msgs: ChatMessage[];
@@ -433,6 +434,12 @@ function compileChatMessages({
   maxTokens: number;
   supportsImages: boolean;
   tools?: Tool[];
+  /**
+   * A server on this machine (Ollama, LM Studio, llama.cpp). It shortens the
+   * answer rather than reject a request that leaves less than max_tokens, so
+   * only a minimum is kept for the answer and the history keeps the rest.
+   */
+  localEndpoint?: boolean;
 }): CompiledMessagesResult {
   let didPrune = false;
 
@@ -480,13 +487,16 @@ function compileChatMessages({
 
   const contextLength = knownContextLength ?? DEFAULT_PRUNING_LENGTH;
   const countingSafetyBuffer = getTokenCountingBufferSafety(contextLength);
-  const minOutputTokens = Math.min(MIN_RESPONSE_TOKENS, maxTokens);
+  // A hosted API rejects input that leaves less than the max_tokens it is sent
+  const outputReserve = localEndpoint
+    ? Math.min(MIN_RESPONSE_TOKENS, maxTokens)
+    : maxTokens;
 
   let inputTokensAvailable = contextLength;
 
   // Leave space for output/safety
   inputTokensAvailable -= countingSafetyBuffer;
-  inputTokensAvailable -= minOutputTokens;
+  inputTokensAvailable -= outputReserve;
 
   // Non-negotiable messages
   inputTokensAvailable -= toolTokens;
@@ -497,7 +507,7 @@ function compileChatMessages({
   if (knownContextLength !== undefined && inputTokensAvailable < 0) {
     throw new Error(
       `Not enough context available to include the system message, last user message, and tools.
-        There must be at least ${minOutputTokens} tokens remaining for output.
+        There must be at least ${outputReserve} tokens remaining for output.
         Request had the following token counts:
         - contextLength: ${knownContextLength}
         - counting safety buffer: ${countingSafetyBuffer}
@@ -540,8 +550,7 @@ function compileChatMessages({
 
   const inputTokens =
     currentTotal + systemMsgTokens + toolTokens + lastMessagesTokens;
-  const availableTokens =
-    contextLength - countingSafetyBuffer - minOutputTokens;
+  const availableTokens = contextLength - countingSafetyBuffer - outputReserve;
   const contextPercentage = inputTokens / availableTokens;
   return {
     compiledChatMessages: reassembled,

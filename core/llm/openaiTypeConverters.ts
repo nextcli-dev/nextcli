@@ -39,6 +39,7 @@ import {
   TextMessagePart,
   ThinkingChatMessage,
   ToolCallDelta,
+  Usage,
 } from "..";
 import { stripImages } from "../util/messageContent";
 
@@ -287,6 +288,57 @@ export function toFimBody(
   } as any;
 }
 
+/** OpenAI chat-completions usage, as providers and the adapters report it */
+interface ChatUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  prompt_tokens_details?: {
+    cached_tokens?: number;
+    /** Sent by the Anthropic adapter */
+    cache_write_tokens?: number;
+  } | null;
+  completion_tokens_details?: { reasoning_tokens?: number } | null;
+}
+
+/** The usage a chat-completions response reports, in core's shape */
+function toUsage(usage: ChatUsage): Usage {
+  return {
+    promptTokens: usage.prompt_tokens ?? 0,
+    completionTokens: usage.completion_tokens ?? 0,
+    ...(usage.prompt_tokens_details && {
+      promptTokensDetails: {
+        cachedTokens: usage.prompt_tokens_details.cached_tokens,
+        cacheWriteTokens: usage.prompt_tokens_details.cache_write_tokens,
+      },
+    }),
+    ...(usage.completion_tokens_details && {
+      completionTokensDetails: {
+        reasoningTokens: usage.completion_tokens_details.reasoning_tokens,
+      },
+    }),
+  };
+}
+
+/** The usage a Responses API response reports, in core's shape */
+function fromResponsesUsage(usage: {
+  input_tokens?: number;
+  output_tokens?: number;
+  input_tokens_details?: { cached_tokens?: number } | null;
+  output_tokens_details?: { reasoning_tokens?: number } | null;
+}): Usage {
+  return toUsage({
+    prompt_tokens: usage.input_tokens,
+    completion_tokens: usage.output_tokens,
+    prompt_tokens_details: usage.input_tokens_details,
+    completion_tokens_details: usage.output_tokens_details,
+  });
+}
+
+/** An empty assistant message that carries a call's usage, as native providers send it */
+function usageMessage(usage: Usage): AssistantChatMessage {
+  return { role: "assistant", content: "", usage };
+}
+
 export function fromChatResponse(response: ChatCompletion): ChatMessage[] {
   const messages: ChatMessage[] = [];
   const message = response.choices[0].message as ChatCompletionMessage & {
@@ -341,6 +393,9 @@ export function fromChatResponse(response: ChatCompletion): ChatMessage[] {
     });
   }
 
+  if (response.usage) {
+    (messages.at(-1) as AssistantChatMessage).usage = toUsage(response.usage);
+  }
   return messages;
 }
 
@@ -369,11 +424,15 @@ export function fromChatCompletionChunk(
       },
     }));
 
+  // Usage comes in the last chunk, alone or with the last delta
+  const usage = chunk.usage ? toUsage(chunk.usage) : undefined;
+
   if (delta?.content) {
     return {
       role: "assistant",
       content: delta.content,
       ...(toolCalls?.length && { toolCalls }),
+      ...(usage && { usage }),
     };
   } else if (delta?.tool_calls) {
     if (toolCalls?.length) {
@@ -381,6 +440,7 @@ export function fromChatCompletionChunk(
         role: "assistant",
         content: "",
         toolCalls,
+        ...(usage && { usage }),
       };
     }
   } else if (
@@ -397,7 +457,7 @@ export function fromChatCompletionChunk(
     return message;
   }
 
-  return undefined;
+  return usage && usageMessage(usage);
 }
 
 function handleTextDeltaEvent(
@@ -618,6 +678,10 @@ function handleResponsesStreamEvent(
   if (t === "response.reasoning_text.done") {
     return handleReasoningTextDone(e as ResponseReasoningTextDoneEvent);
   }
+  if (t === "response.completed") {
+    const usage = (e as any).response?.usage;
+    return usage ? usageMessage(fromResponsesUsage(usage)) : undefined;
+  }
   return undefined;
 }
 
@@ -739,7 +803,15 @@ export function fromResponsesChunk(
   if (typeof (event as any).type === "string") {
     return handleResponsesStreamEvent(event as ResponseStreamEvent);
   }
-  return handleResponsesFinal(event as OpenAIResponse);
+  const messages = handleResponsesFinal(event as OpenAIResponse);
+  const usage = (event as OpenAIResponse).usage;
+  if (!usage) {
+    return messages;
+  }
+  return [
+    ...(messages === undefined ? [] : [messages].flat()),
+    usageMessage(fromResponsesUsage(usage)),
+  ];
 }
 
 export function mergeReasoningDetails(

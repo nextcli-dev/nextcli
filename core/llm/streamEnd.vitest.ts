@@ -1,8 +1,12 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import { ChatMessage, PromptLog } from "../index.js";
 import Deepseek from "./llms/Deepseek.js";
-import { fromChatCompletionChunk } from "./openaiTypeConverters.js";
+import OpenAI from "./llms/OpenAI.js";
+import {
+  fromChatCompletionChunk,
+  fromResponsesChunk,
+} from "./openaiTypeConverters.js";
 import { readStreamEnd, StreamEnd } from "./streamEnd.js";
 
 function chunk(delta: object, finishReason: string | null = null) {
@@ -33,6 +37,8 @@ function usageChunk(completionTokens: number) {
 /** Runs streamChat against a fake adapter stream and returns its PromptLog */
 async function streamWith(
   chunks: object[],
+  setup?: (llm: Deepseek) => void,
+  options: object = {},
 ): Promise<{ messages: ChatMessage[]; log: PromptLog }> {
   const llm = new Deepseek({ model: "deepseek-v4-pro", apiKey: "k" });
   (llm as any).openaiAdapter = {
@@ -42,11 +48,12 @@ async function streamWith(
       }
     },
   };
+  setup?.(llm);
   const messages: ChatMessage[] = [];
   const gen = llm.streamChat(
     [{ role: "user", content: "plan it" }],
     new AbortController().signal,
-    { log: false } as any,
+    { log: false, ...options } as any,
   );
   let next = await gen.next();
   while (!next.done) {
@@ -74,7 +81,13 @@ describe("streamChat on the OpenAI adapter", () => {
       chunk({}, "length"),
       usageChunk(4096),
     ]);
-    expect(messages.map((m) => m.role)).toEqual(["thinking", "thinking"]);
+    // The usage chunk arrives as an empty assistant message
+    expect(messages.map((m) => m.role)).toEqual([
+      "thinking",
+      "thinking",
+      "assistant",
+    ]);
+    expect(messages.at(-1)?.content).toBe("");
     expect(log.completion).toBe("");
     expect(log.finishReason).toBe("length");
     expect(log.streamEndedWithoutFinish).toBe(false);
@@ -136,5 +149,152 @@ describe("DeepSeek V4 output cap", () => {
     expect(llm.contextLength).toBe(1_000_000);
     // min(384K max output, a quarter of the context)
     expect(llm.completionOptions.maxTokens).toBe(250_000);
+  });
+});
+
+describe("usage on the OpenAI adapter", () => {
+  const detailedUsage = {
+    ...usageChunk(300),
+    usage: {
+      prompt_tokens: 1_000,
+      completion_tokens: 300,
+      total_tokens: 1_300,
+      prompt_tokens_details: { cached_tokens: 800, cache_write_tokens: 50 },
+      completion_tokens_details: { reasoning_tokens: 120 },
+    },
+  };
+  const expected = {
+    promptTokens: 1_000,
+    completionTokens: 300,
+    promptTokensDetails: { cachedTokens: 800, cacheWriteTokens: 50 },
+    completionTokensDetails: { reasoningTokens: 120 },
+  };
+
+  test("streamChat returns the usage the provider reported", async () => {
+    const { log } = await streamWith([
+      chunk({ content: "The plan" }, "stop"),
+      detailedUsage,
+    ]);
+    expect(log.usage).toEqual(expected);
+  });
+
+  test("the interaction log gets the same usage", async () => {
+    let logged: unknown;
+    await streamWith(
+      [chunk({ content: "The plan" }, "stop"), detailedUsage],
+      (llm) => {
+        const logEnd = (llm as any)._logEnd.bind(llm);
+        (llm as any)._logEnd = vi.fn((...args: unknown[]) => {
+          logged = args[5];
+          return logEnd(...args);
+        });
+      },
+    );
+    expect(logged).toEqual(expected);
+  });
+
+  test("keeps usage that comes with the last text", async () => {
+    const { messages, log } = await streamWith([
+      { ...chunk({ content: "Done" }, "stop"), usage: detailedUsage.usage },
+    ]);
+    expect(messages).toEqual([
+      { role: "assistant", content: "Done", usage: expected },
+    ]);
+    expect(log.usage).toEqual(expected);
+  });
+
+  test("reports no usage when the provider sends none", async () => {
+    const { log } = await streamWith([chunk({ content: "Hi" }, "stop")]);
+    expect(log.usage).toBeUndefined();
+  });
+
+  test("returns the usage of a call that doesn't stream", async () => {
+    const { messages, log } = await streamWith(
+      [],
+      (llm) => {
+        (llm as any).openaiAdapter.chatCompletionNonStream = async () => ({
+          id: "r1",
+          object: "chat.completion",
+          created: 0,
+          model: "deepseek-v4-pro",
+          choices: [
+            {
+              index: 0,
+              message: { role: "assistant", content: "The plan" },
+              finish_reason: "stop",
+            },
+          ],
+          usage: detailedUsage.usage,
+        });
+      },
+      { stream: false },
+    );
+    expect(messages.at(-1)).toMatchObject({ content: "The plan" });
+    expect(log.usage).toEqual(expected);
+  });
+});
+
+describe("usage from the Responses API", () => {
+  const responsesUsage = {
+    input_tokens: 2_000,
+    output_tokens: 500,
+    total_tokens: 2_500,
+    input_tokens_details: { cached_tokens: 1_500 },
+    output_tokens_details: { reasoning_tokens: 200 },
+  };
+  const expected = {
+    promptTokens: 2_000,
+    completionTokens: 500,
+    promptTokensDetails: { cachedTokens: 1_500 },
+    completionTokensDetails: { reasoningTokens: 200 },
+  };
+
+  test("the completed event of a stream carries it", () => {
+    const message = fromResponsesChunk({
+      type: "response.completed",
+      response: { usage: responsesUsage },
+    } as any);
+    expect(message).toEqual({
+      role: "assistant",
+      content: "",
+      usage: expected,
+    });
+  });
+
+  test("a whole response carries it after its messages", () => {
+    const messages = fromResponsesChunk({
+      output: [],
+      output_text: "Hi",
+      usage: responsesUsage,
+    } as any);
+    expect(messages).toEqual([
+      { role: "assistant", content: "Hi" },
+      { role: "assistant", content: "", usage: expected },
+    ]);
+  });
+
+  test("streamChat returns it from a whole response with several messages", async () => {
+    const llm = new OpenAI({ model: "gpt-5", apiKey: "k" });
+    (llm as any).openaiAdapter = {};
+    (llm as any)._responses = async () =>
+      fromResponsesChunk({
+        output: [],
+        output_text: "Hi",
+        usage: responsesUsage,
+      } as any);
+    const gen = llm.streamChat(
+      [{ role: "user", content: "hello" }],
+      new AbortController().signal,
+      { log: false, stream: false } as any,
+    );
+    const messages: ChatMessage[] = [];
+    let next = await gen.next();
+    while (!next.done) {
+      messages.push(next.value);
+      next = await gen.next();
+    }
+
+    expect(messages.at(0)).toEqual({ role: "assistant", content: "Hi" });
+    expect(next.value.usage).toEqual(expected);
   });
 });
