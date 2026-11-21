@@ -2,6 +2,9 @@
 globs: ["gui/**/*", "core/**/*"]
 description: Provides test running instructions for GUI and core folders
 alwaysApply: false
+paths:
+  - "**/gui/**/*"
+  - "**/core/**/*"
 ---
 
 When working with test files, use the following commands to run tests:

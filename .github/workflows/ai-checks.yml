@@ -1,10 +1,10 @@
 name: AI Checks
 
-# Runs the enabled checks in .checks/ on a pull request, on demand, with NextCLI.
+# Runs the enabled checks in .claude/checks/ on a pull request, on demand, with NextCLI.
 # Each check runs as its own parallel job and reports as check run
 # `check/<name>`. One pull request comment holds all results and is edited in
 # place on each run. Which checks run is set by the repository variable
-# CHECKS_ENABLED, a comma-separated list of file names in .checks/ without .md
+# CHECKS_ENABLED, a comma-separated list of file names in .claude/checks/ without .md
 # (default: anti-slop,review,security-review,setup-scripts,stale-comments).
 # Each check stops at CHECKS_MAX_COST dollars (default 2) and posts what it
 # found so far, so a run costs at most that times the number of enabled
@@ -63,6 +63,7 @@ jobs:
     with:
       pr-number: ${{ github.event.pull_request.number || inputs.pr }}
       agent: nextcli
+      checks-dir: .claude/checks
       agent-version: ${{ vars.CHECKS_NEXTCLI_VERSION }}
       checks: ${{ vars.CHECKS_ENABLED || 'anti-slop,review,security-review,setup-scripts,stale-comments' }}
       max-cost: ${{ vars.CHECKS_MAX_COST || '2' }}
