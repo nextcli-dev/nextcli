@@ -426,7 +426,7 @@ function compileChatMessages({
   maxTokens,
   supportsImages,
   tools,
-  localEndpoint = false,
+  shortensAnswerToFit = false,
 }: {
   modelName: string;
   msgs: ChatMessage[];
@@ -434,7 +434,7 @@ function compileChatMessages({
   maxTokens: number;
   supportsImages: boolean;
   tools?: Tool[];
-  localEndpoint?: boolean;
+  shortensAnswerToFit?: boolean;
 }): CompiledMessagesResult {
   let didPrune = false;
 
@@ -482,8 +482,8 @@ function compileChatMessages({
 
   const contextLength = knownContextLength ?? DEFAULT_PRUNING_LENGTH;
   const countingSafetyBuffer = getTokenCountingBufferSafety(contextLength);
-  // A hosted API rejects input that leaves less than the max_tokens it is sent
-  const outputReserve = localEndpoint
+  // Most servers reject input that leaves less than the max_tokens they are sent
+  const outputReserve = shortensAnswerToFit
     ? Math.min(MIN_RESPONSE_TOKENS, maxTokens)
     : maxTokens;
 

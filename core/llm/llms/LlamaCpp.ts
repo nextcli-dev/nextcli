@@ -4,6 +4,7 @@ import { BaseLLM } from "../index.js";
 
 class LlamaCpp extends BaseLLM {
   static providerName = "llama.cpp";
+  protected shortensAnswerToFit = true;
   static defaultOptions: Partial<LLMOptions> = {
     apiBase: "http://127.0.0.1:8080/",
   };

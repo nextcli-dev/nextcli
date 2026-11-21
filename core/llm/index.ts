@@ -1,11 +1,6 @@
 import { ModelRole } from "@nextcli/config-yaml";
 import { fetchwithRequestOptions } from "@nextcli/fetch";
-import {
-  findLlmInfo,
-  hostOf,
-  isLocalHost,
-  isOneProviderBase,
-} from "@nextcli/llm-info";
+import { findLlmInfo, isOneProviderBase } from "@nextcli/llm-info";
 import {
   BaseLlmApi,
   buildModelControlFields,
@@ -106,6 +101,12 @@ export abstract class BaseLLM implements ILLM {
   static defaultOptions: Partial<LLMOptions> | undefined = undefined;
   // Provider capabilities (overridable by subclasses)
   protected supportsReasoningField: boolean = false;
+  /**
+   * The server cuts the answer short instead of rejecting a request whose
+   * input leaves less than max_tokens (Ollama, llama.cpp and the servers
+   * built on them), so pruning keeps only a small reserve for the answer
+   */
+  protected shortensAnswerToFit: boolean = false;
   protected supportsReasoningDetailsField: boolean = false;
   protected supportsReasoningContentField: boolean = false;
 
@@ -1104,12 +1105,6 @@ export abstract class BaseLLM implements ILLM {
     return { role: "assistant" as const, content: completion };
   }
 
-  /** Whether the API base is on this machine, as pricing decides it */
-  private isLocalEndpoint(): boolean {
-    const host = hostOf(this.apiBase);
-    return host !== undefined && isLocalHost(host);
-  }
-
   compileChatMessages(
     message: ChatMessage[],
     options: LLMFullCompletionOptions,
@@ -1124,7 +1119,7 @@ export abstract class BaseLLM implements ILLM {
       maxTokens: completionOptions.maxTokens ?? DEFAULT_MAX_TOKENS,
       supportsImages: this.supportsImages(),
       tools: options.tools,
-      localEndpoint: this.isLocalEndpoint(),
+      shortensAnswerToFit: this.shortensAnswerToFit,
     });
   }
 
@@ -1340,7 +1335,7 @@ export abstract class BaseLLM implements ILLM {
         maxTokens: completionOptions.maxTokens ?? DEFAULT_MAX_TOKENS,
         supportsImages: this.supportsImages(),
         tools: optionsWithOverrides.tools,
-        localEndpoint: this.isLocalEndpoint(),
+        shortensAnswerToFit: this.shortensAnswerToFit,
       });
 
       messages = compiledChatMessages;
