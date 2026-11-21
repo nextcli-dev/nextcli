@@ -320,7 +320,7 @@ export function toUsage(usage: ChatUsage): Usage {
 }
 
 /** The usage a Responses API response reports, in core's shape */
-function fromResponsesUsage(usage: {
+export function fromResponsesUsage(usage: {
   input_tokens?: number;
   output_tokens?: number;
   input_tokens_details?: { cached_tokens?: number } | null;
@@ -332,11 +332,6 @@ function fromResponsesUsage(usage: {
     prompt_tokens_details: usage.input_tokens_details,
     completion_tokens_details: usage.output_tokens_details,
   });
-}
-
-/** An empty assistant message that carries a call's usage, as native providers send it */
-function usageMessage(usage: Usage): AssistantChatMessage {
-  return { role: "assistant", content: "", usage };
 }
 
 export function fromChatResponse(response: ChatCompletion): ChatMessage[] {
@@ -670,11 +665,6 @@ function handleResponsesStreamEvent(
   if (t === "response.reasoning_text.done") {
     return handleReasoningTextDone(e as ResponseReasoningTextDoneEvent);
   }
-  // A response cut off at the output cap ends "incomplete", with its usage
-  if (t === "response.completed" || t === "response.incomplete") {
-    const usage = (e as any).response?.usage;
-    return usage ? usageMessage(fromResponsesUsage(usage)) : undefined;
-  }
   return undefined;
 }
 
@@ -796,15 +786,7 @@ export function fromResponsesChunk(
   if (typeof (event as any).type === "string") {
     return handleResponsesStreamEvent(event as ResponseStreamEvent);
   }
-  const messages = handleResponsesFinal(event as OpenAIResponse);
-  const usage = (event as OpenAIResponse).usage;
-  if (!usage) {
-    return messages;
-  }
-  return [
-    ...(messages === undefined ? [] : [messages].flat()),
-    usageMessage(fromResponsesUsage(usage)),
-  ];
+  return handleResponsesFinal(event as OpenAIResponse);
 }
 
 export function mergeReasoningDetails(

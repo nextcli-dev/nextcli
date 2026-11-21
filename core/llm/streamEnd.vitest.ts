@@ -1,3 +1,5 @@
+import { Readable } from "node:stream";
+
 import { describe, expect, test, vi } from "vitest";
 
 import { ChatMessage, PromptLog } from "../index.js";
@@ -260,7 +262,7 @@ describe("usage on the OpenAI adapter", () => {
   });
 });
 
-describe("usage from the Responses API", () => {
+describe("the Responses API", () => {
   const responsesUsage = {
     input_tokens: 2_000,
     output_tokens: 500,
@@ -268,50 +270,33 @@ describe("usage from the Responses API", () => {
     input_tokens_details: { cached_tokens: 1_500 },
     output_tokens_details: { reasoning_tokens: 200 },
   };
-  const expected = {
+  const expectedUsage = {
     promptTokens: 2_000,
     completionTokens: 500,
     promptTokensDetails: { cachedTokens: 1_500 },
     completionTokensDetails: { reasoningTokens: 200 },
   };
 
-  test("the completed event of a stream carries it", () => {
-    const message = fromResponsesChunk({
-      type: "response.completed",
-      response: { usage: responsesUsage },
-    } as any);
-    expect(message).toEqual({
-      role: "assistant",
-      content: "",
-      usage: expected,
-    });
-  });
-
-  test("a whole response carries it after its messages", () => {
-    const messages = fromResponsesChunk({
-      output: [],
-      output_text: "Hi",
-      usage: responsesUsage,
-    } as any);
-    expect(messages).toEqual([
-      { role: "assistant", content: "Hi" },
-      { role: "assistant", content: "", usage: expected },
-    ]);
-  });
-
-  test("streamChat returns it from a whole response with several messages", async () => {
+  /**
+   * streamChat on GPT-5, which goes through the provider's own Responses
+   * request, against a fake server answering with `body`
+   */
+  async function respond(
+    body: string,
+    contentType: string,
+    stream: boolean,
+  ): Promise<{ messages: ChatMessage[]; log: PromptLog }> {
     const llm = new OpenAI({ model: "gpt-5", apiKey: "k" });
     (llm as any).openaiAdapter = {};
-    (llm as any)._responses = async () =>
-      fromResponsesChunk({
-        output: [],
-        output_text: "Hi",
-        usage: responsesUsage,
-      } as any);
+    (llm as any).fetch = vi.fn().mockResolvedValue(
+      new Response(Readable.from([Buffer.from(body)]) as any, {
+        headers: { "Content-Type": contentType },
+      }),
+    );
     const gen = llm.streamChat(
       [{ role: "user", content: "hello" }],
       new AbortController().signal,
-      { log: false, stream: false } as any,
+      { log: false, stream } as any,
     );
     const messages: ChatMessage[] = [];
     let next = await gen.next();
@@ -319,46 +304,79 @@ describe("usage from the Responses API", () => {
       messages.push(next.value);
       next = await gen.next();
     }
+    return { messages, log: next.value };
+  }
 
-    expect(messages).toEqual([{ role: "assistant", content: "Hi" }]);
-    expect(next.value.usage).toEqual(expected);
+  const sse = (events: object[]) =>
+    events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join("");
+  const streamOf = (events: object[]) =>
+    respond(sse(events), "text/event-stream", true);
+  const text = { type: "response.output_text.delta", delta: "Hi" };
+
+  test("a stream cut off at the output cap ends as length, with its usage", async () => {
+    const { messages, log } = await streamOf([
+      text,
+      {
+        type: "response.incomplete",
+        response: {
+          status: "incomplete",
+          incomplete_details: { reason: "max_output_tokens" },
+          usage: responsesUsage,
+        },
+      },
+    ]);
+
+    // The no-answer notice reads finishReason and outputTokens
+    expect(log.finishReason).toBe("length");
+    expect(log.streamEndedWithoutFinish).toBe(false);
+    expect(log.outputTokens).toBe(500);
+    expect(log.usage).toEqual(expectedUsage);
+    expect(messages.map((m) => [m.role, m.content])).toEqual([
+      ["assistant", "Hi"],
+    ]);
   });
 
-  test.each(["response.completed", "response.incomplete"])(
-    "streamChat returns it from a stream that ends %s",
-    async (end) => {
-      // GPT-5 on the OpenAI provider streams through the core converter. A
-      // response cut off at the output cap ends "incomplete"
-      const llm = new OpenAI({ model: "gpt-5", apiKey: "k" });
-      (llm as any).openaiAdapter = {};
-      (llm as any)._streamResponses = async function* () {
-        for (const event of [
-          { type: "response.output_text.delta", delta: "Hi" },
-          { type: end, response: { usage: responsesUsage } },
-        ]) {
-          const message = fromResponsesChunk(event as any);
-          if (message) {
-            yield* [message].flat();
-          }
-        }
-      };
-      const gen = llm.streamChat(
-        [{ role: "user", content: "hello" }],
-        new AbortController().signal,
-        { log: false } as any,
-      );
-      const messages: ChatMessage[] = [];
-      let next = await gen.next();
-      while (!next.done) {
-        messages.push(next.value);
-        next = await gen.next();
-      }
+  test("a completed stream ends as stop, with its usage", async () => {
+    const { log } = await streamOf([
+      text,
+      {
+        type: "response.completed",
+        response: { status: "completed", usage: responsesUsage },
+      },
+    ]);
 
-      // The text, and no empty message for the usage
-      expect(messages.map((m) => [m.role, m.content])).toEqual([
-        ["assistant", "Hi"],
-      ]);
-      expect(next.value.usage).toEqual(expected);
-    },
-  );
+    expect(log.finishReason).toBe("stop");
+    expect(log.usage).toEqual(expectedUsage);
+  });
+
+  test("a stream that closes without an end event is flagged", async () => {
+    const { log } = await streamOf([text]);
+
+    expect(log.finishReason).toBeUndefined();
+    expect(log.streamEndedWithoutFinish).toBe(true);
+  });
+
+  test("a whole response with several messages yields each, with how it ended", async () => {
+    const { messages, log } = await respond(
+      JSON.stringify({
+        status: "incomplete",
+        incomplete_details: { reason: "max_output_tokens" },
+        // Reasoning, then the answer: two messages
+        output: [
+          { type: "reasoning", id: "r1", summary: [] },
+          { type: "message", content: [{ type: "output_text", text: "Hi" }] },
+        ],
+        usage: responsesUsage,
+      }),
+      "application/json",
+      false,
+    );
+
+    expect(messages.map((m) => [m.role, m.content])).toEqual([
+      ["thinking", ""],
+      ["assistant", "Hi"],
+    ]);
+    expect(log.finishReason).toBe("length");
+    expect(log.usage).toEqual(expectedUsage);
+  });
 });

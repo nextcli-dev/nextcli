@@ -34,6 +34,7 @@ import {
   SerializedModelControls,
   TabAutocompleteOptions,
   TemplateType,
+  Tool,
   ToolOverride,
   Usage,
 } from "../index.js";
@@ -64,6 +65,7 @@ import {
 import {
   compileChatMessages,
   countTokens,
+  maxTokensThatFit,
   pruneRawPromptFromTop,
 } from "./countTokens.js";
 import {
@@ -1108,6 +1110,36 @@ export abstract class BaseLLM implements ILLM {
     return { role: "assistant" as const, content: completion };
   }
 
+  /**
+   * For a server that rejects an over-long request, max_tokens lowered to
+   * what the window leaves after the messages, so the request fits. The
+   * pruner keeps at least a quarter of the window free for it.
+   */
+  private fitMaxTokens(
+    options: CompletionOptions,
+    messages: ChatMessage[],
+    tools: Tool[] | undefined,
+    contextLength: number | undefined,
+  ): CompletionOptions {
+    if (
+      this.shortensAnswerToFit ||
+      contextLength === undefined ||
+      options.maxTokens === undefined
+    ) {
+      return options;
+    }
+    return {
+      ...options,
+      maxTokens: maxTokensThatFit({
+        modelName: options.model,
+        messages,
+        tools,
+        contextLength,
+        maxTokens: options.maxTokens,
+      }),
+    };
+  }
+
   compileChatMessages(
     message: ChatMessage[],
     options: LLMFullCompletionOptions,
@@ -1246,11 +1278,13 @@ export abstract class BaseLLM implements ILLM {
     messages: ChatMessage[],
     signal: AbortSignal,
     options: CompletionOptions,
+    streamEnd: StreamEnd,
   ): AsyncGenerator<ChatMessage> {
     const g = (this as any)._streamResponses(
       messages,
       signal,
       options,
+      streamEnd,
     ) as AsyncGenerator<ChatMessage>;
     for await (const m of g) {
       yield m;
@@ -1261,8 +1295,14 @@ export abstract class BaseLLM implements ILLM {
     messages: ChatMessage[],
     signal: AbortSignal,
     options: CompletionOptions,
+    streamEnd: StreamEnd,
   ): AsyncGenerator<ChatMessage> {
-    const msg = await (this as any)._responses(messages, signal, options);
+    const msg = await (this as any)._responses(
+      messages,
+      signal,
+      options,
+      streamEnd,
+    );
     // Reasoning, text and usage can come as several messages
     yield* [msg as ChatMessage | ChatMessage[]].flat();
   }
@@ -1357,6 +1397,12 @@ export abstract class BaseLLM implements ILLM {
 
       messages = compiledChatMessages;
     }
+    completionOptions = this.fitMaxTokens(
+      completionOptions,
+      messages,
+      optionsWithOverrides.tools,
+      options.contextLength ?? this._contextLength,
+    );
 
     const messagesCopy = [...messages]; // templateMessages may modify messages.
 
@@ -1372,7 +1418,8 @@ export abstract class BaseLLM implements ILLM {
     const completion: string[] = [];
     let usage: Usage | undefined = undefined;
     let citations: null | string[] = null;
-    // Set only on the OpenAI adapter's path, which reads the raw response
+    // Set only on the OpenAI adapter's and Responses API's paths, which read
+    // the raw response
     let streamEnd: StreamEnd | undefined = undefined;
 
     try {
@@ -1424,9 +1471,20 @@ export abstract class BaseLLM implements ILLM {
 
           let iterable: AsyncIterable<ChatMessage>;
           if (canUseResponses) {
+            streamEnd = {};
             iterable = useStream
-              ? this.responsesStream(messages, signal, completionOptions)
-              : this.responsesNonStream(messages, signal, completionOptions);
+              ? this.responsesStream(
+                  messages,
+                  signal,
+                  completionOptions,
+                  streamEnd,
+                )
+              : this.responsesNonStream(
+                  messages,
+                  signal,
+                  completionOptions,
+                  streamEnd,
+                );
           } else if (useStream) {
             streamEnd = {};
             iterable = this.openAIAdapterStream(

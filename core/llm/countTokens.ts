@@ -485,7 +485,8 @@ function compileChatMessages({
   const minOutputTokens = Math.min(MIN_RESPONSE_TOKENS, maxTokens);
   // Most servers reject input that leaves less than the max_tokens they are
   // sent. Up to a quarter of the window, the cap the constructor puts on
-  // catalog output limits, so a max_tokens set near the window can't take it
+  // catalog output limits, so a max_tokens set near the window can't take
+  // it; the request then sends only the max_tokens that fit (maxTokensThatFit)
   const outputReserve = shortensAnswerToFit
     ? minOutputTokens
     : Math.min(maxTokens, Math.floor(contextLength / 4));
@@ -564,12 +565,45 @@ async function cleanupAsyncEncoders(): Promise<void> {
   } catch (e) {}
 }
 
+/**
+ * The max_tokens a request can send to a server that rejects one whose input
+ * plus max_tokens passes the window: the configured value, lowered to what
+ * the window leaves after these messages and tools, but never below the
+ * 1,000-token floor compileChatMessages keeps
+ */
+function maxTokensThatFit({
+  modelName,
+  messages,
+  tools,
+  contextLength,
+  maxTokens,
+}: {
+  modelName: string;
+  messages: ChatMessage[];
+  tools?: Tool[];
+  contextLength: number;
+  maxTokens: number;
+}): number {
+  const inputTokens =
+    messages.reduce(
+      (sum, message) => sum + countChatMessageTokens(modelName, message),
+      0,
+    ) + (tools ? countToolsTokens(tools, modelName) : 0);
+  const left =
+    contextLength - getTokenCountingBufferSafety(contextLength) - inputTokens;
+  return Math.min(
+    maxTokens,
+    Math.max(left, Math.min(MIN_RESPONSE_TOKENS, maxTokens)),
+  );
+}
+
 export {
   cleanupAsyncEncoders,
   compileChatMessages,
   countTokens,
   countTokensAsync,
   extractToolSequence,
+  maxTokensThatFit,
   pruneLinesFromBottom,
   pruneLinesFromTop,
   pruneRawPromptFromTop,

@@ -221,4 +221,104 @@ describe("compileChatMessages", () => {
       );
     });
   });
+
+  describe("the max_tokens a request sends", () => {
+    /** The request body streamChat sends through a fake adapter */
+    async function sentBody(
+      Provider: LLMClass,
+      messages: ChatMessage[],
+      contextLength: number,
+      maxTokens: number,
+      precompiled = false,
+    ) {
+      const llm = new Provider({
+        model: MODEL,
+        apiKey: "k",
+        contextLength,
+        completionOptions: { model: MODEL, maxTokens },
+      });
+      let body: any;
+      (llm as any).openaiAdapter = {
+        async *chatCompletionStream(request: unknown) {
+          body = request;
+          yield {
+            id: "c1",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: MODEL,
+            choices: [
+              { index: 0, delta: { content: "ok" }, finish_reason: "stop" },
+            ],
+          };
+        },
+      };
+      const gen = llm.streamChat(
+        messages,
+        new AbortController().signal,
+        { log: false } as any,
+        { precompiled },
+      );
+      for (let next = await gen.next(); !next.done; next = await gen.next()) {
+        // drain
+      }
+      return {
+        maxTokens: body.max_tokens ?? body.max_completion_tokens,
+        messages: body.messages as ChatMessage[],
+      };
+    }
+
+    /** Input plus the max_tokens on the wire fit the window */
+    const fits = (
+      sent: { maxTokens: number; messages: ChatMessage[] },
+      contextLength: number,
+    ) =>
+      tokensOf(sent.messages) +
+        sent.maxTokens +
+        getTokenCountingBufferSafety(contextLength) <=
+      contextLength;
+
+    test.each([
+      // An OpenAI-compatible model with no catalog entry keeps the 4,096
+      // default: half of an 8K window
+      [8_192, 4_096],
+      // An explicit max_tokens above a quarter of the window
+      [32_768, 16_384],
+    ])(
+      "is lowered so a long chat fits a %i window with max_tokens %i",
+      async (contextLength, maxTokens) => {
+        const sent = await sentBody(
+          OpenAI,
+          conversation(20),
+          contextLength,
+          maxTokens,
+        );
+
+        expect(sent.maxTokens).toBeLessThan(maxTokens);
+        expect(sent.maxTokens).toBeGreaterThanOrEqual(contextLength / 4 - 100);
+        expect(fits(sent, contextLength)).toBe(true);
+      },
+    );
+
+    test("is lowered for messages the GUI compiled already", async () => {
+      // About 6,000 tokens, which the pruner allows beside a quarter of 8K
+      const messages = conversation(3);
+
+      const sent = await sentBody(OpenAI, messages, 8_192, 4_096, true);
+
+      expect(sent.maxTokens).toBeLessThan(4_096);
+      expect(fits(sent, 8_192)).toBe(true);
+    });
+
+    test("is the configured one when the chat leaves room for it", async () => {
+      const sent = await sentBody(OpenAI, conversation(0), 8_192, 4_096);
+
+      expect(sent.maxTokens).toBe(4_096);
+    });
+
+    test("is the configured one for a server that cuts the answer short", async () => {
+      const sent = await sentBody(LMStudio, conversation(20), 8_192, 4_096);
+
+      expect(sent.maxTokens).toBe(4_096);
+    });
+  });
 });

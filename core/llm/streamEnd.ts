@@ -1,6 +1,10 @@
 import type { Usage } from "../index.js";
 
-import { type ChatUsage, toUsage } from "./openaiTypeConverters.js";
+import {
+  type ChatUsage,
+  fromResponsesUsage,
+  toUsage,
+} from "./openaiTypeConverters.js";
 
 /**
  * How an OpenAI-compatible stream ended, read from its raw chunks, or from a
@@ -38,5 +42,31 @@ export function readStreamEnd(
   }
   if (chunk.usage) {
     streamEnd.usage = toUsage(chunk.usage);
+  }
+}
+
+/**
+ * Adds how a Responses API response ended, from the whole response or the
+ * one its completed or incomplete event carries. Running out of output
+ * tokens is "length", as chat completions report it.
+ */
+export function readResponseEnd(
+  streamEnd: StreamEnd,
+  response: {
+    status?: string;
+    incomplete_details?: { reason?: string } | null;
+    usage?: Parameters<typeof fromResponsesUsage>[0] | null;
+  },
+): void {
+  if (response.status === "completed") {
+    streamEnd.finishReason = "stop";
+  } else if (response.status === "incomplete") {
+    const reason = response.incomplete_details?.reason;
+    streamEnd.finishReason =
+      reason === "max_output_tokens" ? "length" : (reason ?? "incomplete");
+  }
+  if (response.usage) {
+    streamEnd.usage = fromResponsesUsage(response.usage);
+    streamEnd.outputTokens = response.usage.output_tokens;
   }
 }
