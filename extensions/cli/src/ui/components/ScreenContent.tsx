@@ -57,6 +57,7 @@ interface ScreenContentProps {
   chatHistory?: ChatHistoryItem[];
   handleEditMessage?: (messageIndex: number, newContent: string) => void;
   onShowEditSelector?: () => void;
+  onRefreshScreen?: () => void;
   restoreFromIndex?: number;
   handleRestore?: (plan: UndoPlan, mode: RestoreMode) => void;
   onShowRestore?: (fromIndex: number) => void;
@@ -99,6 +100,7 @@ export const ScreenContent: React.FC<ScreenContentProps> = ({
   chatHistory = [],
   handleEditMessage,
   onShowEditSelector,
+  onRefreshScreen,
   restoreFromIndex,
   handleRestore,
   onShowRestore,
@@ -222,6 +224,7 @@ export const ScreenContent: React.FC<ScreenContentProps> = ({
         isRemoteMode={isRemoteMode}
         onImageInClipboardChange={onImageInClipboardChange}
         onShowEditSelector={onShowEditSelector}
+        onRefreshScreen={onRefreshScreen}
       />
     );
   }

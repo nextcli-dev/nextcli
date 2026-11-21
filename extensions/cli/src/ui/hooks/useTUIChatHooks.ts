@@ -109,7 +109,9 @@ export function useIntroMessage(
   _services: any,
   _allServicesReady: boolean,
 ) {
-  const [showIntroMessage, setShowIntroMessage] = useState(false);
+  // Start with the right value: the intro is the first <Static> item, and
+  // adding it after history was printed would print that history again
+  const [showIntroMessage, setShowIntroMessage] = useState(!isRemoteMode);
 
   useEffect(() => {
     const shouldShow = !isRemoteMode;

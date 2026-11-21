@@ -113,6 +113,7 @@ interface UserInputProps {
   isRemoteMode?: boolean;
   onImageInClipboardChange?: (hasImage: boolean) => void;
   onShowEditSelector?: () => void;
+  onRefreshScreen?: () => void;
 }
 
 const UserInput: React.FC<UserInputProps> = ({
@@ -130,6 +131,7 @@ const UserInput: React.FC<UserInputProps> = ({
   isRemoteMode = false,
   onImageInClipboardChange,
   onShowEditSelector,
+  onRefreshScreen,
 }) => {
   const [textBuffer] = useState(() => new TextBuffer());
   const [inputHistory] = useState(() => new InputHistory());
@@ -468,7 +470,7 @@ const UserInput: React.FC<UserInputProps> = ({
       return true;
     }
 
-    if ((key.return && !key.shift) || key.tab) {
+    if ((key.return && !key.shift && !key.meta) || key.tab) {
       if (filteredCommands.length > 0) {
         const commandName = filteredCommands[selectedCommandIndex].name;
         if (key.return && commandName !== "title") {
@@ -514,7 +516,7 @@ const UserInput: React.FC<UserInputProps> = ({
       return true;
     }
 
-    if ((key.return && !key.shift) || key.tab) {
+    if ((key.return && !key.shift && !key.meta) || key.tab) {
       if (currentFiles.length > 0 && selectedFileIndex < currentFiles.length) {
         selectFile(currentFiles[selectedFileIndex].path);
       }
@@ -552,7 +554,9 @@ const UserInput: React.FC<UserInputProps> = ({
   };
 
   const handleEnterKey = (key: any): boolean => {
-    if (key.return && !key.shift) {
+    // Shift+Enter often arrives as ESC+CR, which Ink reports as meta+return;
+    // that one adds a new line (handleNewLine) instead of submitting
+    if (key.return && !key.shift && !key.meta) {
       // Check for backslash continuation
       const beforeCursor = textBuffer.text.slice(0, cursorPosition);
       const trimmedBeforeCursor = beforeCursor.trimEnd();
@@ -606,7 +610,8 @@ const UserInput: React.FC<UserInputProps> = ({
 
   const handleNewLine = (input: string, key: any): boolean => {
     if (input === "\r" || input === "\\\r") {
-      const handled = textBuffer.handleInput("\n", key);
+      // ESC+CR carries meta, which TextBuffer reads as a shortcut, not text
+      const handled = textBuffer.handleInput("\n", { ...key, meta: false });
       if (handled) {
         const newText = textBuffer.text;
         const newCursor = textBuffer.cursor;
@@ -726,6 +731,7 @@ const UserInput: React.FC<UserInputProps> = ({
         clearInput,
         textBuffer,
         onTextBufferUpdate: handleTextBufferUpdate,
+        onRefreshScreen,
       })
     ) {
       return;

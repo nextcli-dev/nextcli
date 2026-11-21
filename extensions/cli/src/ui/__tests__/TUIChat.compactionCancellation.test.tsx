@@ -103,7 +103,7 @@ describe("TUIChat - Compaction Cancellation", () => {
     }
   });
 
-  it("prioritizes compaction cancellation over response cancellation", () => {
+  it("prioritizes compaction cancellation over response cancellation", async () => {
     // This tests the case where both might be true (theoretical edge case)
     const compactionStartTime = Date.now();
     const responseStartTime = Date.now();
@@ -133,6 +133,7 @@ describe("TUIChat - Compaction Cancellation", () => {
       stdin.write("\x1b"); // ESC key
 
       // Should still call handleInterrupt (which will prioritize compaction)
+      await vi.waitFor(() => expect(mockHandleInterrupt).toHaveBeenCalled());
       expect(mockHandleInterrupt).toHaveBeenCalledTimes(1);
     } finally {
       unmount();

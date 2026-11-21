@@ -1,4 +1,4 @@
-import { Box, Text } from "ink";
+import { Box, type DOMElement, Text, useBoxMetrics } from "ink";
 import React, {
   useCallback,
   useEffect,
@@ -27,10 +27,12 @@ import { BottomStatusBar } from "./components/BottomStatusBar.js";
 import { ResourceDebugBar } from "./components/ResourceDebugBar.js";
 import { ScreenContent } from "./components/ScreenContent.js";
 import { StaticChatContent } from "./components/StaticChatContent.js";
+import { BottomSectionContext } from "./context/BottomSectionContext.js";
 import { useNavigation } from "./context/NavigationContext.js";
 import { useChat } from "./hooks/useChat.js";
 import { useContextPercentage } from "./hooks/useContextPercentage.js";
 import { useMessageRenderer } from "./hooks/useMessageRenderer.js";
+import { useTerminalSize } from "./hooks/useTerminalSize.js";
 import { useIntroMessage, useSelectors } from "./hooks/useTUIChatHooks.js";
 
 interface TUIChatProps {
@@ -138,8 +140,9 @@ function useChatHandlers(
       resetChatHistoryRef.current();
     }
     setShowIntroMessage(false);
-    process.stdout.write("\x1b[2J\x1b[H");
-  }, [setShowIntroMessage]);
+    // Clear through <Static>'s refresh, so Ink's frame stays in step
+    setStaticRefreshTrigger((prev) => prev + 1);
+  }, [setShowIntroMessage, setStaticRefreshTrigger]);
 
   return {
     handleClear,
@@ -163,6 +166,21 @@ const TUIChat: React.FC<TUIChatProps> = ({
   const { services, allServicesReady, isRemoteMode } =
     useTUIChatServices(remoteUrl);
 
+  // Keep the frame below the terminal height. Ink clears and redraws the
+  // whole screen on every frame as tall as the terminal; the live part of
+  // the chat shrinks to fit instead.
+  const { rows } = useTerminalSize();
+  const maxRows = Math.max(1, rows - 1);
+
+  // The bottom section can't shrink, so a permission prompt fits its preview
+  // into the rows the rest of the section leaves (BottomSectionContext)
+  const bottomRef = useRef<DOMElement>(null);
+  const { height: bottomHeight } = useBoxMetrics(bottomRef);
+  const bottomSection = useMemo(
+    () => ({ height: bottomHeight, maxRows }),
+    [bottomHeight, maxRows],
+  );
+
   // Use navigation context
   const {
     state: navState,
@@ -180,6 +198,8 @@ const TUIChat: React.FC<TUIChatProps> = ({
 
   // State to trigger static content refresh for /clear command
   const [staticRefreshTrigger, setStaticRefreshTrigger] = useState(0);
+  // Ctrl+L: the same reprint, but it keeps the terminal's scrollback
+  const [redrawTrigger, setRedrawTrigger] = useState(0);
 
   // Use chat handlers hook
   const { handleClear, handleReload, resetChatHistoryRef } = useChatHandlers(
@@ -391,7 +411,7 @@ const TUIChat: React.FC<TUIChatProps> = ({
   }, []);
 
   return (
-    <Box flexDirection="column" height="100%">
+    <Box flexDirection="column" maxHeight={maxRows}>
       {/* Chat history - takes up all available space above input */}
       <Box flexDirection="column" flexGrow={1} overflow="hidden">
         {/* Debug component - comment out when not needed */}
@@ -417,11 +437,13 @@ const TUIChat: React.FC<TUIChatProps> = ({
           queuedMessages={queuedMessages}
           renderMessage={renderMessage}
           refreshTrigger={staticRefreshTrigger}
+          redrawTrigger={redrawTrigger}
+          isTurnRunning={isWaitingForResponse || isCompacting}
         />
       </Box>
 
       {/* Fixed bottom section */}
-      <Box flexDirection="column" flexShrink={0}>
+      <Box ref={bottomRef} flexDirection="column" flexShrink={0}>
         {/* Status */}
         <ActionStatus
           visible={isWaitingForResponse && !!responseStartTime}
@@ -450,41 +472,44 @@ const TUIChat: React.FC<TUIChatProps> = ({
         )}
 
         {/* All screen-specific content */}
-        <ScreenContent
-          isScreenActive={isScreenActive}
-          services={services}
-          handleConfigSelect={handleConfigSelect}
-          handleModelSelect={handleModelSelect}
-          handleSessionSelect={handleSessionSelect}
-          handleExportSession={handleExportSession}
-          handleReload={handleReload}
-          closeCurrentScreen={closeCurrentScreen}
-          activePermissionRequest={activePermissionRequest}
-          activeQuizQuestion={activeQuizQuestion}
-          handleToolPermissionResponse={handleToolPermissionResponse}
-          handleQuizAnswer={handleQuizAnswer}
-          handleUserMessage={handleUserMessage}
-          isWaitingForResponse={isWaitingForResponse}
-          isCompacting={isCompacting}
-          inputMode={inputMode}
-          handleInterrupt={handleInterrupt}
-          handleFileAttached={handleFileAttached}
-          isInputDisabled={isInputDisabled}
-          wasInterrupted={wasInterrupted}
-          isRemoteMode={isRemoteMode}
-          onImageInClipboardChange={setHasImageInClipboard}
-          diffContent={diffContent}
-          chatHistory={chatHistory}
-          handleEditMessage={handleEditMessage}
-          onShowEditSelector={() => navigateTo("edit")}
-          restoreFromIndex={
-            navState.currentScreen === "restore"
-              ? navState.screenData?.fromIndex
-              : undefined
-          }
-          handleRestore={(plan, mode) => void handleRestore(plan, mode)}
-          onShowRestore={(fromIndex) => navigateTo("restore", { fromIndex })}
-        />
+        <BottomSectionContext.Provider value={bottomSection}>
+          <ScreenContent
+            isScreenActive={isScreenActive}
+            services={services}
+            handleConfigSelect={handleConfigSelect}
+            handleModelSelect={handleModelSelect}
+            handleSessionSelect={handleSessionSelect}
+            handleExportSession={handleExportSession}
+            handleReload={handleReload}
+            closeCurrentScreen={closeCurrentScreen}
+            activePermissionRequest={activePermissionRequest}
+            activeQuizQuestion={activeQuizQuestion}
+            handleToolPermissionResponse={handleToolPermissionResponse}
+            handleQuizAnswer={handleQuizAnswer}
+            handleUserMessage={handleUserMessage}
+            isWaitingForResponse={isWaitingForResponse}
+            isCompacting={isCompacting}
+            inputMode={inputMode}
+            handleInterrupt={handleInterrupt}
+            handleFileAttached={handleFileAttached}
+            isInputDisabled={isInputDisabled}
+            wasInterrupted={wasInterrupted}
+            isRemoteMode={isRemoteMode}
+            onImageInClipboardChange={setHasImageInClipboard}
+            diffContent={diffContent}
+            chatHistory={chatHistory}
+            handleEditMessage={handleEditMessage}
+            onShowEditSelector={() => navigateTo("edit")}
+            onRefreshScreen={() => setRedrawTrigger((prev) => prev + 1)}
+            restoreFromIndex={
+              navState.currentScreen === "restore"
+                ? navState.screenData?.fromIndex
+                : undefined
+            }
+            handleRestore={(plan, mode) => void handleRestore(plan, mode)}
+            onShowRestore={(fromIndex) => navigateTo("restore", { fromIndex })}
+          />
+        </BottomSectionContext.Provider>
 
         {/* Resource debug bar - only in verbose mode */}
         {isVerboseMode && !isRemoteMode && (

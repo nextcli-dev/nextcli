@@ -2,6 +2,7 @@ import { render } from "ink-testing-library";
 import React from "react";
 import { vi } from "vitest";
 
+import { escapeEvents } from "../../util/cli.js";
 import { TUIChat } from "../TUIChat.js";
 
 import { MockRemoteServer } from "./mockRemoteServer.js";
@@ -476,6 +477,21 @@ export async function waitForCondition(
     }
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
+}
+
+/**
+ * Presses Esc and waits until the input box has handled it. Ink holds a lone
+ * ESC for a moment to tell it from the start of a key sequence, so two writes
+ * in the same tick would arrive as one key, unlike two real key presses.
+ */
+export async function pressEscape(stdin: {
+  write: (data: string) => void;
+}): Promise<void> {
+  const handled = new Promise<void>((resolve) =>
+    escapeEvents.once("user-escape", () => resolve()),
+  );
+  stdin.write("\u001b");
+  await handled;
 }
 
 // Make runTest available globally for test files

@@ -89,7 +89,7 @@ export function EditMessageSelector({
         textBuffer.setText(content);
         setEditText(content);
         setCursorPosition(content.length);
-      } else if (key.return && !key.shift) {
+      } else if (key.return && !key.shift && !key.meta) {
         // Submit the edit
         // Expand all paste blocks before submission to restore original content
         textBuffer.expandAllPasteBlocks();
@@ -97,9 +97,10 @@ export function EditMessageSelector({
         if (trimmedText && userMessages[selectedIndex]) {
           onEdit(userMessages[selectedIndex].originalIndex, trimmedText);
         }
-      } else if (key.return && key.shift) {
-        // Handle newline
-        textBuffer.handleInput("\n", key);
+      } else if (key.return) {
+        // Shift+Enter, or ESC+CR (meta+return): a new line. TextBuffer reads
+        // meta as a shortcut, not text
+        textBuffer.handleInput("\n", { ...key, meta: false });
         setEditText(textBuffer.text);
         setCursorPosition(textBuffer.cursor);
       } else {
