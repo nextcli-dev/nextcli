@@ -102,10 +102,17 @@ describe("TUIChat live area", () => {
     context.cleanup();
   });
 
-  function renderApp(size?: { columns?: number; rows?: number }) {
-    const rendered = renderInTty(app(), size);
+  function renderInTtyApp(
+    element: React.ReactElement,
+    size?: { columns?: number; rows?: number },
+  ) {
+    const rendered = renderInTty(element, size);
     unmountApp = rendered.unmount;
     return rendered;
+  }
+
+  function renderApp(size?: { columns?: number; rows?: number }) {
+    return renderInTtyApp(app(), size);
   }
 
   it("keeps every frame below the terminal height while a long step runs", async () => {
@@ -253,7 +260,7 @@ describe("TUIChat live area", () => {
     expect(stdout.tallestWriteWith(STATUS_LINE, reprinted)).toBeLessThan(15);
   });
 
-  it("clears the screen and prints the history again on Ctrl+L", async () => {
+  it("clears the screen and prints the history again on Ctrl+L, keeping the scrollback", async () => {
     setChat({ chatHistory: [user("hello there"), reply("Hi!")] });
     const { stdout, stdin } = renderApp({ rows: 20 });
     await vi.waitFor(() => expect(stdout.outputSince(0)).toContain("Hi!"));
@@ -262,42 +269,68 @@ describe("TUIChat live area", () => {
     stdin.write("\u000c");
 
     await vi.waitFor(() => {
-      expect(stdout.screenClearsSince(mark)).toBeGreaterThan(0);
+      expect(stdout.outputSince(mark)).toContain("\u001b[2J");
       expect(stdout.outputSince(mark)).toContain("hello there");
     });
     expect(stdout.outputSince(mark).split("hello there").length - 1).toBe(1);
+    // CSI 3J would erase the terminal's scrollback, the shell's included
+    expect(stdout.outputSince(mark)).not.toContain("\u001b[3J");
   });
 
-  it("fits a permission prompt with a long diff in a 24-row terminal", async () => {
-    const diff = [
-      "@@ -1,40 +1,40 @@",
-      ...Array.from({ length: 40 }, (_, i) => `+const value${i} = ${i};`),
-    ].join("\n");
+  it("moves a finished remote reply out of the live area", async () => {
     setChat({
-      chatHistory: [user("edit it"), toolStep("generated")],
-      isWaitingForResponse: true,
-      responseStartTime: Date.now(),
-      activePermissionRequest: {
-        toolName: "Edit",
-        toolArgs: { filepath: "src/a.ts" },
-        requestId: "req-1",
-        toolCallPreview: [{ type: "diff", content: diff }],
-      },
+      chatHistory: [user("list them"), reply(lines(60, "- reply"))],
+      isWaitingForResponse: false,
     });
-    const { stdout } = renderApp({ rows: 24 });
+    const { stdout } = renderInTtyApp(
+      React.createElement(AppRoot, { remoteUrl: "http://localhost:3000" }),
+    );
 
-    await vi.waitFor(
-      () =>
-        expect(
-          stdout.writes.filter((w) => w.includes("Would you like to continue?"))
-            .length,
-        ).toBeGreaterThanOrEqual(3),
-      { timeout: 10_000 },
-    );
-    expect(stdout.tallestWriteWith("Would you like to continue?")).toBeLessThan(
-      24,
-    );
-    expect(stdout.screenClearsSince(0)).toBe(0);
-    expect(stdout.outputSince(0)).toMatch(/\.\.\. \(\d+ more lines\)/);
+    await vi.waitFor(() => expect(stdout.outputSince(0)).toContain("reply 00"));
+    expect(stdout.outputSince(0).split("reply 00").length - 1).toBe(1);
+    expect(stdout.lastWriteWith("Remote Mode")).not.toMatch(/more lines/);
   });
+
+  // About 70 characters: wraps inside the bordered prompt at 80 columns
+  const wrappingDiff = [
+    "@@ -1,40 +1,40 @@",
+    ...Array.from(
+      { length: 40 },
+      (_, i) =>
+        `+const someLongVariableName${i} = computeSomethingFrom(inputValue, ${i}); // keep`,
+    ),
+  ].join("\n");
+
+  it.each([20, 24, 30])(
+    "keeps the question and every choice of a permission prompt with a wrapping diff on screen at %i rows",
+    async (rows) => {
+      setChat({
+        chatHistory: [user("edit it"), toolStep("generated")],
+        isWaitingForResponse: true,
+        responseStartTime: Date.now(),
+        activePermissionRequest: {
+          toolName: "Edit",
+          toolArgs: { filepath: "src/a.ts" },
+          requestId: "req-1",
+          toolCallPreview: [{ type: "diff", content: wrappingDiff }],
+        },
+      });
+      const { stdout } = renderApp({ rows });
+
+      await vi.waitFor(
+        () =>
+          expect(
+            stdout.writes.filter((w) => w.includes(STATUS_LINE)).length,
+          ).toBeGreaterThanOrEqual(3),
+        { timeout: 10_000 },
+      );
+      const frame = stdout.lastWriteWith(STATUS_LINE);
+      expect(frame).toContain("someLongVariableName0");
+      expect(frame).toContain("Would you like to continue?");
+      expect(frame).toContain("Continue + don't ask again");
+      expect(frame).toContain("No, and tell NextCLI what to do differently");
+      expect(stdout.tallestWriteWith(STATUS_LINE)).toBeLessThan(rows);
+      expect(stdout.screenClearsSince(0)).toBe(0);
+    },
+  );
 });

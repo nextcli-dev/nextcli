@@ -41,6 +41,12 @@ export class FakeTtyStdout extends EventEmitter {
     return this.writes.slice(mark).filter((w) => SCREEN_CLEAR.test(w)).length;
   }
 
+  /** The last write that contains `marker`, without escape sequences */
+  lastWriteWith(marker: string): string {
+    const write = [...this.writes].reverse().find((w) => w.includes(marker));
+    return write?.replace(ANSI, "") ?? "";
+  }
+
   /** Lines in the tallest write since `mark` that contains `marker` */
   tallestWriteWith(marker: string, mark = 0): number {
     return Math.max(

@@ -8,7 +8,7 @@ import type { QueuedMessage } from "../../stream/messageQueue.js";
 import { useTerminalSize } from "../hooks/useTerminalSize.js";
 import { IntroMessage } from "../IntroMessage.js";
 
-import { LiveRegion } from "./LiveRegion.js";
+import { ClipToFit, linesWord } from "./ClipToFit.js";
 
 const FINISHED_TOOL_STATUSES = new Set<ToolStatus>([
   "done",
@@ -37,7 +37,9 @@ interface StaticChatContentProps {
     allMessages?: ChatHistoryItem[],
   ) => React.ReactElement;
   refreshTrigger?: number;
-  /** A response, compaction or remote session runs, so the last item can change */
+  /** Ctrl+L: clear the screen and print the history again, keeping scrollback */
+  redrawTrigger?: number;
+  /** A response or compaction runs, so the last item can change */
   isTurnRunning?: boolean;
 }
 
@@ -51,6 +53,7 @@ export const StaticChatContent: React.FC<StaticChatContentProps> = ({
   queuedMessages = [],
   renderMessage,
   refreshTrigger,
+  redrawTrigger,
   isTurnRunning = false,
 }) => {
   const { columns, rows } = useTerminalSize();
@@ -60,13 +63,19 @@ export const StaticChatContent: React.FC<StaticChatContentProps> = ({
   const [staticKey, setStaticKey] = useState(0);
   const isInitialMount = useRef(true);
 
-  // Refresh function that clears terminal and remounts Static component
-  const refreshStatic = useCallback(() => {
-    // Clear terminal completely including scrollback buffer (3J)
-    stdout.write("\x1b[2J\x1b[H");
-    setStaticKey((prev) => prev + 1);
-    stdout.write("\x1b[3J");
-  }, [stdout]);
+  // Refresh function that clears terminal and remounts Static component.
+  // A resize or /clear also erases the scrollback (3J), where the old copy
+  // of the history sits; Ctrl+L keeps it, as a shell's clear-screen does.
+  const refreshStatic = useCallback(
+    (keepScrollback = false) => {
+      stdout.write("\x1b[2J\x1b[H");
+      setStaticKey((prev) => prev + 1);
+      if (!keepScrollback) {
+        stdout.write("\x1b[3J");
+      }
+    },
+    [stdout],
+  );
 
   // Debounced terminal resize handler (300ms like gemini-cli)
   useEffect(() => {
@@ -92,6 +101,13 @@ export const StaticChatContent: React.FC<StaticChatContentProps> = ({
       refreshStatic();
     }
   }, [refreshTrigger, refreshStatic]);
+
+  // Ctrl+L
+  useEffect(() => {
+    if (redrawTrigger !== undefined && redrawTrigger > 0) {
+      refreshStatic(true);
+    }
+  }, [redrawTrigger, refreshStatic]);
 
   // Filter out system messages without content
   const processedChatHistory = React.useMemo(
@@ -179,7 +195,12 @@ export const StaticChatContent: React.FC<StaticChatContentProps> = ({
       </Static>
 
       {/* Live area - items that still change, kept below the screen height */}
-      <LiveRegion>
+      <ClipToFit
+        keep="end"
+        note={(hidden) =>
+          `↑ ${linesWord(hidden)}, shown in full when this step finishes`
+        }
+      >
         {pendingItems.map((item, index) => (
           <React.Fragment key={`pending-${index}`}>{item}</React.Fragment>
         ))}
@@ -192,7 +213,7 @@ export const StaticChatContent: React.FC<StaticChatContentProps> = ({
             </Text>
           </Box>
         )}
-      </LiveRegion>
+      </ClipToFit>
     </Box>
   );
 };

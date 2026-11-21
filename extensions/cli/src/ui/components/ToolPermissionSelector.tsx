@@ -1,11 +1,13 @@
-import { Box, Text, useInput } from "ink";
-import React, { useState } from "react";
+import { Box, type DOMElement, Text, useBoxMetrics, useInput } from "ink";
+import React, { useContext, useRef, useState } from "react";
 
 import { ToolCallTitle } from "src/tools/ToolCallTitle.js";
 
 import { ToolCallPreview } from "../../tools/types.js";
+import { BottomSectionContext } from "../context/BottomSectionContext.js";
 import { defaultBoxStyles } from "../styles.js";
 
+import { ClipToFit, linesWord } from "./ClipToFit.js";
 import { ToolPreview } from "./ToolPreview.js";
 
 // show dangerous commmand warning only once per CLI process
@@ -71,6 +73,21 @@ export const ToolPermissionSelector: React.FC<ToolPermissionSelectorProps> = ({
   const showDynamicWarning =
     hasDynamicEvaluation && !initialHasShownDangerousCommand;
 
+  // The bottom section can't shrink, so the preview gets the rows its status
+  // lines, this prompt's border, title, question and choices leave, counted
+  // as rendered rows. None until the section has been measured.
+  const bottomSection = useContext(BottomSectionContext);
+  const previewRef = useRef<DOMElement>(null);
+  const { height: previewHeight } = useBoxMetrics(previewRef);
+  let previewRows: number | undefined;
+  if (bottomSection) {
+    const otherRows = bottomSection.height - previewHeight;
+    previewRows =
+      bottomSection.height > 0
+        ? Math.max(0, bottomSection.maxRows - otherRows)
+        : 0;
+  }
+
   useInput((input, key) => {
     if (key.return) {
       const selectedOption = permissionOptions[selectedIndex];
@@ -123,13 +140,20 @@ export const ToolPermissionSelector: React.FC<ToolPermissionSelectorProps> = ({
         <ToolCallTitle toolName={toolName} args={toolArgs} />
       </Text>
 
-      {/* Show preview of what the tool will do */}
-      <Box>
-        <ToolPreview
-          toolName={toolName}
-          toolArgs={toolArgs}
-          toolCallPreview={toolCallPreview}
-        />
+      {/* Show preview of what the tool will do, in the rows the rest of the
+          screen leaves, so the question and the choices stay visible */}
+      <Box ref={previewRef} flexDirection="column">
+        <ClipToFit
+          keep="start"
+          maxRows={previewRows}
+          note={(hidden) => `↓ ${linesWord(hidden)}`}
+        >
+          <ToolPreview
+            toolName={toolName}
+            toolArgs={toolArgs}
+            toolCallPreview={toolCallPreview}
+          />
+        </ClipToFit>
       </Box>
 
       <Box marginTop={1} flexDirection="column">

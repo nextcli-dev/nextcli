@@ -4,7 +4,6 @@ import React from "react";
 import { getToolDisplayName } from "../../tools/index.js";
 import { ToolCallPreview } from "../../tools/types.js";
 import { ColoredDiff } from "../ColoredDiff.js";
-import { useTerminalSize } from "../hooks/useTerminalSize.js";
 
 import { ChecklistDisplay } from "./ChecklistDisplay.js";
 
@@ -14,9 +13,6 @@ interface ToolPreviewProps {
   toolArgs: any;
 }
 
-// Rows a permission prompt and the status lines use besides the diff
-const PROMPT_ROWS = 16;
-
 /**
  * Generates a preview of what a tool will do based on its arguments
  */
@@ -25,11 +21,6 @@ export const ToolPreview: React.FC<ToolPreviewProps> = ({
   toolName,
   toolArgs,
 }) => {
-  // The permission prompt sits below the live chat and can't shrink, so a diff
-  // gets the rows its title, question and choices leave, up to the usual 16
-  const { rows } = useTerminalSize();
-  const maxDiffLines = Math.min(16, Math.max(3, rows - PROMPT_ROWS));
-
   if (toolCallPreview) {
     return (
       <Box display={"flex"} flexDirection="column" marginTop={1}>
@@ -50,13 +41,7 @@ export const ToolPreview: React.FC<ToolPreviewProps> = ({
               </Box>
             );
           } else {
-            return (
-              <ColoredDiff
-                key={index}
-                diffContent={preview.content}
-                maxLines={maxDiffLines}
-              />
-            );
+            return <ColoredDiff key={index} diffContent={preview.content} />;
           }
         })}
       </Box>
