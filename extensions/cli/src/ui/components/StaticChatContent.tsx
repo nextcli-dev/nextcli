@@ -7,7 +7,6 @@ import type { MCPService } from "../../services/MCPService.js";
 import type { QueuedMessage } from "../../stream/messageQueue.js";
 import { useTerminalSize } from "../hooks/useTerminalSize.js";
 import { IntroMessage } from "../IntroMessage.js";
-import { splitChatHistory } from "../utils/historySplitting.js";
 
 import { LiveRegion } from "./LiveRegion.js";
 
@@ -94,15 +93,14 @@ export const StaticChatContent: React.FC<StaticChatContentProps> = ({
     }
   }, [refreshTrigger, refreshStatic]);
 
-  // Filter out system messages without content and split large messages
-  const processedChatHistory = React.useMemo(() => {
-    const filtered = chatHistory.filter(
-      (item) => item.message.role !== "system" || item.message.content,
-    );
-
-    // Split large messages into multiple history items
-    return splitChatHistory(filtered, columns);
-  }, [chatHistory, columns]);
+  // Filter out system messages without content
+  const processedChatHistory = React.useMemo(
+    () =>
+      chatHistory.filter(
+        (item) => item.message.role !== "system" || item.message.content,
+      ),
+    [chatHistory],
+  );
 
   // <Static> prints each item once, so an item goes there only when it can't
   // change: the last one stays live while the turn runs or a tool in it runs.
