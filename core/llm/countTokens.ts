@@ -434,11 +434,6 @@ function compileChatMessages({
   maxTokens: number;
   supportsImages: boolean;
   tools?: Tool[];
-  /**
-   * A server on this machine (Ollama, LM Studio, llama.cpp). It shortens the
-   * answer rather than reject a request that leaves less than max_tokens, so
-   * only a minimum is kept for the answer and the history keeps the rest.
-   */
   localEndpoint?: boolean;
 }): CompiledMessagesResult {
   let didPrune = false;
