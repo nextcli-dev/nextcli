@@ -25,7 +25,9 @@ export function isContinueConfigRelatedUri(uri: string): boolean {
         uri.endsWith(".json"))) ||
     [...BLOCK_TYPES, "agents", "assistants", "configs"].some((blockType) =>
       uri.includes(`.continue/${blockType}`),
-    )
+    ) ||
+    uri.includes(".claude/rules/") ||
+    uri.includes(".claude/skills/")
   );
 }
 
@@ -153,4 +155,26 @@ export async function getAllDotContinueDefinitionFiles(
   ).flat();
 
   return definitionFiles;
+}
+
+/**
+ * Markdown files in each workspace's .claude/<subDirName>, the folder Claude
+ * Code reads (for example .claude/rules)
+ */
+export async function getWorkspaceClaudeDefinitionFiles(
+  ide: IDE,
+  subDirName: string,
+): Promise<{ path: string; content: string }[]> {
+  const workspaceDirs = await ide.getWorkspaceDirs();
+  return (
+    await Promise.all(
+      workspaceDirs.map((dir) =>
+        getDefinitionFilesInDir(
+          ide,
+          joinPathsToUri(dir, ".claude", subDirName),
+          "markdown",
+        ),
+      ),
+    )
+  ).flat();
 }

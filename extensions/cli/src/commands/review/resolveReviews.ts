@@ -1,6 +1,9 @@
 import * as fs from "fs";
 import * as path from "path";
 
+import { parseMarkdownRule } from "@nextcli/config-yaml";
+import { minimatch } from "minimatch";
+
 export interface ResolvedReview {
   /** Display name for the review */
   name: string;
@@ -8,13 +11,64 @@ export interface ResolvedReview {
   source: string;
   /** 'hub' | 'local' */
   sourceType: "hub" | "local";
+  /** A local check's `paths`: it runs only when a changed file matches one */
+  paths?: string[];
 }
 
 /**
- * Determine which reviews to run, using three sources in order:
+ * Whether a changed file matches a check's `paths` pattern, as nextcli-checks
+ * decides it (`path_matches` in scripts/checks.py): a relative pattern also
+ * matches at any depth
+ */
+function pathMatches(file: string, pattern: string): boolean {
+  const posix = file.replace(/\\/g, "/");
+  return (
+    minimatch(posix, pattern, { dot: true }) ||
+    minimatch(posix, `**/${pattern}`, { dot: true })
+  );
+}
+
+/**
+ * The reviews that apply to these changed files: a check with `paths` runs
+ * only when one of them matches, like in nextcli-checks; others always run
+ */
+export function applicableReviews(
+  reviews: ResolvedReview[],
+  changedFiles: string[],
+): ResolvedReview[] {
+  return reviews.filter(
+    (review) =>
+      !review.paths ||
+      changedFiles.some((file) =>
+        review.paths!.some((pattern) => pathMatches(file, pattern)),
+      ),
+  );
+}
+
+/** A local check's frontmatter; none when the file can't be read */
+function readFrontmatter(filePath: string): {
+  name?: string;
+  paths?: string[];
+} {
+  try {
+    const { frontmatter } = parseMarkdownRule(
+      fs.readFileSync(filePath, "utf-8"),
+    );
+    // parseMarkdownRule reads `paths` into `globs`
+    const globs = frontmatter.globs;
+    return {
+      name: frontmatter.name,
+      ...(globs !== undefined && { paths: [globs].flat() }),
+    };
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Determine which reviews to run, using two sources in order:
  * 1. CLI --agent flags (highest priority)
- * 2. Hub API (if logged in and no --agent flags)
- * 3. Local .continue/agents/*.md and .continue/checks/*.md (fallback)
+ * 2. Local .continue/agents/*.md, .continue/checks/*.md and .claude/checks/*.md (fallback)
  */
 export async function resolveReviews(
   agentFlags?: string[],
@@ -28,13 +82,13 @@ export async function resolveReviews(
     }));
   }
 
-  // Source 2: Hub API (silent failure if not logged in)
+  // Hub resolution was removed: resolveFromHub returns none
   const hubReviews = await resolveFromHub();
   if (hubReviews.length > 0) {
     return hubReviews;
   }
 
-  // Source 3: Local .continue/agents/*.md and .continue/checks/*.md
+  // Source 2: Local .continue/agents/*.md, .continue/checks/*.md and .claude/checks/*.md
   const localReviews = resolveFromLocal();
   if (localReviews.length > 0) {
     return localReviews;
@@ -51,14 +105,17 @@ async function resolveFromHub(): Promise<ResolvedReview[]> {
 }
 
 /**
- * Resolve reviews from local .continue/agents/*.md and .continue/checks/*.md files.
- * Agents take precedence over checks if the same filename exists in both directories.
+ * Resolve reviews from local .continue/agents/*.md, .continue/checks/*.md and
+ * .claude/checks/*.md files. When a filename is in more than one directory, the
+ * first directory in that order wins. .claude/agents is not read: Claude Code
+ * keeps subagents there, not reviews.
  */
 function resolveFromLocal(): ResolvedReview[] {
   const cwd = process.cwd();
   const dirs = [
     path.join(cwd, ".continue", "agents"),
     path.join(cwd, ".continue", "checks"),
+    path.join(cwd, ".claude", "checks"),
   ];
 
   const seen = new Set<string>();
@@ -73,10 +130,13 @@ function resolveFromLocal(): ResolvedReview[] {
       for (const file of files) {
         if (!seen.has(file)) {
           seen.add(file);
+          const source = path.join(dir, file);
+          const { name, paths } = readFrontmatter(source);
           results.push({
-            name: path.basename(file, ".md").replace(/[-_]/g, " "),
-            source: path.join(dir, file),
+            name: name ?? path.basename(file, ".md").replace(/[-_]/g, " "),
+            source,
             sourceType: "local" as const,
+            ...(paths && { paths }),
           });
         }
       }

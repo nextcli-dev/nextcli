@@ -12,6 +12,8 @@ export interface RuleFrontmatter {
   description?: RuleObject["description"];
   alwaysApply?: RuleObject["alwaysApply"];
   invokable?: RuleObject["invokable"];
+  /** Claude Code's name for `globs` in `.claude/rules`; read as `globs` when that is absent */
+  paths?: RuleObject["globs"];
 }
 
 /**
@@ -35,7 +37,10 @@ export function parseMarkdownRule(content: string): {
 
     try {
       // Parse YAML frontmatter
-      const frontmatter = YAML.parse(frontmatterStr) || {}; // Handle empty frontmatter
+      const frontmatter: RuleFrontmatter = YAML.parse(frontmatterStr) || {}; // Handle empty frontmatter
+      if (frontmatter.globs === undefined && frontmatter.paths !== undefined) {
+        frontmatter.globs = frontmatter.paths;
+      }
       return { frontmatter, markdown: markdownContent.trim() };
     } catch (e) {
       // Error parsing frontmatter, treat as markdown only
@@ -74,7 +79,7 @@ function getGlobPattern(globs: RuleFrontmatter["globs"], relativeDir?: string) {
   if (relativeDir === undefined) {
     return globs;
   }
-  if (relativeDir.includes(".continue")) {
+  if (relativeDir.includes(".continue") || relativeDir.includes(".claude")) {
     return globs;
   }
   if (!relativeDir.endsWith("/")) {

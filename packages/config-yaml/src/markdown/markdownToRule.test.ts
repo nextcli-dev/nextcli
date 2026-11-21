@@ -160,6 +160,53 @@ name: glob pattern testing
       );
       expect(result.globs).toBe(".git");
     });
+
+    it("should not prepend when inside .claude", () => {
+      const content = `---
+paths:
+  - "src/**/*.ts"
+---
+
+# Test Rule`;
+
+      const result = markdownToRule(
+        content,
+        {
+          uriType: "file",
+          fileUri: "file:///Documents/myproject/.claude/rules/rule1.md",
+        },
+        "/Documents/myproject/.claude/",
+      );
+      expect(result.globs).toEqual(["src/**/*.ts"]);
+    });
+  });
+
+  describe("Claude Code paths", () => {
+    it("should read paths as globs when globs is absent", () => {
+      const content = `---
+paths:
+  - "**/*.test.ts"
+  - "**/test/**"
+---
+
+# Tests`;
+
+      const result = markdownToRule(content, mockId);
+      expect(result.globs).toEqual(["**/*.test.ts", "**/test/**"]);
+    });
+
+    it("should prefer globs over paths when both are present", () => {
+      const content = `---
+globs: "**/*.ts"
+paths:
+  - "**/*.md"
+---
+
+# Rule`;
+
+      const result = markdownToRule(content, mockId);
+      expect(result.globs).toBe("**/*.ts");
+    });
   });
 
   it("should handle frontmatter with whitespace", () => {

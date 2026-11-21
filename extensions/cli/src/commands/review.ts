@@ -15,7 +15,7 @@ import type { DiffContext } from "./review/diffContext.js";
 import { computeDiffContext } from "./review/diffContext.js";
 import type { ReviewResult } from "./review/renderReport.js";
 import { renderReport } from "./review/renderReport.js";
-import { resolveReviews } from "./review/resolveReviews.js";
+import { applicableReviews, resolveReviews } from "./review/resolveReviews.js";
 import { ReviewProgress } from "./review/ReviewProgress.js";
 import type { ReviewState } from "./review/ReviewProgress.js";
 import type { WorkerConfig, WorkerResult } from "./review/reviewWorker.js";
@@ -328,19 +328,31 @@ export async function review(options: ReviewOptions = {}): Promise<void> {
   rerender();
 
   // Step 2: Resolve reviews
-  const reviews = await resolveReviews(options.reviewAgents);
+  const found = await resolveReviews(options.reviewAgents);
 
-  if (reviews.length === 0) {
+  if (found.length === 0) {
     unmountUI();
     console.log(
       chalk.yellow("\nNo reviews found. To add reviews:\n") +
         chalk.dim(
-          "  1. Create .continue/agents/my-review.md with agent instructions\n",
+          "  1. Create .claude/checks/my-review.md (or .continue/checks/my-review.md) with agent instructions\n",
         ) +
         chalk.dim(
           "  2. Or specify an agent: cn review --review-agents org/agent-name\n",
         ) +
         chalk.dim("  3. Or configure reviews on https://nextcli.dev\n"),
+    );
+    process.exit(0);
+  }
+
+  // A check with paths runs only when a changed file matches them
+  const reviews = applicableReviews(found, diffContext.changedFiles);
+  if (reviews.length === 0) {
+    unmountUI();
+    console.log(
+      chalk.yellow(
+        "\nNo review applies: no changed file matches the paths of any check.",
+      ),
     );
     process.exit(0);
   }

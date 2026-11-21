@@ -70,7 +70,7 @@ A headless run doesn't load the folder's `.env` or `.continue/.env` unless you t
 
 When the model calls a tool the rules refuse, the call gets the result `Blocked by security policy: this tool call isn't allowed in an unattended run`, the run ends, and `cn` prints the answer so far. If a script needs that tool, pass the `--allow` for it.
 
-`cn review` runs its workers headless with the same closed defaults plus `Edit`, `MultiEdit` and `Write`, so a review can fix the files in its worktree.
+`cn review` runs its workers headless with the same closed defaults plus `Edit`, `MultiEdit` and `Write`, so a review can fix the files in its worktree. Without `--review-agents`, it runs the checks in `.continue/agents`, `.continue/checks` and `.claude/checks`. A check whose frontmatter lists `paths` runs only when a changed file matches one of them, as in [nextcli-checks](https://github.com/nextcli-dev/nextcli-checks), and its `name` is the name shown.
 
 See [tool permissions](/cli/tool-permissions) for the full precedence, [flags & patterns](/cli/tool-permissions/flags-and-patterns) for the rule syntax, [read-only commands](/cli/tool-permissions/read-only-commands) for the list of commands a headless run allows, and [agent files](/cli/tool-permissions/agent-files).
 

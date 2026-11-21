@@ -6,10 +6,15 @@ import {
 import { IDE, RuleWithSource } from "../..";
 import { PROMPTS_DIR_NAME, RULES_DIR_NAME } from "../../promptFiles";
 import { joinPathsToUri } from "../../util/uri";
-import { getAllDotContinueDefinitionFiles } from "../loadLocalAssistants";
+import {
+  getAllDotContinueDefinitionFiles,
+  getWorkspaceClaudeDefinitionFiles,
+} from "../loadLocalAssistants";
 
 export const SUPPORTED_AGENT_FILES: readonly string[] =
   PROJECT_AGENT_FILE_NAMES;
+
+const CLAUDE_RULES_DIR = ".claude/rules";
 
 export interface ProjectAgentFileLocation {
   uri: string;
@@ -41,7 +46,7 @@ export async function findProjectAgentFile(
 }
 
 /**
- * Loads rules from markdown files in the .continue/rules and .continue/prompts directories
+ * Loads rules from markdown files in the .continue/rules, .continue/prompts and .claude/rules directories
  * and the project agent file (see findProjectAgentFile)
  */
 export async function loadMarkdownRules(ide: IDE): Promise<{
@@ -75,26 +80,38 @@ export async function loadMarkdownRules(ide: IDE): Promise<{
     }
   }
 
-  // Load markdown files from both .continue/rules and .continue/prompts
-  const dirsToCheck = [RULES_DIR_NAME, PROMPTS_DIR_NAME];
+  // Load markdown files from .continue/rules, .continue/prompts and the
+  // workspace's .claude/rules, the folder Claude Code reads
+  const dirsToCheck = [RULES_DIR_NAME, PROMPTS_DIR_NAME, CLAUDE_RULES_DIR];
+  // A rule shared by both folders, through a symlink (readFile follows it)
+  // or a copy, loads once: twice, both bodies reached the system message
+  // under one name and one toggle. The .continue copy, read first, wins
+  const loadedContents = new Set<string>();
 
   for (const dirName of dirsToCheck) {
     try {
-      const markdownFiles = await getAllDotContinueDefinitionFiles(
-        ide,
-        {
-          includeGlobal: true,
-          includeWorkspace: true,
-          fileExtType: "markdown",
-        },
-        dirName,
-      );
+      const markdownFiles =
+        dirName === CLAUDE_RULES_DIR
+          ? await getWorkspaceClaudeDefinitionFiles(ide, RULES_DIR_NAME)
+          : await getAllDotContinueDefinitionFiles(
+              ide,
+              {
+                includeGlobal: true,
+                includeWorkspace: true,
+                fileExtType: "markdown",
+              },
+              dirName,
+            );
 
       // Filter to just .md files
       const mdFiles = markdownFiles.filter((file) => file.path.endsWith(".md"));
 
       // Process each markdown file
       for (const file of mdFiles) {
+        if (loadedContents.has(file.content)) {
+          continue;
+        }
+        loadedContents.add(file.content);
         try {
           const rule = markdownToRule(file.content, {
             uriType: "file",
