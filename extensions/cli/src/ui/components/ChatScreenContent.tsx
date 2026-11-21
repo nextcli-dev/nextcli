@@ -33,6 +33,7 @@ interface ChatScreenContentProps {
   isRemoteMode: boolean;
   onImageInClipboardChange?: (hasImage: boolean) => void;
   onShowEditSelector?: () => void;
+  onRefreshScreen?: () => void;
 }
 
 export const ChatScreenContent: React.FC<ChatScreenContentProps> = ({
@@ -52,6 +53,7 @@ export const ChatScreenContent: React.FC<ChatScreenContentProps> = ({
   isRemoteMode,
   onImageInClipboardChange,
   onShowEditSelector,
+  onRefreshScreen,
 }) => {
   if (activeQuizQuestion) {
     return (
@@ -92,6 +94,7 @@ export const ChatScreenContent: React.FC<ChatScreenContentProps> = ({
       isRemoteMode={isRemoteMode}
       onImageInClipboardChange={onImageInClipboardChange}
       onShowEditSelector={onShowEditSelector}
+      onRefreshScreen={onRefreshScreen}
     />
   );
 };

@@ -173,9 +173,11 @@ function processGroup(
   return group.map((l) => ({ type: "single" as const, lines: [l] }));
 }
 
-export const ColoredDiff: React.FC<{ diffContent: string }> = ({
-  diffContent,
-}) => {
+export const ColoredDiff: React.FC<{
+  diffContent: string;
+  /** Diff lines to show before "... (N more lines)" */
+  maxLines?: number;
+}> = ({ diffContent, maxLines = 16 }) => {
   const parsedLines = parseDiffWithLineNumbers(diffContent);
 
   if (parsedLines.length === 0) {
@@ -186,8 +188,8 @@ export const ColoredDiff: React.FC<{ diffContent: string }> = ({
     (l) => l.type !== "hunk" && l.type !== "other",
   );
 
-  const truncatedLines = displayableLines.slice(0, 16);
-  const isTruncated = displayableLines.length > 16;
+  const truncatedLines = displayableLines.slice(0, maxLines);
+  const isTruncated = displayableLines.length > maxLines;
 
   // Group consecutive add/delete lines for word-level diffing
   const groupedLines: Array<{ type: "group" | "single"; lines: DiffLine[] }> =
@@ -270,7 +272,7 @@ export const ColoredDiff: React.FC<{ diffContent: string }> = ({
       })}
       {isTruncated && (
         <Text color="dim" dimColor>
-          ... ({displayableLines.length - 16} more lines)
+          ... ({displayableLines.length - maxLines} more lines)
         </Text>
       )}
     </Box>

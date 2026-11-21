@@ -113,6 +113,7 @@ interface UserInputProps {
   isRemoteMode?: boolean;
   onImageInClipboardChange?: (hasImage: boolean) => void;
   onShowEditSelector?: () => void;
+  onRefreshScreen?: () => void;
 }
 
 const UserInput: React.FC<UserInputProps> = ({
@@ -130,6 +131,7 @@ const UserInput: React.FC<UserInputProps> = ({
   isRemoteMode = false,
   onImageInClipboardChange,
   onShowEditSelector,
+  onRefreshScreen,
 }) => {
   const [textBuffer] = useState(() => new TextBuffer());
   const [inputHistory] = useState(() => new InputHistory());
@@ -729,6 +731,7 @@ const UserInput: React.FC<UserInputProps> = ({
         clearInput,
         textBuffer,
         onTextBufferUpdate: handleTextBufferUpdate,
+        onRefreshScreen,
       })
     ) {
       return;

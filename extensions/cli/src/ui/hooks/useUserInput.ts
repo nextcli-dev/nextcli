@@ -18,6 +18,8 @@ interface ControlKeysOptions {
   clearInput?: () => void;
   textBuffer?: TextBuffer;
   onTextBufferUpdate?: () => void;
+  /** Ctrl+L: clear the screen and print the history again */
+  onRefreshScreen?: () => void;
 }
 
 export function handleControlKeys(options: ControlKeysOptions): boolean {
@@ -30,6 +32,7 @@ export function handleControlKeys(options: ControlKeysOptions): boolean {
     cycleModes,
     clearInput,
     textBuffer,
+    onRefreshScreen,
     onTextBufferUpdate,
   } = options;
 
@@ -80,9 +83,10 @@ export function handleControlKeys(options: ControlKeysOptions): boolean {
     import("../../util/exit.js").then(({ gracefulExit }) => gracefulExit(0));
   }
 
-  // Handle Ctrl+L to refresh screen (clear terminal artifacts)
+  // Handle Ctrl+L to refresh screen (clear terminal artifacts). A clear
+  // written behind Ink's back would leave its frame out of step.
   if (key.ctrl && input === "l") {
-    process.stdout.write("\x1b[2J\x1b[H");
+    onRefreshScreen?.();
     return true;
   }
 

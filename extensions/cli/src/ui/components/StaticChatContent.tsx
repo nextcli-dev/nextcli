@@ -2,12 +2,27 @@ import type { AssistantUnrolled, ModelConfig } from "@nextcli/config-yaml";
 import { Box, Static, Text, useStdout } from "ink";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
-import type { ChatHistoryItem } from "../../../../../core/index.js";
+import type { ChatHistoryItem, ToolStatus } from "../../../../../core/index.js";
 import type { MCPService } from "../../services/MCPService.js";
 import type { QueuedMessage } from "../../stream/messageQueue.js";
 import { useTerminalSize } from "../hooks/useTerminalSize.js";
 import { IntroMessage } from "../IntroMessage.js";
 import { splitChatHistory } from "../utils/historySplitting.js";
+
+import { LiveRegion } from "./LiveRegion.js";
+
+const FINISHED_TOOL_STATUSES = new Set<ToolStatus>([
+  "done",
+  "errored",
+  "canceled",
+]);
+
+/** A tool call in the item hasn't finished, so its state can still change */
+function hasUnfinishedTools(item: ChatHistoryItem | undefined): boolean {
+  return !!item?.toolCallStates?.some(
+    (state) => !FINISHED_TOOL_STATUSES.has(state.status),
+  );
+}
 
 interface StaticChatContentProps {
   showIntroMessage: boolean;
@@ -23,6 +38,8 @@ interface StaticChatContentProps {
     allMessages?: ChatHistoryItem[],
   ) => React.ReactElement;
   refreshTrigger?: number;
+  /** A response, compaction or remote session runs, so the last item can change */
+  isTurnRunning?: boolean;
 }
 
 export const StaticChatContent: React.FC<StaticChatContentProps> = ({
@@ -35,6 +52,7 @@ export const StaticChatContent: React.FC<StaticChatContentProps> = ({
   queuedMessages = [],
   renderMessage,
   refreshTrigger,
+  isTurnRunning = false,
 }) => {
   const { columns, rows } = useTerminalSize();
   const { stdout } = useStdout();
@@ -86,8 +104,25 @@ export const StaticChatContent: React.FC<StaticChatContentProps> = ({
     return splitChatHistory(filtered, columns);
   }, [chatHistory, columns]);
 
-  // Split chat history into stable and pending items
-  // Keep more items static now that we've split large messages
+  // <Static> prints each item once, so an item goes there only when it can't
+  // change: the last one stays live while the turn runs or a tool in it runs.
+  // <Static> also prints only past the count it has seen, so the count never
+  // goes down unless the history itself got shorter (edit, undo, /clear).
+  const committedCount = useRef(0);
+  const previousLength = useRef(0);
+  const total = processedChatHistory.length;
+  if (total < previousLength.current) {
+    committedCount.current = 0;
+  }
+  previousLength.current = total;
+  const keepLastLive =
+    isTurnRunning || hasUnfinishedTools(processedChatHistory[total - 1]);
+  const stableCount = Math.max(
+    committedCount.current,
+    keepLastLive ? Math.max(0, total - 1) : total,
+  );
+  committedCount.current = stableCount;
+
   const { staticItems, pendingItems } = React.useMemo(() => {
     // Add intro message as first item if it should be shown
     const staticItems: React.ReactElement[] = [];
@@ -103,13 +138,6 @@ export const StaticChatContent: React.FC<StaticChatContentProps> = ({
       );
     }
 
-    // Since messages are now split into reasonably-sized chunks,
-    // we can keep more items static (only last 1-2 items dynamic)
-    const PENDING_ITEMS_COUNT = 1;
-    const stableCount = Math.max(
-      0,
-      processedChatHistory.length - PENDING_ITEMS_COUNT,
-    );
     const stableHistory = processedChatHistory.slice(0, stableCount);
     const pendingHistory = processedChatHistory.slice(stableCount);
 
@@ -135,6 +163,7 @@ export const StaticChatContent: React.FC<StaticChatContentProps> = ({
     organizationName,
     processedChatHistory,
     renderMessage,
+    stableCount,
   ]);
 
   return (
@@ -151,21 +180,21 @@ export const StaticChatContent: React.FC<StaticChatContentProps> = ({
         {(item) => item}
       </Static>
 
-      {/* Pending area - dynamically rendered items that can update */}
-      <Box flexDirection="column">
+      {/* Live area - items that still change, kept below the screen height */}
+      <LiveRegion>
         {pendingItems.map((item, index) => (
           <React.Fragment key={`pending-${index}`}>{item}</React.Fragment>
         ))}
-      </Box>
 
-      {/* Queued messages - show at bottom with queue indicators */}
-      {queuedMessages.length > 0 && (
-        <Box paddingLeft={2} paddingBottom={1}>
-          <Text color="dim" italic>
-            {queuedMessages.map((msg) => msg.message).join("\n")}
-          </Text>
-        </Box>
-      )}
+        {/* Queued messages - show at bottom with queue indicators */}
+        {queuedMessages.length > 0 && (
+          <Box paddingLeft={2} paddingBottom={1}>
+            <Text color="dim" italic>
+              {queuedMessages.map((msg) => msg.message).join("\n")}
+            </Text>
+          </Box>
+        )}
+      </LiveRegion>
     </Box>
   );
 };

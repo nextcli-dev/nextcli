@@ -31,6 +31,7 @@ import { useNavigation } from "./context/NavigationContext.js";
 import { useChat } from "./hooks/useChat.js";
 import { useContextPercentage } from "./hooks/useContextPercentage.js";
 import { useMessageRenderer } from "./hooks/useMessageRenderer.js";
+import { useTerminalSize } from "./hooks/useTerminalSize.js";
 import { useIntroMessage, useSelectors } from "./hooks/useTUIChatHooks.js";
 
 interface TUIChatProps {
@@ -138,8 +139,9 @@ function useChatHandlers(
       resetChatHistoryRef.current();
     }
     setShowIntroMessage(false);
-    process.stdout.write("\x1b[2J\x1b[H");
-  }, [setShowIntroMessage]);
+    // Clear through <Static>'s refresh, so Ink's frame stays in step
+    setStaticRefreshTrigger((prev) => prev + 1);
+  }, [setShowIntroMessage, setStaticRefreshTrigger]);
 
   return {
     handleClear,
@@ -162,6 +164,11 @@ const TUIChat: React.FC<TUIChatProps> = ({
   // Use custom hook for services
   const { services, allServicesReady, isRemoteMode } =
     useTUIChatServices(remoteUrl);
+
+  // Keep the frame below the terminal height. Ink clears and redraws the
+  // whole screen on every frame as tall as the terminal; the live part of
+  // the chat shrinks to fit instead.
+  const { rows } = useTerminalSize();
 
   // Use navigation context
   const {
@@ -391,7 +398,7 @@ const TUIChat: React.FC<TUIChatProps> = ({
   }, []);
 
   return (
-    <Box flexDirection="column" height="100%">
+    <Box flexDirection="column" maxHeight={Math.max(1, rows - 1)}>
       {/* Chat history - takes up all available space above input */}
       <Box flexDirection="column" flexGrow={1} overflow="hidden">
         {/* Debug component - comment out when not needed */}
@@ -417,6 +424,7 @@ const TUIChat: React.FC<TUIChatProps> = ({
           queuedMessages={queuedMessages}
           renderMessage={renderMessage}
           refreshTrigger={staticRefreshTrigger}
+          isTurnRunning={isRemoteMode || isWaitingForResponse || isCompacting}
         />
       </Box>
 
@@ -477,6 +485,7 @@ const TUIChat: React.FC<TUIChatProps> = ({
           chatHistory={chatHistory}
           handleEditMessage={handleEditMessage}
           onShowEditSelector={() => navigateTo("edit")}
+          onRefreshScreen={() => setStaticRefreshTrigger((prev) => prev + 1)}
           restoreFromIndex={
             navState.currentScreen === "restore"
               ? navState.screenData?.fromIndex
