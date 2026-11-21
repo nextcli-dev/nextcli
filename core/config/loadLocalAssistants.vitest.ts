@@ -4,6 +4,8 @@ import { testIde } from "../test/fixtures";
 import { addToTestDir, setUpTestDir, tearDownTestDir } from "../test/testDir";
 import {
   getAllDotContinueDefinitionFiles,
+  getWorkspaceClaudeDefinitionFiles,
+  isContinueConfigRelatedUri,
   LoadAssistantFilesOptions,
 } from "./loadLocalAssistants";
 describe("ASSISTANTS getAllDotContinueDefinitionFiles with fileExtType option", () => {
@@ -491,6 +493,65 @@ describe("AGENTS getAllDotContinueDefinitionFiles with fileExtType option", () =
     ]);
     expect(markdownResult.map((f) => f.path.split("/").pop())).not.toContain(
       "agent7.MD",
+    );
+  });
+});
+
+describe("getWorkspaceClaudeDefinitionFiles", () => {
+  beforeEach(() => {
+    setUpTestDir();
+    walkDirCache.invalidate();
+    addToTestDir([
+      ".claude/rules/",
+      [".claude/rules/style.md", "style rule"],
+      [".claude/rules/nested/tests.md", "tests rule"],
+      [".claude/rules/notes.txt", "not a rule"],
+      [".continue/rules/old.md", "continue rule"],
+    ]);
+  });
+
+  afterEach(() => {
+    tearDownTestDir();
+    walkDirCache.invalidate();
+  });
+
+  it("returns the markdown files under the workspace's .claude/rules", async () => {
+    const result = await getWorkspaceClaudeDefinitionFiles(testIde, "rules");
+
+    expect(result.map((f) => f.path.split(".claude/")[1]).sort()).toEqual([
+      "rules/nested/tests.md",
+      "rules/style.md",
+    ]);
+    expect(result.find((f) => f.path.endsWith("style.md"))?.content).toBe(
+      "style rule",
+    );
+  });
+
+  it("returns nothing when the workspace has no .claude folder", async () => {
+    const result = await getWorkspaceClaudeDefinitionFiles(testIde, "checks");
+
+    expect(result).toEqual([]);
+  });
+});
+
+describe("isContinueConfigRelatedUri", () => {
+  it("reloads config for .claude/rules and .claude/skills files", () => {
+    expect(
+      isContinueConfigRelatedUri("file:///repo/.claude/rules/tests.md"),
+    ).toBe(true);
+    expect(
+      isContinueConfigRelatedUri(
+        "file:///repo/.claude/skills/ship-pr/SKILL.md",
+      ),
+    ).toBe(true);
+  });
+
+  it("ignores other .claude files", () => {
+    expect(
+      isContinueConfigRelatedUri("file:///repo/.claude/settings.local.md"),
+    ).toBe(false);
+    expect(isContinueConfigRelatedUri("file:///repo/src/rules/tests.md")).toBe(
+      false,
     );
   });
 });

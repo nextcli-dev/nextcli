@@ -103,6 +103,62 @@ describe("resolveReviews local discovery", () => {
     expect(shared?.source).toContain("agents");
   });
 
+  it("discovers files from .claude/checks/", async () => {
+    vi.mocked(fs.existsSync).mockImplementation((p) => {
+      return p === path.join("/test/repo", ".claude", "checks");
+    });
+    vi.mocked(fs.readdirSync).mockImplementation(((p: fs.PathLike) => {
+      if (p === path.join("/test/repo", ".claude", "checks")) {
+        return ["stale-comments.md", "notes.txt"];
+      }
+      return [];
+    }) as typeof fs.readdirSync);
+
+    const reviews = await resolveReviews();
+    expect(reviews).toEqual([
+      {
+        name: "stale comments",
+        source: path.join(
+          "/test/repo",
+          ".claude",
+          "checks",
+          "stale-comments.md",
+        ),
+        sourceType: "local",
+      },
+    ]);
+  });
+
+  it("keeps the .continue/ file when .claude/checks/ has the same name", async () => {
+    const continueChecks = path.join("/test/repo", ".continue", "checks");
+    const claudeChecks = path.join("/test/repo", ".claude", "checks");
+    vi.mocked(fs.existsSync).mockImplementation(
+      (p) => p === continueChecks || p === claudeChecks,
+    );
+    vi.mocked(fs.readdirSync).mockImplementation(((p: fs.PathLike) => {
+      if (p === continueChecks) return ["anti-slop.md"];
+      if (p === claudeChecks) return ["anti-slop.md", "review.md"];
+      return [];
+    }) as typeof fs.readdirSync);
+
+    const reviews = await resolveReviews();
+    expect(reviews.map((r) => r.source)).toEqual([
+      path.join(continueChecks, "anti-slop.md"),
+      path.join(claudeChecks, "review.md"),
+    ]);
+  });
+
+  it("does not run Claude Code subagents in .claude/agents/ as reviews", async () => {
+    vi.mocked(fs.existsSync).mockImplementation(
+      (p) => p === path.join("/test/repo", ".claude", "agents"),
+    );
+    vi.mocked(fs.readdirSync).mockReturnValue([
+      "code-reviewer.md",
+    ] as unknown as ReturnType<typeof fs.readdirSync>);
+
+    expect(await resolveReviews()).toEqual([]);
+  });
+
   it("returns empty array when neither directory exists", async () => {
     vi.mocked(fs.existsSync).mockReturnValue(false);
     const reviews = await resolveReviews();

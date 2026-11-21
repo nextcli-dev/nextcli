@@ -1,10 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { IDE } from "../..";
-import { getAllDotContinueDefinitionFiles } from "../loadLocalAssistants";
+import {
+  getAllDotContinueDefinitionFiles,
+  getWorkspaceClaudeDefinitionFiles,
+} from "../loadLocalAssistants";
 import { findProjectAgentFile, loadMarkdownRules } from "./loadMarkdownRules";
 
 vi.mock("../loadLocalAssistants", () => ({
   getAllDotContinueDefinitionFiles: vi.fn(),
+  getWorkspaceClaudeDefinitionFiles: vi.fn(),
 }));
 
 const WORKSPACE = "file:///workspace";
@@ -26,6 +30,8 @@ describe("loadMarkdownRules agent files", () => {
   beforeEach(() => {
     vi.mocked(getAllDotContinueDefinitionFiles).mockReset();
     vi.mocked(getAllDotContinueDefinitionFiles).mockResolvedValue([]);
+    vi.mocked(getWorkspaceClaudeDefinitionFiles).mockReset();
+    vi.mocked(getWorkspaceClaudeDefinitionFiles).mockResolvedValue([]);
   });
 
   it.each(["AGENTS.md", "AGENT.md", "CLAUDE.md", "CODEX.md"])(
@@ -167,5 +173,29 @@ describe("loadMarkdownRules agent files", () => {
     expect(rules).toHaveLength(1);
     expect(rules[0].source).toBe("rules-block");
     expect(rules[0].sourceFile).toBe(`${WORKSPACE}/.continue/rules/style.md`);
+  });
+
+  it("loads .claude/rules, reading Claude Code's paths: as globs", async () => {
+    vi.mocked(getWorkspaceClaudeDefinitionFiles).mockImplementation(
+      async (_ide, subDir) =>
+        subDir === "rules"
+          ? [
+              {
+                path: `${WORKSPACE}/.claude/rules/tests.md`,
+                content:
+                  '---\npaths:\n  - "**/*.test.ts"\n---\n\n# Tests\nProve it can fail',
+              },
+            ]
+          : [],
+    );
+
+    const { rules, errors } = await loadMarkdownRules(createIde({}));
+
+    expect(errors).toEqual([]);
+    expect(rules).toHaveLength(1);
+    expect(rules[0].source).toBe("rules-block");
+    expect(rules[0].sourceFile).toBe(`${WORKSPACE}/.claude/rules/tests.md`);
+    expect(rules[0].globs).toEqual(["**/*.test.ts"]);
+    expect(rules[0].rule).toContain("Prove it can fail");
   });
 });

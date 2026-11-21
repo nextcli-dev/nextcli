@@ -6,7 +6,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 // Use the actual implementation instead of the mocked one
 vi.unmock("./systemMessage.js");
-const { constructSystemMessage } = await import("./systemMessage.js");
+const { constructSystemMessage, loadMarkdownRulesWithMetadata } = await import(
+  "./systemMessage.js"
+);
+const { env } = await import("./env.js");
 
 // Mock the service container to avoid "No factory registered for service 'config'" error
 vi.mock("./services/ServiceContainer.js", () => ({
@@ -306,6 +309,71 @@ Rule 3: Third rule`;
       expect(warn).toHaveBeenCalledWith(
         expect.stringContaining(path.join(cwd, "AGENTS.md")),
         expect.anything(),
+      );
+    });
+  });
+
+  describe("rules from .claude/rules", () => {
+    let dir: string | undefined;
+    const originalHome = env.continueHome;
+    const spies: { mockRestore: () => void }[] = [];
+
+    function useRules(files: Record<string, string>) {
+      dir = fs.mkdtempSync(path.join(os.tmpdir(), "cn-claude-rules-"));
+      for (const [name, content] of Object.entries(files)) {
+        fs.mkdirSync(path.dirname(path.join(dir, name)), { recursive: true });
+        fs.writeFileSync(path.join(dir, name), content);
+      }
+      // Keep the person's own ~/.continue/rules out of the result
+      env.continueHome = path.join(dir, "home");
+      spies.push(vi.spyOn(process, "cwd").mockReturnValue(dir));
+      return dir;
+    }
+
+    afterEach(() => {
+      spies.splice(0).forEach((spy) => spy.mockRestore());
+      env.continueHome = originalHome;
+      if (dir) {
+        fs.rmSync(dir, { recursive: true, force: true });
+        dir = undefined;
+      }
+    });
+
+    it("applies a .claude/rules rule without paths in every session", async () => {
+      useRules({ ".claude/rules/style.md": "# Style\n\nclaude-always-rule" });
+
+      const result = await constructSystemMessage("normal");
+
+      expect(result).toContain("claude-always-rule");
+    });
+
+    it("treats Claude Code's paths: like globs, so the rule is not always-on", async () => {
+      useRules({
+        ".claude/rules/tests.md":
+          '---\npaths:\n  - "**/*.test.ts"\n---\n\nclaude-scoped-rule',
+        ".claude/rules/style.md": "# Style\n\nclaude-always-rule",
+      });
+
+      const result = await constructSystemMessage("normal");
+
+      expect(result).toContain("claude-always-rule");
+      expect(result).not.toContain("claude-scoped-rule");
+    });
+
+    it("loads a .claude/rules symlink to a .continue/rules file once", () => {
+      const cwd = useRules({
+        ".continue/rules/shared.md": "# Shared\n\nshared-rule",
+      });
+      fs.mkdirSync(path.join(cwd, ".claude", "rules"), { recursive: true });
+      fs.symlinkSync(
+        path.join(cwd, ".continue", "rules", "shared.md"),
+        path.join(cwd, ".claude", "rules", "shared.md"),
+      );
+
+      const rules = loadMarkdownRulesWithMetadata();
+
+      expect(rules.filter((r) => r.rule.includes("shared-rule"))).toHaveLength(
+        1,
       );
     });
   });

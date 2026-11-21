@@ -85,16 +85,19 @@ function getRuleNameFromPath(filePath: string): string {
 }
 
 /**
- * Scan .continue/rules/ directories for markdown rule files and return the rules with metadata that should be always-applied
+ * Scan the .continue/rules/ and .claude/rules/ directories for markdown rule files and return the rules with metadata that should be always-applied
  */
 export function loadMarkdownRulesWithMetadata(): RuleObject[] {
   const cwd = process.cwd();
   const rulesDirs = [
     path.join(cwd, ".continue", "rules"),
+    path.join(cwd, ".claude", "rules"),
     path.join(env.continueHome, "rules"),
   ];
 
   const rules: RuleObject[] = [];
+  // A .claude/rules file may be a symlink to a .continue/rules one
+  const loaded = new Set<string>();
 
   for (const dir of rulesDirs) {
     if (!fs.existsSync(dir)) continue;
@@ -113,6 +116,9 @@ export function loadMarkdownRulesWithMetadata(): RuleObject[] {
       try {
         const stat = fs.statSync(filePath);
         if (!stat.isFile()) continue;
+        const realPath = fs.realpathSync(filePath);
+        if (loaded.has(realPath)) continue;
+        loaded.add(realPath);
       } catch {
         continue;
       }
@@ -199,7 +205,7 @@ export async function constructSystemMessage(
   const configYamlRules = await getConfigYamlRules();
   processedRules.push(...configYamlRules);
 
-  // Load markdown rules from .continue/rules/ directories
+  // Load markdown rules from the .continue/rules/ and .claude/rules/ directories
   const markdownRules = loadMarkdownRulesWithMetadata();
   // Deduplicate against already-loaded rules
   const existingRulesSet = new Set(processedRules);
