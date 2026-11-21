@@ -26,6 +26,7 @@ import {
   toChatBody,
   toResponsesInput,
 } from "../openaiTypeConverters.js";
+import { readResponseEnd, type StreamEnd } from "../streamEnd.js";
 
 function isChatOnlyModel(model: string): boolean {
   // gpt and o-series models
@@ -624,6 +625,7 @@ class OpenAI extends BaseLLM {
     messages: ChatMessage[],
     signal: AbortSignal,
     options: CompletionOptions,
+    streamEnd?: StreamEnd,
   ): AsyncGenerator<ChatMessage> {
     if (!this.isOSeriesOrGpt5PlusModel(options.model)) {
       return;
@@ -643,6 +645,14 @@ class OpenAI extends BaseLLM {
     });
 
     for await (const evt of streamSse(response)) {
+      // How it ended: a response cut off at the output cap is "incomplete"
+      if (
+        streamEnd &&
+        (evt?.type === "response.completed" ||
+          evt?.type === "response.incomplete")
+      ) {
+        readResponseEnd(streamEnd, evt.response ?? {});
+      }
       try {
         const msg = fromResponsesChunk(evt);
         if (Array.isArray(msg)) {
@@ -662,6 +672,7 @@ class OpenAI extends BaseLLM {
     messages: ChatMessage[],
     signal: AbortSignal,
     options: CompletionOptions,
+    streamEnd?: StreamEnd,
   ): Promise<ChatMessage | ChatMessage[]> {
     if (!this.isOSeriesOrGpt5PlusModel(options.model)) {
       // Minimal draft: only handle supported models for now
@@ -686,6 +697,9 @@ class OpenAI extends BaseLLM {
     }
 
     const data: any = await response.json().catch(() => ({}));
+    if (streamEnd) {
+      readResponseEnd(streamEnd, data);
+    }
     const msg = fromResponsesChunk(data);
     if (msg) return msg;
     return { role: "assistant", content: "" };

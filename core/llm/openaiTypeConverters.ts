@@ -39,6 +39,7 @@ import {
   TextMessagePart,
   ThinkingChatMessage,
   ToolCallDelta,
+  Usage,
 } from "..";
 import { stripImages } from "../util/messageContent";
 
@@ -285,6 +286,52 @@ export function toFimBody(
     stop: options.stop,
     stream: true,
   } as any;
+}
+
+/** OpenAI chat-completions usage, as providers and the adapters report it */
+export interface ChatUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  prompt_tokens_details?: {
+    cached_tokens?: number;
+    /** Sent by the Anthropic adapter */
+    cache_write_tokens?: number;
+  } | null;
+  completion_tokens_details?: { reasoning_tokens?: number } | null;
+}
+
+/** The usage a chat-completions response reports, in core's shape */
+export function toUsage(usage: ChatUsage): Usage {
+  return {
+    promptTokens: usage.prompt_tokens ?? 0,
+    completionTokens: usage.completion_tokens ?? 0,
+    ...(usage.prompt_tokens_details && {
+      promptTokensDetails: {
+        cachedTokens: usage.prompt_tokens_details.cached_tokens,
+        cacheWriteTokens: usage.prompt_tokens_details.cache_write_tokens,
+      },
+    }),
+    ...(usage.completion_tokens_details && {
+      completionTokensDetails: {
+        reasoningTokens: usage.completion_tokens_details.reasoning_tokens,
+      },
+    }),
+  };
+}
+
+/** The usage a Responses API response reports, in core's shape */
+export function fromResponsesUsage(usage: {
+  input_tokens?: number;
+  output_tokens?: number;
+  input_tokens_details?: { cached_tokens?: number } | null;
+  output_tokens_details?: { reasoning_tokens?: number } | null;
+}): Usage {
+  return toUsage({
+    prompt_tokens: usage.input_tokens,
+    completion_tokens: usage.output_tokens,
+    prompt_tokens_details: usage.input_tokens_details,
+    completion_tokens_details: usage.output_tokens_details,
+  });
 }
 
 export function fromChatResponse(response: ChatCompletion): ChatMessage[] {

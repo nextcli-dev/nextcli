@@ -902,18 +902,20 @@ describe("Anthropic usage", () => {
       }),
     );
 
+    // Usage is reported in the call's PromptLog, not as a streamed message
     let text = "";
-    let usage: any;
-    for await (const message of anthropic.streamChat(
+    const gen = anthropic.streamChat(
       [{ role: "user", content: "hello" }],
       new AbortController().signal,
-    )) {
-      if (typeof message.content === "string") text += message.content;
-      if ((message as any).usage) usage = (message as any).usage;
+    );
+    let next = await gen.next();
+    while (!next.done) {
+      if (typeof next.value.content === "string") text += next.value.content;
+      next = await gen.next();
     }
 
     expect(text).toBe("Hi");
-    expect(usage).toEqual({
+    expect(next.value.usage).toEqual({
       promptTokens: 100,
       completionTokens: 20,
       promptTokensDetails: { cachedTokens: 80, cacheWriteTokens: 10 },

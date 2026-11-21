@@ -151,6 +151,7 @@ interface OllamaTool {
 
 class Ollama extends BaseLLM implements ModelInstaller {
   static providerName = "ollama";
+  protected shortensAnswerToFit = true;
   static defaultOptions: Partial<LLMOptions> = {
     apiBase: "http://localhost:11434/",
     model: "codellama-7b",

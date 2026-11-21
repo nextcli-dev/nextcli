@@ -481,6 +481,8 @@ export interface PromptLog {
   streamEndedWithoutFinish?: boolean;
   /** Output tokens the provider reported for this call, thinking included */
   outputTokens?: number;
+  /** The token usage the provider reported for this call, when it did */
+  usage?: Usage;
 }
 
 export type MessageModes = "chat" | "agent" | "plan" | "background";

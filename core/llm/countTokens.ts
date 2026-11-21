@@ -426,6 +426,7 @@ function compileChatMessages({
   maxTokens,
   supportsImages,
   tools,
+  shortensAnswerToFit = false,
 }: {
   modelName: string;
   msgs: ChatMessage[];
@@ -433,6 +434,7 @@ function compileChatMessages({
   maxTokens: number;
   supportsImages: boolean;
   tools?: Tool[];
+  shortensAnswerToFit?: boolean;
 }): CompiledMessagesResult {
   let didPrune = false;
 
@@ -481,20 +483,24 @@ function compileChatMessages({
   const contextLength = knownContextLength ?? DEFAULT_PRUNING_LENGTH;
   const countingSafetyBuffer = getTokenCountingBufferSafety(contextLength);
   const minOutputTokens = Math.min(MIN_RESPONSE_TOKENS, maxTokens);
+  // Most servers reject input that leaves less than the max_tokens they are
+  // sent. Up to a quarter of the window, the cap the constructor puts on
+  // catalog output limits, so a max_tokens set near the window can't take
+  // it; the request then sends only the max_tokens that fit (maxTokensThatFit)
+  const outputReserve = shortensAnswerToFit
+    ? minOutputTokens
+    : Math.min(maxTokens, Math.floor(contextLength / 4));
 
-  let inputTokensAvailable = contextLength;
-
-  // Leave space for output/safety
-  inputTokensAvailable -= countingSafetyBuffer;
-  inputTokensAvailable -= minOutputTokens;
-
-  // Non-negotiable messages
-  inputTokensAvailable -= toolTokens;
-  inputTokensAvailable -= systemMsgTokens;
-  inputTokensAvailable -= lastMessagesTokens;
+  // Room left beside the non-negotiable messages
+  const room =
+    contextLength -
+    countingSafetyBuffer -
+    toolTokens -
+    systemMsgTokens -
+    lastMessagesTokens;
 
   // Make sure there's enough context for the non-excludable items
-  if (knownContextLength !== undefined && inputTokensAvailable < 0) {
+  if (knownContextLength !== undefined && room < minOutputTokens) {
     throw new Error(
       `Not enough context available to include the system message, last user message, and tools.
         There must be at least ${minOutputTokens} tokens remaining for output.
@@ -506,6 +512,10 @@ function compileChatMessages({
         - max output tokens: ${maxTokens}`,
     );
   }
+
+  // Older history makes room for the reserve. A newest turn that leaves less
+  // than the reserve is still sent, as before, with no older history
+  const inputTokensAvailable = room - outputReserve;
 
   // Now remove messages till we're under the limit
   let currentTotal = 0;
@@ -540,8 +550,7 @@ function compileChatMessages({
 
   const inputTokens =
     currentTotal + systemMsgTokens + toolTokens + lastMessagesTokens;
-  const availableTokens =
-    contextLength - countingSafetyBuffer - minOutputTokens;
+  const availableTokens = contextLength - countingSafetyBuffer - outputReserve;
   const contextPercentage = inputTokens / availableTokens;
   return {
     compiledChatMessages: reassembled,
@@ -556,12 +565,45 @@ async function cleanupAsyncEncoders(): Promise<void> {
   } catch (e) {}
 }
 
+/**
+ * The max_tokens a request can send to a server that rejects one whose input
+ * plus max_tokens passes the window: the configured value, lowered to what
+ * the window leaves after these messages and tools, but never below the
+ * 1,000-token floor compileChatMessages keeps
+ */
+function maxTokensThatFit({
+  modelName,
+  messages,
+  tools,
+  contextLength,
+  maxTokens,
+}: {
+  modelName: string;
+  messages: ChatMessage[];
+  tools?: Tool[];
+  contextLength: number;
+  maxTokens: number;
+}): number {
+  const inputTokens =
+    messages.reduce(
+      (sum, message) => sum + countChatMessageTokens(modelName, message),
+      0,
+    ) + (tools ? countToolsTokens(tools, modelName) : 0);
+  const left =
+    contextLength - getTokenCountingBufferSafety(contextLength) - inputTokens;
+  return Math.min(
+    maxTokens,
+    Math.max(left, Math.min(MIN_RESPONSE_TOKENS, maxTokens)),
+  );
+}
+
 export {
   cleanupAsyncEncoders,
   compileChatMessages,
   countTokens,
   countTokensAsync,
   extractToolSequence,
+  maxTokensThatFit,
   pruneLinesFromBottom,
   pruneLinesFromTop,
   pruneRawPromptFromTop,

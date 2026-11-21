@@ -34,6 +34,7 @@ import {
   SerializedModelControls,
   TabAutocompleteOptions,
   TemplateType,
+  Tool,
   ToolOverride,
   Usage,
 } from "../index.js";
@@ -64,6 +65,7 @@ import {
 import {
   compileChatMessages,
   countTokens,
+  maxTokensThatFit,
   pruneRawPromptFromTop,
 } from "./countTokens.js";
 import {
@@ -101,6 +103,15 @@ export abstract class BaseLLM implements ILLM {
   static defaultOptions: Partial<LLMOptions> | undefined = undefined;
   // Provider capabilities (overridable by subclasses)
   protected supportsReasoningField: boolean = false;
+  /**
+   * The server cuts the answer short instead of rejecting a request whose
+   * input leaves less than max_tokens (Ollama, llama.cpp and the servers
+   * built on them), so pruning keeps only a small reserve for the answer.
+   * Set it only for such a server: one that rejects the request (vLLM, TGI)
+   * or drops the start of the prompt (text-generation-webui) keeps the full
+   * reserve, and pruning, which keeps the system prompt, decides what goes.
+   */
+  protected shortensAnswerToFit: boolean = false;
   protected supportsReasoningDetailsField: boolean = false;
   protected supportsReasoningContentField: boolean = false;
 
@@ -1099,6 +1110,36 @@ export abstract class BaseLLM implements ILLM {
     return { role: "assistant" as const, content: completion };
   }
 
+  /**
+   * For a server that rejects an over-long request, max_tokens lowered to
+   * what the window leaves after the messages, so the request fits. The
+   * pruner keeps at least a quarter of the window free for it.
+   */
+  private fitMaxTokens(
+    options: CompletionOptions,
+    messages: ChatMessage[],
+    tools: Tool[] | undefined,
+    contextLength: number | undefined,
+  ): CompletionOptions {
+    if (
+      this.shortensAnswerToFit ||
+      contextLength === undefined ||
+      options.maxTokens === undefined
+    ) {
+      return options;
+    }
+    return {
+      ...options,
+      maxTokens: maxTokensThatFit({
+        modelName: options.model,
+        messages,
+        tools,
+        contextLength,
+        maxTokens: options.maxTokens,
+      }),
+    };
+  }
+
   compileChatMessages(
     message: ChatMessage[],
     options: LLMFullCompletionOptions,
@@ -1113,6 +1154,7 @@ export abstract class BaseLLM implements ILLM {
       maxTokens: completionOptions.maxTokens ?? DEFAULT_MAX_TOKENS,
       supportsImages: this.supportsImages(),
       tools: options.tools,
+      shortensAnswerToFit: this.shortensAnswerToFit,
     });
   }
 
@@ -1137,10 +1179,23 @@ export abstract class BaseLLM implements ILLM {
     thinking: string[];
     usage: Usage | null;
     chunk: ChatMessage;
+    /** False for a message that only reports usage: it isn't yielded */
+    show: boolean;
   } {
     const completion: string[] = [];
     const thinking: string[] = [];
     let usage: Usage | null = null;
+
+    // Native providers report usage as a message of its own. It is metadata
+    // of the call: shown, it became an empty step in the chat
+    if (
+      chunk.role === "assistant" &&
+      chunk.usage &&
+      !renderChatMessage(chunk) &&
+      !chunk.toolCalls?.length
+    ) {
+      return { completion, thinking, usage: chunk.usage, chunk, show: false };
+    }
 
     if (chunk.role === "assistant") {
       completion.push(this._formatChatMessage(chunk));
@@ -1162,6 +1217,7 @@ export abstract class BaseLLM implements ILLM {
       thinking,
       usage,
       chunk,
+      show: true,
     };
   }
 
@@ -1203,12 +1259,15 @@ export abstract class BaseLLM implements ILLM {
   private async *openAIAdapterNonStream(
     body: ChatCompletionCreateParams,
     signal: AbortSignal,
+    streamEnd: StreamEnd,
   ): AsyncGenerator<ChatMessage> {
     const response = await this.openaiAdapter!.chatCompletionNonStream(
       { ...body, stream: false },
       signal,
     );
     this.lastRequestId = response.id ?? this.lastRequestId;
+    // A whole response has the finish reason and usage a stream's chunks do
+    readStreamEnd(streamEnd, response as any);
     const messages = fromChatResponse(response as any);
     for (const msg of messages) {
       yield msg;
@@ -1219,11 +1278,13 @@ export abstract class BaseLLM implements ILLM {
     messages: ChatMessage[],
     signal: AbortSignal,
     options: CompletionOptions,
+    streamEnd: StreamEnd,
   ): AsyncGenerator<ChatMessage> {
     const g = (this as any)._streamResponses(
       messages,
       signal,
       options,
+      streamEnd,
     ) as AsyncGenerator<ChatMessage>;
     for await (const m of g) {
       yield m;
@@ -1234,9 +1295,16 @@ export abstract class BaseLLM implements ILLM {
     messages: ChatMessage[],
     signal: AbortSignal,
     options: CompletionOptions,
+    streamEnd: StreamEnd,
   ): AsyncGenerator<ChatMessage> {
-    const msg = await (this as any)._responses(messages, signal, options);
-    yield msg as ChatMessage;
+    const msg = await (this as any)._responses(
+      messages,
+      signal,
+      options,
+      streamEnd,
+    );
+    // Reasoning, text and usage can come as several messages
+    yield* [msg as ChatMessage | ChatMessage[]].flat();
   }
 
   /** Applies this model's tool overrides, warning about unknown tool names. */
@@ -1324,10 +1392,17 @@ export abstract class BaseLLM implements ILLM {
         maxTokens: completionOptions.maxTokens ?? DEFAULT_MAX_TOKENS,
         supportsImages: this.supportsImages(),
         tools: optionsWithOverrides.tools,
+        shortensAnswerToFit: this.shortensAnswerToFit,
       });
 
       messages = compiledChatMessages;
     }
+    completionOptions = this.fitMaxTokens(
+      completionOptions,
+      messages,
+      optionsWithOverrides.tools,
+      options.contextLength ?? this._contextLength,
+    );
 
     const messagesCopy = [...messages]; // templateMessages may modify messages.
 
@@ -1343,7 +1418,8 @@ export abstract class BaseLLM implements ILLM {
     const completion: string[] = [];
     let usage: Usage | undefined = undefined;
     let citations: null | string[] = null;
-    // Set only on the OpenAI adapter's streaming path, which can read it
+    // Set only on the OpenAI adapter's and Responses API's paths, which read
+    // the raw response
     let streamEnd: StreamEnd | undefined = undefined;
 
     try {
@@ -1395,9 +1471,20 @@ export abstract class BaseLLM implements ILLM {
 
           let iterable: AsyncIterable<ChatMessage>;
           if (canUseResponses) {
+            streamEnd = {};
             iterable = useStream
-              ? this.responsesStream(messages, signal, completionOptions)
-              : this.responsesNonStream(messages, signal, completionOptions);
+              ? this.responsesStream(
+                  messages,
+                  signal,
+                  completionOptions,
+                  streamEnd,
+                )
+              : this.responsesNonStream(
+                  messages,
+                  signal,
+                  completionOptions,
+                  streamEnd,
+                );
           } else if (useStream) {
             streamEnd = {};
             iterable = this.openAIAdapterStream(
@@ -1411,7 +1498,8 @@ export abstract class BaseLLM implements ILLM {
               streamEnd,
             );
           } else {
-            iterable = this.openAIAdapterNonStream(body, signal);
+            streamEnd = {};
+            iterable = this.openAIAdapterNonStream(body, signal, streamEnd);
           }
 
           for await (const chunk of iterable) {
@@ -1421,8 +1509,12 @@ export abstract class BaseLLM implements ILLM {
             if (result.usage !== null) {
               usage = result.usage;
             }
-            yield result.chunk;
+            if (result.show) {
+              yield result.chunk;
+            }
           }
+          // Read from the raw response, where it can't be lost in conversion
+          usage ??= streamEnd?.usage;
         } else {
           if (logEnabled) {
             this.logStartChat(interaction, messages, completionOptions, prompt);
@@ -1439,7 +1531,9 @@ export abstract class BaseLLM implements ILLM {
             if (result.usage !== null) {
               usage = result.usage;
             }
-            yield result.chunk;
+            if (result.show) {
+              yield result.chunk;
+            }
           }
         }
       }
@@ -1513,6 +1607,7 @@ export abstract class BaseLLM implements ILLM {
       modelProvider: this.underlyingProviderName,
       prompt,
       completion: completion.join(""),
+      ...(usage && { usage }),
       ...(streamEnd && {
         finishReason: streamEnd.finishReason,
         streamEndedWithoutFinish: !streamEnd.finishReason,
