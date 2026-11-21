@@ -482,27 +482,27 @@ function compileChatMessages({
 
   const contextLength = knownContextLength ?? DEFAULT_PRUNING_LENGTH;
   const countingSafetyBuffer = getTokenCountingBufferSafety(contextLength);
-  // Most servers reject input that leaves less than the max_tokens they are sent
+  const minOutputTokens = Math.min(MIN_RESPONSE_TOKENS, maxTokens);
+  // Most servers reject input that leaves less than the max_tokens they are
+  // sent. Up to a quarter of the window, the cap the constructor puts on
+  // catalog output limits, so a max_tokens set near the window can't take it
   const outputReserve = shortensAnswerToFit
-    ? Math.min(MIN_RESPONSE_TOKENS, maxTokens)
-    : maxTokens;
+    ? minOutputTokens
+    : Math.min(maxTokens, Math.floor(contextLength / 4));
 
-  let inputTokensAvailable = contextLength;
-
-  // Leave space for output/safety
-  inputTokensAvailable -= countingSafetyBuffer;
-  inputTokensAvailable -= outputReserve;
-
-  // Non-negotiable messages
-  inputTokensAvailable -= toolTokens;
-  inputTokensAvailable -= systemMsgTokens;
-  inputTokensAvailable -= lastMessagesTokens;
+  // Room left beside the non-negotiable messages
+  const room =
+    contextLength -
+    countingSafetyBuffer -
+    toolTokens -
+    systemMsgTokens -
+    lastMessagesTokens;
 
   // Make sure there's enough context for the non-excludable items
-  if (knownContextLength !== undefined && inputTokensAvailable < 0) {
+  if (knownContextLength !== undefined && room < minOutputTokens) {
     throw new Error(
       `Not enough context available to include the system message, last user message, and tools.
-        There must be at least ${outputReserve} tokens remaining for output.
+        There must be at least ${minOutputTokens} tokens remaining for output.
         Request had the following token counts:
         - contextLength: ${knownContextLength}
         - counting safety buffer: ${countingSafetyBuffer}
@@ -511,6 +511,10 @@ function compileChatMessages({
         - max output tokens: ${maxTokens}`,
     );
   }
+
+  // Older history makes room for the reserve. A newest turn that leaves less
+  // than the reserve is still sent, as before, with no older history
+  const inputTokensAvailable = room - outputReserve;
 
   // Now remove messages till we're under the limit
   let currentTotal = 0;

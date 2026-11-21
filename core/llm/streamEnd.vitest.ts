@@ -69,7 +69,11 @@ describe("readStreamEnd", () => {
     readStreamEnd(end, chunk({ content: "a" }));
     readStreamEnd(end, chunk({}, "length"));
     readStreamEnd(end, usageChunk(4096));
-    expect(end).toEqual({ finishReason: "length", outputTokens: 4096 });
+    expect(end).toEqual({
+      finishReason: "length",
+      outputTokens: 4096,
+      usage: { promptTokens: 10, completionTokens: 4096 },
+    });
   });
 });
 
@@ -81,13 +85,9 @@ describe("streamChat on the OpenAI adapter", () => {
       chunk({}, "length"),
       usageChunk(4096),
     ]);
-    // The usage chunk arrives as an empty assistant message
-    expect(messages.map((m) => m.role)).toEqual([
-      "thinking",
-      "thinking",
-      "assistant",
-    ]);
-    expect(messages.at(-1)?.content).toBe("");
+    // The usage chunk isn't a message: no empty step after the thinking
+    expect(messages.map((m) => m.role)).toEqual(["thinking", "thinking"]);
+    expect(log.usage).toEqual({ promptTokens: 10, completionTokens: 4096 });
     expect(log.completion).toBe("");
     expect(log.finishReason).toBe("length");
     expect(log.streamEndedWithoutFinish).toBe(false);
@@ -197,10 +197,22 @@ describe("usage on the OpenAI adapter", () => {
     const { messages, log } = await streamWith([
       { ...chunk({ content: "Done" }, "stop"), usage: detailedUsage.usage },
     ]);
-    expect(messages).toEqual([
-      { role: "assistant", content: "Done", usage: expected },
-    ]);
+    expect(messages).toEqual([{ role: "assistant", content: "Done" }]);
     expect(log.usage).toEqual(expected);
+  });
+
+  test("keeps usage that comes with the last reasoning of a cut-off call", async () => {
+    // A thinking message can't carry usage; it is read from the raw chunk
+    const { messages, log } = await streamWith([
+      chunk({ reasoning_content: "Still thinking" }),
+      {
+        ...chunk({ reasoning_content: " about it" }, "length"),
+        usage: detailedUsage.usage,
+      },
+    ]);
+    expect(messages.map((m) => m.role)).toEqual(["thinking", "thinking"]);
+    expect(log.usage).toEqual(expected);
+    expect(log.finishReason).toBe("length");
   });
 
   test("reports no usage when the provider sends none", async () => {
@@ -229,7 +241,21 @@ describe("usage on the OpenAI adapter", () => {
       },
       { stream: false },
     );
-    expect(messages.at(-1)).toMatchObject({ content: "The plan" });
+    expect(messages).toEqual([{ role: "assistant", content: "The plan" }]);
+    expect(log.usage).toEqual(expected);
+    expect(log.finishReason).toBe("stop");
+  });
+
+  test("a native provider's usage message isn't yielded, and its usage is kept", async () => {
+    const { messages, log } = await streamWith([], (llm) => {
+      // Not on the adapter: the provider's own stream, as Anthropic sends it
+      (llm as any).openaiAdapter = undefined;
+      (llm as any)._streamChat = async function* () {
+        yield { role: "thinking", content: "hmm" };
+        yield { role: "assistant", content: "", usage: expected };
+      };
+    });
+    expect(messages).toEqual([{ role: "thinking", content: "hmm" }]);
     expect(log.usage).toEqual(expected);
   });
 });
@@ -294,7 +320,45 @@ describe("usage from the Responses API", () => {
       next = await gen.next();
     }
 
-    expect(messages.at(0)).toEqual({ role: "assistant", content: "Hi" });
+    expect(messages).toEqual([{ role: "assistant", content: "Hi" }]);
     expect(next.value.usage).toEqual(expected);
   });
+
+  test.each(["response.completed", "response.incomplete"])(
+    "streamChat returns it from a stream that ends %s",
+    async (end) => {
+      // GPT-5 on the OpenAI provider streams through the core converter. A
+      // response cut off at the output cap ends "incomplete"
+      const llm = new OpenAI({ model: "gpt-5", apiKey: "k" });
+      (llm as any).openaiAdapter = {};
+      (llm as any)._streamResponses = async function* () {
+        for (const event of [
+          { type: "response.output_text.delta", delta: "Hi" },
+          { type: end, response: { usage: responsesUsage } },
+        ]) {
+          const message = fromResponsesChunk(event as any);
+          if (message) {
+            yield* [message].flat();
+          }
+        }
+      };
+      const gen = llm.streamChat(
+        [{ role: "user", content: "hello" }],
+        new AbortController().signal,
+        { log: false } as any,
+      );
+      const messages: ChatMessage[] = [];
+      let next = await gen.next();
+      while (!next.done) {
+        messages.push(next.value);
+        next = await gen.next();
+      }
+
+      // The text, and no empty message for the usage
+      expect(messages.map((m) => [m.role, m.content])).toEqual([
+        ["assistant", "Hi"],
+      ]);
+      expect(next.value.usage).toEqual(expected);
+    },
+  );
 });

@@ -104,7 +104,10 @@ export abstract class BaseLLM implements ILLM {
   /**
    * The server cuts the answer short instead of rejecting a request whose
    * input leaves less than max_tokens (Ollama, llama.cpp and the servers
-   * built on them), so pruning keeps only a small reserve for the answer
+   * built on them), so pruning keeps only a small reserve for the answer.
+   * Set it only for such a server: one that rejects the request (vLLM, TGI)
+   * or drops the start of the prompt (text-generation-webui) keeps the full
+   * reserve, and pruning, which keeps the system prompt, decides what goes.
    */
   protected shortensAnswerToFit: boolean = false;
   protected supportsReasoningDetailsField: boolean = false;
@@ -1144,16 +1147,26 @@ export abstract class BaseLLM implements ILLM {
     thinking: string[];
     usage: Usage | null;
     chunk: ChatMessage;
+    /** False for a message that only reports usage: it isn't yielded */
+    show: boolean;
   } {
     const completion: string[] = [];
     const thinking: string[] = [];
     let usage: Usage | null = null;
 
+    // Native providers report usage as a message of its own. It is metadata
+    // of the call: shown, it became an empty step in the chat
+    if (
+      chunk.role === "assistant" &&
+      chunk.usage &&
+      !renderChatMessage(chunk) &&
+      !chunk.toolCalls?.length
+    ) {
+      return { completion, thinking, usage: chunk.usage, chunk, show: false };
+    }
+
     if (chunk.role === "assistant") {
-      // A message that only carries usage has nothing to log as completion
-      if (renderChatMessage(chunk) || chunk.toolCalls?.length) {
-        completion.push(this._formatChatMessage(chunk));
-      }
+      completion.push(this._formatChatMessage(chunk));
     } else if (chunk.role === "thinking" && typeof chunk.content === "string") {
       thinking.push(chunk.content);
     }
@@ -1172,6 +1185,7 @@ export abstract class BaseLLM implements ILLM {
       thinking,
       usage,
       chunk,
+      show: true,
     };
   }
 
@@ -1213,12 +1227,15 @@ export abstract class BaseLLM implements ILLM {
   private async *openAIAdapterNonStream(
     body: ChatCompletionCreateParams,
     signal: AbortSignal,
+    streamEnd: StreamEnd,
   ): AsyncGenerator<ChatMessage> {
     const response = await this.openaiAdapter!.chatCompletionNonStream(
       { ...body, stream: false },
       signal,
     );
     this.lastRequestId = response.id ?? this.lastRequestId;
+    // A whole response has the finish reason and usage a stream's chunks do
+    readStreamEnd(streamEnd, response as any);
     const messages = fromChatResponse(response as any);
     for (const msg of messages) {
       yield msg;
@@ -1355,7 +1372,7 @@ export abstract class BaseLLM implements ILLM {
     const completion: string[] = [];
     let usage: Usage | undefined = undefined;
     let citations: null | string[] = null;
-    // Set only on the OpenAI adapter's streaming path, which can read it
+    // Set only on the OpenAI adapter's path, which reads the raw response
     let streamEnd: StreamEnd | undefined = undefined;
 
     try {
@@ -1423,7 +1440,8 @@ export abstract class BaseLLM implements ILLM {
               streamEnd,
             );
           } else {
-            iterable = this.openAIAdapterNonStream(body, signal);
+            streamEnd = {};
+            iterable = this.openAIAdapterNonStream(body, signal, streamEnd);
           }
 
           for await (const chunk of iterable) {
@@ -1433,8 +1451,12 @@ export abstract class BaseLLM implements ILLM {
             if (result.usage !== null) {
               usage = result.usage;
             }
-            yield result.chunk;
+            if (result.show) {
+              yield result.chunk;
+            }
           }
+          // Read from the raw response, where it can't be lost in conversion
+          usage ??= streamEnd?.usage;
         } else {
           if (logEnabled) {
             this.logStartChat(interaction, messages, completionOptions, prompt);
@@ -1451,7 +1473,9 @@ export abstract class BaseLLM implements ILLM {
             if (result.usage !== null) {
               usage = result.usage;
             }
-            yield result.chunk;
+            if (result.show) {
+              yield result.chunk;
+            }
           }
         }
       }

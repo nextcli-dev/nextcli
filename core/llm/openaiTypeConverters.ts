@@ -289,7 +289,7 @@ export function toFimBody(
 }
 
 /** OpenAI chat-completions usage, as providers and the adapters report it */
-interface ChatUsage {
+export interface ChatUsage {
   prompt_tokens?: number;
   completion_tokens?: number;
   prompt_tokens_details?: {
@@ -301,7 +301,7 @@ interface ChatUsage {
 }
 
 /** The usage a chat-completions response reports, in core's shape */
-function toUsage(usage: ChatUsage): Usage {
+export function toUsage(usage: ChatUsage): Usage {
   return {
     promptTokens: usage.prompt_tokens ?? 0,
     completionTokens: usage.completion_tokens ?? 0,
@@ -393,9 +393,6 @@ export function fromChatResponse(response: ChatCompletion): ChatMessage[] {
     });
   }
 
-  if (response.usage) {
-    (messages.at(-1) as AssistantChatMessage).usage = toUsage(response.usage);
-  }
   return messages;
 }
 
@@ -424,15 +421,11 @@ export function fromChatCompletionChunk(
       },
     }));
 
-  // Usage comes in the last chunk, alone or with the last delta
-  const usage = chunk.usage ? toUsage(chunk.usage) : undefined;
-
   if (delta?.content) {
     return {
       role: "assistant",
       content: delta.content,
       ...(toolCalls?.length && { toolCalls }),
-      ...(usage && { usage }),
     };
   } else if (delta?.tool_calls) {
     if (toolCalls?.length) {
@@ -440,7 +433,6 @@ export function fromChatCompletionChunk(
         role: "assistant",
         content: "",
         toolCalls,
-        ...(usage && { usage }),
       };
     }
   } else if (
@@ -457,7 +449,7 @@ export function fromChatCompletionChunk(
     return message;
   }
 
-  return usage && usageMessage(usage);
+  return undefined;
 }
 
 function handleTextDeltaEvent(
@@ -678,7 +670,8 @@ function handleResponsesStreamEvent(
   if (t === "response.reasoning_text.done") {
     return handleReasoningTextDone(e as ResponseReasoningTextDoneEvent);
   }
-  if (t === "response.completed") {
+  // A response cut off at the output cap ends "incomplete", with its usage
+  if (t === "response.completed" || t === "response.incomplete") {
     const usage = (e as any).response?.usage;
     return usage ? usageMessage(fromResponsesUsage(usage)) : undefined;
   }
