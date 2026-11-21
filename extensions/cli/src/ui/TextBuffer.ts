@@ -490,7 +490,7 @@ export class TextBuffer {
   }
 
   private handleDeleteKeys(key: Key): boolean {
-    // On Mac, backspace key registers as key.delete, so treat it as backward deletion
+    // Backspace, and the Delete key as before, delete backward
     if ((key.delete || key.backspace) && !key.meta) {
       this.deleteBackward();
       return true;

@@ -4,12 +4,17 @@ import { useEffect, useState } from "react";
 const DEFAULT_ROWS = 24;
 const DEFAULT_COLS = 80;
 
+// Ink types stdout as any writable stream; a TTY also has columns and rows
+function readSize(stdout: NodeJS.WritableStream) {
+  const { columns, rows } = stdout as Partial<
+    Pick<NodeJS.WriteStream, "columns" | "rows">
+  >;
+  return { columns: columns || DEFAULT_COLS, rows: rows || DEFAULT_ROWS };
+}
+
 const useTerminalSize = (debounce = 100) => {
   const { stdout } = useStdout();
-  const [dimensions, setDimensions] = useState({
-    columns: stdout.columns || DEFAULT_COLS,
-    rows: stdout.rows || DEFAULT_ROWS,
-  });
+  const [dimensions, setDimensions] = useState(() => readSize(stdout));
   const [isResizing, setIsResizing] = useState(false);
 
   useEffect(() => {
@@ -23,10 +28,7 @@ const useTerminalSize = (debounce = 100) => {
       }
 
       debounceTimer = setTimeout(() => {
-        setDimensions({
-          columns: stdout.columns || DEFAULT_COLS,
-          rows: stdout.rows || DEFAULT_ROWS,
-        });
+        setDimensions(readSize(stdout));
         setIsResizing(false);
       }, debounce);
     };
