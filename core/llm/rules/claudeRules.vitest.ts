@@ -50,4 +50,46 @@ describe(".claude/rules rules", () => {
       getApplicableRules(undefined, [rule], [fileItem("src/app.ts")]),
     ).toEqual([]);
   });
+
+  describe("project-relative paths", () => {
+    // Claude Code rules write globs from the project root, while the
+    // editor's current file, an @ mention or a Read result is an absolute URI
+    const scoped = (sourceFile: string): RuleWithSource => ({
+      name: "Source",
+      rule: "Keep modules small",
+      source: "rules-block",
+      sourceFile,
+      globs: ["src/**/*.ts"],
+    });
+    const names = (rule: RuleWithSource, paths: string[]) =>
+      getApplicableRules(undefined, [rule], paths.map(fileItem)).map(
+        (r) => r.name,
+      );
+
+    it.each([
+      "file:///repo/.claude/rules/source.md",
+      "file:///repo/.continue/rules/source.md",
+    ])("match an absolute file URI in the project (%s)", (sourceFile) => {
+      expect(names(scoped(sourceFile), ["file:///repo/src/app.ts"])).toEqual([
+        "Source",
+      ]);
+      expect(names(scoped(sourceFile), ["file:///repo/lib/app.ts"])).toEqual(
+        [],
+      );
+    });
+
+    it("match a relative path from a code fence the same way", () => {
+      expect(
+        names(scoped("file:///repo/.claude/rules/source.md"), ["src/app.ts"]),
+      ).toEqual(["Source"]);
+    });
+
+    it("decode an escaped project path", () => {
+      expect(
+        names(scoped("file:///my%20repo/.claude/rules/source.md"), [
+          "file:///my%20repo/src/a%20b.ts",
+        ]),
+      ).toEqual(["Source"]);
+    });
+  });
 });

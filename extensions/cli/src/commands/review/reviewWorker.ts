@@ -8,6 +8,8 @@
 
 import * as fs from "fs";
 
+import { parseMarkdownRule } from "@nextcli/config-yaml";
+
 import {
   initializeServices,
   getService,
@@ -83,11 +85,12 @@ ${diffContext.diff || "(no diff available)"}
 }
 
 /**
- * Load the agent's instructions from a local markdown file.
+ * Load the agent's instructions from a local markdown file, without its
+ * frontmatter: name and paths are for choosing the check, not for the model
  */
-function loadLocalAgentInstructions(filePath: string): string {
+export function loadLocalAgentInstructions(filePath: string): string {
   try {
-    return fs.readFileSync(filePath, "utf-8");
+    return parseMarkdownRule(fs.readFileSync(filePath, "utf-8")).markdown;
   } catch {
     return "";
   }

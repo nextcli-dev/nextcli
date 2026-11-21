@@ -198,4 +198,34 @@ describe("loadMarkdownRules agent files", () => {
     expect(rules[0].globs).toEqual(["**/*.test.ts"]);
     expect(rules[0].rule).toContain("Prove it can fail");
   });
+
+  it("loads a rule shared by .continue/rules and .claude/rules once", async () => {
+    // A symlink reads as the file it points to
+    const shared = "# Style\nWrite short functions";
+    vi.mocked(getAllDotContinueDefinitionFiles).mockImplementation(
+      async (_ide, _options, subDir) =>
+        subDir === "rules"
+          ? [{ path: `${WORKSPACE}/.continue/rules/style.md`, content: shared }]
+          : [],
+    );
+    vi.mocked(getWorkspaceClaudeDefinitionFiles).mockImplementation(
+      async (_ide, subDir) =>
+        subDir === "rules"
+          ? [
+              { path: `${WORKSPACE}/.claude/rules/style.md`, content: shared },
+              {
+                path: `${WORKSPACE}/.claude/rules/tests.md`,
+                content: "# Tests",
+              },
+            ]
+          : [],
+    );
+
+    const { rules } = await loadMarkdownRules(createIde({}));
+
+    expect(rules.map((r) => r.sourceFile)).toEqual([
+      `${WORKSPACE}/.continue/rules/style.md`,
+      `${WORKSPACE}/.claude/rules/tests.md`,
+    ]);
+  });
 });

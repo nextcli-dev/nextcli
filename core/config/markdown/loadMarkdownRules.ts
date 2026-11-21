@@ -83,6 +83,10 @@ export async function loadMarkdownRules(ide: IDE): Promise<{
   // Load markdown files from .continue/rules, .continue/prompts and the
   // workspace's .claude/rules, the folder Claude Code reads
   const dirsToCheck = [RULES_DIR_NAME, PROMPTS_DIR_NAME, CLAUDE_RULES_DIR];
+  // A rule shared by both folders, through a symlink (readFile follows it)
+  // or a copy, loads once: twice, both bodies reached the system message
+  // under one name and one toggle. The .continue copy, read first, wins
+  const loadedContents = new Set<string>();
 
   for (const dirName of dirsToCheck) {
     try {
@@ -104,6 +108,10 @@ export async function loadMarkdownRules(ide: IDE): Promise<{
 
       // Process each markdown file
       for (const file of mdFiles) {
+        if (loadedContents.has(file.content)) {
+          continue;
+        }
+        loadedContents.add(file.content);
         try {
           const rule = markdownToRule(file.content, {
             uriType: "file",

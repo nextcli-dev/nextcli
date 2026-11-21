@@ -1,9 +1,10 @@
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { resolveReviews } from "./resolveReviews.js";
+import { applicableReviews, resolveReviews } from "./resolveReviews.js";
 
 vi.mock("../../auth/workos.js", () => ({
   loadAuthConfig: vi.fn(() => null),
@@ -173,5 +174,82 @@ describe("resolveReviews local discovery", () => {
 
     const reviews = await resolveReviews();
     expect(reviews).toHaveLength(0);
+  });
+});
+
+describe("checks with frontmatter", () => {
+  const originalCwd = process.cwd;
+  let repo: string;
+
+  /** Writes files into a real repository folder */
+  function useRepo(files: Record<string, string>) {
+    repo = fs.mkdtempSync(path.join(os.tmpdir(), "cn-review-"));
+    for (const [file, content] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(repo, file)), { recursive: true });
+      fs.writeFileSync(path.join(repo, file), content);
+    }
+    process.cwd = () => repo;
+  }
+
+  beforeEach(async () => {
+    const actual = await vi.importActual<typeof fs>("fs");
+    vi.mocked(fs.existsSync).mockImplementation(actual.existsSync);
+    vi.mocked(fs.readdirSync).mockImplementation(actual.readdirSync);
+  });
+
+  afterEach(() => {
+    process.cwd = originalCwd;
+    fs.rmSync(repo, { recursive: true, force: true });
+  });
+
+  const securityReview =
+    '---\nname: Security Review\npaths:\n  - "core/**"\n  - "extensions/**"\n---\n\nFlag secrets in the changed lines.';
+
+  it("takes the name and paths from the frontmatter", async () => {
+    useRepo({ ".claude/checks/security-review.md": securityReview });
+
+    const reviews = await resolveReviews();
+
+    expect(reviews).toMatchObject([
+      { name: "Security Review", paths: ["core/**", "extensions/**"] },
+    ]);
+  });
+
+  it("leaves out a check whose paths match no changed file", async () => {
+    useRepo({
+      ".claude/checks/security-review.md": securityReview,
+      ".claude/checks/review.md": "Review the changed lines.",
+    });
+    const reviews = await resolveReviews();
+
+    // A docs-only change: the scoped check doesn't run, the unscoped one does
+    expect(
+      applicableReviews(reviews, ["docs/rules.mdx"]).map((r) => r.name),
+    ).toEqual(["review"]);
+    expect(
+      applicableReviews(reviews, ["docs/rules.mdx", "core/llm/index.ts"]).map(
+        (r) => r.name,
+      ),
+    ).toEqual(["review", "Security Review"]);
+  });
+
+  it("matches a relative pattern at any depth, as nextcli-checks does", async () => {
+    useRepo({
+      ".claude/checks/setup.md":
+        "---\npaths:\n  - .nvmrc\n---\n\nCheck the setup.",
+    });
+    const reviews = await resolveReviews();
+
+    expect(applicableReviews(reviews, ["extensions/cli/.nvmrc"])).toHaveLength(
+      1,
+    );
+  });
+
+  it("always runs a check named with --agent", () => {
+    const reviews = [
+      { name: "x", source: "./x.md", sourceType: "local" as const },
+    ];
+
+    expect(applicableReviews(reviews, ["docs/rules.mdx"])).toEqual(reviews);
   });
 });

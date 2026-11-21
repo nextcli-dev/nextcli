@@ -165,6 +165,42 @@ const isGlobalRule = (rule: RuleWithSource): boolean => {
   return false;
 };
 
+/**
+ * A file's path relative to the project a root-level rule belongs to: the
+ * part of the rule's sourceFile before /.claude/rules/ or /.continue/. Rules
+ * write project-relative globs (src/**), while files in the editor's context
+ * come as absolute URIs. Relative paths, and files outside that project,
+ * are returned as they are.
+ */
+const projectRelativePath = (
+  rule: RuleWithSource,
+  filePath: string,
+): string => {
+  const source = rule.sourceFile;
+  if (!source) {
+    return filePath;
+  }
+  const marker = [
+    source.indexOf("/.claude/rules/"),
+    source.indexOf("/.continue/"),
+  ]
+    .filter((index) => index >= 0)
+    .sort((a, b) => a - b)[0];
+  if (marker === undefined) {
+    return filePath;
+  }
+  const root = source.slice(0, marker + 1);
+  if (!filePath.startsWith(root)) {
+    return filePath;
+  }
+  const relative = filePath.slice(root.length);
+  try {
+    return decodeURIComponent(relative);
+  } catch {
+    return relative;
+  }
+};
+
 const checkGlobsAndRegex = ({
   rule,
   filePaths,
@@ -175,7 +211,9 @@ const checkGlobsAndRegex = ({
   fileContents: Record<string, string>;
 }) => {
   const matchingFiles = rule.globs
-    ? filePaths.filter((filePath) => matchesGlobs(filePath, rule.globs))
+    ? filePaths.filter((filePath) =>
+        matchesGlobs(projectRelativePath(rule, filePath), rule.globs),
+      )
     : filePaths;
 
   // If no files match the globs, don't apply the rule
