@@ -24,8 +24,7 @@ Not goals: a server mode, chat-app integrations, a web console, long-term memory
 | `core/`               | Shared IDE engine (config, LLM classes, tools, indexing). The CLI still imports parts of it.                                                                                                                                                                                                                 |
 | `gui/`                | React webview for the extension                                                                                                                                                                                                                                                                              |
 | `packages/`           | Libraries used through their `dist`: `config-yaml`, `config-types`, `openai-adapters`, `llm-info`, `fetch`, `terminal-security` (the shell-command evaluator), `ask-question` (the question tool's contract, shared by the extension and `cn`) and `snapshot` (shadow git snapshots for undoing agent turns) |
-| `.checks/`            | AI review checks that `.github/workflows/ai-checks.yml` runs on this repository                                                                                                                                                                                                                              |
-| `.continue/`          | Rules, prompts, checks and agent skills (`skills/`), mostly inherited from Continue. Some are stale; this file wins on conflict. `.claude/` is ignored; to use the skills in Claude Code, symlink each skill folder into `.claude/skills/`.                                                                  |
+| `.claude/`            | Agent config shared by `cn`, the extension and Claude Code: `skills/`, `rules/` (scoped by `paths:`/`globs:`) and `checks/`, the AI review checks that `.github/workflows/ai-checks.yml` and a local `cn review` run. `settings.local.json` and `worktrees/` stay ignored.                                   |
 | `docs/`, `docs-site/` | User docs for docs.nextcli.dev                                                                                                                                                                                                                                                                               |
 | `scripts/ci/`         | CI area selection (`affected.mjs`) and the deprecated-dependency check                                                                                                                                                                                                                                       |
 
@@ -52,7 +51,7 @@ Dependencies flow `packages/*` → `core` → `gui`, `extensions/vscode`, `exten
 
 ## Reviewing changes
 
-These rules apply to agents reviewing pull requests here, including the checks in `.checks/`:
+These rules apply to agents reviewing pull requests here, including the checks in `.claude/checks/`:
 
 - Mark a finding **critical** only if you can name the exact file, symbol or config that is broken now, it is in the diff or its context, it needs a change to this diff, and you can say what triggers it in real use. Otherwise it is advisory.
 - One root cause is one finding. Don't split it, and don't rephrase a fixed finding as a broader future risk.

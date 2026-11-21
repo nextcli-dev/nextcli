@@ -26,5 +26,3 @@ paths:
 - **No sleeps or retries.** Wait for the state you need. Timing assertions leave room for slow Windows runners.
 - **Don't pin catalog values.** Read a model's limit or price from the catalog in the test, or use a fixture. The weekly `sync-models` PR changes the snapshot.
 - **e2e stays a thin smoke test** of what needs a real VS Code. Logic goes in the Vitest suites. A failing e2e test is fixed, never skipped or quarantined.
-
-Where an older `.continue/rules` file disagrees (for example `unit-testing-rules.md` on `describe()`), this rule wins.

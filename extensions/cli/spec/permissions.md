@@ -124,4 +124,4 @@ A refused call in a headless run gets `Blocked by security policy: this tool cal
 
 1. Edit the rows of `permissionMatrix.test.ts` that the change affects, in the same commit. A refactor leaves them unchanged.
 2. A new built-in tool needs a row in `defaultPolicies.ts` for every kind of run.
-3. Update this file, `src/permissions/README.md` and the user docs. `.checks/documentation-freshness.md` lists them.
+3. Update this file, `src/permissions/README.md` and the user docs. `.claude/checks/documentation-freshness.md` lists them.

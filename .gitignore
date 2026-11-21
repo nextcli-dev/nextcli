@@ -2,7 +2,9 @@
 __pycache__/
 *.py[cod]
 *$py.class
-.claude/
+# Claude Code: .claude/ is committed except personal settings and worktrees
+.claude/settings.local.json
+.claude/worktrees/
 # C extensions
 *.so
 .husky/

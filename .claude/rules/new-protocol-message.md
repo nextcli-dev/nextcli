@@ -2,6 +2,9 @@
 name: New protocol message
 description: Create a new protocol message from core/gui/ide to core/gui/ide
 alwaysApply: false
+globs: "core/protocol/**"
+paths:
+  - "**/core/protocol/**"
 ---
 
 Create a new protocol message by taking the following steps:
