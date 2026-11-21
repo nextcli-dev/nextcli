@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.17.0](https://github.com/nextcli-dev/nextcli/compare/cli-v0.16.0...cli-v0.17.0) (2026-11-21)
+
+
+### Features
+
+* **cli,core:** read rules and checks from .claude, like skills ([#200](https://github.com/nextcli-dev/nextcli/issues/200)) ([a7457ca](https://github.com/nextcli-dev/nextcli/commit/a7457ca2e61082c6e2c9e08d4f765dc78caef239))
+
+
+### Bug Fixes
+
+* **cli:** cancel auto-compaction on Escape and prune the oldest turns, not the newest ([#196](https://github.com/nextcli-dev/nextcli/issues/196)) ([5de68b2](https://github.com/nextcli-dev/nextcli/commit/5de68b219bb37098c42900aaa9f8de925adcc6b8))
+* **cli:** count context honestly and keep display notices out of model requests ([3ebf853](https://github.com/nextcli-dev/nextcli/commit/3ebf85361f733ef7ff08ef99988ce40fb5c6d5b9))
+* **cli:** reserve the system prompt in every compaction and share the sent-history rule ([fae9746](https://github.com/nextcli-dev/nextcli/commit/fae97464f2596308809c1b9c58188481ea1c41f8))
+* **cli:** stop the TUI from flickering and overlapping during long tasks ([#203](https://github.com/nextcli-dev/nextcli/issues/203)) ([de7e3c1](https://github.com/nextcli-dev/nextcli/commit/de7e3c156e040bfc76724aeb7a218300b808173b))
+* **core:** keep provider usage on the OpenAI adapter path, and leave hosted APIs room for max_tokens ([#198](https://github.com/nextcli-dev/nextcli/issues/198)) ([358e096](https://github.com/nextcli-dev/nextcli/commit/358e096e3b2e184c0f9edb3321f6a4494fb1cd51))
+
 ## [0.16.0](https://github.com/nextcli-dev/nextcli/compare/cli-v0.15.0...cli-v0.16.0) (2026-11-19)
 
 
