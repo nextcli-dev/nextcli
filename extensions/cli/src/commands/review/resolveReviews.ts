@@ -11,10 +11,9 @@ export interface ResolvedReview {
 }
 
 /**
- * Determine which reviews to run, using three sources in order:
+ * Determine which reviews to run, using two sources in order:
  * 1. CLI --agent flags (highest priority)
- * 2. Hub API (if logged in and no --agent flags)
- * 3. Local .continue/agents/*.md, .continue/checks/*.md and .claude/checks/*.md (fallback)
+ * 2. Local .continue/agents/*.md, .continue/checks/*.md and .claude/checks/*.md (fallback)
  */
 export async function resolveReviews(
   agentFlags?: string[],
@@ -28,13 +27,13 @@ export async function resolveReviews(
     }));
   }
 
-  // Source 2: Hub API (silent failure if not logged in)
+  // Hub resolution was removed: resolveFromHub returns none
   const hubReviews = await resolveFromHub();
   if (hubReviews.length > 0) {
     return hubReviews;
   }
 
-  // Source 3: Local .continue/agents/*.md, .continue/checks/*.md and .claude/checks/*.md
+  // Source 2: Local .continue/agents/*.md, .continue/checks/*.md and .claude/checks/*.md
   const localReviews = resolveFromLocal();
   if (localReviews.length > 0) {
     return localReviews;

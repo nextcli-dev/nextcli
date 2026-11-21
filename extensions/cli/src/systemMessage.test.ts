@@ -347,7 +347,9 @@ Rule 3: Third rule`;
       expect(result).toContain("claude-always-rule");
     });
 
-    it("treats Claude Code's paths: like globs, so the rule is not always-on", async () => {
+    // As documented: cn loads only rules without paths or globs, from
+    // .claude/rules and .continue/rules alike
+    it("leaves out a .claude/rules rule scoped with paths:, as it does any scoped rule", async () => {
       useRules({
         ".claude/rules/tests.md":
           '---\npaths:\n  - "**/*.test.ts"\n---\n\nclaude-scoped-rule',
