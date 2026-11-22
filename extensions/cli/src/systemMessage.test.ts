@@ -22,11 +22,15 @@ vi.mock("./services/ServiceContainer.js", () => ({
 }));
 
 // Mock processRule to avoid file system operations in tests
-vi.mock("./hubLoader.js", () => ({
-  processRule: vi
-    .fn()
-    .mockImplementation((spec: string) => Promise.resolve(spec)),
-}));
+vi.mock("./hubLoader.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./hubLoader.js")>();
+  return {
+    ...actual,
+    processRule: vi
+      .fn()
+      .mockImplementation((spec: string) => Promise.resolve(spec)),
+  };
+});
 
 const PLAN_MODE_STRING = "You are operating in _Plan Mode_";
 
@@ -41,6 +45,15 @@ describe("constructSystemMessage", () => {
     expect(parts.map((part) => part.label)).toEqual(
       expect.arrayContaining(["AGENTS.md", "rule-from-the-flag.md"]),
     );
+  });
+
+  it("does not use inline --rule text as a part label", async () => {
+    const text = "Always mention the secret project name Aurora";
+    const parts = await constructSystemMessageParts("normal", [text]);
+    const message = parts.map((part) => part.text).join("");
+    expect(message).toContain(text);
+    expect(parts.map((part) => part.label)).toContain("Inline rule");
+    expect(parts.map((part) => part.label)).not.toContain(text);
   });
 
   it("should return base system message with rules when additionalRules is provided", async () => {

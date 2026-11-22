@@ -5,7 +5,7 @@ import * as path from "path";
 import { parseMarkdownRule, RuleObject } from "@nextcli/config-yaml";
 
 import { env } from "./env.js";
-import { processRule } from "./hubLoader.js";
+import { isRulePath, processRule } from "./hubLoader.js";
 import { PermissionMode } from "./permissions/types.js";
 import { findProjectAgentFile } from "./projectAgentFile.js";
 import { serviceContainer } from "./services/ServiceContainer.js";
@@ -86,7 +86,8 @@ async function getConfigYamlRules(): Promise<LabeledRule[]> {
     if (!rule?.rule) {
       continue;
     }
-    const name = "name" in rule && typeof rule.name === "string" ? rule.name : "";
+    const name =
+      "name" in rule && typeof rule.name === "string" ? rule.name : "";
     labeled.push({
       label: name || "Config rule",
       text: rule.rule,
@@ -209,7 +210,9 @@ export async function constructSystemMessageParts(
     for (const ruleSpec of additionalRules) {
       try {
         labeledRules.push({
-          label: ruleSpec,
+          // A path is a name. Inline text is the rule itself, so the trace
+          // must not use it as the label.
+          label: isRulePath(ruleSpec) ? path.basename(ruleSpec) : "Inline rule",
           text: await processRule(ruleSpec),
         });
       } catch (error: any) {

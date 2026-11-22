@@ -73,7 +73,8 @@ export async function tracedContext(input: {
   tools?: ChatCompletionTool[];
   mcpConnections?: MCPConnectionInfo[];
 }): Promise<ContextSnapshot | undefined> {
-  if (process.env.NEXTCLI_TRACE?.trim().toLowerCase() !== "basic") {
+  const { traceEnabled } = await import("../trace/trace.js");
+  if (!traceEnabled()) {
     return undefined;
   }
   return cliContextSnapshot(input);

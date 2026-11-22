@@ -4,7 +4,7 @@ const traceEvent = vi.hoisted(() => vi.fn());
 
 vi.mock("../trace/trace.js", () => ({
   traceEvent,
-  traceEnabled: () => process.env.NEXTCLI_TRACE?.trim().toLowerCase() === "basic",
+  traceEnabled: () => false,
 }));
 
 vi.mock("../util/logger.js", () => ({
