@@ -85,6 +85,7 @@ async function main() {
       "config-types",
       "terminal-security",
       "ask-question",
+      "context",
       "snapshot",
     ]);
 
