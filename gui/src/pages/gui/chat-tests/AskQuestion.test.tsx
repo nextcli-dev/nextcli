@@ -9,7 +9,11 @@ import { vi } from "vitest";
 import { generateToolCallButtonTestId } from "../../../components/mainInput/Lump/LumpToolbar/PendingToolCallToolbar";
 import { selectActiveTools } from "../../../redux/selectors/selectActiveTools";
 import { updateConfig } from "../../../redux/slices/configSlice";
-import { newSession, setMode } from "../../../redux/slices/sessionSlice";
+import {
+  newSession,
+  setMode,
+  updateToolCallOutput,
+} from "../../../redux/slices/sessionSlice";
 import { resumeDepth } from "../../../redux/thunks/answerQuestion";
 import { loadSession, saveCurrentSession } from "../../../redux/thunks/session";
 import { setToolPolicy } from "../../../redux/slices/uiSlice";
@@ -590,6 +594,111 @@ test("a long question scrolls inside the panel and follows the highlight", async
   } finally {
     Element.prototype.scrollIntoView = original;
   }
+});
+
+test("updating an open question without changing its arguments keeps the page", async () => {
+  const { store } = await renderWithQuestion(TWO_QUESTIONS);
+  await click("ask-question-option-1");
+  expect(screen.getByTestId("ask-question-count")).toHaveTextContent("2 of 2");
+
+  await act(async () => {
+    store.dispatch(
+      updateToolCallOutput({
+        toolCallId: QUESTION_ID,
+        contextItems: [
+          {
+            name: "Note",
+            description: "",
+            content: "still waiting",
+            hidden: true,
+          },
+        ],
+      }),
+    );
+  });
+
+  expect(screen.getByTestId("ask-question-panel")).toBeInTheDocument();
+  expect(screen.getByTestId("ask-question-count")).toHaveTextContent("2 of 2");
+  // Focus moves back to the panel on the next frame. The editor may still
+  // hold it until that frame, which is later when other tests ran first.
+  await waitFor(() => {
+    expect(screen.getByTestId("ask-question-panel")).toHaveFocus();
+  });
+});
+
+test("invalid question arguments show the error and leave the chat input up", async () => {
+  const { store, ideMessenger } = await renderWithProviders(<Chat />);
+  ideMessenger.setChatResponseText("I'll ask that another way.");
+  await act(async () => {
+    addAndSelectMockLlm(store, ideMessenger);
+    store.dispatch(setMode("plan"));
+    store.dispatch(
+      newSession({
+        sessionId: "bad-question",
+        title: "Bad question",
+        workspaceDirectory: "",
+        mode: "plan",
+        history: [
+          {
+            message: {
+              role: "user",
+              content: "Plan this",
+              id: "user-1",
+            } as ChatMessage & { id: string },
+            contextItems: [],
+          },
+          {
+            message: {
+              role: "assistant",
+              content: "",
+              id: "assistant-1",
+            } as ChatMessage & { id: string },
+            contextItems: [],
+            toolCallStates: [
+              {
+                toolCallId: "q1",
+                status: "calling",
+                toolCall: {
+                  id: "q1",
+                  type: "function",
+                  function: {
+                    name: BuiltInToolNames.AskQuestion,
+                    arguments: "{}",
+                  },
+                },
+                parsedArgs: {},
+              },
+            ],
+          },
+        ],
+      }),
+    );
+  });
+
+  // The panel cannot show these arguments, so it must not replace the input.
+  // The call is closed with the normalizer's message, and the turn continues.
+  expect(screen.queryByTestId("ask-question-panel")).not.toBeInTheDocument();
+  const input = screen.getByTestId("continue-input-box-main-editor-input");
+  expect(input.querySelector("[hidden]")).toBeNull();
+
+  await waitFor(() => {
+    expect(toolState(store, "q1")?.status).toBe("errored");
+    expect(toolState(store, "q1")?.output?.[0]?.content).toContain(
+      "Pass at least one question",
+    );
+    const toldTheModel = store.getState().session.history.some((item) => {
+      return (
+        item.message.role === "tool" &&
+        item.message.toolCallId === "q1" &&
+        item.message.content.includes("Pass at least one question")
+      );
+    });
+    expect(toldTheModel).toBe(true);
+    expect(store.getState().session.isStreaming).toBe(false);
+  });
+  expect(screen.queryByTestId("ask-question-panel")).not.toBeInTheDocument();
+  expect(input.querySelector("[hidden]")).toBeNull();
+  expect(screen.getByText("I'll ask that another way.")).toBeInTheDocument();
 });
 
 test("plan mode offers the tool and chat mode doesn't", async () => {

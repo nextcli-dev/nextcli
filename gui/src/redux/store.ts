@@ -13,6 +13,7 @@ import {
 import { createFilter } from "redux-persist-transform-filter";
 import autoMergeLevel2 from "redux-persist/lib/stateReconciler/autoMergeLevel2";
 import storage from "redux-persist/lib/storage";
+import { v4 as uuidv4 } from "uuid";
 import { IdeMessenger, IIdeMessenger } from "../context/IdeMessenger";
 import configReducer from "./slices/configSlice";
 import editModeStateReducer from "./slices/editState";
@@ -22,7 +23,7 @@ import sessionReducer from "./slices/sessionSlice";
 import tabsReducer from "./slices/tabsSlice";
 import uiReducer from "./slices/uiSlice";
 
-const rootReducer = combineReducers({
+const sliceReducer = combineReducers({
   session: sessionReducer,
   ui: uiReducer,
   editModeState: editModeStateReducer,
@@ -31,6 +32,41 @@ const rootReducer = combineReducers({
   profiles: profilesReducer,
   modelSettings: modelSettingsReducer,
 });
+
+/**
+ * Drops the in-memory state that a crash can replay. Config and model
+ * settings stay: they are loaded from the host, and the listeners that
+ * fetch them do not run again after recovery.
+ */
+export const ROOT_RESET = "root/reset";
+
+export function resetRootState(): UnknownAction {
+  return { type: ROOT_RESET };
+}
+
+function rootReducer(
+  state: ReturnType<typeof sliceReducer> | undefined,
+  action: UnknownAction,
+): ReturnType<typeof sliceReducer> {
+  if (action.type !== ROOT_RESET) {
+    return sliceReducer(state, action);
+  }
+  // Abort the live stream, then hand the recovered session a new controller
+  // and id. The slice initial state shares one controller and that object
+  // is frozen, so the state returned below must not keep it.
+  state?.session.streamAborter.abort();
+  const next = sliceReducer(undefined, action);
+  return {
+    ...next,
+    config: state?.config ?? next.config,
+    modelSettings: state?.modelSettings ?? next.modelSettings,
+    session: {
+      ...next.session,
+      id: uuidv4(),
+      streamAborter: new AbortController(),
+    },
+  };
+}
 
 const saveSubsetFilters = [
   createFilter("session", [

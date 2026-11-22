@@ -12,6 +12,7 @@ import { selectCurrentToolCalls } from "../selectors/selectToolCalls";
 import {
   acceptToolCall,
   cancelToolCall,
+  errorToolCall,
   updateToolCallOutput,
 } from "../slices/sessionSlice";
 import { AppThunkDispatch, RootState, ThunkApiType } from "../store";
@@ -114,6 +115,43 @@ export const dismissQuestion = createAsyncThunk<
     saveCurrentSession({ openNewSession: false, generateTitle: false }),
   );
 });
+
+/**
+ * The arguments cannot be shown. Mark the call errored with the normalizer's
+ * message and continue the turn, so it does not stay open with no output.
+ */
+export const failInvalidQuestion = createAsyncThunk<
+  void,
+  { toolCallId: string; message: string },
+  ThunkApiType
+>(
+  "askQuestion/invalid",
+  async ({ toolCallId, message }, { dispatch, getState }) => {
+    if (!isOpenQuestion(getState(), toolCallId)) return;
+    dispatch(
+      errorToolCall({
+        toolCallId,
+        output: [
+          {
+            icon: "problems",
+            name: "Invalid Tool Call",
+            description: "",
+            content: message,
+            hidden: false,
+          },
+        ],
+      }),
+    );
+    unwrapResult(
+      await dispatch(
+        streamResponseAfterToolCall({
+          toolCallId,
+          depth: resumeDepth(getState().session.history),
+        }),
+      ),
+    );
+  },
+);
 
 /**
  * Dismisses every open question in the current turn. Called before a new user

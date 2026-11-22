@@ -33,6 +33,25 @@ describe("ToolCallStatusMessage", () => {
     expect(screen.getByTestId("tool-call-title")).toHaveTextContent(text);
   });
 
+  it("keeps a title when the status template cannot render", () => {
+    // An unclosed Mustache tag throws. The row must still describe the call.
+    const tool = {
+      ...viewDiffTool,
+      wouldLikeTo: "view {{#unclosed",
+      isCurrently: "getting {{#unclosed",
+      hasAlready: "viewed {{#unclosed",
+    };
+    render(
+      <ToolCallStatusMessage
+        tool={tool}
+        toolCallState={stateWithStatus("generated")}
+      />,
+    );
+    expect(screen.getByTestId("tool-call-title")).toHaveTextContent(
+      "NextCLI wants to use the View Diff tool",
+    );
+  });
+
   it("names an instant tool's call as done while it runs", () => {
     // view_diff is instant: it has no visible "is getting" phase
     render(
