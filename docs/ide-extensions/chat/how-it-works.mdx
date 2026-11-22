@@ -38,6 +38,38 @@ Each code section in the AI response includes action buttons:
 - Clears all previous context for a fresh start
 - Helpful for switching between different tasks
 
+## Compact the Conversation
+
+A long session fills the model's context window. Once it's full, the oldest messages are left out of each request. Compacting replaces the conversation up to a response with a summary, so later requests send the summary and the turns after it instead.
+
+### Start a Compaction
+
+- Click the compact button (two arrows pointing in) under a response. It summarizes the conversation up to and including that response.
+- Once the window is 60% full, or the oldest messages are already left out, the button under the last response reads **Summarize conversation to reduce context length**. A context bar also appears next to the input. Hover it to see how full the window is, then choose **Compact conversation** or **Start a new session**.
+- You can't compact while a response streams or tools run, or while that response is already being summarized.
+
+The selected chat model writes the summary. While it runs, the response shows "Generating conversation summary" and a **Cancel** link. You can switch to another session meanwhile: the summary is saved to the session it belongs to.
+
+### What the Summary Includes
+
+The summary request contains:
+
+- the messages up to that response, with their attached context, such as `@` files;
+- tool calls and their results;
+- the summary from an earlier compaction, if there is one.
+
+It leaves out the agent's system prompt, your rules and the tool definitions, because the summary request runs without tools.
+
+If the request doesn't fit the model's window, the longest tool outputs are shortened until it does, and a notification says how many. If it still doesn't fit, compaction fails and the conversation is left as it is.
+
+The summary appears under the response it covers, and the earlier messages stay in the chat, dimmed.
+
+### Cancel or Remove a Summary
+
+- **Cancel** stops the summary. Nothing is saved.
+- The trash icon on **Conversation Summary** removes it, so later requests send the full conversation again.
+- If compaction fails, a notification gives the reason. If the response is deleted before the summary is saved, a notification says the summary wasn't saved. Deleting the session stops its compaction.
+
 ## What Advanced Features Are Available
 
 ### How to Use Prompt Inspection

@@ -27,12 +27,12 @@ export default function ConversationSummary(props: ConversationSummaryProps) {
   const deleteCompaction = useDeleteCompaction();
   const cancelCompaction = useCancelCompaction();
 
-  if (!props.item.conversationSummary && !isLoading) {
+  if (!messageId || (!props.item.conversationSummary && !isLoading)) {
     return null;
   }
 
   // Loading state - much simpler
-  if (isLoading && messageId) {
+  if (isLoading) {
     return (
       <div className="mx-1.5 mb-4 mt-2">
         <div className="bg-vsc-input-background rounded-md shadow-sm">
@@ -70,7 +70,7 @@ export default function ConversationSummary(props: ConversationSummaryProps) {
             text="Delete summary"
             onClick={(e) => {
               e.stopPropagation();
-              deleteCompaction(props.index);
+              deleteCompaction(messageId);
             }}
           >
             <TrashIcon className="text-description-muted h-3 w-3" />

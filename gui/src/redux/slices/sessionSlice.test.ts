@@ -571,3 +571,78 @@ describe("sessionSlice streamUpdate", () => {
     });
   });
 });
+
+describe("sessionSlice compaction summaries", () => {
+  const { reducer, actions } = sessionSlice;
+  const row = (
+    role: "user" | "assistant",
+    id: string,
+    conversationSummary?: string,
+  ): ChatHistoryItemWithMessageId => ({
+    message: { role, content: id, id },
+    contextItems: [],
+    ...(conversationSummary && { conversationSummary }),
+  });
+  type State = ReturnType<typeof reducer>;
+  const withHistory = (history: ChatHistoryItemWithMessageId[]): State => ({
+    ...sessionSlice.getInitialState(),
+    history,
+    isPruned: true,
+    contextPercentage: 0.9,
+  });
+  const summaries = (state: State) =>
+    state.history.map((item) => [item.message.id, item.conversationSummary]);
+
+  it("deletes the summary of its own message after earlier rows are removed", () => {
+    let state = withHistory([
+      row("user", "u1"),
+      row("assistant", "a1"),
+      row("user", "u2"),
+      row("assistant", "a2", "Second"),
+      row("user", "u3"),
+      row("assistant", "a3", "Third"),
+    ]);
+    // The first exchange is deleted after the summary at index 5 rendered
+    state = reducer(state, actions.deleteMessage(1));
+    state = reducer(state, actions.deleteCompaction({ messageId: "a3" }));
+
+    expect(summaries(state)).toEqual([
+      ["u2", undefined],
+      ["a2", "Second"],
+      ["u3", undefined],
+      ["a3", undefined],
+    ]);
+  });
+
+  it("changes nothing when deleting the summary of an unknown message", () => {
+    const state = withHistory([
+      row("user", "u1"),
+      row("assistant", "a1", "First"),
+    ]);
+
+    expect(
+      reducer(state, actions.deleteCompaction({ messageId: "gone" })),
+    ).toEqual(state);
+  });
+
+  it("drops the context measured before a summary is stored", () => {
+    const state = reducer(
+      withHistory([row("user", "u1"), row("assistant", "a1")]),
+      actions.setConversationSummary({ messageId: "a1", summary: "Summary" }),
+    );
+
+    expect(state.history[1].conversationSummary).toBe("Summary");
+    expect(state.isPruned).toBe(false);
+    expect(state.contextPercentage).toBeUndefined();
+  });
+
+  it("keeps the context measure when the summary's message is gone", () => {
+    const state = reducer(
+      withHistory([row("user", "u1")]),
+      actions.setConversationSummary({ messageId: "a1", summary: "Summary" }),
+    );
+
+    expect(state.isPruned).toBe(true);
+    expect(state.contextPercentage).toBe(0.9);
+  });
+});

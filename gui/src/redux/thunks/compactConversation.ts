@@ -122,7 +122,11 @@ export const compactConversation = createAsyncThunk<
           const saved = await getSession(extra.ideMessenger, sessionId);
           // Saved by the GUI, so its messages keep their ids
           const savedHistory = saved.history as ChatHistoryItemWithMessageId[];
-          if (!savedHistory.some((item) => item.message.id === messageId)) {
+          // Cancelled, as when the chat was deleted: its file stays deleted
+          if (
+            compaction.cancelled ||
+            !savedHistory.some((item) => item.message.id === messageId)
+          ) {
             return false;
           }
           unwrapResult(
@@ -139,6 +143,9 @@ export const compactConversation = createAsyncThunk<
           );
           return true;
         });
+        if (compaction.cancelled) {
+          return;
+        }
         // Reopened while its file was read or written: the open copy may
         // predate the summary, and its next save would drop it
         if (getState().session.id === sessionId) {
@@ -187,4 +194,24 @@ export const cancelCompaction = createAsyncThunk<
     sessionId: compaction.sessionId,
     messageId,
   });
+});
+
+/**
+ * Stops every compaction of a session and clears their spinners, so none
+ * writes the session's file after it is deleted
+ */
+export const cancelSessionCompactions = createAsyncThunk<
+  void,
+  { sessionId: string },
+  ThunkApiType
+>("session/cancelSessionCompactions", async ({ sessionId }, { dispatch }) => {
+  const messageIds = [...running]
+    .filter(([, compaction]) => compaction.sessionId === sessionId)
+    .map(([messageId]) => messageId);
+  await Promise.all(
+    messageIds.map((messageId) => {
+      dispatch(setCompactionLoading({ messageId, loading: false }));
+      return dispatch(cancelCompaction({ messageId }));
+    }),
+  );
 });

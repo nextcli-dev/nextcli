@@ -20,6 +20,7 @@ import { isQuestionCall } from "../util";
 import { selectCurrentToolCalls } from "../selectors/selectToolCalls";
 import { clearSessionQuestionDrafts } from "../../util/askQuestionDrafts";
 import { updateSelectedModelByRole } from "../thunks/updateSelectedModelByRole";
+import { cancelSessionCompactions } from "./compactConversation";
 
 const MAX_TITLE_LENGTH = 100;
 
@@ -104,12 +105,17 @@ export const deleteSession = createAsyncThunk<void, string, ThunkApiType>(
   "session/delete",
   async (id, { getState, dispatch, extra }) => {
     dispatch(deleteSessionMetadata(id)); // optimistic
+    // Marks its compactions cancelled at once; the aborts needn't be awaited
+    void dispatch(cancelSessionCompactions({ sessionId: id }));
     clearSessionQuestionDrafts(id);
     const state = getState();
     if (id === state.session.id) {
       await dispatch(loadLastSession());
     }
-    const result = await extra.ideMessenger.request("history/delete", { id });
+    // After the session's writes already in flight, which would recreate it
+    const result = await queueSessionWrite(id, () =>
+      extra.ideMessenger.request("history/delete", { id }),
+    );
     if (result.status === "error") {
       throw new Error(result.error);
     }

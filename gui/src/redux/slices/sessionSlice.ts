@@ -560,16 +560,17 @@ export const sessionSlice = createSlice({
       );
       if (historyItem) {
         historyItem.conversationSummary = summary;
+        // Measured before the summary; the next request reports the new size
+        state.isPruned = false;
+        state.contextPercentage = undefined;
       }
     },
-    deleteCompaction: (state, action: PayloadAction<number>) => {
-      // Removes the conversation summary from the specified message
-      const historyItem = state.history[action.payload];
-      if (historyItem?.conversationSummary) {
-        state.history[action.payload] = {
-          ...historyItem,
-          conversationSummary: undefined,
-        };
+    deleteCompaction: (state, action: PayloadAction<{ messageId: string }>) => {
+      const historyItem = state.history.find(
+        (item) => item.message.id === action.payload.messageId,
+      );
+      if (historyItem) {
+        historyItem.conversationSummary = undefined;
       }
     },
     updateHistoryItemAtIndex: (

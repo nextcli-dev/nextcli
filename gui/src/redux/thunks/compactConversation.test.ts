@@ -8,9 +8,11 @@ import {
   deleteMessage,
   newSession,
   setActive,
+  setContextPercentage,
+  setIsPruned,
 } from "../slices/sessionSlice";
 import { cancelCompaction, compactConversation } from "./compactConversation";
-import { loadSession, saveCurrentSession } from "./session";
+import { deleteSession, loadSession, saveCurrentSession } from "./session";
 
 const model: ModelDescription = {
   model: "mock",
@@ -509,6 +511,170 @@ describe("compactConversation", () => {
       "error",
       "Compaction failed: EACCES: permission denied",
     );
+  });
+
+  it("keeps a deleted chat deleted, and leaves other chats' compactions alone", async () => {
+    const { store, handlers, sent, toast, state } = storeWith(history);
+    const files = disk(handlers, {
+      "session-1": {
+        sessionId: "session-1",
+        title: "Token check",
+        workspaceDirectory: "",
+        history,
+      },
+    });
+    handlers["history/delete"] = async ({ id }) => {
+      delete files[id];
+    };
+    const first = pending<ReturnType<typeof reply>>();
+    const other = pending<ReturnType<typeof reply>>();
+    handlers["conversation/compact"] = ({ sessionId }) =>
+      sessionId === "session-1" ? first.promise : other.promise;
+    // A provider slow to stop: the request settles only later
+    handlers["conversation/compact/abort"] = async () => {};
+    const otherChat = [
+      item("user", "Other chat"),
+      item("assistant", "Other answer"),
+    ];
+
+    const compacting = store.dispatch(compactConversation({ index: 3 }) as any);
+    store.dispatch(
+      newSession({
+        sessionId: "session-2",
+        title: "Other",
+        workspaceDirectory: "",
+        history: otherChat,
+      }),
+    );
+    const compactingOther = store.dispatch(
+      compactConversation({ index: 1 }) as any,
+    );
+    await store.dispatch(deleteSession("session-1") as any);
+
+    // Only the deleted chat's spinner is cleared
+    expect(state().compactionLoading).toEqual({
+      [otherChat[1].message.id]: true,
+    });
+    // A summary that arrives anyway is discarded
+    first.resolve(reply("Summary of session 1"));
+    other.resolve(reply("Summary of session 2"));
+    await compacting;
+    await compactingOther;
+
+    expect(sent("history/delete")[0].data).toEqual({ id: "session-1" });
+    expect(files["session-1"]).toBeUndefined();
+    expect(
+      sent("history/save").filter((r) => r.data.sessionId === "session-1"),
+    ).toHaveLength(0);
+    expect(toast).not.toHaveBeenCalled();
+    expect(state().history[1].conversationSummary).toBe("Summary of session 2");
+    expect(state().compactionLoading).toEqual({});
+  });
+
+  it("writes nothing for a chat deleted while its file is read", async () => {
+    const { store, handlers, sent, toast } = storeWith(history);
+    const files = disk(handlers, {
+      "session-1": {
+        sessionId: "session-1",
+        title: "Token check",
+        workspaceDirectory: "",
+        history,
+      },
+    });
+    handlers["history/delete"] = async ({ id }) => {
+      delete files[id];
+    };
+    const load = handlers["history/load"]!;
+    handlers["history/load"] = async (data) => {
+      const session = await load(data);
+      void store.dispatch(deleteSession("session-1") as any);
+      return session;
+    };
+    handlers["conversation/compact"] = async () => {
+      store.dispatch(
+        newSession({
+          sessionId: "session-2",
+          title: "Other",
+          workspaceDirectory: "",
+          history: [item("user", "Other chat")],
+        }),
+      );
+      return reply("Summary of session 1");
+    };
+
+    await store.dispatch(compactConversation({ index: 3 }) as any);
+    await vi.waitFor(() => expect(files["session-1"]).toBeUndefined());
+
+    expect(sent("history/save")).toHaveLength(0);
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  it("deletes a chat only after a write of its file already under way", async () => {
+    const { store, handlers } = storeWith(history);
+    const files = disk(handlers, {
+      "session-1": {
+        sessionId: "session-1",
+        title: "Token check",
+        workspaceDirectory: "",
+        history,
+      },
+    });
+    handlers["history/delete"] = async ({ id }) => {
+      delete files[id];
+    };
+    const save = handlers["history/save"]!;
+    handlers["history/save"] = async (session) => {
+      // The chat is deleted while its file is being written
+      void store.dispatch(deleteSession(session.sessionId) as any);
+      await settle();
+      await save(session);
+    };
+    handlers["conversation/compact"] = async () => {
+      store.dispatch(
+        newSession({
+          sessionId: "session-2",
+          title: "Other",
+          workspaceDirectory: "",
+          history: [item("user", "Other chat")],
+        }),
+      );
+      return reply("Summary of session 1");
+    };
+
+    await store.dispatch(compactConversation({ index: 3 }) as any);
+    await vi.waitFor(() => expect(files["session-1"]).toBeUndefined());
+  });
+
+  it("hides the context measured before the summary", async () => {
+    const { store, handlers, state } = storeWith(history);
+    store.dispatch(setIsPruned(true));
+    store.dispatch(setContextPercentage(0.95));
+    handlers["conversation/compact"] = async () => reply("Summary");
+
+    await store.dispatch(compactConversation({ index: 3 }) as any);
+
+    expect(state().isPruned).toBe(false);
+    expect(state().contextPercentage).toBeUndefined();
+  });
+
+  it("keeps the context measure after a failure or a cancel", async () => {
+    const { store, handlers, errors, state } = storeWith(history);
+    store.dispatch(setIsPruned(true));
+    store.dispatch(setContextPercentage(0.95));
+    errors["conversation/compact"] = "401 invalid api key";
+    await store.dispatch(compactConversation({ index: 3 }) as any);
+
+    delete errors["conversation/compact"];
+    const answer = pending<ReturnType<typeof reply>>();
+    handlers["conversation/compact"] = () => answer.promise;
+    handlers["conversation/compact/abort"] = async () =>
+      answer.resolve(reply("Partial summ"));
+    const compacting = store.dispatch(compactConversation({ index: 3 }) as any);
+    await store.dispatch(cancelCompaction({ messageId: targetId }) as any);
+    await compacting;
+
+    expect(state().isPruned).toBe(true);
+    expect(state().contextPercentage).toBe(0.95);
   });
 
   it("doesn't compact while a turn runs", async () => {
