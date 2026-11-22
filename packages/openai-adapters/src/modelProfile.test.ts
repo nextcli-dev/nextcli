@@ -131,12 +131,11 @@ describe("NextCLI's model supplement", () => {
     });
     expect(profile.catalog).toMatchObject({ context: 1_000_000 });
 
-    // The menu gets thinking, the entry's checked levels (no "none": generic
-    // controls can't turn thinking off) and the model's own window
-    const listed = (SUPPLEMENT.alibaba["qwen4-max"].efforts ?? []).filter(
-      (effort) => effort !== "none",
-    );
-    expect(listed.length).toBeGreaterThan(0);
+    // The menu gets thinking, the levels the API was checked to accept (no
+    // "none": generic controls can't turn thinking off) and the model's own
+    // window. Pinned: each level is sent as-is, so a typo in the entry would
+    // reach the API as a 400.
+    const listed = ["minimal", "low", "medium", "high", "xhigh", "max"];
     const controls = getModelControls(qwen);
     expect(controls).toMatchObject({
       efforts: listed,

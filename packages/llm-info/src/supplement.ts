@@ -36,6 +36,9 @@ export const SUPPLEMENT: Record<string, Record<string, CatalogModel>> = {
       // reasoning_effort is rejected with "must be one of: 'none', 'off',
       // 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'"; "none" returns
       // no reasoning tokens. "off" is left out as the same as "none".
+      // DashScope international and the coding plan use this entry too, but
+      // weren't checked: both refused the token-plan key (401), and each
+      // host checks the key before the request body.
       efforts: ["none", "minimal", "low", "medium", "high", "xhigh", "max"],
       images: true,
       cost: { input: 1.5, output: 4.5, cacheRead: 0.075, cacheWrite: 1.875 },
