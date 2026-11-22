@@ -522,6 +522,55 @@ describe("isRecommendedAgentModel", () => {
     });
   });
 
+  describe("Qwen models", () => {
+    it.each([
+      "qwen4-max-preview",
+      "qwen4-max",
+      "qwen4.1-plus",
+      "qwen3.8-max",
+      "qwen3.6-plus",
+      "qwen3.6-max-preview",
+      "qwen3-max",
+      "qwen3-max-2026-01-23",
+      // 3.10 and later, not only single-digit minors
+      "qwen3.10-max",
+      "qwen3.10-plus",
+    ])("should return true for %s, a max or plus tier", (model) => {
+      expect(isRecommendedAgentModel(model)).toBe(true);
+    });
+
+    it.each([
+      "qwen3-coder-plus",
+      "qwen3-coder-480b-a35b-instruct",
+      "qwen/qwen3-coder",
+      "qwen/qwen3-coder:free",
+      "qwen.qwen3-coder-480b-a35b-v1:0",
+    ])("should return true for %s, the large Qwen 3 coder", (model) => {
+      expect(isRecommendedAgentModel(model)).toBe(true);
+    });
+
+    it.each([
+      "qwen3.8-flash",
+      "qwen4-flash",
+      "qwen4-vl-instruct",
+      "qwen3-coder-flash",
+      "qwen/qwen3-coder-flash",
+      "qwen3-coder-30b-a3b-instruct",
+      "qwen/qwen3-coder-30b-a3b-instruct",
+      "qwen.qwen3-coder-30b-a3b-v1:0",
+      "qwen/qwen3-coder-next",
+      "qwen.qwen3-coder-next",
+      "qwen3.5-9b",
+      "qwen3-32b",
+      "qwen3-235b-a22b",
+      "qwen2.5-72b-instruct",
+      "qwen-max",
+      "qwen3.1-max",
+    ])("should return false for %s", (model) => {
+      expect(isRecommendedAgentModel(model)).toBe(false);
+    });
+  });
+
   describe("case insensitivity", () => {
     it("should handle uppercase model names", () => {
       expect(isRecommendedAgentModel("GEMINI-3.1-PRO-PREVIEW")).toBe(true);

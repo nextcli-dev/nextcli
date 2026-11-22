@@ -496,6 +496,14 @@ export function isRecommendedAgentModel(modelName: string): boolean {
     [/claude/, /opus/, /(?<!\d)-[4-9]/],
     [/grok-[4-9][\.-]\d/],
     [/claude/, /[4-9]-[5-9]/],
+    // Qwen 3, 3.5 and later, and 4+: the max and plus tiers and the large
+    // coder (qwen3-coder, -plus, -480b-a35b). The whole id is matched, so
+    // flash, next and the smaller open-weight sizes stay out. Allowed after
+    // the tier: -preview, -latest, a date, Bedrock's -v1:0, OpenRouter's
+    // :free.
+    [
+      /(?:^|[/.])qwen(?:3(?:\.(?:[5-9]|[1-9]\d+))?|[4-9](?:\.\d+)?)-(?:max|plus|coder(?:-plus|-480b-a35b(?:-instruct)?)?)(?:-preview|-latest|-\d{4}-\d{2}-\d{2}|-\d{4}|-v\d+)?(?::[\w-]+)?$/,
+    ],
   ];
   for (const combo of recs) {
     if (combo.every((regex) => modelName.toLowerCase().match(regex))) {
