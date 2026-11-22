@@ -523,22 +523,51 @@ describe("isRecommendedAgentModel", () => {
   });
 
   describe("Qwen models", () => {
-    it("should return true for Qwen 4 and the larger Qwen 3 models", () => {
-      expect(isRecommendedAgentModel("qwen4-max-preview")).toBe(true);
-      expect(isRecommendedAgentModel("qwen4-max")).toBe(true);
-      expect(isRecommendedAgentModel("qwen3.8-max")).toBe(true);
-      expect(isRecommendedAgentModel("qwen3.6-plus")).toBe(true);
-      expect(isRecommendedAgentModel("qwen3-max")).toBe(true);
-      expect(isRecommendedAgentModel("qwen3-coder-plus")).toBe(true);
-      expect(isRecommendedAgentModel("qwen/qwen3-coder")).toBe(true);
+    it.each([
+      "qwen4-max-preview",
+      "qwen4-max",
+      "qwen4.1-plus",
+      "qwen3.8-max",
+      "qwen3.6-plus",
+      "qwen3.6-max-preview",
+      "qwen3-max",
+      "qwen3-max-2026-01-23",
+      // 3.10 and later, not only single-digit minors
+      "qwen3.10-max",
+      "qwen3.10-plus",
+    ])("should return true for %s, a max or plus tier", (model) => {
+      expect(isRecommendedAgentModel(model)).toBe(true);
     });
 
-    it("should return false for small, flash and older Qwen models", () => {
-      expect(isRecommendedAgentModel("qwen3.8-flash")).toBe(false);
-      expect(isRecommendedAgentModel("qwen3.5-9b")).toBe(false);
-      expect(isRecommendedAgentModel("qwen3-32b")).toBe(false);
-      expect(isRecommendedAgentModel("qwen2.5-72b-instruct")).toBe(false);
-      expect(isRecommendedAgentModel("qwen-max")).toBe(false);
+    it.each([
+      "qwen3-coder-plus",
+      "qwen3-coder-480b-a35b-instruct",
+      "qwen/qwen3-coder",
+      "qwen/qwen3-coder:free",
+      "qwen.qwen3-coder-480b-a35b-v1:0",
+    ])("should return true for %s, the large Qwen 3 coder", (model) => {
+      expect(isRecommendedAgentModel(model)).toBe(true);
+    });
+
+    it.each([
+      "qwen3.8-flash",
+      "qwen4-flash",
+      "qwen4-vl-instruct",
+      "qwen3-coder-flash",
+      "qwen/qwen3-coder-flash",
+      "qwen3-coder-30b-a3b-instruct",
+      "qwen/qwen3-coder-30b-a3b-instruct",
+      "qwen.qwen3-coder-30b-a3b-v1:0",
+      "qwen/qwen3-coder-next",
+      "qwen.qwen3-coder-next",
+      "qwen3.5-9b",
+      "qwen3-32b",
+      "qwen3-235b-a22b",
+      "qwen2.5-72b-instruct",
+      "qwen-max",
+      "qwen3.1-max",
+    ])("should return false for %s", (model) => {
+      expect(isRecommendedAgentModel(model)).toBe(false);
     });
   });
 
