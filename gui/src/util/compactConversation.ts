@@ -37,9 +37,9 @@ export const useCancelCompaction = () => {
 export const useDeleteCompaction = () => {
   const dispatch = useAppDispatch();
 
-  return (index: number) => {
+  return (messageId: string) => {
     // Update local state and save to persistence
-    dispatch(deleteCompaction(index));
+    dispatch(deleteCompaction({ messageId }));
     void dispatch(
       saveCurrentSession({
         openNewSession: false,
