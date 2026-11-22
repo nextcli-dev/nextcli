@@ -60,6 +60,7 @@ async function runTurn(chunks: ChatMessage[], log: PromptLog) {
     compiledChatMessages: [{ role: "user", content: "Plan the cleanup" }],
     didPrune: false,
     contextPercentage: 0.1,
+    snapshot: { window: 128000, used: 0, threshold: { tokens: 100000, action: "pruning", steps: [] }, segments: [], largestToolResults: [] },
   };
   store.mockIdeMessenger.llmStreamChat = vi.fn(async function* () {
     for (const chunk of chunks) {

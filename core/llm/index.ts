@@ -1143,6 +1143,7 @@ export abstract class BaseLLM implements ILLM {
   compileChatMessages(
     message: ChatMessage[],
     options: LLMFullCompletionOptions,
+    systemParts?: { label: string; chars: number }[],
   ) {
     let { completionOptions } = this._parseCompletionOptions(options);
     completionOptions = this._modifyCompletionOptions(completionOptions);
@@ -1154,6 +1155,7 @@ export abstract class BaseLLM implements ILLM {
       maxTokens: completionOptions.maxTokens ?? DEFAULT_MAX_TOKENS,
       supportsImages: this.supportsImages(),
       tools: options.tools,
+      systemParts,
       shortensAnswerToFit: this.shortensAnswerToFit,
     });
   }

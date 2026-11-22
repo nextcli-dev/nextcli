@@ -9,6 +9,7 @@ import ConfigPage from "./pages/config";
 import ErrorPage, { AppErrorFallback } from "./pages/error";
 import Chat from "./pages/gui";
 import History from "./pages/history";
+import ContextPage from "./pages/context";
 import Stats from "./pages/stats";
 import ThemePage from "./styles/ThemePage";
 import { ROUTES } from "./util/navigation";
@@ -34,6 +35,10 @@ const router = createMemoryRouter([
       {
         path: ROUTES.STATS,
         element: <Stats />,
+      },
+      {
+        path: ROUTES.CONTEXT,
+        element: <ContextPage />,
       },
       {
         path: ROUTES.CONFIG,

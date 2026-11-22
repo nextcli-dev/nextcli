@@ -118,7 +118,7 @@ jobs:
       - name: Build the packages core uses
         if: steps.branch.outputs.changed == 'true'
         run: |
-          for package in config-types terminal-security ask-question fetch config-yaml llm-info openai-adapters; do
+          for package in config-types terminal-security ask-question context fetch config-yaml llm-info openai-adapters; do
             (cd "packages/$package" && npm ci --no-audit --no-fund && npm run build)
           done
 

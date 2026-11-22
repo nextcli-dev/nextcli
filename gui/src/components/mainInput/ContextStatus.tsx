@@ -1,7 +1,9 @@
 import { useMemo, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { useStopRunGuard } from "../../hooks/useStopRunGuard";
 import { useAppDispatch, useAppSelector } from "../../redux/hooks";
 import { saveCurrentSession } from "../../redux/thunks/session";
+import { ROUTES } from "../../util/navigation";
 import {
   useCanCompact,
   useCompactConversation,
@@ -10,22 +12,21 @@ import { ToolTip } from "../gui/Tooltip";
 
 const ContextStatus = () => {
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
   const guardRunningTurn = useStopRunGuard();
   const contextPercentage = useAppSelector(
     (state) => state.session.contextPercentage,
   );
+  const snapshot = useAppSelector((state) => state.session.contextSnapshot);
+  const history = useAppSelector((state) => state.session.history);
   const selectedChatModel = useAppSelector(
     (state) => state.config.config.selectedModelByRole.chat?.model,
   );
   const previousHistoryLength = useRef<number | null>(null);
   const previousSelectedChatModel = useRef<string | null>(null);
-  const history = useAppSelector((state) => state.session.history);
-  const percent = Math.round((contextPercentage ?? 0) * 100);
-  const isPruned = useAppSelector((state) => state.session.isPruned);
 
-  const isDifferentModelAndSameHistory = useMemo(() => {
+  const modelChanged = useMemo(() => {
     if (!selectedChatModel) return false;
-    // only reset if history changes
     if (previousHistoryLength.current !== history.length) {
       previousHistoryLength.current = history.length;
       previousSelectedChatModel.current = selectedChatModel;
@@ -36,84 +37,133 @@ const ContextStatus = () => {
 
   const compactConversation = useCompactConversation();
   const canCompact = useCanCompact(history.length - 1);
-  if (!isPruned && percent < 60) {
+  if (history.length === 0) {
     return null;
   }
 
-  // if user changed to a different model, we shouldn't show the context status until the user sends a new message
-  if (isDifferentModelAndSameHistory) {
-    return null;
-  }
+  const showEmpty = !snapshot || modelChanged;
+  const percentOfWindow = snapshot
+    ? Math.round((snapshot.used / snapshot.window) * 100)
+    : 0;
+  const pruned = useAppSelector((state) => state.session.isPruned);
+  const nearThreshold = (contextPercentage ?? 0) > 0.8;
+  const color = pruned
+    ? "var(--vscode-errorForeground, #f14c4c)"
+    : nearThreshold
+      ? "var(--vscode-editorWarning-foreground, #cca700)"
+      : "var(--vscode-descriptionForeground, #9d9d9d)";
+  const lastUsage = [...history]
+    .reverse()
+    .find((item) => item.promptLogs?.length)
+    ?.promptLogs?.at(-1)?.usage;
 
-  const barColorClass = isPruned ? "bg-error" : "bg-description";
+  const radius = 6;
+  const circumference = 2 * Math.PI * radius;
+  const usedRatio = snapshot
+    ? Math.min(1, snapshot.used / Math.max(snapshot.window, 1))
+    : 0;
+  const thresholdRatio = snapshot
+    ? Math.min(1, snapshot.threshold.tokens / Math.max(snapshot.window, 1))
+    : 0;
 
   return (
     <div>
       <ToolTip
         closeEvents={{
-          // blur: false,
           mouseleave: true,
           click: true,
           mouseup: false,
         }}
         clickable
         content={
-          <div className="flex flex-col gap-0 text-left text-xs">
-            <span className="inline-block">
-              {`${percent}% of context filled.`}
-            </span>
-            {isPruned && (
-              <span className="inline-block">
-                {`Oldest messages are being removed.`}
+          <div className="flex flex-col gap-1 text-left text-xs">
+            {showEmpty ? (
+              <span>Measured when you send the next message</span>
+            ) : (
+              <span>
+                {`${Math.round(snapshot.used / 1000)}K of ${Math.round(snapshot.window / 1000)}K (${percentOfWindow}%) · pruning starts at ${Math.round(snapshot.threshold.tokens / 1000)}K`}
               </span>
             )}
-            {history.length > 0 && (
-              <div className="flex flex-col gap-1 whitespace-pre">
-                <div>
-                  <span
-                    role="button"
-                    aria-disabled={!canCompact}
-                    className={
-                      canCompact
-                        ? "hover:text-link inline-block cursor-pointer underline"
-                        : "text-description-muted inline-block cursor-not-allowed"
-                    }
-                    onClick={
-                      canCompact
-                        ? () => compactConversation(history.length - 1)
-                        : undefined
-                    }
-                  >
-                    Compact conversation
-                  </span>
-                  {"\n"}
-                  <span
-                    className="hover:text-link inline-block cursor-pointer underline"
-                    onClick={() => {
-                      guardRunningTurn(() =>
-                        dispatch(
-                          saveCurrentSession({
-                            openNewSession: true,
-                            generateTitle: false,
-                          }),
-                        ),
-                      );
-                    }}
-                  >
-                    Start a new session
-                  </span>
-                </div>
-              </div>
+            {snapshot?.segments.map((segment) => (
+              <span key={segment.id}>
+                {`${segment.label}  ${segment.tokens}  ${segment.source}`}
+              </span>
+            ))}
+            {lastUsage && (
+              <span>
+                {`Measured prompt ${lastUsage.promptTokens} · output ${lastUsage.completionTokens}`}
+              </span>
             )}
+            <span
+              role="button"
+              aria-disabled={!canCompact}
+              className={
+                canCompact
+                  ? "hover:text-link inline-block cursor-pointer underline"
+                  : "text-description-muted inline-block cursor-not-allowed"
+              }
+              onClick={
+                canCompact
+                  ? () => compactConversation(history.length - 1)
+                  : undefined
+              }
+            >
+              Compact now
+            </span>
+            <span
+              className="hover:text-link inline-block cursor-pointer underline"
+              onClick={() => navigate(ROUTES.CONTEXT)}
+            >
+              View report
+            </span>
+            <span
+              className="hover:text-link inline-block cursor-pointer underline"
+              onClick={() => {
+                guardRunningTurn(() =>
+                  dispatch(
+                    saveCurrentSession({
+                      openNewSession: true,
+                      generateTitle: false,
+                    }),
+                  ),
+                );
+              }}
+            >
+              New session
+            </span>
           </div>
         }
       >
-        <div className="border-command-border relative h-[14px] w-[7px] rounded-[1px] border-[0.5px] border-solid md:h-[10px] md:w-[5px]">
-          <div
-            className={`transition-height absolute bottom-0 left-0 w-full duration-300 ease-in-out ${barColorClass}`}
-            style={{ height: `${percent}%` }}
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-label="Context">
+          <circle
+            cx="8"
+            cy="8"
+            r={radius}
+            fill="none"
+            stroke={color}
+            strokeWidth="1.5"
+            opacity="0.35"
           />
-        </div>
+          <circle
+            cx="8"
+            cy="8"
+            r={radius}
+            fill="none"
+            stroke={color}
+            strokeWidth="1.5"
+            strokeDasharray={`${usedRatio * circumference} ${circumference}`}
+            strokeLinecap="round"
+            transform="rotate(-90 8 8)"
+          />
+          {snapshot && (
+            <circle
+              cx={8 + radius * Math.sin(thresholdRatio * 2 * Math.PI)}
+              cy={8 - radius * Math.cos(thresholdRatio * 2 * Math.PI)}
+              r="1"
+              fill={color}
+            />
+          )}
+        </svg>
       </ToolTip>
     </div>
   );

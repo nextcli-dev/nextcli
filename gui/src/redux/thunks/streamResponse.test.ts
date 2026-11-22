@@ -117,6 +117,7 @@ describe("streamResponseThunk", () => {
       compiledChatMessages: [{ role: "user", content: "Hello" }],
       didPrune: false,
       contextPercentage: 0.8,
+      snapshot: { window: 128000, used: 0, threshold: { tokens: 100000, action: "pruning", steps: [] }, segments: [], largestToolResults: [] },
     };
     const requestSpy = vi.spyOn(mockIdeMessenger, "request");
     const postSpy = vi.spyOn(mockIdeMessenger, "post");
@@ -499,6 +500,7 @@ describe("streamResponseThunk", () => {
       ],
       didPrune: false,
       contextPercentage: 0.9,
+      snapshot: { window: 128000, used: 0, threshold: { tokens: 100000, action: "pruning", steps: [] }, segments: [], largestToolResults: [] },
     };
     mockIdeMessengerWithTool.responses["tools/call"] = {
       contextItems: [
@@ -893,6 +895,7 @@ describe("streamResponseThunk", () => {
       compiledChatMessages: [{ role: "user", content: "Hello" }],
       didPrune: false,
       contextPercentage: 0.8,
+      snapshot: { window: 128000, used: 0, threshold: { tokens: 100000, action: "pruning", steps: [] }, segments: [], largestToolResults: [] },
     };
     const requestSpy = vi.spyOn(mockIdeMessengerAbort, "request");
     const postSpy = vi.spyOn(mockIdeMessengerAbort, "post");

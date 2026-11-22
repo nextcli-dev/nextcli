@@ -121,8 +121,9 @@ export interface ILLM
 
   compileChatMessages(
     messages: ChatMessage[],
-    options: LLMFullCompletionOpeions,
-  ): CompiledChatMessagesReport;
+    options: LLMFullCompletionOptions,
+    systemParts?: SystemMessagePart[],
+  ): CompiledMessagesResult;
 
   embed(chunks: string[]): Promise<number[][]>;
 
@@ -2024,10 +2025,16 @@ export interface CompleteOnboardingPayload {
   apiKey?: string;
 }
 
+export interface SystemMessagePart {
+  label: string;
+  chars: number;
+}
+
 export interface CompiledMessagesResult {
   compiledChatMessages: ChatMessage[];
   didPrune: boolean;
   contextPercentage: number;
+  snapshot: import("@nextcli/context").ContextSnapshot;
 }
 
 export interface AddToChatPayload {

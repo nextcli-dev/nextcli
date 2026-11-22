@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { ChatMessage } from "../index.js";
-import { countTokens, getTokenCountingBufferSafety } from "./countTokens.js";
+import {
+  compileChatMessages,
+  countTokens,
+  getTokenCountingBufferSafety,
+} from "./countTokens.js";
+import { LlamaTokenizer } from "./llamaTokenizer.js";
 import { BaseLLM } from "./index.js";
 import Docker from "./llms/Docker.js";
 import HuggingFaceTGI from "./llms/HuggingFaceTGI.js";
@@ -313,6 +318,44 @@ describe("compileChatMessages", () => {
       const sent = await sentBody(OpenAI, conversation(0), 8_192, 4_096);
 
       expect(sent.maxTokens).toBe(4_096);
+    });
+
+    test("reports used over the pruning threshold, and the 128000 default", () => {
+      const compiled = compileWith(OpenAI, conversation(1));
+      expect(compiled.snapshot.used / compiled.snapshot.threshold.tokens).toBe(
+        compiled.contextPercentage,
+      );
+      const withoutWindow = compileChatMessages({
+        modelName: MODEL,
+        msgs: conversation(0),
+        knownContextLength: undefined,
+        maxTokens: MAX_TOKENS,
+        supportsImages: false,
+      });
+      expect(withoutWindow.snapshot.window).toBe(128_000);
+      expect(withoutWindow.snapshot.threshold.steps[0].label).toBe("default");
+    });
+
+    test("encodes each long message once when the same conversation is compiled twice", () => {
+      const encode = vi.spyOn(LlamaTokenizer.prototype, "encode");
+      const messages = conversation(1);
+      const llm = new OpenAI({
+        model: "llama2",
+        apiKey: "k",
+        contextLength: CONTEXT_LENGTH,
+        completionOptions: { model: "llama2", maxTokens: MAX_TOKENS },
+      });
+      llm.compileChatMessages(messages, {});
+      const longCalls = encode.mock.calls.filter(
+        (call) => String(call[0] ?? "").length >= 512,
+      ).length;
+      llm.compileChatMessages(messages, {});
+      const longCallsAfter = encode.mock.calls.filter(
+        (call) => String(call[0] ?? "").length >= 512,
+      ).length;
+      expect(longCalls).toBeGreaterThan(0);
+      expect(longCallsAfter).toBe(longCalls);
+      encode.mockRestore();
     });
 
     test("is the configured one for a server that cuts the answer short", async () => {

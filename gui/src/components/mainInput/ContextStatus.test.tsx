@@ -59,7 +59,7 @@ describe("ContextStatus", () => {
     });
 
     await user.hover(container.querySelector("[data-tooltip-id]")!);
-    const link = await screen.findByText("Compact conversation");
+    const link = await screen.findByText("Compact now");
     // The last row is the answer still streaming
     expect(link).toHaveAttribute("aria-disabled", "true");
 
