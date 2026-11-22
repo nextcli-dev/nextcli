@@ -57,6 +57,6 @@ The `fetch_url_content` tool asks before every fetch by default. Reading a page 
 2. Type the host under it, for example `github.com`, and click **Add**
 3. Use `*.example.com` to trust the subdomains of `example.com` (it doesn't include `example.com` itself)
 
-The tool then runs without asking for `https://` URLs on those hosts, on the default port. It still asks for `http://` URLs and every other host. A redirect from a trusted host to another one isn't checked again, so trust only hosts you know. Remove a host with the **×** next to it.
+The tool then runs without asking for `https://` URLs on those hosts, on the default port. It still asks for `http://` URLs and every other host. The tool follows redirects only within the URL's origin (scheme, host and port). A redirect to another site isn't followed: the tool returns the target URL, and fetching it is a new call that asks unless that host is trusted too. Remove a host with the **×** next to it.
 
 In the CLI, allow the same URLs with a `Fetch` pattern, for example `--allow "Fetch(https://github.com/*)"` or an `allow` entry in `~/.continue/permissions.yaml`. See [flags and patterns](/cli/tool-permissions/flags-and-patterns).

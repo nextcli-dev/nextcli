@@ -85,7 +85,7 @@ A `Fetch(...)` pattern is a plain glob over the URL as the model wrote it. `*` m
 cn -p "What changed in v2?" --allow "Fetch(https://docs.example.com/*)"
 ```
 
-`http://` and `https://` are different strings, and a redirect to another host isn't checked against the pattern again. Prefer `Fetch(https://docs.example.com/*)` over a pattern with a bare host.
+`http://` and `https://` are different strings. Prefer `Fetch(https://docs.example.com/*)` over a pattern with a bare host. `Fetch` follows redirects only within the URL's origin (scheme, host and port), and loads a favicon only from there. A redirect anywhere else isn't followed: `Fetch` returns the target URL, and fetching it is a new call that your patterns check again.
 
 Whatever the pattern, `Fetch` refuses private and cloud metadata addresses, redirects included. `--allow "Fetch(http://localhost*)"` alone isn't enough to reach a local server; add `--allow-private-fetch`. See [secrets and private addresses](/cli/headless-mode#secrets-and-private-addresses).
 
