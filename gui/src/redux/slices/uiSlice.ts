@@ -2,6 +2,7 @@ import { ToolPolicy } from "@continuedev/terminal-security";
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import { RuleWithSource, Tool } from "core";
 import { BUILT_IN_GROUP_NAME } from "core/tools/builtIn";
+import { normalizeTrustedHost } from "core/tools/policies/fetchAccess";
 import { defaultOnboardingCardState } from "../../components/OnboardingCard/utils";
 import { OnboardingCardState } from "../../components/OnboardingCard/OnboardingCard";
 import { getLocalStorage, LocalStorageKey } from "../../util/localStorage";
@@ -30,6 +31,8 @@ type UIState = {
   toolGroupSettings: ToolGroupPolicies;
   ruleSettings: RulePolicies;
   reasoningSettings: ReasoningSettings;
+  /** Hosts whose https URLs Read URL fetches without asking */
+  trustedFetchHosts: string[];
   ttsActive: boolean;
 };
 
@@ -51,6 +54,7 @@ export const DEFAULT_UI_SLICE: UIState = {
   },
   ruleSettings: {},
   reasoningSettings: {},
+  trustedFetchHosts: [],
 };
 
 export const uiSlice = createSlice({
@@ -94,6 +98,18 @@ export const uiSlice = createSlice({
     },
     clearToolPolicy: (state, action: PayloadAction<string>) => {
       delete state.toolSettings[action.payload];
+    },
+    /** Ignores text that isn't a host name (see normalizeTrustedHost) */
+    addTrustedFetchHost: (state, action: PayloadAction<string>) => {
+      const host = normalizeTrustedHost(action.payload);
+      if (host && !state.trustedFetchHosts.includes(host)) {
+        state.trustedFetchHosts.push(host);
+      }
+    },
+    removeTrustedFetchHost: (state, action: PayloadAction<string>) => {
+      state.trustedFetchHosts = state.trustedFetchHosts.filter(
+        (host) => host !== action.payload,
+      );
     },
     toggleToolSetting: (state, action: PayloadAction<string>) => {
       const setting = state.toolSettings[action.payload];
@@ -179,6 +195,8 @@ export const {
   toggleToolSetting,
   setToolPolicy,
   clearToolPolicy,
+  addTrustedFetchHost,
+  removeTrustedFetchHost,
   toggleToolGroupSetting,
   addTool,
   addRule,

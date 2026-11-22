@@ -6,7 +6,7 @@ export async function findFaviconPath(
   url: URL,
   fetchFn: FetchFunction = fetch,
 ): Promise<string | undefined> {
-  const baseUrl = `${url.protocol}//${url.hostname}`;
+  const baseUrl = url.origin;
 
   try {
     const response = await fetchFn(baseUrl);

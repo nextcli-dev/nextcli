@@ -19,7 +19,9 @@ export const readCurrentlyOpenFileTool: Tool = {
       properties: {},
     },
   },
-  defaultToolPolicy: "allowedWithPermission",
+  // Automatic: the implementation reads only a saved file in the workspace
+  // and points the model to read_file (which asks) for any other
+  defaultToolPolicy: "allowedWithoutPermission",
   systemMessageDescription: {
     prefix: `To view the user's currently open file, use the ${BuiltInToolNames.ReadCurrentlyOpenFile} tool.
 If the user is asking about a file and you don't see any code, use this to check the current file`,

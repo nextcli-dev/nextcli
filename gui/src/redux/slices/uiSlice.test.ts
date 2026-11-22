@@ -1,9 +1,38 @@
 import { RuleWithSource } from "core";
 import { describe, expect, it } from "vitest";
 import reducer, {
+  addTrustedFetchHost,
   carryOverLegacyRuleSettings,
   DEFAULT_UI_SLICE,
+  removeTrustedFetchHost,
 } from "./uiSlice";
+
+describe("trusted fetch hosts", () => {
+  it("starts empty, so Read URL asks for every URL", () => {
+    expect(DEFAULT_UI_SLICE.trustedFetchHosts).toEqual([]);
+  });
+
+  it("stores each host once, in its normalized form", () => {
+    let state = reducer(
+      DEFAULT_UI_SLICE,
+      addTrustedFetchHost("https://GitHub.com/nextcli-dev"),
+    );
+    state = reducer(state, addTrustedFetchHost("github.com"));
+    state = reducer(state, addTrustedFetchHost("*.nextcli.dev"));
+    expect(state.trustedFetchHosts).toEqual(["github.com", "*.nextcli.dev"]);
+  });
+
+  it("ignores text that isn't a host name", () => {
+    const state = reducer(DEFAULT_UI_SLICE, addTrustedFetchHost("localhost"));
+    expect(state.trustedFetchHosts).toEqual([]);
+  });
+
+  it("removes a host", () => {
+    let state = reducer(DEFAULT_UI_SLICE, addTrustedFetchHost("github.com"));
+    state = reducer(state, removeTrustedFetchHost("github.com"));
+    expect(state.trustedFetchHosts).toEqual([]);
+  });
+});
 
 const rule = (name: string, legacyName?: string): RuleWithSource => ({
   name,
