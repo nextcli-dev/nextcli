@@ -5,14 +5,15 @@ import {
   RuleMetadata,
   SlashCommandSource,
 } from "core";
-import { memo, useMemo } from "react";
+import { memo, useEffect, useMemo } from "react";
 import { defaultBorderRadius, vscBackground } from "..";
-import { useAppSelector } from "../../redux/hooks";
+import { useAppDispatch, useAppSelector } from "../../redux/hooks";
 import { selectSlashCommandComboBoxInputs } from "../../redux/selectors";
 import { selectOpenQuestion } from "../../redux/selectors/selectToolCalls";
+import { failInvalidQuestion } from "../../redux/thunks/answerQuestion";
 import {
   AskQuestionPanel,
-  questionSetFromCall,
+  questionFromArgs,
 } from "./AskQuestionPanel/AskQuestionPanel";
 import { ContextItemsPeek } from "./belowMainInput/ContextItemsPeek";
 import { RulesPeek } from "./belowMainInput/RulesPeek";
@@ -58,6 +59,7 @@ const EDIT_ALLOWED_SLASH_COMMAND_SOURCES: SlashCommandSource[] = [
 ];
 
 function ContinueInputBox(props: ContinueInputBoxProps) {
+  const dispatch = useAppDispatch();
   const isStreaming = useAppSelector((state) => state.session.isStreaming);
   const availableSlashCommands = useAppSelector(
     selectSlashCommandComboBoxInputs,
@@ -70,12 +72,20 @@ function ContinueInputBox(props: ContinueInputBoxProps) {
   const openQuestionCall = useAppSelector(selectOpenQuestion);
   // Only the main input answers questions; earlier messages keep their editor.
   const openQuestion = props.isMainInput ? openQuestionCall : undefined;
-  // Invalid arguments throw from the normalizer. Leave the input up instead
-  // of replacing it with a panel that cannot render.
-  const questionSet = useMemo(
-    () => (openQuestion ? questionSetFromCall(openQuestion) : undefined),
-    [openQuestion],
+  // Built once from the parsed arguments. A status update replaces the tool
+  // call object, and rebuilding the questions would reset the page and focus.
+  const toolCallId = openQuestion?.toolCallId;
+  const parsedArgs = openQuestion?.parsedArgs;
+  const question = useMemo(
+    () => (toolCallId === undefined ? undefined : questionFromArgs(parsedArgs)),
+    [toolCallId, parsedArgs],
   );
+  const questionSet = question?.ok ? question.set : undefined;
+
+  useEffect(() => {
+    if (!toolCallId || !question || question.ok) return;
+    void dispatch(failInvalidQuestion({ toolCallId, message: question.error }));
+  }, [dispatch, question, toolCallId]);
 
   const filteredSlashCommands = useMemo(() => {
     if (isInEdit) {
@@ -131,7 +141,8 @@ function ContinueInputBox(props: ContinueInputBoxProps) {
         {openQuestion && questionSet && (
           <AskQuestionPanel
             key={openQuestion.toolCallId}
-            toolCallState={openQuestion}
+            toolCallId={openQuestion.toolCallId}
+            set={questionSet}
           />
         )}
         {/* Hidden, not unmounted, so a draft survives while a question is

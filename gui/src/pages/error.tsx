@@ -7,7 +7,25 @@ import { useNavigate, useRouteError } from "react-router-dom";
 import { Button, SecondaryButton } from "../components";
 import { GithubIcon } from "../components/svg/GithubIcon";
 import { IdeMessengerContext } from "../context/IdeMessenger";
-import { newSession } from "../redux/slices/sessionSlice";
+
+/**
+ * Drops the in-memory store and the saved copy, so a crash cannot replay.
+ * The store is imported on click: this module loads while the store is still
+ * initializing, and a static import would run the reducers before they exist.
+ */
+async function recoverFromCrash(dispatch: (action: { type: string }) => void) {
+  const { persistor, resetRootState } = await import("../redux/store");
+  localStorage.removeItem("inputHistory_chat");
+  dispatch(resetRootState());
+  await persistor.purge();
+}
+
+/** Logs a crash once. The fallback renders again when the user clicks Continue. */
+function useLogError(error: unknown) {
+  useEffect(() => {
+    console.error(error);
+  }, [error]);
+}
 
 /** A thrown value may not be an Error. Reading `.message` on it would throw again. */
 export function errorText(error: unknown): string {
@@ -38,7 +56,7 @@ export function errorStack(error: unknown): string | undefined {
  */
 export function AppErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
   const dispatch = useDispatch();
-  console.error(error);
+  useLogError(error);
 
   return (
     <div className="flex flex-col items-center justify-center px-2 py-4 text-center sm:px-8">
@@ -49,10 +67,7 @@ export function AppErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
       <Button
         className="flex flex-row items-center gap-2"
         onClick={() => {
-          dispatch(newSession());
-          localStorage.removeItem("persist:root");
-          localStorage.removeItem("inputHistory_chat");
-          resetErrorBoundary();
+          void recoverFromCrash(dispatch).finally(resetErrorBoundary);
         }}
       >
         <ArrowPathIcon className="h-5 w-5" />
@@ -64,7 +79,7 @@ export function AppErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
 
 const ErrorPage: React.FC = () => {
   const error: unknown = useRouteError();
-  console.error(error);
+  useLogError(error);
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
@@ -94,12 +109,7 @@ const ErrorPage: React.FC = () => {
       <Button
         className="flex flex-row items-center gap-2"
         onClick={() => {
-          dispatch(newSession());
-          localStorage.removeItem("persist:root");
-          localStorage.removeItem("inputHistory_chat");
-          // localStorage.removeItem("showTutorialCard");
-          // localStorage.removeItem("onboardingStatus");
-          navigate("/");
+          void recoverFromCrash(dispatch).finally(() => navigate("/"));
         }}
       >
         {initialLoad ? (

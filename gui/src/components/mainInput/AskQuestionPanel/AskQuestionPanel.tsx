@@ -7,6 +7,7 @@ import {
 } from "@heroicons/react/24/outline";
 import {
   AnswerSet,
+  AskQuestionArgsError,
   FormEvent,
   FormState,
   isDraftAnswered,
@@ -15,7 +16,6 @@ import {
   QuestionSet,
   reduceForm,
 } from "@nextcli/ask-question";
-import { ToolCallState } from "core";
 import {
   ComponentType,
   FocusEvent,
@@ -23,7 +23,6 @@ import {
   ReactNode,
   SVGProps,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
@@ -81,17 +80,21 @@ function IconButton({
   );
 }
 
+export type QuestionArgsResult =
+  | { ok: true; set: QuestionSet }
+  | { ok: false; error: string };
+
 /**
- * Questions the panel can show. Arguments that cannot be shown throw from
- * normalizeQuestionArgs; the panel must not, or the chat unmounts.
+ * Questions the panel can show. Arguments that cannot be shown throw
+ * AskQuestionArgsError; callers keep that message and close the call.
+ * Any other throw is a bug and must reach the error boundary.
  */
-export function questionSetFromCall(
-  toolCallState: ToolCallState,
-): QuestionSet | undefined {
+export function questionFromArgs(parsedArgs: unknown): QuestionArgsResult {
   try {
-    return normalizeQuestionArgs(toolCallState.parsedArgs);
-  } catch {
-    return undefined;
+    return { ok: true, set: normalizeQuestionArgs(parsedArgs) };
+  } catch (error) {
+    if (!(error instanceof AskQuestionArgsError)) throw error;
+    return { ok: false, error: error.message };
   }
 }
 
@@ -100,19 +103,17 @@ export function questionSetFromCall(
  * Answering continues the turn; dismissing ends it and gives the input back.
  * The paging, picking and sending rules are @nextcli/ask-question's form,
  * shared with the cn prompt; this maps keys and clicks to its events.
+ * The caller builds the set once; rebuilding it when the tool call's status
+ * changes would reset the page and the focus.
  */
 export function AskQuestionPanel({
-  toolCallState,
+  toolCallId,
+  set,
 }: {
-  toolCallState: ToolCallState;
+  toolCallId: string;
+  set: QuestionSet;
 }) {
-  // core ran the same normalization before the call reached "calling"
-  const set = useMemo(
-    () => questionSetFromCall(toolCallState),
-    [toolCallState],
-  );
-  if (!set) return null;
-  return <QuestionForm toolCallId={toolCallState.toolCallId} set={set} />;
+  return <QuestionForm toolCallId={toolCallId} set={set} />;
 }
 
 function QuestionForm({
