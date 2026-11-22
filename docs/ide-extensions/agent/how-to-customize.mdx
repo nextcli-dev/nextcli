@@ -55,7 +55,7 @@ The `fetch_url_content` tool asks before every fetch by default. Reading a page 
 
 1. Open the tools settings and find `fetch_url_content` (it must be on **Ask First**)
 2. Type the host under it, for example `github.com`, and click **Add**
-3. Use `*.example.com` to trust the subdomains of `example.com` (it doesn't include `example.com` itself). A wildcard over a domain where each subdomain is a different site, such as `*.github.io` or `*.co.uk`, isn't accepted: add those hosts one by one, for example `raw.githubusercontent.com`. IP addresses aren't accepted either
+3. Use `*.example.com` to trust the subdomains of `example.com` (it doesn't include `example.com` itself). It trusts every subdomain, including ones where other people publish content, such as `gist.github.com` under `*.github.com`, so prefer listing the hosts you read. A wildcard over a domain where each subdomain is a different site, such as `*.github.io` or `*.co.uk`, isn't accepted: add those hosts one by one, for example `raw.githubusercontent.com`. IP addresses aren't accepted either
 
 The tool then runs without asking for `https://` URLs on those hosts, on the default port. It still asks for `http://` URLs and every other host. The tool follows redirects only within the URL's origin (scheme, host and port). A redirect to another site isn't followed: the tool returns the target URL, and fetching it is a new call that asks unless that host is trusted too. Remove a host with the **×** next to it.
 

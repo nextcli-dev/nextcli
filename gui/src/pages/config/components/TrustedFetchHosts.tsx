@@ -29,7 +29,10 @@ export function TrustedFetchHosts() {
     <div className="flex flex-col gap-1 pb-1 pl-5 pr-2">
       <span className="text-description text-2xs">
         Runs without asking for https URLs on these hosts. A URL can carry data
-        out; add only hosts you trust. Use *.example.com for subdomains.
+        out, and a page's text goes to the model without you seeing the URL
+        first; add only hosts you trust. *.example.com trusts every subdomain,
+        including ones where other people publish (gist.github.com under
+        *.github.com).
       </span>
       {hosts.length > 0 && (
         <div className="flex flex-wrap gap-1">
