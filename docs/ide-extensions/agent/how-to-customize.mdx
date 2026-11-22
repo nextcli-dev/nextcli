@@ -47,7 +47,7 @@ To manage tool policies:
 
 Tool policies are stored locally per user. They belong to the extension only: the `cn` CLI has its own permission system, with `--allow`/`--ask`/`--exclude` flags and `~/.continue/permissions.yaml`, described in [CLI tool permissions](/cli/tool-permissions).
 
-`read_file` and `read_currently_open_file` run without asking for files in the workspace. They still ask for a file outside it, or an unsaved one, even when set to **Automatic**. A policy you saved before this default changed stays as you set it.
+`read_file` runs without asking for files in the workspace and asks for a file outside it, even when set to **Automatic**. `read_currently_open_file` reads the open file without asking only when it's a saved file in the workspace. For a file outside the workspace, it gives the model the path instead, and reading it with `read_file` asks first. A policy you saved before this default changed stays as you set it.
 
 ### Trust Hosts for Fetching URLs
 
