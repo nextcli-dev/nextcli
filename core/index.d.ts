@@ -123,6 +123,7 @@ export interface ILLM
     messages: ChatMessage[],
     options: LLMFullCompletionOptions,
     systemParts?: SystemMessagePart[],
+    includeSnapshot?: boolean,
   ): CompiledMessagesResult;
 
   embed(chunks: string[]): Promise<number[][]>;
@@ -2034,7 +2035,7 @@ export interface CompiledMessagesResult {
   compiledChatMessages: ChatMessage[];
   didPrune: boolean;
   contextPercentage: number;
-  snapshot: import("@nextcli/context").ContextSnapshot;
+  snapshot?: import("@nextcli/context").ContextSnapshot;
 }
 
 export interface AddToChatPayload {

@@ -1144,6 +1144,7 @@ export abstract class BaseLLM implements ILLM {
     message: ChatMessage[],
     options: LLMFullCompletionOptions,
     systemParts?: { label: string; chars: number }[],
+    includeSnapshot = false,
   ) {
     let { completionOptions } = this._parseCompletionOptions(options);
     completionOptions = this._modifyCompletionOptions(completionOptions);
@@ -1156,6 +1157,7 @@ export abstract class BaseLLM implements ILLM {
       supportsImages: this.supportsImages(),
       tools: options.tools,
       systemParts,
+      includeSnapshot,
       shortensAnswerToFit: this.shortensAnswerToFit,
     });
   }

@@ -29,6 +29,42 @@ describe("ContextStatus", () => {
     vi.unstubAllGlobals();
   });
 
+  it("stays mounted when the first message of a session arrives", async () => {
+    const ideMessenger = new MockIdeMessenger();
+    const store = setupStore({ ideMessenger });
+    store.dispatch(
+      newSession({
+        sessionId: "s",
+        title: "t",
+        workspaceDirectory: "",
+        history: [],
+      }),
+    );
+    const { container } = await renderWithProviders(<ContextStatus />, {
+      store,
+      mockIdeMessenger: ideMessenger,
+    });
+    expect(container.querySelector("svg")).toBeNull();
+
+    act(() => {
+      store.dispatch(
+        newSession({
+          sessionId: "s2",
+          title: "t",
+          workspaceDirectory: "",
+          history: [
+            {
+              message: { role: "user", content: "Hello", id: "u1" },
+              contextItems: [],
+            },
+          ] as any,
+        }),
+      );
+    });
+
+    expect(container.querySelector("svg")).not.toBeNull();
+  });
+
   it("offers no compaction while a turn runs", async () => {
     const ideMessenger = new MockIdeMessenger();
     const store = setupStore({ ideMessenger });

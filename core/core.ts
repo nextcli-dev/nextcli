@@ -642,7 +642,12 @@ export class Core {
         await this.configHandler.loadConfig(),
       );
 
-      return model.compileChatMessages(messages, options, msg.data.systemParts);
+      return model.compileChatMessages(
+        messages,
+        options,
+        msg.data.systemParts,
+        true,
+      );
     });
 
     // Provide messenger to utils so they can interact with GUI + state

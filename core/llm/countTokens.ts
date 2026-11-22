@@ -567,6 +567,7 @@ function compileChatMessages({
   supportsImages,
   tools,
   systemParts,
+  includeSnapshot = false,
   shortensAnswerToFit = false,
 }: {
   modelName: string;
@@ -576,6 +577,8 @@ function compileChatMessages({
   supportsImages: boolean;
   tools?: Tool[];
   systemParts?: { label: string; chars: number }[];
+  /** The breakdown. Callers that only read the fitted messages skip it. */
+  includeSnapshot?: boolean;
   shortensAnswerToFit?: boolean;
 }): CompiledMessagesResult {
   let didPrune = false;
@@ -709,28 +712,32 @@ function compileChatMessages({
     compiledChatMessages: reassembled,
     didPrune,
     contextPercentage,
-    snapshot: compileSnapshot({
-      modelName,
-      systemMsg,
-      systemMsgTokens,
-      systemParts,
-      tools,
-      perTool,
-      toolTokens,
-      kept: historyWithTokens.map(({ tokens, ...rest }) => ({
-        message: rest,
-        tokens,
-      })),
-      toolSequence,
-      historyTokens: currentTotal + lastMessagesTokens,
-      knownContextLength,
-      contextLength,
-      countingSafetyBuffer,
-      outputReserve,
-      prunedMessages,
-      prunedTokens,
-      didPrune,
-    }),
+    ...(includeSnapshot
+      ? {
+          snapshot: compileSnapshot({
+            modelName,
+            systemMsg,
+            systemMsgTokens,
+            systemParts,
+            tools,
+            perTool,
+            toolTokens,
+            kept: historyWithTokens.map(({ tokens, ...rest }) => ({
+              message: rest,
+              tokens,
+            })),
+            toolSequence,
+            historyTokens: currentTotal + lastMessagesTokens,
+            knownContextLength,
+            contextLength,
+            countingSafetyBuffer,
+            outputReserve,
+            prunedMessages,
+            prunedTokens,
+            didPrune,
+          }),
+        }
+      : {}),
   };
 }
 

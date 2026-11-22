@@ -321,19 +321,39 @@ describe("compileChatMessages", () => {
     });
 
     test("reports used over the pruning threshold, and the 128000 default", () => {
-      const compiled = compileWith(OpenAI, conversation(1));
-      expect(compiled.snapshot.used / compiled.snapshot.threshold.tokens).toBe(
-        compiled.contextPercentage,
-      );
+      const compiled = compileChatMessages({
+        modelName: MODEL,
+        msgs: conversation(1),
+        knownContextLength: CONTEXT_LENGTH,
+        maxTokens: MAX_TOKENS,
+        supportsImages: false,
+        includeSnapshot: true,
+      });
+      expect(compiled.snapshot).toBeDefined();
+      expect(
+        compiled.snapshot!.used / compiled.snapshot!.threshold.tokens,
+      ).toBe(compiled.contextPercentage);
       const withoutWindow = compileChatMessages({
         modelName: MODEL,
         msgs: conversation(0),
         knownContextLength: undefined,
         maxTokens: MAX_TOKENS,
         supportsImages: false,
+        includeSnapshot: true,
       });
-      expect(withoutWindow.snapshot.window).toBe(128_000);
-      expect(withoutWindow.snapshot.threshold.steps[0].label).toBe("default");
+      expect(withoutWindow.snapshot!.window).toBe(128_000);
+      expect(withoutWindow.snapshot!.threshold.steps[0].label).toBe("default");
+    });
+
+    test("omits the snapshot unless the caller asks for it", () => {
+      const compiled = compileChatMessages({
+        modelName: MODEL,
+        msgs: conversation(0),
+        knownContextLength: CONTEXT_LENGTH,
+        maxTokens: MAX_TOKENS,
+        supportsImages: false,
+      });
+      expect(compiled.snapshot).toBeUndefined();
     });
 
     test("encodes each long message once when the same conversation is compiled twice", () => {

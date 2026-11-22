@@ -18,6 +18,7 @@ const ContextStatus = () => {
     (state) => state.session.contextPercentage,
   );
   const snapshot = useAppSelector((state) => state.session.contextSnapshot);
+  const pruned = useAppSelector((state) => state.session.isPruned);
   const history = useAppSelector((state) => state.session.history);
   const selectedChatModel = useAppSelector(
     (state) => state.config.config.selectedModelByRole.chat?.model,
@@ -45,7 +46,6 @@ const ContextStatus = () => {
   const percentOfWindow = snapshot
     ? Math.round((snapshot.used / snapshot.window) * 100)
     : 0;
-  const pruned = useAppSelector((state) => state.session.isPruned);
   const nearThreshold = (contextPercentage ?? 0) > 0.8;
   const color = pruned
     ? "var(--vscode-errorForeground, #f14c4c)"
