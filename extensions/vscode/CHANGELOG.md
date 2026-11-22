@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.6.24](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.23...vscode-v1.6.24) (2026-11-22)
+
+
+### Features
+
+* **cli,core:** read rules and checks from .claude, like skills ([#200](https://github.com/nextcli-dev/nextcli/issues/200)) ([a7457ca](https://github.com/nextcli-dev/nextcli/commit/a7457ca2e61082c6e2c9e08d4f765dc78caef239))
+* **gui:** trusted hosts for Read URL, and no prompt for the open file in the workspace ([#207](https://github.com/nextcli-dev/nextcli/issues/207)) ([1b41ab2](https://github.com/nextcli-dev/nextcli/commit/1b41ab2a9467782c2c7f99b6653f83692e11a600))
+
+
+### Bug Fixes
+
+* **core:** keep provider usage on the OpenAI adapter path, and leave hosted APIs room for max_tokens ([#198](https://github.com/nextcli-dev/nextcli/issues/198)) ([358e096](https://github.com/nextcli-dev/nextcli/commit/358e096e3b2e184c0f9edb3321f6a4494fb1cd51))
+* **gui:** keep the chat panel mounted when a plan turn cannot render ([#209](https://github.com/nextcli-dev/nextcli/issues/209)) ([6ab6c98](https://github.com/nextcli-dev/nextcli/commit/6ab6c9863d696e40f183034386a0c5cdb7e34fef))
+* **gui:** write each session's file in order, so a compaction summary isn't lost ([#208](https://github.com/nextcli-dev/nextcli/issues/208)) ([c9390b7](https://github.com/nextcli-dev/nextcli/commit/c9390b7aa5e91fa5f9fd5ff44586bee40bf0352b))
+* **models:** qwen4-max effort levels and agent-mode recommendation ([#206](https://github.com/nextcli-dev/nextcli/issues/206)) ([551b202](https://github.com/nextcli-dev/nextcli/commit/551b2025dd9aa8d42b7d501b6a2156ee3e192cf1))
+* **vscode:** compact the conversation the GUI shows, cancel it, and report failures ([#204](https://github.com/nextcli-dev/nextcli/issues/204)) ([9a53afb](https://github.com/nextcli-dev/nextcli/commit/9a53afbe33b42d792ba780eeaa14636d41b696df))
+
 ## [1.6.23](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.22...vscode-v1.6.23) (2026-11-19)
 
 
