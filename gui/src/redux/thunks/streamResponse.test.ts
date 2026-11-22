@@ -239,6 +239,16 @@ describe("streamResponseThunk", () => {
         payload: 0.8,
       },
       {
+        type: "session/setContextSnapshot",
+        payload: {
+          window: 128000,
+          used: 0,
+          threshold: { tokens: 100000, action: "pruning", steps: [] },
+          segments: [],
+          largestToolResults: [],
+        },
+      },
+      {
         type: "symbols/updateFromContextItems/fulfilled",
         meta: expect.objectContaining({
           arg: [],
@@ -390,6 +400,7 @@ describe("streamResponseThunk", () => {
         },
       ],
       options: {},
+      systemParts: [{ label: "Base instructions", chars: 28 }],
     });
 
     expect(mockIdeMessenger.llmStreamChat).toHaveBeenCalledWith(
@@ -437,6 +448,13 @@ describe("streamResponseThunk", () => {
         isPruned: false,
         inlineErrorMessage: undefined,
         contextPercentage: 0.8,
+        contextSnapshot: {
+          window: 128000,
+          used: 0,
+          threshold: { tokens: 100000, action: "pruning", steps: [] },
+          segments: [],
+          largestToolResults: [],
+        },
         history: [
           {
             contextItems: [],
@@ -615,6 +633,7 @@ describe("streamResponseThunk", () => {
       "session/setInlineErrorMessage",
       "session/setIsPruned",
       "session/setContextPercentage",
+      "session/setContextSnapshot",
       "symbols/updateFromContextItems/fulfilled",
       "session/streamUpdate",
       "session/streamUpdate",
@@ -634,6 +653,7 @@ describe("streamResponseThunk", () => {
       "session/setInlineErrorMessage",
       "session/setIsPruned",
       "session/setContextPercentage",
+      "session/setContextSnapshot",
       "session/streamUpdate",
       "session/addPromptCompletionPair",
       "session/setInactive",
@@ -753,6 +773,7 @@ describe("streamResponseThunk", () => {
         },
       ],
       options: { tools: [grepTool] },
+      systemParts: [{ label: "Base instructions", chars: 28 }],
     });
 
     expect(requestSpy).toHaveBeenCalledWith("tools/call", {
@@ -881,6 +902,13 @@ describe("streamResponseThunk", () => {
         id: "session-123",
         streamAborter: expect.any(AbortController),
         contextPercentage: 0.9,
+        contextSnapshot: {
+          window: 128000,
+          used: 0,
+          threshold: { tokens: 100000, action: "pruning", steps: [] },
+          segments: [],
+          largestToolResults: [],
+        },
         isPruned: false,
         inlineErrorMessage: undefined,
       },
@@ -1052,6 +1080,16 @@ describe("streamResponseThunk", () => {
       {
         type: "session/setContextPercentage",
         payload: 0.8,
+      },
+      {
+        type: "session/setContextSnapshot",
+        payload: {
+          window: 128000,
+          used: 0,
+          threshold: { tokens: 100000, action: "pruning", steps: [] },
+          segments: [],
+          largestToolResults: [],
+        },
       },
       {
         type: "symbols/updateFromContextItems/fulfilled",
@@ -1226,6 +1264,7 @@ describe("streamResponseThunk", () => {
         },
       ],
       options: {},
+      systemParts: [{ label: "Base instructions", chars: 28 }],
     });
 
     expect(mockIdeMessengerAbort.llmStreamChat).toHaveBeenCalledWith(
@@ -1285,6 +1324,13 @@ describe("streamResponseThunk", () => {
         id: "session-123",
         streamAborter: expect.any(AbortController), // New controller after abort
         contextPercentage: 0.8,
+        contextSnapshot: {
+          window: 128000,
+          used: 0,
+          threshold: { tokens: 100000, action: "pruning", steps: [] },
+          segments: [],
+          largestToolResults: [],
+        },
         inlineErrorMessage: undefined,
         isPruned: false,
         title: "Session summary",

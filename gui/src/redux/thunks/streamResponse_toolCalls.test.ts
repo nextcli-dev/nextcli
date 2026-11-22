@@ -270,6 +270,7 @@ describe("streamResponseThunk - tool calls", () => {
       "session/setInlineErrorMessage",
       "session/setIsPruned",
       "session/setContextPercentage",
+      "session/setContextSnapshot",
       "symbols/updateFromContextItems/fulfilled",
       "session/streamUpdate",
       "session/streamUpdate",
@@ -289,6 +290,7 @@ describe("streamResponseThunk - tool calls", () => {
       "session/setInlineErrorMessage",
       "session/setIsPruned",
       "session/setContextPercentage",
+      "session/setContextSnapshot",
       "session/streamUpdate",
       "session/addPromptCompletionPair",
       "session/setInactive",
@@ -410,6 +412,7 @@ describe("streamResponseThunk - tool calls", () => {
       options: {
         tools: [grepTool],
       },
+      systemParts: [{ label: "Base instructions", chars: 28 }],
     });
 
     expect(requestSpy).toHaveBeenCalledWith("tools/call", {
@@ -547,6 +550,13 @@ describe("streamResponseThunk - tool calls", () => {
         id: "session-123",
         streamAborter: expect.any(AbortController),
         contextPercentage: 0.9,
+        contextSnapshot: {
+          window: 128000,
+          used: 0,
+          threshold: { tokens: 100000, action: "pruning", steps: [] },
+          segments: [],
+          largestToolResults: [],
+        },
         isPruned: false,
         title: "Session summary",
         inlineErrorMessage: undefined,
@@ -750,6 +760,16 @@ describe("streamResponseThunk - tool calls", () => {
       {
         type: "session/setContextPercentage",
         payload: 0.9,
+      },
+      {
+        type: "session/setContextSnapshot",
+        payload: {
+          window: 128000,
+          used: 0,
+          threshold: { tokens: 100000, action: "pruning", steps: [] },
+          segments: [],
+          largestToolResults: [],
+        },
       },
       {
         type: "symbols/updateFromContextItems/fulfilled",
@@ -956,6 +976,7 @@ describe("streamResponseThunk - tool calls", () => {
         },
       ],
       options: { tools: [grepTool] },
+      systemParts: [{ label: "Base instructions", chars: 28 }],
     });
 
     expect(mockIdeMessengerManual.llmStreamChat).toHaveBeenCalledWith(
@@ -1054,6 +1075,13 @@ describe("streamResponseThunk - tool calls", () => {
         ],
         streamAborter: expect.any(AbortController),
         contextPercentage: 0.9,
+        contextSnapshot: {
+          window: 128000,
+          used: 0,
+          threshold: { tokens: 100000, action: "pruning", steps: [] },
+          segments: [],
+          largestToolResults: [],
+        },
         isPruned: false,
         title: "Session summary",
         inlineErrorMessage: undefined,
@@ -1311,6 +1339,16 @@ describe("streamResponseThunk - tool calls", () => {
       {
         type: "session/setContextPercentage",
         payload: 0.85,
+      },
+      {
+        type: "session/setContextSnapshot",
+        payload: {
+          window: 128000,
+          used: 0,
+          threshold: { tokens: 100000, action: "pruning", steps: [] },
+          segments: [],
+          largestToolResults: [],
+        },
       },
       {
         type: "symbols/updateFromContextItems/fulfilled",
@@ -1609,6 +1647,16 @@ describe("streamResponseThunk - tool calls", () => {
         payload: 0.85,
       },
       {
+        type: "session/setContextSnapshot",
+        payload: {
+          window: 128000,
+          used: 0,
+          threshold: { tokens: 100000, action: "pruning", steps: [] },
+          segments: [],
+          largestToolResults: [],
+        },
+      },
+      {
         type: "session/streamUpdate",
         payload: [
           {
@@ -1888,6 +1936,13 @@ describe("streamResponseThunk - tool calls", () => {
         id: "session-123",
         streamAborter: expect.any(AbortController),
         contextPercentage: 0.85,
+        contextSnapshot: {
+          window: 128000,
+          used: 0,
+          threshold: { tokens: 100000, action: "pruning", steps: [] },
+          segments: [],
+          largestToolResults: [],
+        },
         inlineErrorMessage: undefined,
         isPruned: false,
       },

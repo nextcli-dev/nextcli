@@ -502,6 +502,7 @@ describe("streamResponseThunk", () => {
         },
       ],
       options: {},
+      systemParts: [{ label: "Base instructions", chars: 28 }],
     });
     expect(chatSpy).not.toHaveBeenCalled();
 
@@ -803,6 +804,7 @@ describe("streamResponseThunk", () => {
         },
       ],
       options: {},
+      systemParts: [{ label: "Base instructions", chars: 28 }],
     });
     expect(chatSpy).not.toHaveBeenCalled();
 
