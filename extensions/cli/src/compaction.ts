@@ -1,7 +1,6 @@
 import { ModelConfig } from "@nextcli/config-yaml";
 import { BaseLlmApi } from "@nextcli/openai-adapters";
 import type { ChatHistoryItem } from "core/index.js";
-import { encode } from "gpt-tokenizer";
 import { ChatCompletionTool } from "openai/resources.mjs";
 
 import {
@@ -17,6 +16,7 @@ import { StreamCallbacks } from "./stream/streamChatResponse.types.js";
 import { logger } from "./util/logger.js";
 import {
   countChatHistoryTokens,
+  countText,
   countToolDefinitionTokens,
   countTotalInputTokens,
   getModelContextLimit,
@@ -122,7 +122,7 @@ function noRoomForSummary(
 ): string {
   const tokens = (n: number) => `${n.toLocaleString()} tokens`;
   const parts = [
-    `the system prompt (${tokens(encode(next.systemMessage).length)})`,
+    `the system prompt (${tokens(countText(next.systemMessage))})`,
     next.tools.length > 0 &&
       `the tools (${tokens(countToolDefinitionTokens(next.tools))})`,
     next.followedBy.length > 0 &&
@@ -440,7 +440,7 @@ export function shouldAutoCompact(params: AutoCompactParams): boolean {
   }
 
   const toolTokens = tools ? countToolDefinitionTokens(tools) : 0;
-  const systemTokens = systemMessage ? encode(systemMessage).length : 0;
+  const systemTokens = systemMessage ? countText(systemMessage) : 0;
   const shouldCompact = inputTokens >= compactionThreshold;
 
   logger.debug("Context usage check", {

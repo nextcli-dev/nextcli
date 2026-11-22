@@ -56,6 +56,7 @@
   },
   "devDependencies": {
     "@nextcli/ask-question": "file:../../packages/ask-question",
+    "@nextcli/context": "file:../../packages/context",
     "@nextcli/snapshot": "file:../../packages/snapshot",
     "@nextcli/config-yaml": "file:../../packages/config-yaml",
     "@nextcli/openai-adapters": "file:../../packages/openai-adapters",

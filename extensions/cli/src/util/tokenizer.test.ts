@@ -1,5 +1,6 @@
 import { ModelConfig } from "@nextcli/config-yaml";
 import type { ChatHistoryItem } from "core/index.js";
+import { encode } from "gpt-tokenizer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -30,9 +31,18 @@ vi.mock("./logger.js", () => ({
   },
 }));
 
-// Mock gpt-tokenizer
+// Mock gpt-tokenizer. The real encoder throws on special-token text unless
+// disallowedSpecial is empty, and this mock does the same.
 vi.mock("gpt-tokenizer", () => ({
-  encode: (text: string) => new Array(Math.ceil(text.length / 4)), // Rough 4 chars per token
+  encode: vi.fn(
+    (text: string, options?: { disallowedSpecial?: Set<string> | "all" }) => {
+      const disallowed = options?.disallowedSpecial ?? "all";
+      if (disallowed === "all" && text.includes("<|")) {
+        throw new Error("special token");
+      }
+      return new Array(Math.ceil(text.length / 4));
+    },
+  ),
 }));
 
 describe("tokenizer", () => {
@@ -155,6 +165,45 @@ describe("tokenizer", () => {
 
       const tokenCount = countChatHistoryItemTokens(historyItem, model);
       expect(tokenCount).toBe(1028); // 2 + 1024 + 2 role tokens
+    });
+
+    it("counts a message that contains a special token", () => {
+      const content = "see <|endoftext|> here";
+      const historyItem: ChatHistoryItem = {
+        message: { role: "user", content },
+        contextItems: [],
+      };
+      const model: ModelConfig = {
+        name: "test-model",
+        model: "test",
+        provider: "openai",
+      };
+
+      const tokenCount = countChatHistoryItemTokens(historyItem, model);
+      expect(tokenCount).toBe(Math.ceil(content.length / 4) + 2);
+      expect(logger.error).not.toHaveBeenCalled();
+    });
+
+    it("encodes each long text once when the same history is counted again", () => {
+      const encodeMock = vi.mocked(encode);
+      const content = `repeat-${"q".repeat(600)}`;
+      const history: ChatHistoryItem[] = [
+        {
+          message: { role: "user", content },
+          contextItems: [],
+        },
+      ];
+      const model: ModelConfig = {
+        name: "test-model",
+        model: "test",
+        provider: "openai",
+      };
+
+      countChatHistoryTokens(history, model);
+      const calls = encodeMock.mock.calls.length;
+      expect(calls).toBeGreaterThan(0);
+      countChatHistoryTokens(history, model);
+      expect(encodeMock.mock.calls.length).toBe(calls);
     });
 
     it("should count tokens for tool calls", () => {
