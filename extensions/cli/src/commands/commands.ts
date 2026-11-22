@@ -68,6 +68,11 @@ export const SYSTEM_SLASH_COMMANDS: SystemCommand[] = [
     category: "system",
   },
   {
+    name: "context",
+    description: "Show what fills the context window",
+    category: "system",
+  },
+  {
     name: "resume",
     description: "Resume a previous chat session",
     category: "system",

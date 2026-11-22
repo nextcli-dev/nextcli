@@ -117,7 +117,7 @@ function countToolCallFunctionTokens(
 /**
  * Count tokens in tool call outputs
  */
-function countToolOutputTokens(
+export function countToolOutputTokens(
   output: Array<{ content?: string; name?: string }> | undefined,
 ): number {
   if (!output) {
@@ -166,62 +166,90 @@ export function countReasoningTokens(reasoning: Reasoning): number {
   return tokens;
 }
 
+export interface HistoryItemParts {
+  role: string;
+  messageTokens: number;
+  reasoningTokens: number;
+  toolResults: { label: string; tokens: number }[];
+}
+
+/** The same pieces `countChatHistoryItemTokens` adds, split for the snapshot. */
+export function historyItemParts(
+  historyItem: ChatHistoryItem,
+  model: ModelConfig,
+): HistoryItemParts {
+  const message = historyItem.message;
+  let messageTokens = 2;
+  const toolResults: { label: string; tokens: number }[] = [];
+
+  if (message.role === "tool") {
+    messageTokens += 5;
+    toolResults.push({
+      label:
+        "toolCallId" in message && message.toolCallId
+          ? message.toolCallId
+          : "Tool result",
+      tokens: countContentTokens(message.content, model),
+    });
+  } else {
+    messageTokens += countContentTokens(message.content, model);
+  }
+
+  // Skip if toolCallStates exists to avoid double-counting (toolCallStates includes the tool calls)
+  if (
+    "toolCalls" in message &&
+    message.toolCalls &&
+    !historyItem.toolCallStates
+  ) {
+    for (const toolCall of message.toolCalls) {
+      messageTokens += countToolCallFunctionTokens(toolCall.function);
+    }
+  }
+
+  for (const contextItem of historyItem.contextItems) {
+    messageTokens += countText(contextItem.content);
+    messageTokens += countText(contextItem.name);
+    messageTokens += 5;
+  }
+
+  const reasoningTokens = historyItem.reasoning
+    ? countReasoningTokens(historyItem.reasoning)
+    : 0;
+
+  if (historyItem.toolCallStates) {
+    for (const toolState of historyItem.toolCallStates) {
+      messageTokens += countToolCallFunctionTokens(
+        toolState.toolCall?.function,
+      );
+      const tokens = countToolOutputTokens(toolState.output);
+      if (tokens > 0) {
+        toolResults.push({
+          label: toolState.toolCall?.function?.name || "Tool result",
+          tokens,
+        });
+      }
+    }
+  }
+
+  return {
+    role: message.role,
+    messageTokens,
+    reasoningTokens,
+    toolResults,
+  };
+}
+
 export function countChatHistoryItemTokens(
   historyItem: ChatHistoryItem,
   model: ModelConfig,
 ): number {
   try {
-    let tokenCount = 0;
-
-    const message = historyItem.message;
-
-    // Count tokens in content
-    tokenCount += countContentTokens(message.content, model);
-
-    // Add tokens for role (roughly 1-2 tokens)
-    tokenCount += 2;
-
-    // Add tokens for tool calls if present
-    // Skip if toolCallStates exists to avoid double-counting (toolCallStates includes the tool calls)
-    if (
-      "toolCalls" in message &&
-      message.toolCalls &&
-      !historyItem.toolCallStates
-    ) {
-      for (const toolCall of message.toolCalls) {
-        tokenCount += countToolCallFunctionTokens(toolCall.function);
-      }
-    }
-
-    // Add tokens for tool call results
-    if (message.role === "tool" && "content" in message) {
-      tokenCount += 5; // Tool message structure overhead
-    }
-
-    // Add tokens for context items
-    for (const contextItem of historyItem.contextItems) {
-      tokenCount += countText(contextItem.content);
-      tokenCount += countText(contextItem.name);
-      tokenCount += 5; // Context item structure overhead
-    }
-
-    // Reasoning sent back with the message (#12246). Anthropic keeps earlier
-    // turns' thinking in context on newer models, so count it for every turn
-    if (historyItem.reasoning) {
-      tokenCount += countReasoningTokens(historyItem.reasoning);
-    }
-
-    // Add tokens for tool call states (tool results/outputs)
-    if (historyItem.toolCallStates) {
-      for (const toolState of historyItem.toolCallStates) {
-        // Count tokens in tool call function (name + arguments)
-        tokenCount += countToolCallFunctionTokens(toolState.toolCall?.function);
-        // Count tokens in tool outputs (can be very large - thousands of tokens)
-        tokenCount += countToolOutputTokens(toolState.output);
-      }
-    }
-
-    return tokenCount;
+    const parts = historyItemParts(historyItem, model);
+    return (
+      parts.messageTokens +
+      parts.reasoningTokens +
+      parts.toolResults.reduce((sum, result) => sum + result.tokens, 0)
+    );
   } catch (error) {
     logger.error("Error counting tokens for history item", error);
     // Return a rough estimate based on character count

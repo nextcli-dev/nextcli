@@ -1,16 +1,24 @@
 // Helper functions extracted from streamChatResponse.ts to reduce file size
 /* eslint-disable max-lines */
 
+import type { ModelConfig } from "@nextcli/config-yaml";
+import type { ContextSnapshot } from "@nextcli/context";
 import type { ChatHistoryItem, ToolStatus, Usage } from "core/index.js";
 import {
   calculateRequestCost,
   unknownZeroPriceWarning,
 } from "core/llm/utils/calculateRequestCost.js";
 import { ContinueError, ContinueErrorReason } from "core/util/errors.js";
-import { ChatCompletionToolMessageParam } from "openai/resources/chat/completions.mjs";
+import { convertFromUnifiedHistoryWithSystemMessage } from "core/util/messageConversion.js";
+import {
+  ChatCompletionMessageParam,
+  ChatCompletionTool,
+  ChatCompletionToolMessageParam,
+} from "openai/resources/chat/completions.mjs";
 
 import { ToolPermissionServiceState } from "src/services/ToolPermissionService.js";
 
+import { rememberResponseUsage } from "../context/lastUsage.js";
 import { safeStderr } from "../init.js";
 import { checkToolPermission } from "../permissions/permissionChecker.js";
 import { toolPermissionManager } from "../permissions/permissionManager.js";
@@ -532,6 +540,51 @@ export function finalAnswerMaxTokens(
   );
 }
 
+export async function compiledRequest(input: {
+  model: ModelConfig;
+  chatHistory: ChatHistoryItem[];
+  systemMessage?: string;
+  tools?: ChatCompletionTool[];
+}): Promise<{
+  context: ContextSnapshot | undefined;
+  messages: ChatCompletionMessageParam[];
+}> {
+  const { tracedContext } = await import("../context/snapshot.js");
+  const context = await tracedContext(input);
+  const messages = convertFromUnifiedHistoryWithSystemMessage(
+    input.chatHistory,
+    input.systemMessage ?? "",
+    { model: input.model.model },
+  ) as ChatCompletionMessageParam[];
+  return { context, messages };
+}
+
+/** The provider usage object, or the estimated counts when the provider sent none. */
+export function toUsage(
+  fullUsage: any,
+  inputTokens: number,
+  outputTokens: number,
+): Usage {
+  if (!fullUsage) {
+    return {
+      promptTokens: inputTokens,
+      completionTokens: outputTokens,
+    };
+  }
+  return {
+    promptTokens: fullUsage.prompt_tokens,
+    completionTokens: fullUsage.completion_tokens,
+    promptTokensDetails: fullUsage.prompt_tokens_details
+      ? {
+          cachedTokens:
+            fullUsage.prompt_tokens_details.cache_read_tokens ??
+            fullUsage.prompt_tokens_details.cached_tokens,
+          cacheWriteTokens: fullUsage.prompt_tokens_details.cache_write_tokens,
+        }
+      : undefined,
+  };
+}
+
 // Helper function to record telemetry
 export function recordStreamTelemetry(options: {
   requestStartTime: number;
@@ -541,6 +594,8 @@ export function recordStreamTelemetry(options: {
   model: any;
   tools?: any[];
   fullUsage?: any;
+  /** Counts and names only. Written to the trace, not the log line. */
+  context?: ContextSnapshot;
   /** What only the caller knows, for the "Model call" log line and trace */
   call: {
     finishReason?: string;
@@ -572,32 +627,12 @@ export function recordStreamTelemetry(options: {
   let cost: number;
   let priced: PriceSource;
   let catalogDate: string | undefined;
-  let usage: Usage;
+  const usage = toUsage(fullUsage, inputTokens, outputTokens);
+  rememberResponseUsage(usage);
 
   if (fullUsage) {
-    // Transform API usage format to Usage interface
-    usage = {
-      promptTokens: fullUsage.prompt_tokens,
-      completionTokens: fullUsage.completion_tokens,
-      promptTokensDetails: fullUsage.prompt_tokens_details
-        ? {
-            // OpenAI reports cache reads only as cached_tokens
-            cachedTokens:
-              fullUsage.prompt_tokens_details.cache_read_tokens ??
-              fullUsage.prompt_tokens_details.cached_tokens,
-            cacheWriteTokens:
-              fullUsage.prompt_tokens_details.cache_write_tokens,
-          }
-        : undefined,
-    };
-
     ({ cost, priced, catalogDate } = priceRequest(model, usage));
   } else {
-    // Fallback when fullUsage not available
-    usage = {
-      promptTokens: inputTokens,
-      completionTokens: outputTokens,
-    };
     cost = calculateFallbackCost(inputTokens, outputTokens);
     priced = "fallback";
   }
@@ -658,7 +693,7 @@ export function recordStreamTelemetry(options: {
     priced,
     ...options.call,
   };
-  writeCallRecord(attrs, { ts: requestStartTime, dur: totalDuration });
+  writeCallRecord(attrs, { ts: requestStartTime, dur: totalDuration }, options.context);
 
   return cost;
 }
@@ -667,13 +702,18 @@ export function recordStreamTelemetry(options: {
 function writeCallRecord(
   attrs: Record<string, unknown>,
   timing: { ts: number; dur: number },
+  context?: ContextSnapshot,
 ): void {
   // The log line would print an unset field as "[undefined]"
   const set = Object.fromEntries(
     Object.entries(attrs).filter(([, value]) => value !== undefined),
   );
   logger.verbose("Model call", { ...set, durationMs: timing.dur });
-  traceEvent("llm.request", set, timing);
+  traceEvent(
+    "llm.request",
+    context ? { ...set, context } : set,
+    timing,
+  );
 }
 
 /**

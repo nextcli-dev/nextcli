@@ -49,6 +49,11 @@ function openTrace(): string {
  * Appends one event to the trace file. Writes are synchronous, so a run that
  * fails or exits early keeps its last events.
  */
+/** True when `NEXTCLI_TRACE=basic`. An unknown value stays off. */
+export function traceEnabled(): boolean {
+  return process.env.NEXTCLI_TRACE?.trim().toLowerCase() === "basic";
+}
+
 export function traceEvent(
   name: string,
   attrs: Record<string, unknown>,

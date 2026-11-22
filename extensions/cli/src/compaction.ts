@@ -401,6 +401,37 @@ export function getAutoCompactMessage(model: ModelConfig): string {
 }
 
 /**
+ * The legacy auto-compaction threshold. The UI reads this; it does not throw.
+ * `shouldAutoCompact` still throws when the threshold is not positive.
+ */
+export function autoCompactThreshold(model: ModelConfig): {
+  contextLimit: number;
+  maxTokens: number;
+  compactionBuffer: number;
+  compactionThreshold: number;
+} {
+  const contextLimit = getModelContextLimit(model);
+  const maxTokens = getModelMaxTokens(model);
+  const ratioCompactionBuffer = Math.ceil(
+    (1 - AUTO_COMPACT_BUFFER_RATIO) * (contextLimit - maxTokens),
+  );
+  const safeCompactionBuffer = Math.max(maxTokens, ratioCompactionBuffer);
+  // At most half the room left after the reserve, so a small window with a
+  // large max_tokens (8K of 16K) still gets a positive threshold
+  const compactionBuffer = Math.min(
+    safeCompactionBuffer,
+    AUTO_COMPACT_BUFFER_CAP,
+    Math.floor((contextLimit - maxTokens) / 2),
+  );
+  return {
+    contextLimit,
+    maxTokens,
+    compactionBuffer,
+    compactionThreshold: contextLimit - maxTokens - compactionBuffer,
+  };
+}
+
+/**
  * Check if the chat history exceeds the auto-compact threshold.
  * Accounts for system message and tool definitions in the calculation.
  * @param params Object containing chatHistory, model, optional systemMessage, and optional tools
@@ -415,23 +446,8 @@ export function shouldAutoCompact(params: AutoCompactParams): boolean {
     tools,
     model,
   });
-  const contextLimit = getModelContextLimit(model);
-  const maxTokens = getModelMaxTokens(model);
-
-  // Additional buffer matching the auto-compaction threshold formula
-  const ratioCompactionBuffer = Math.ceil(
-    (1 - AUTO_COMPACT_BUFFER_RATIO) * (contextLimit - maxTokens),
-  );
-  const safeCompactionBuffer = Math.max(maxTokens, ratioCompactionBuffer);
-  // At most half the room left after the reserve, so a small window with a
-  // large max_tokens (8K of 16K) still gets a positive threshold
-  const compactionBuffer = Math.min(
-    safeCompactionBuffer,
-    AUTO_COMPACT_BUFFER_CAP,
-    Math.floor((contextLimit - maxTokens) / 2),
-  );
-
-  const compactionThreshold = contextLimit - maxTokens - compactionBuffer;
+  const { contextLimit, maxTokens, compactionBuffer, compactionThreshold } =
+    autoCompactThreshold(model);
 
   if (compactionThreshold <= 0) {
     throw new Error(

@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from "uuid";
 
 import { getAllSlashCommands } from "./commands/commands.js";
 import { handleInit } from "./commands/init.js";
+import { handleContextSlashCommand } from "./context/report.js";
 import { handleInfoSlashCommand } from "./infoScreen.js";
 import type { AssistantConfig } from "./services/types.js";
 import { getCurrentSession, updateSessionTitle } from "./session.js";
@@ -270,6 +271,7 @@ const commandHandlers: Record<string, CommandHandler> = {
   compact: () => {
     return { compact: true };
   },
+  context: () => handleContextSlashCommand(),
   mcp: () => {
     return { openMcpSelector: true };
   },

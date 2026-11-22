@@ -5,6 +5,7 @@ import { setExitMessageCallback, shouldShowExitMessage } from "../../index.js";
 import type { PermissionMode } from "../../permissions/types.js";
 import { modelStatusLabel } from "../../util/modelSettings.js";
 import type { NavigationScreen } from "../context/NavigationContext.js";
+import type { ContextUsage } from "../hooks/useContextPercentage.js";
 import { UpdateNotification } from "../UpdateNotification.js";
 
 import { ContextPercentageDisplay } from "./ContextPercentageDisplay.js";
@@ -19,7 +20,7 @@ export interface BottomStatusBarProps {
   navState: any;
   navigateTo: (screen: NavigationScreen, data?: any) => void;
   closeCurrentScreen: () => void;
-  contextPercentage?: number;
+  contextUsage?: ContextUsage;
   hasImageInClipboard?: boolean;
   isVerboseMode?: boolean;
   totalCost?: number;
@@ -33,7 +34,7 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
   navState: _navState,
   navigateTo: _navigateTo,
   closeCurrentScreen: _closeCurrentScreen,
-  contextPercentage,
+  contextUsage,
   hasImageInClipboard,
   isVerboseMode,
   totalCost,
@@ -69,13 +70,13 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
           </React.Fragment>
         )}
         <ModeIndicator />
-        {contextPercentage !== undefined && contextPercentage > 0 && (
+        {contextUsage && (
           <React.Fragment>
             <Text key="context-separator" color="dim">
               {" "}
               •{" "}
             </Text>
-            <ContextPercentageDisplay percentage={contextPercentage} />
+            <ContextPercentageDisplay usage={contextUsage} />
           </React.Fragment>
         )}
         {model && (

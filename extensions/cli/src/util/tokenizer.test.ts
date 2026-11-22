@@ -5,8 +5,7 @@ import { encode } from "gpt-tokenizer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  AUTO_COMPACT_BUFFER_CAP,
-  AUTO_COMPACT_BUFFER_RATIO,
+  autoCompactThreshold,
   shouldAutoCompact,
 } from "../compaction.js";
 
@@ -392,21 +391,12 @@ describe("tokenizer", () => {
       ];
     };
 
-    // Helper to calculate threshold using the new formula
     const calculateThreshold = (
       contextLength: number,
       maxTokens: number,
-    ): number => {
-      const ratioCompactionBuffer = Math.ceil(
-        (1 - AUTO_COMPACT_BUFFER_RATIO) * (contextLength - maxTokens),
-      );
-      const safeCompactionBuffer = Math.max(maxTokens, ratioCompactionBuffer);
-      const compactionBuffer = Math.min(
-        safeCompactionBuffer,
-        AUTO_COMPACT_BUFFER_CAP,
-      );
-      return contextLength - maxTokens - compactionBuffer;
-    };
+    ): number =>
+      autoCompactThreshold(createModel(contextLength, maxTokens))
+        .compactionThreshold;
 
     it("should compact when input tokens exceed threshold with maxTokens", () => {
       const model = createModel(1000, 200); // 1000 context, 200 max output
@@ -432,10 +422,10 @@ describe("tokenizer", () => {
       const model = createModel(1000); // No maxTokens
       // Default maxTokens = min(1000 * 0.35, 64k) = 350
       // ratioBuffer = ceil(0.2 * 650) = 130, safeBuffer = max(350, 130) = 350
-      // compactionBuffer = min(350, 15k) = 350
-      // Threshold: 1000 - 350 - 350 = 300
+      // half the room after the reserve is 325, so the buffer is 325
+      // Threshold: 1000 - 350 - 325 = 325
       const threshold = calculateThreshold(1000, 350);
-      expect(threshold).toBe(300);
+      expect(threshold).toBe(325);
       const chatHistory = createChatHistory(350); // Above threshold
 
       expect(shouldAutoCompact({ chatHistory, model })).toBe(true);
@@ -592,6 +582,49 @@ describe("tokenizer", () => {
 
         expect(shouldAutoCompact({ chatHistory, model })).toBe(true);
       });
+    });
+
+    it("triggers at the threshold once a nested tool schema is counted", () => {
+      const model = createModel(2_000, 100);
+      const { compactionThreshold } = autoCompactThreshold(model);
+      const shallow = [
+        {
+          type: "function" as const,
+          function: { name: "search" },
+        },
+      ];
+      const nested = [
+        {
+          type: "function" as const,
+          function: {
+            name: "search",
+            parameters: {
+              type: "object",
+              properties: {
+                query: {
+                  type: "object",
+                  properties: {
+                    text: {
+                      type: "string",
+                      description: "d".repeat(8_000),
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      ];
+      const chatHistory = createChatHistory(20);
+      expect(
+        shouldAutoCompact({ chatHistory, model, tools: shallow }),
+      ).toBe(false);
+      expect(shouldAutoCompact({ chatHistory, model, tools: nested })).toBe(
+        true,
+      );
+      expect(countTotalInputTokens({ chatHistory, model, tools: nested })).toBeGreaterThanOrEqual(
+        compactionThreshold,
+      );
     });
   });
 

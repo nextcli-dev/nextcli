@@ -289,6 +289,9 @@ const TUIChat: React.FC<TUIChatProps> = ({
   const contextData = useContextPercentage({
     chatHistory,
     model: services.model?.model || undefined,
+    mode: services?.toolPermissions?.currentMode ?? "normal",
+    isRemoteMode,
+    isStreaming: isWaitingForResponse,
   });
 
   const { renderMessage } = useMessageRenderer();
@@ -525,7 +528,7 @@ const TUIChat: React.FC<TUIChatProps> = ({
           navState={navState}
           navigateTo={navigateTo}
           closeCurrentScreen={closeCurrentScreen}
-          contextPercentage={contextData?.percentage}
+          contextUsage={contextData ?? undefined}
           hasImageInClipboard={hasImageInClipboard}
           isVerboseMode={isVerboseMode}
           totalCost={getTotalSessionCost()}

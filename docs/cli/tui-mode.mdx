@@ -38,6 +38,7 @@ Type `/` to see available commands. Run `/help` for the full list.
 | `/mcp` | Manage MCP server connections |
 | `/init` | Create `AGENTS.md`, or update the first agent file already in the working directory (`AGENTS.md`, `AGENT.md`, `CLAUDE.md`, `CODEX.md`) |
 | `/compact` | Summarize chat history into a compact form |
+| `/context` | Show what fills the context window: system prompt, tools, history, the largest tool results, and the compaction threshold |
 | `/resume` | Resume a previous chat session |
 | `/undo` | Undo the last turn: put its files back and remove it from the chat |
 | `/redo` | Re-apply the turn you just undid |
@@ -48,6 +49,12 @@ Type `/` to see available commands. Run `/help` for the full list.
 | `/jobs` | List background jobs |
 
 When you're connected to a remote environment, NextCLI also adds remote-only slash commands such as `/diff` and `/apply`.
+
+## Context window
+
+The status bar shows how full the window is, for example `Context 23% · 46K/200K`. The percentage is of the window. The numbers are the estimate the auto-compaction trigger compares: the system prompt, the tool schemas, and the history. The bar turns amber at 80% of the compaction threshold.
+
+`/context` prints the same estimate as a tree. Each row is labelled `estimated`, `measured`, or `configured`. Tool results are listed by the five largest. The threshold line is the window minus the output reserve minus the buffer. The last response's provider usage, when there is one, is labelled measured: prompt, output, cache read, cache write, and the cache-hit ratio.
 
 ## Resume previous sessions
 
