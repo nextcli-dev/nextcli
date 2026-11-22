@@ -1,4 +1,5 @@
 import { ModelConfig } from "@nextcli/config-yaml";
+import { toolSchemaText } from "@nextcli/context";
 import type { ChatHistoryItem } from "core/index.js";
 import { encode } from "gpt-tokenizer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -615,9 +616,9 @@ describe("tokenizer", () => {
       ];
 
       const tokenCount = countToolDefinitionTokens(tools);
-      // Base overhead (12) + tool tokens + wrapper overhead (12)
-      expect(tokenCount).toBeGreaterThan(24); // At least base overheads
-      expect(tokenCount).toBe(27); // 12 + 3 (name) + 12 = 27
+      expect(tokenCount).toBe(
+        24 + Math.ceil(toolSchemaText(tools[0].function).length / 4),
+      );
     });
 
     it("should count tokens for a tool with name and description", () => {
@@ -729,51 +730,51 @@ describe("tokenizer", () => {
       expect(tokensWithEnum).toBeGreaterThan(tokensWithoutEnum);
     });
 
-    it("should handle empty enum array without negative token count", () => {
-      const toolsWithEmptyEnum = [
-        {
-          type: "function" as const,
-          function: {
-            name: "set_mode",
-            parameters: {
-              type: "object",
-              properties: {
-                mode: {
-                  type: "string",
-                  description: "The mode to set",
-                  enum: [],
+    it("counts a description nested under items and anyOf", () => {
+      const shallow = {
+        type: "function" as const,
+        function: {
+          name: "search",
+          parameters: {
+            type: "object",
+            properties: {
+              filter: {
+                type: "array",
+                items: {
+                  anyOf: [{ type: "string", description: "short" }],
+                },
+              },
+            },
+            required: ["filter"],
+          },
+        },
+      };
+      const deeper = {
+        ...shallow,
+        function: {
+          ...shallow.function,
+          parameters: {
+            ...shallow.function.parameters,
+            properties: {
+              filter: {
+                type: "array",
+                items: {
+                  anyOf: [
+                    {
+                      type: "string",
+                      description: "a much longer nested description",
+                    },
+                  ],
                 },
               },
             },
           },
         },
-      ];
+      };
 
-      const toolsWithoutEnum = [
-        {
-          type: "function" as const,
-          function: {
-            name: "set_mode",
-            parameters: {
-              type: "object",
-              properties: {
-                mode: {
-                  type: "string",
-                  description: "The mode to set",
-                },
-              },
-            },
-          },
-        },
-      ];
-
-      const tokensWithEmptyEnum = countToolDefinitionTokens(toolsWithEmptyEnum);
-      const tokensWithoutEnum = countToolDefinitionTokens(toolsWithoutEnum);
-
-      // Empty enum should not subtract tokens - should be equal to no enum
-      expect(tokensWithEmptyEnum).toBe(tokensWithoutEnum);
-      // Token count should always be positive
-      expect(tokensWithEmptyEnum).toBeGreaterThan(0);
+      expect(countToolDefinitionTokens([deeper])).toBeGreaterThan(
+        countToolDefinitionTokens([shallow]),
+      );
     });
 
     it("should count tokens for multiple parameters", () => {

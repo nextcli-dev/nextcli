@@ -1,5 +1,5 @@
 import { ModelConfig } from "@nextcli/config-yaml";
-import { memoizeCount } from "@nextcli/context";
+import { countToolTokens, memoizeCount } from "@nextcli/context";
 import type { ChatHistoryItem, Reasoning } from "core/index.js";
 import { getAdjustedTokenCountFromModel } from "core/llm/getAdjustedTokenCount.js";
 import { encode } from "gpt-tokenizer";
@@ -286,94 +286,9 @@ export function calculateContextUsagePercentage(
   return Math.min(100, Math.round((tokenCount / limit) * 100));
 }
 
-/**
- * Count tokens for a single parameter field in a tool definition.
- * @param fields The field definition object
- * @returns Token count for this field
- */
-function countParameterFieldTokens(
-  fields: Record<string, unknown> | undefined,
-): number {
-  if (!fields) {
-    return 0;
-  }
-
-  let tokens = 0;
-  const fieldType = fields["type"];
-  const fieldDesc = fields["description"];
-  const fieldEnum = fields["enum"];
-
-  if (fieldType && typeof fieldType === "string") {
-    tokens += 2; // Structure overhead for type
-    tokens += encode(fieldType).length;
-  }
-
-  if (fieldDesc && typeof fieldDesc === "string") {
-    tokens += 2; // Structure overhead for description
-    tokens += encode(fieldDesc).length;
-  }
-
-  if (fieldEnum && Array.isArray(fieldEnum) && fieldEnum.length > 0) {
-    tokens -= 3;
-    for (const e of fieldEnum) {
-      tokens += 3;
-      tokens += typeof e === "string" ? encode(e).length : 5;
-    }
-  }
-
-  return tokens;
-}
-
-/**
- * Count tokens for a single tool's function definition.
- * @param tool The ChatCompletionTool to count
- * @returns Token count for this tool
- */
-function countSingleToolTokens(tool: ChatCompletionTool): number {
-  let tokens = encode(tool.function.name).length;
-
-  if (tool.function.description) {
-    tokens += encode(tool.function.description).length;
-  }
-
-  const params = tool.function.parameters as
-    | { properties?: Record<string, unknown> }
-    | undefined;
-  const props = params?.properties;
-
-  if (props) {
-    for (const key in props) {
-      tokens += encode(key).length;
-      tokens += countParameterFieldTokens(
-        props[key] as Record<string, unknown> | undefined,
-      );
-    }
-  }
-
-  return tokens;
-}
-
-/**
- * Count tokens for tool definitions sent to the API.
- * Based on OpenAI's token counting for function calling.
- * @see https://community.openai.com/t/how-to-calculate-the-tokens-when-using-function-call/266573/10
- * @param tools Array of ChatCompletionTool objects
- * @returns Estimated token count for all tool definitions
- */
+/** The whole tool schema, including nested fields, plus the list overhead. */
 export function countToolDefinitionTokens(tools: ChatCompletionTool[]): number {
-  if (!tools || tools.length === 0) {
-    return 0;
-  }
-
-  // Base overhead for the tools array structure
-  let numTokens = 12;
-
-  for (const tool of tools) {
-    numTokens += countSingleToolTokens(tool);
-  }
-
-  // Additional overhead for the tools wrapper
-  return numTokens + 12;
+  return countToolTokens(tools, countText).total;
 }
 
 /**
