@@ -24,7 +24,13 @@ import { ChatDescriber } from "./util/chatDescriber";
 import { resolveEditableFileUri } from "./util/ideUtils";
 import { resolveNewFilePath } from "./util/pathResolver";
 import { localPathOrUriToPath } from "./util/pathToUri";
-import { compactConversation } from "./util/conversationCompaction";
+import {
+  abortCompaction,
+  compactConversation,
+  compactionKey,
+  finishCompaction,
+  startCompaction,
+} from "./util/conversationCompaction";
 import { GlobalContext } from "./util/GlobalContext";
 import { SnapshotManager } from "./snapshot/SnapshotManager";
 import historyManager from "./util/history";
@@ -659,19 +665,27 @@ export class Core {
       const currentModel = getSelectedChatModelOrThrow(
         await this.configHandler.loadConfig(),
       );
-
+      const key = compactionKey(msg.data.sessionId, msg.data.messageId);
+      const controller = startCompaction(key);
+      // Errors also reach the GUI, which reports them
       try {
-        await compactConversation({
-          sessionId: msg.data.sessionId,
-          index: msg.data.index,
-          historyManager,
+        return await compactConversation({
+          messages: msg.data.messages,
           currentModel,
+          signal: controller.signal,
         });
-        return undefined;
-      } catch (error) {
-        Logger.error(`Error compacting conversation: ${error}`);
-        return undefined;
+      } catch (e) {
+        if (!controller.signal.aborted) {
+          Logger.error(`Error compacting conversation: ${e}`);
+        }
+        throw e;
+      } finally {
+        finishCompaction(key, controller);
       }
+    });
+
+    on("conversation/compact/abort", async (msg) => {
+      abortCompaction(compactionKey(msg.data.sessionId, msg.data.messageId));
     });
 
     // Autocomplete

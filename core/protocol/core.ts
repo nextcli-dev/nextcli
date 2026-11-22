@@ -273,10 +273,17 @@ export type ToCoreFromIdeOrWebviewProtocol = {
   ];
   "conversation/compact": [
     {
-      index: number;
       sessionId: string;
+      /** The id of the message the summary is stored on */
+      messageId: string;
+      /** The conversation up to that message, to summarize */
+      messages: ChatMessage[];
     },
-    string | undefined,
+    { summary: string; shortenedOutputs: number },
+  ];
+  "conversation/compact/abort": [
+    { sessionId: string; messageId: string },
+    void,
   ];
   "stats/getTokensPerDay": [
     undefined,

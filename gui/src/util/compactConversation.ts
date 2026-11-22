@@ -1,47 +1,36 @@
-import { unwrapResult } from "@reduxjs/toolkit";
-import { useContext } from "react";
-import { IdeMessengerContext } from "../context/IdeMessenger";
 import { useAppDispatch, useAppSelector } from "../redux/hooks";
+import { deleteCompaction } from "../redux/slices/sessionSlice";
 import {
-  setCompactionLoading,
-  deleteCompaction,
-} from "../redux/slices/sessionSlice";
-import { loadSession, saveCurrentSession } from "../redux/thunks/session";
+  cancelCompaction,
+  compactConversation,
+} from "../redux/thunks/compactConversation";
+import { saveCurrentSession } from "../redux/thunks/session";
+import { isTurnOver } from "../undo/turnSnapshot";
 
 export const useCompactConversation = () => {
   const dispatch = useAppDispatch();
-  const ideMessenger = useContext(IdeMessengerContext);
-  const currentSessionId = useAppSelector((state) => state.session.id);
 
   return async (index: number) => {
-    if (!currentSessionId) {
-      return;
-    }
+    await dispatch(compactConversation({ index }));
+  };
+};
 
-    try {
-      // Set loading state
-      dispatch(setCompactionLoading({ index, loading: true }));
+/** Whether the message at `index` can be compacted: the turn is over and it isn't compacting */
+export const useCanCompact = (index: number) =>
+  useAppSelector((state) => {
+    const messageId = state.session.history[index]?.message.id;
+    return (
+      !!messageId &&
+      !state.session.compactionLoading[messageId] &&
+      isTurnOver(state)
+    );
+  });
 
-      await ideMessenger.request("conversation/compact", {
-        index,
-        sessionId: currentSessionId,
-      });
+export const useCancelCompaction = () => {
+  const dispatch = useAppDispatch();
 
-      // Reload the current session to refresh the conversation state, and
-      // keep the loading state until it is done (errors go to the catch)
-      const wrapped = await dispatch(
-        loadSession({
-          sessionId: currentSessionId,
-          saveCurrentSession: false,
-        }),
-      );
-      unwrapResult(wrapped);
-    } catch (error) {
-      console.error("Error compacting conversation:", error);
-    } finally {
-      // Clear loading state
-      dispatch(setCompactionLoading({ index, loading: false }));
-    }
+  return (messageId: string) => {
+    void dispatch(cancelCompaction({ messageId }));
   };
 };
 

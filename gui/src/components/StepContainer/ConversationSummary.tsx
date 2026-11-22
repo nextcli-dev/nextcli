@@ -3,7 +3,10 @@ import { ChevronDownIcon, ChevronUpIcon } from "@heroicons/react/24/solid";
 import { ChatHistoryItem } from "core";
 import { useState } from "react";
 import { useAppSelector } from "../../redux/hooks";
-import { useDeleteCompaction } from "../../util/compactConversation";
+import {
+  useCancelCompaction,
+  useDeleteCompaction,
+} from "../../util/compactConversation";
 import { AnimatedEllipsis } from "../AnimatedEllipsis";
 import HeaderButtonWithToolTip from "../gui/HeaderButtonWithToolTip";
 import StyledMarkdownPreview from "../StyledMarkdownPreview";
@@ -15,23 +18,34 @@ interface ConversationSummaryProps {
 
 export default function ConversationSummary(props: ConversationSummaryProps) {
   const [open, setOpen] = useState(true);
+  const messageId = useAppSelector(
+    (state) => state.session.history[props.index]?.message.id,
+  );
   const isLoading = useAppSelector(
-    (state) => state.session.compactionLoading[props.index] || false,
+    (state) => !!messageId && !!state.session.compactionLoading[messageId],
   );
   const deleteCompaction = useDeleteCompaction();
+  const cancelCompaction = useCancelCompaction();
 
   if (!props.item.conversationSummary && !isLoading) {
     return null;
   }
 
   // Loading state - much simpler
-  if (isLoading) {
+  if (isLoading && messageId) {
     return (
       <div className="mx-1.5 mb-4 mt-2">
         <div className="bg-vsc-input-background rounded-md shadow-sm">
           <div className="text-description flex items-center justify-start px-3 py-2 text-xs">
             <span>Generating conversation summary</span>
             <AnimatedEllipsis />
+            <span
+              role="button"
+              className="ml-auto cursor-pointer hover:underline"
+              onClick={() => cancelCompaction(messageId)}
+            >
+              Cancel
+            </span>
           </div>
         </div>
       </div>
