@@ -9,15 +9,17 @@ import { formatContextLength } from "../util/modelSettings.js";
 import { getLastResponseUsage } from "./lastUsage.js";
 import { cliContextSnapshot, nextRequestPrefix } from "./snapshot.js";
 
-function count(tokens: number): string {
-  return tokens.toLocaleString("en-US");
+function count(tokens: number | undefined): string {
+  const value =
+    typeof tokens === "number" && Number.isFinite(tokens) ? tokens : 0;
+  return value.toLocaleString("en-US");
 }
 
 function rows(segments: ContextSnapshot["segments"], indent: string): string[] {
   const lines: string[] = [];
   for (const segment of segments) {
     lines.push(
-      `${indent}${segment.label}  ${formatContextLength(segment.tokens)}  ${segment.source}`,
+      `${indent}${segment.label}  ${count(segment.tokens)}  ${segment.source}`,
     );
     if (segment.children) {
       lines.push(...rows(segment.children, `${indent}  `));
@@ -30,15 +32,19 @@ function thresholdLine(snapshot: ContextSnapshot): string {
   const [first, ...rest] = snapshot.threshold.steps;
   const terms = [
     count(first?.tokens ?? snapshot.window),
-    ...rest.map(
-      (step) => `${count(Math.abs(step.tokens))} ${step.label}`,
-    ),
+    ...rest.map((step) => `${count(Math.abs(step.tokens))} ${step.label}`),
   ];
   return `${terms.join(" − ")} = ${count(snapshot.threshold.tokens)}`;
 }
 
 function measuredLine(usage: Usage | undefined): string {
-  if (!usage) {
+  // Only a provider usage object is "Measured". An estimate, an interrupt
+  // that never received usage, or a missing field is not.
+  if (
+    !usage ||
+    !Number.isFinite(usage.promptTokens) ||
+    !Number.isFinite(usage.completionTokens)
+  ) {
     return "Measured: no provider usage for the last response";
   }
   const cached = usage.promptTokensDetails?.cachedTokens ?? 0;
@@ -70,8 +76,7 @@ export function renderContextReport(
     chalk.bold("Largest tool results"),
     ...(snapshot.largestToolResults.length > 0
       ? snapshot.largestToolResults.map(
-          (result) =>
-            `${result.label}  ${formatContextLength(result.tokens)}  estimated`,
+          (result) => `${result.label}  ${count(result.tokens)}  estimated`,
         )
       : ["None"]),
     "",

@@ -18,6 +18,8 @@ const inputSchema = {
     Tag: { type: "string", enum: ["a", "b"] },
   },
   $ref: "#/$defs/Tag",
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  examples: [{ query: "x" }],
   anyOf: [{ type: "object" }],
   oneOf: [{ type: "object" }],
   allOf: [{ type: "object" }],
@@ -25,7 +27,7 @@ const inputSchema = {
 };
 
 describe("MCP tool schemas", () => {
-  it("keeps root schema fields the counter reads", () => {
+  it("sends only type, properties and required, and counts that request", () => {
     const tool = convertToolToChatCompletionTool(
       convertMcpToolToContinueTool({
         name: "search",
@@ -34,18 +36,14 @@ describe("MCP tool schemas", () => {
       } as MCPTool),
     );
     const parameters = tool.function.parameters as Record<string, unknown>;
-    expect(parameters.type).toBe("object");
-    expect(parameters.properties).toEqual(inputSchema.properties);
-    expect(parameters.required).toEqual(["query"]);
-    expect(parameters.$defs).toEqual(inputSchema.$defs);
-    expect(parameters.$ref).toBe("#/$defs/Tag");
-    expect(parameters.anyOf).toEqual(inputSchema.anyOf);
-    expect(parameters.oneOf).toEqual(inputSchema.oneOf);
-    expect(parameters.allOf).toEqual(inputSchema.allOf);
-    expect(parameters.additionalProperties).toBe(false);
+    expect(parameters).toEqual({
+      type: "object",
+      properties: inputSchema.properties,
+      required: ["query"],
+    });
 
     const count = (text: string) => text.length;
-    const full = countToolTokens([tool], count).total;
+    const sent = countToolTokens([tool], count).total;
     const trimmed = countToolTokens(
       [
         {
@@ -62,6 +60,6 @@ describe("MCP tool schemas", () => {
       ],
       count,
     ).total;
-    expect(full).toBeGreaterThan(trimmed);
+    expect(sent).toBe(trimmed);
   });
 });

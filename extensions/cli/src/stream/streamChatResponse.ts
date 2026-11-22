@@ -256,6 +256,7 @@ export async function processStreamingResponse(
     requestStartTime,
     model,
     tools,
+    context,
     abortSignal: abortController.signal,
     estimateInputTokens: () =>
       countTotalInputTokens({ chatHistory, systemMessage, tools, model }),
@@ -321,6 +322,7 @@ export async function processStreamingResponse(
       tools,
       fullUsage,
       context,
+      skipLastUsage: options.isCompacting,
       call: {
         finishReason: callEnd.finishReason,
         ttftMs: firstTokenTime ? firstTokenTime - requestStartTime : undefined,
@@ -340,7 +342,7 @@ export async function processStreamingResponse(
     const aborted =
       error.name === "AbortError" || abortController?.signal.aborted;
     if (!attempts.recorded(error)) {
-      recordFailedCall({ model, requestStartTime, error, aborted });
+      recordFailedCall({ model, requestStartTime, error, aborted, context });
     }
 
     if (aborted) {

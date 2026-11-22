@@ -25,44 +25,106 @@ const ROLE_LABELS: Record<string, string> = {
   thinking: "Thinking",
 };
 
+/**
+ * MCP server of each request tool. Built-ins are `undefined`.
+ *
+ * MCP tools are appended after built-ins, in connection order, so they match
+ * from the end. A name is not a key: two servers can both expose `search`.
+ */
+function serverOfEachTool(
+  tools: readonly ChatCompletionTool[],
+  connections: MCPConnectionInfo[],
+): (string | undefined)[] {
+  const sequence = connections
+    .filter((connection) => connection.status === "connected")
+    .flatMap((connection) =>
+      connection.tools.map((tool) => ({
+        server: connection.config.name,
+        name: tool.name,
+      })),
+    );
+  const servers: (string | undefined)[] = new Array(tools.length);
+  let toolIndex = tools.length - 1;
+  for (
+    let sequenceIndex = sequence.length - 1;
+    sequenceIndex >= 0 && toolIndex >= 0;
+    sequenceIndex--
+  ) {
+    const expected = sequence[sequenceIndex];
+    if (!expected || tools[toolIndex]?.function.name !== expected.name) {
+      continue;
+    }
+    servers[toolIndex] = expected.server;
+    toolIndex--;
+  }
+  return servers;
+}
+
+function addToGroup(
+  groups: Map<string, ContextSegment>,
+  groupId: string,
+  groupLabel: string,
+  child: ContextSegment,
+) {
+  const group = groups.get(groupId);
+  if (group?.children) {
+    const taken = group.children.some((existing) => existing.id === child.id);
+    if (taken) {
+      child = { ...child, id: `${child.id}-${group.children.length}` };
+    }
+    group.tokens += child.tokens;
+    group.children.push(child);
+    return;
+  }
+  groups.set(groupId, {
+    id: groupId,
+    label: groupLabel,
+    tokens: child.tokens,
+    source: "estimated",
+    children: [child],
+  });
+}
+
 function toolGroups(
   tools: readonly ChatCompletionTool[],
   perTool: number[],
   connections: MCPConnectionInfo[],
 ): ContextSegment[] {
-  const serverOf = new Map<string, string>();
-  for (const connection of connections) {
-    for (const tool of connection.tools) {
-      serverOf.set(tool.name, connection.config.name);
-    }
-  }
-
+  const servers = serverOfEachTool(tools, connections);
   const groups = new Map<string, ContextSegment>();
   tools.forEach((tool, index) => {
-    const server = serverOf.get(tool.function.name);
-    const id = server ? `mcp-${server}` : "builtin";
-    const label = server ?? "Built-in";
-    const child: ContextSegment = {
-      id: `${id}-${tool.function.name}`,
+    const server = servers[index];
+    const groupId = server ? `mcp-${server}` : "builtin";
+    const groupLabel = server ?? "Built-in";
+    addToGroup(groups, groupId, groupLabel, {
+      id: `${groupId}-${tool.function.name}`,
       label: tool.function.name,
       tokens: perTool[index] ?? 0,
       source: "estimated",
-    };
-    const group = groups.get(id);
-    if (group) {
-      group.tokens += child.tokens;
-      group.children?.push(child);
-    } else {
-      groups.set(id, {
-        id,
-        label,
-        tokens: child.tokens,
-        source: "estimated",
-        children: [child],
-      });
-    }
+    });
   });
   return [...groups.values()];
+}
+
+/** Children that sum to `total`. The gap is framing the parts don't carry. */
+function withRemainder(
+  children: ContextSegment[],
+  total: number,
+  remainder: { id: string; label: string },
+): ContextSegment[] {
+  const sum = children.reduce((tokens, child) => tokens + child.tokens, 0);
+  if (sum === total) {
+    return children;
+  }
+  return [
+    ...children,
+    {
+      id: remainder.id,
+      label: remainder.label,
+      tokens: total - sum,
+      source: "estimated",
+    },
+  ];
 }
 
 /** The snapshot for a traced request, or nothing when tracing is off. */
@@ -109,12 +171,16 @@ export async function cliContextSnapshot(input: {
             source: "estimated",
           },
         ];
+    const systemTokens = countText(systemMessage) + 4;
     segments.push({
       id: "system",
       label: "System",
-      tokens: countText(systemMessage) + 4,
+      tokens: systemTokens,
       source: "estimated",
-      children,
+      children: withRemainder(children, systemTokens, {
+        id: "system-overhead",
+        label: "Overhead",
+      }),
     });
   }
 
@@ -126,10 +192,14 @@ export async function cliContextSnapshot(input: {
       label: "Tools",
       tokens: total,
       source: "estimated",
-      children: toolGroups(
-        tools,
-        perTool,
-        input.mcpConnections ?? services.mcp.getState().connections,
+      children: withRemainder(
+        toolGroups(
+          tools,
+          perTool,
+          input.mcpConnections ?? services.mcp.getState().connections,
+        ),
+        total,
+        { id: "tools-overhead", label: "List overhead" },
       ),
     });
   }

@@ -61,5 +61,22 @@ describe("/context", () => {
     expect(output).toContain("15,000 buffer");
     expect(output).toContain("= 121,000");
     expect(output).toContain("cache hit 75%");
+    // The tree is exact. The window-scale header stays in K.
+    expect(output).toContain("Context 46K of 200K");
+    expect(output).toContain("AGENTS.md  400  estimated");
+    expect(output).toContain("read_file  800  estimated");
+    expect(output).toContain("System  1,000  estimated");
+  });
+
+  it("does not call a missing or partial usage measured", () => {
+    expect(renderContextReport(snapshot, undefined)).toContain(
+      "Measured: no provider usage for the last response",
+    );
+    expect(
+      renderContextReport(snapshot, {
+        promptTokens: undefined,
+        completionTokens: undefined,
+      } as unknown as Parameters<typeof renderContextReport>[1]),
+    ).toContain("Measured: no provider usage for the last response");
   });
 });

@@ -2,6 +2,10 @@ import { convertToUnifiedHistory } from "core/util/messageConversion.js";
 import { ChatCompletionMessageParam } from "openai/resources.mjs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  getLastResponseUsage,
+  rememberResponseUsage,
+} from "../../context/lastUsage.js";
 import { startNewSession } from "../../session.js";
 
 import { processSlashCommandResult } from "./useChat.helpers.js";
@@ -154,5 +158,17 @@ describe("useChat clear command", () => {
     // Should set empty history when no system message exists
     expect(mockSetChatHistory).toHaveBeenCalledWith([]);
     expect(mockOnClear).toHaveBeenCalledOnce();
+  });
+
+  it("forgets the previous response usage", () => {
+    rememberResponseUsage({ promptTokens: 10, completionTokens: 2 });
+    processSlashCommandResult({
+      result: { clear: true },
+      chatHistory: [],
+      setChatHistory: mockSetChatHistory,
+      onShowConfigSelector: vi.fn(),
+      onClear: mockOnClear,
+    });
+    expect(getLastResponseUsage()).toBeUndefined();
   });
 });

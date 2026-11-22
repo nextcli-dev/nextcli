@@ -559,6 +559,27 @@ export async function compiledRequest(input: {
   return { context, messages };
 }
 
+/**
+ * Provider usage, when the response actually carried it. Estimates and
+ * objects with no token counts are not usage /context can call measured.
+ */
+export function providerMeasuredUsage(fullUsage: any): Usage | undefined {
+  if (!fullUsage || typeof fullUsage !== "object") {
+    return undefined;
+  }
+  const prompt = fullUsage.prompt_tokens;
+  const completion = fullUsage.completion_tokens;
+  if (typeof prompt !== "number" && typeof completion !== "number") {
+    return undefined;
+  }
+  const usage = toUsage(fullUsage, 0, 0);
+  return {
+    ...usage,
+    promptTokens: typeof prompt === "number" ? prompt : 0,
+    completionTokens: typeof completion === "number" ? completion : 0,
+  };
+}
+
 /** The provider usage object, or the estimated counts when the provider sent none. */
 export function toUsage(
   fullUsage: any,
@@ -596,6 +617,10 @@ export function recordStreamTelemetry(options: {
   fullUsage?: any;
   /** Counts and names only. Written to the trace, not the log line. */
   context?: ContextSnapshot;
+  /**
+   * A compaction summary. Its usage is not the conversation's last response.
+   */
+  skipLastUsage?: boolean;
   /** What only the caller knows, for the "Model call" log line and trace */
   call: {
     finishReason?: string;
@@ -628,7 +653,12 @@ export function recordStreamTelemetry(options: {
   let priced: PriceSource;
   let catalogDate: string | undefined;
   const usage = toUsage(fullUsage, inputTokens, outputTokens);
-  rememberResponseUsage(usage);
+  // Kept responses only. An estimate, a discarded retry, an interrupt that
+  // never received usage, and the compaction summary are not "Measured".
+  const measured = providerMeasuredUsage(fullUsage);
+  if (measured && !options.call.discarded && !options.skipLastUsage) {
+    rememberResponseUsage(measured);
+  }
 
   if (fullUsage) {
     ({ cost, priced, catalogDate } = priceRequest(model, usage));
@@ -693,7 +723,11 @@ export function recordStreamTelemetry(options: {
     priced,
     ...options.call,
   };
-  writeCallRecord(attrs, { ts: requestStartTime, dur: totalDuration }, options.context);
+  writeCallRecord(
+    attrs,
+    { ts: requestStartTime, dur: totalDuration },
+    options.context,
+  );
 
   return cost;
 }
@@ -709,11 +743,7 @@ function writeCallRecord(
     Object.entries(attrs).filter(([, value]) => value !== undefined),
   );
   logger.verbose("Model call", { ...set, durationMs: timing.dur });
-  traceEvent(
-    "llm.request",
-    context ? { ...set, context } : set,
-    timing,
-  );
+  traceEvent("llm.request", context ? { ...set, context } : set, timing);
 }
 
 /**
@@ -725,6 +755,7 @@ export function recordFailedCall(options: {
   requestStartTime: number;
   error: any;
   aborted: boolean;
+  context?: ContextSnapshot;
 }): void {
   const { model, requestStartTime, aborted } = options;
   const durationMs = Date.now() - requestStartTime;
@@ -738,6 +769,7 @@ export function recordFailedCall(options: {
   writeCallRecord(
     { model: model.model, ...failure, aborted },
     { ts: requestStartTime, dur: durationMs },
+    options.context,
   );
 }
 

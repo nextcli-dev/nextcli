@@ -184,14 +184,6 @@ export function extractToolCalls(
   return toolCalls;
 }
 
-function extraSchemaFields(schema: object): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(schema).filter(
-      ([key]) => key !== "type" && key !== "properties" && key !== "required",
-    ),
-  );
-}
-
 export function convertToolToChatCompletionTool(
   tool: Tool,
 ): ChatCompletionTool {
@@ -204,7 +196,6 @@ export function convertToolToChatCompletionTool(
         type: "object",
         required: tool.parameters.required,
         properties: tool.parameters.properties,
-        ...extraSchemaFields(tool.parameters),
       },
     },
   };
@@ -215,8 +206,9 @@ export function convertMcpToolToContinueTool(mcpTool: MCPTool): Tool {
     name: mcpTool.name,
     displayName: mcpTool.name,
     description: mcpTool.description ?? "",
-    // The schema type names properties and required. Root JSON Schema
-    // ($defs, $ref, combinators, additionalProperties) stays on the object.
+    // Root keywords ($ref, $defs, $schema, examples, combinators) are not
+    // copied. Providers that only accept type, properties and required 400
+    // on them, and the request would no longer match what we count.
     parameters: {
       type: "object",
       required: mcpTool.inputSchema.required,
@@ -224,7 +216,6 @@ export function convertMcpToolToContinueTool(mcpTool: MCPTool): Tool {
         string,
         ParameterSchema
       >,
-      ...extraSchemaFields(mcpTool.inputSchema),
     } as ToolParametersSchema,
     readonly: undefined, // MCP tools don't have readonly property
     isBuiltIn: false,

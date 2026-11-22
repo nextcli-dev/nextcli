@@ -1,3 +1,4 @@
+import type { ContextSnapshot } from "@nextcli/context";
 import { encode } from "gpt-tokenizer";
 import type { ChatCompletionChunk } from "openai/resources/chat/completions.mjs";
 
@@ -60,6 +61,8 @@ export function trackStreamAttempts(options: {
   requestStartTime: number;
   model: any;
   tools?: any[];
+  /** The same snapshot the kept attempt writes on llm.request */
+  context?: ContextSnapshot;
   abortSignal: AbortSignal;
   estimateInputTokens: () => number;
 }): StreamAttemptHooks<ChatCompletionChunk> & {
@@ -99,6 +102,7 @@ export function trackStreamAttempts(options: {
         model: options.model,
         tools: options.tools,
         fullUsage: usage,
+        context: options.context,
         call: {
           ...summarizeAttempt(chunks),
           ttftMs,

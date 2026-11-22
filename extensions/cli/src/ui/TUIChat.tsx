@@ -9,6 +9,7 @@ import React, {
 
 import { ToolPermissionServiceState } from "src/services/ToolPermissionService.js";
 
+import { clearLastResponseUsage } from "../context/lastUsage.js";
 import { useServices } from "../hooks/useService.js";
 import {
   ApiClientServiceState,
@@ -75,7 +76,8 @@ async function loadAndSetSession(
       "",
     );
 
-    // Set the chat history from the session
+    // The previous call's usage belongs to the chat we just left
+    clearLastResponseUsage();
     setChatHistory(session.history);
 
     // Clear the intro message since we're now showing a resumed session

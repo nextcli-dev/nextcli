@@ -102,4 +102,37 @@ describe("trackStreamAttempts", () => {
     expect(recorded.outputTokens).toBeGreaterThan(0);
     expect(recorded.fullUsage).toBeUndefined();
   });
+
+  it("writes the request context on a discarded attempt", () => {
+    const context = {
+      window: 2000,
+      used: 10,
+      threshold: {
+        tokens: 1000,
+        action: "auto-compaction" as const,
+        steps: [{ label: "model context length", tokens: 2000 }],
+      },
+      segments: [],
+      largestToolResults: [],
+    };
+    const attempts = trackStreamAttempts({
+      requestStartTime: 1000,
+      model: { model: "deepseek-v4.1-flash" },
+      abortSignal: new AbortController().signal,
+      estimateInputTokens: () => 12_000,
+      context,
+    });
+
+    attempts.onDiscardedAttempt!(
+      [contentChunk("partial")] as any,
+      new Error("x"),
+    );
+
+    expect(recordStreamTelemetry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        context,
+        call: expect.objectContaining({ discarded: true }),
+      }),
+    );
+  });
 });
