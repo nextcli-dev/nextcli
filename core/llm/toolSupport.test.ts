@@ -522,6 +522,26 @@ describe("isRecommendedAgentModel", () => {
     });
   });
 
+  describe("Qwen models", () => {
+    it("should return true for Qwen 4 and the larger Qwen 3 models", () => {
+      expect(isRecommendedAgentModel("qwen4-max-preview")).toBe(true);
+      expect(isRecommendedAgentModel("qwen4-max")).toBe(true);
+      expect(isRecommendedAgentModel("qwen3.8-max")).toBe(true);
+      expect(isRecommendedAgentModel("qwen3.6-plus")).toBe(true);
+      expect(isRecommendedAgentModel("qwen3-max")).toBe(true);
+      expect(isRecommendedAgentModel("qwen3-coder-plus")).toBe(true);
+      expect(isRecommendedAgentModel("qwen/qwen3-coder")).toBe(true);
+    });
+
+    it("should return false for small, flash and older Qwen models", () => {
+      expect(isRecommendedAgentModel("qwen3.8-flash")).toBe(false);
+      expect(isRecommendedAgentModel("qwen3.5-9b")).toBe(false);
+      expect(isRecommendedAgentModel("qwen3-32b")).toBe(false);
+      expect(isRecommendedAgentModel("qwen2.5-72b-instruct")).toBe(false);
+      expect(isRecommendedAgentModel("qwen-max")).toBe(false);
+    });
+  });
+
   describe("case insensitivity", () => {
     it("should handle uppercase model names", () => {
       expect(isRecommendedAgentModel("GEMINI-3.1-PRO-PREVIEW")).toBe(true);

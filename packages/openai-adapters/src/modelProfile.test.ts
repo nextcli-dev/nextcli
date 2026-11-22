@@ -6,7 +6,11 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { overriddenEfforts } from "./catalogOverrides.js";
-import { getContextOptions, getModelControls } from "./modelControls.js";
+import {
+  buildModelControlFields,
+  getContextOptions,
+  getModelControls,
+} from "./modelControls.js";
 import { resolveModelProfile, vendorCatalogProvider } from "./modelProfile.js";
 
 describe("resolveModelProfile", () => {
@@ -127,13 +131,23 @@ describe("NextCLI's model supplement", () => {
     });
     expect(profile.catalog).toMatchObject({ context: 1_000_000 });
 
-    // The menu gets thinking, guessed efforts and the model's own window
+    // The menu gets thinking, the entry's checked levels (no "none": generic
+    // controls can't turn thinking off) and the model's own window
+    const listed = (SUPPLEMENT.alibaba["qwen4-max"].efforts ?? []).filter(
+      (effort) => effort !== "none",
+    );
+    expect(listed.length).toBeGreaterThan(0);
     const controls = getModelControls(qwen);
     expect(controls).toMatchObject({
-      efforts: ["low", "medium", "high"],
-      experimental: true,
+      efforts: listed,
+      experimental: false,
       thinkingModes: ["hidden", "shown"],
       maxContextLength: 983_000,
+    });
+    // The top level is sent as chosen, not clamped to a guessed "high"
+    const top = listed[listed.length - 1];
+    expect(buildModelControlFields(qwen, { effort: top })).toEqual({
+      reasoning_effort: top,
     });
     expect(getContextOptions(controls.maxContextLength, 32_768)).toEqual([
       32_768, 64_000, 128_000, 200_000, 256_000, 400_000, 983_000,

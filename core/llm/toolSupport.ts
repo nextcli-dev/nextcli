@@ -496,6 +496,9 @@ export function isRecommendedAgentModel(modelName: string): boolean {
     [/claude/, /opus/, /(?<!\d)-[4-9]/],
     [/grok-[4-9][\.-]\d/],
     [/claude/, /[4-9]-[5-9]/],
+    // Qwen 4, and Qwen 3's max, plus and coder models (not flash or the small
+    // open-weight sizes)
+    [/qwen(?:[4-9]|3(?:\.[5-9])?-(?:max|plus|coder))/],
   ];
   for (const combo of recs) {
     if (combo.every((regex) => modelName.toLowerCase().match(regex))) {

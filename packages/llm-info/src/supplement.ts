@@ -31,6 +31,12 @@ export const SUPPLEMENT: Record<string, Record<string, CatalogModel>> = {
       // either way
       input: 983_000,
       reasoning: true,
+      // Live check of qwen4-max and qwen4-max-preview on the token-plan
+      // endpoint (compatible-mode/v1), 2026-11-22: an unknown
+      // reasoning_effort is rejected with "must be one of: 'none', 'off',
+      // 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'"; "none" returns
+      // no reasoning tokens. "off" is left out as the same as "none".
+      efforts: ["none", "minimal", "low", "medium", "high", "xhigh", "max"],
       images: true,
       cost: { input: 1.5, output: 4.5, cacheRead: 0.075, cacheWrite: 1.875 },
     },
