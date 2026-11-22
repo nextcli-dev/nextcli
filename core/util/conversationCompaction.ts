@@ -1,112 +1,73 @@
-import { ChatHistoryItem, ILLM, ToolResultChatMessage } from "..";
-import { HistoryManager } from "./history";
+import { ChatMessage, ILLM } from "..";
 import { stripImages } from "./messageContent";
 
 export interface CompactionParams {
-  sessionId: string;
-  index: number;
-  historyManager: HistoryManager;
+  /**
+   * The conversation to summarize, built by the GUI the way it builds a turn
+   * (constructMessages): system prompt, rules, context and tool results
+   */
+  messages: ChatMessage[];
   currentModel: ILLM;
+  signal: AbortSignal;
 }
 
 /**
- * Compacts conversation history up to a specified index by generating a summary.
- * This helper function extracts the compaction logic from the main core handler.
+ * Summarizes a conversation, so the GUI can store the summary on the message
+ * it was asked for. Nothing is saved here: the GUI applies the result to the
+ * history it shows.
  *
- * @param params - Object containing sessionId, index, historyManager, and currentModel
- * @returns Promise<void> - Updates the session with the conversation summary
+ * @returns The summary, without images
  */
 export async function compactConversation({
-  sessionId,
-  index,
-  historyManager,
+  messages,
   currentModel,
-}: CompactionParams): Promise<void> {
-  // Get the current session
-  const session = historyManager.load(sessionId);
-  const historyUpToIndex = session.history.slice(0, index + 1);
-
-  // Apply the same filtering logic as in constructMessages, but exclude the target message
-  // if it already has a summary (we're re-compacting)
-  let summaryContent = "";
-  let filteredHistory = historyUpToIndex;
-
-  // First, check if the target message already has a summary and ignore it
-  const targetMessageHasSummary = historyUpToIndex[index].conversationSummary;
-  const searchHistory = targetMessageHasSummary
-    ? historyUpToIndex.slice(0, index)
-    : historyUpToIndex;
-
-  // Find the most recent conversation summary (excluding target if it has one)
-  for (let i = searchHistory.length - 1; i >= 0; i--) {
-    const summary = searchHistory[i].conversationSummary;
-    if (summary) {
-      summaryContent = summary;
-      // Only include messages that come AFTER the message with the summary
-      filteredHistory = historyUpToIndex.slice(i + 1);
-      break;
-    }
-  }
-
-  const messages: ChatHistoryItem["message"][] = [];
-
-  // add cancelled chat messages explicitly for cancelled tool calls
-  filteredHistory.forEach((item) => {
-    messages.push(item.message);
-    // toolcalls only exist in an assistant message
-    if (item.message.role === "assistant" && item.message.toolCalls) {
-      // for every toolcall, if there is no tool message with a tool call id already, add a chat message saying that it is empty
-      item.message.toolCalls.forEach((toolCall) => {
-        if (
-          !filteredHistory.find(
-            (item) =>
-              item.message.role === "tool" &&
-              item.message.toolCallId === toolCall.id,
-          )
-        ) {
-          messages.push({
-            role: "tool",
-            content: "Tool cancelled",
-            toolCallId: toolCall.id,
-          } as ToolResultChatMessage);
-        }
-      });
-    }
-  });
-
-  // If there's a previous summary, include it as a user message at the beginning
-  if (summaryContent) {
-    messages.unshift({
-      role: "user",
-      content: `Previous conversation summary:\n\n${summaryContent}`,
-    });
-  }
-
+  signal,
+}: CompactionParams): Promise<string> {
   const compactionPrompt = {
     role: "user" as const,
     content:
       "Create a comprehensive summary of this conversation that captures all essential information needed to continue the work seamlessly. Structure your response to preserve technical accuracy and context continuity.\n\nYour summary should include:\n\n1. **Conversation Overview**: Describe the main topic and progression of the discussion, including any shifts in focus or direction.\n\n2. **Active Development**: Detail what was being implemented, modified, or debugged most recently. Include specific technical approaches and methodologies used.\n\n3. **Technical Stack**: List all relevant technologies, frameworks, libraries, coding patterns, and architectural decisions discussed.\n\n4. **File Operations**: Document all files that were created, modified, or referenced, including their purposes and key changes. Include important code snippets and their locations.\n\n5. **Solutions & Troubleshooting**: Summarize problems encountered and how they were resolved, including any debugging steps or workarounds applied.\n\n6. **Outstanding Work**: Clearly identify any incomplete tasks, pending implementations, or next steps that were discussed. Include direct references to user requests and current progress.\n\nIf there's a previous summary in the conversation, integrate its relevant information while removing outdated details. Focus on technical precision and include specific identifiers (file paths, function names, class names, etc.) that would be essential for continuation. Write in third person and maintain an objective, technical tone.",
   };
 
-  // Generate the summary using the current model
   const response = await currentModel.chat(
     [...messages, compactionPrompt],
-    new AbortController().signal,
+    signal,
     {},
   );
+  const summary = stripImages(response.content);
+  if (!summary.trim()) {
+    throw new Error("The model returned an empty summary");
+  }
+  return summary;
+}
 
-  // Update the target message with the conversation summary
-  const updatedHistory = [...session.history];
-  updatedHistory[index] = {
-    ...updatedHistory[index],
-    conversationSummary: stripImages(response.content),
-  };
+// Compactions in progress, by session and message, so the GUI can cancel one
+const inFlight = new Map<string, AbortController>();
 
-  // Update the session with the new history
-  const updatedSession = {
-    ...session,
-    history: updatedHistory,
-  };
+/** The key of a compaction: one per message of a session */
+export function compactionKey(sessionId: string, index: number): string {
+  return `${sessionId}:${index}`;
+}
 
-  historyManager.save(updatedSession);
+/**
+ * Starts tracking a compaction and returns its signal. A compaction already
+ * running for the same message is cancelled: the newer request wins.
+ */
+export function startCompaction(key: string): AbortController {
+  inFlight.get(key)?.abort();
+  const controller = new AbortController();
+  inFlight.set(key, controller);
+  return controller;
+}
+
+/** Stops tracking a compaction, unless a newer one took its key */
+export function finishCompaction(key: string, controller: AbortController) {
+  if (inFlight.get(key) === controller) {
+    inFlight.delete(key);
+  }
+}
+
+/** Cancels the compaction running for this key, if there is one */
+export function abortCompaction(key: string): void {
+  inFlight.get(key)?.abort();
 }

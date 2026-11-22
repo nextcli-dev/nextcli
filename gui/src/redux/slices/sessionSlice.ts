@@ -549,6 +549,19 @@ export const sessionSlice = createSlice({
       state.isPruned = false;
       state.contextPercentage = undefined;
     },
+    setConversationSummary: (
+      state,
+      action: PayloadAction<{ index: number; summary: string }>,
+    ) => {
+      const { index, summary } = action.payload;
+      const historyItem = state.history[index];
+      if (historyItem) {
+        state.history[index] = {
+          ...historyItem,
+          conversationSummary: summary,
+        };
+      }
+    },
     deleteCompaction: (state, action: PayloadAction<number>) => {
       // Removes the conversation summary from the specified message
       const historyItem = state.history[action.payload];
@@ -1188,6 +1201,7 @@ export const {
   appendHistory,
   setUndoneTurn,
   deleteCompaction,
+  setConversationSummary,
   setIsGatheringContext,
   resetNextCodeBlockToApplyIndex,
   updateApplyState,

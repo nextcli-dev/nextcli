@@ -275,9 +275,12 @@ export type ToCoreFromIdeOrWebviewProtocol = {
     {
       index: number;
       sessionId: string;
+      /** The conversation up to `index`, built as for a turn */
+      messages: ChatMessage[];
     },
-    string | undefined,
+    string,
   ];
+  "conversation/compact/abort": [{ index: number; sessionId: string }, void];
   "stats/getTokensPerDay": [
     undefined,
     { day: string; promptTokens: number; generatedTokens: number }[],

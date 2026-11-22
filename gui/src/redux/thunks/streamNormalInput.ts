@@ -4,7 +4,6 @@ import type { ResolvedModelSettings } from "core/llm/modelSettings";
 import { getRuleId } from "core/llm/rules/getSystemMessageWithRules";
 import { ToCoreProtocol } from "core/protocol";
 import { BUILT_IN_GROUP_NAME } from "core/tools/builtIn";
-import { selectActiveTools } from "../selectors/selectActiveTools";
 import {
   missingChatModelError,
   selectSelectedChatModel,
@@ -27,18 +26,14 @@ import { selectModelSettings } from "../slices/modelSettingsSlice";
 import { ThunkApiType } from "../store";
 import { constructMessages } from "../util/constructMessages";
 import { getNoAnswerNotice } from "../util/noAnswerNotice";
+import { selectTurnSetup } from "../util/turnSetup";
 
-import { modelSupportsNativeTools } from "core/llm/toolSupport";
-import { applyToolOverrides } from "core/tools/applyToolOverrides";
-import { addSystemMessageToolsToSystemMessage } from "core/tools/systemMessageTools/buildToolsSystemMessage";
 import { interceptSystemToolCalls } from "core/tools/systemMessageTools/interceptSystemToolCalls";
-import { SystemMessageToolCodeblocksFramework } from "core/tools/systemMessageTools/toolCodeblocks";
 
 import {
   selectCurrentToolCalls,
   selectPendingToolCalls,
 } from "../selectors/selectToolCalls";
-import { getBaseSystemMessage } from "../util/getBaseSystemMessage";
 import { callToolById } from "./callToolById";
 import { loadModelSettings } from "./modelSettings";
 import { evaluateToolPolicies } from "./evaluateToolPolicies";
@@ -105,29 +100,8 @@ export const streamNormalInput = createAsyncThunk<
       throw missingChatModelError(state.config.configError);
     }
 
-    // Get tools and apply model-level overrides (disabled, description, etc.)
-    let activeTools = selectActiveTools(state);
-    if (selectedChatModel.toolOverrides?.length) {
-      const { tools: overriddenTools, errors } = applyToolOverrides(
-        activeTools,
-        selectedChatModel.toolOverrides,
-      );
-      activeTools = overriddenTools;
-      for (const error of errors) {
-        if (!error.fatal) {
-          console.warn(`Tool override warning: ${error.message}`);
-        }
-      }
-    }
-
-    // Use the centralized selector to determine if system message tools should be used
-    const useNativeTools = state.config.config.experimental
-      ?.onlyUseSystemMessageTools
-      ? false
-      : modelSupportsNativeTools(selectedChatModel);
-    const systemToolsFramework = !useNativeTools
-      ? new SystemMessageToolCodeblocksFramework()
-      : undefined;
+    const { activeTools, useNativeTools, systemToolsFramework, systemMessage } =
+      selectTurnSetup(state, selectedChatModel);
 
     // Construct completion options
     let completionOptions: LLMFullCompletionOptions = {};
@@ -153,21 +127,6 @@ export const streamNormalInput = createAsyncThunk<
     if (!!getState().session.streamThinkingHidden !== thinkingHidden) {
       dispatch(setStreamThinkingHidden(thinkingHidden));
     }
-
-    // Construct messages (excluding system message)
-    const baseSystemMessage = getBaseSystemMessage(
-      state.session.mode,
-      selectedChatModel,
-      activeTools,
-    );
-
-    const systemMessage = systemToolsFramework
-      ? addSystemMessageToolsToSystemMessage(
-          systemToolsFramework,
-          baseSystemMessage,
-          activeTools,
-        )
-      : baseSystemMessage;
 
     const withoutMessageIds = state.session.history.map((item) => {
       const { id, ...messageWithoutId } = item.message;
