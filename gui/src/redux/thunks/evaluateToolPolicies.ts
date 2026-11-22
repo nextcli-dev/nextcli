@@ -1,5 +1,7 @@
 import { ToolPolicy } from "@continuedev/terminal-security";
 import { Tool, ToolCallState } from "core";
+import { BuiltInToolNames } from "core/tools/builtIn";
+import { isTrustedFetchUrl } from "core/tools/policies/fetchAccess";
 import { IIdeMessenger } from "../../context/IdeMessenger";
 import { isEditTool } from "../../util/toolCallState";
 import { errorToolCall, updateToolCallOutput } from "../slices/sessionSlice";
@@ -66,6 +68,28 @@ async function evaluateToolPolicy(
   return { policy: dynamicPolicy, displayValue, toolCallState };
 }
 
+/**
+ * A Read URL call that would ask runs without asking when its URL is on a
+ * host the user trusts. Nothing else changes: an excluded tool stays
+ * excluded, and other tools and untrusted URLs still ask.
+ */
+function trustFetchUrl(
+  evaluated: EvaluatedPolicy,
+  trustedFetchHosts: readonly string[],
+): EvaluatedPolicy {
+  const { toolCall, parsedArgs } = evaluated.toolCallState;
+  const url: unknown = parsedArgs?.url;
+  if (
+    evaluated.policy === "allowedWithPermission" &&
+    toolCall.function.name === BuiltInToolNames.FetchUrlContent &&
+    typeof url === "string" &&
+    isTrustedFetchUrl(url, trustedFetchHosts)
+  ) {
+    return { ...evaluated, policy: "allowedWithoutPermission" };
+  }
+  return evaluated;
+}
+
 /*
     1. Get arg-dependent tool policies from core
     2. Mark any disabled ones as errored
@@ -77,15 +101,19 @@ export async function evaluateToolPolicies(
   activeTools: Tool[],
   generatedToolCalls: ToolCallState[],
   toolPolicies: ToolPolicies,
+  trustedFetchHosts: readonly string[] = [],
 ): Promise<EvaluatedPolicy[]> {
   // Check if ALL tool calls are auto-approved using dynamic evaluation
   const policyResults = await Promise.all(
-    generatedToolCalls.map((toolCallState) =>
-      evaluateToolPolicy(
-        ideMessenger,
-        activeTools,
-        toolCallState,
-        toolPolicies,
+    generatedToolCalls.map(async (toolCallState) =>
+      trustFetchUrl(
+        await evaluateToolPolicy(
+          ideMessenger,
+          activeTools,
+          toolCallState,
+          toolPolicies,
+        ),
+        trustedFetchHosts,
       ),
     ),
   );

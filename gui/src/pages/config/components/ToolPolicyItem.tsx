@@ -5,7 +5,7 @@ import {
   InformationCircleIcon,
 } from "@heroicons/react/24/outline";
 import { Tool } from "core";
-import { BUILT_IN_GROUP_NAME } from "core/tools/builtIn";
+import { BUILT_IN_GROUP_NAME, BuiltInToolNames } from "core/tools/builtIn";
 import { useEffect, useMemo, useState } from "react";
 import { useDispatch } from "react-redux";
 import { Tooltip } from "react-tooltip";
@@ -19,6 +19,7 @@ import {
 import { useFontSize } from "../../../components/ui/font";
 import { useAppSelector } from "../../../redux/hooks";
 import { addTool, setToolPolicy } from "../../../redux/slices/uiSlice";
+import { TrustedFetchHosts } from "./TrustedFetchHosts";
 
 interface ToolPolicyItemProps {
   tool: Tool;
@@ -170,6 +171,8 @@ export function ToolPolicyItem(props: ToolPolicyItemProps) {
               : "Tool disabled in plan mode"}
         </Tooltip>
       </div>
+      {props.tool.function.name === BuiltInToolNames.FetchUrlContent &&
+        policy === "allowedWithPermission" && <TrustedFetchHosts />}
       <div
         className={`flex flex-col overflow-hidden ${isExpanded ? "h-min" : "h-0 opacity-0"} gap-x-1 gap-y-2 pl-2 transition-all`}
       >
