@@ -18,11 +18,8 @@ describe("trusted fetch hosts", () => {
       addTrustedFetchHost("https://GitHub.com/nextcli-dev"),
     );
     state = reducer(state, addTrustedFetchHost("github.com"));
-    state = reducer(state, addTrustedFetchHost("*.githubusercontent.com"));
-    expect(state.trustedFetchHosts).toEqual([
-      "github.com",
-      "*.githubusercontent.com",
-    ]);
+    state = reducer(state, addTrustedFetchHost("*.nextcli.dev"));
+    expect(state.trustedFetchHosts).toEqual(["github.com", "*.nextcli.dev"]);
   });
 
   it("ignores text that isn't a host name", () => {
