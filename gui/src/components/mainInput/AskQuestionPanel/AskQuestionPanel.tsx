@@ -82,6 +82,20 @@ function IconButton({
 }
 
 /**
+ * Questions the panel can show. Arguments that cannot be shown throw from
+ * normalizeQuestionArgs; the panel must not, or the chat unmounts.
+ */
+export function questionSetFromCall(
+  toolCallState: ToolCallState,
+): QuestionSet | undefined {
+  try {
+    return normalizeQuestionArgs(toolCallState.parsedArgs);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * The questions from an ask_question call, shown in place of the chat input.
  * Answering continues the turn; dismissing ends it and gives the input back.
  * The paging, picking and sending rules are @nextcli/ask-question's form,
@@ -94,9 +108,10 @@ export function AskQuestionPanel({
 }) {
   // core ran the same normalization before the call reached "calling"
   const set = useMemo(
-    () => normalizeQuestionArgs(toolCallState.parsedArgs),
-    [toolCallState.parsedArgs],
+    () => questionSetFromCall(toolCallState),
+    [toolCallState],
   );
+  if (!set) return null;
   return <QuestionForm toolCallId={toolCallState.toolCallId} set={set} />;
 }
 

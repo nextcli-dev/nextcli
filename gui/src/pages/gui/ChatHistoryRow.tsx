@@ -10,6 +10,7 @@ import ThinkingBlockPeek from "../../components/mainInput/belowMainInput/Thinkin
 import ContinueInputBox from "../../components/mainInput/ContinueInputBox";
 import InlineErrorMessage from "../../components/mainInput/InlineErrorMessage";
 import StepContainer from "../../components/StepContainer/StepContainer";
+import { errorStack, errorText } from "../error";
 import { useAppDispatch } from "../../redux/hooks";
 import {
   ChatHistoryItemWithMessageId,
@@ -33,8 +34,8 @@ function fallbackRender({ error, resetErrorBoundary }: any) {
       style={{ backgroundColor: vscBackground }}
     >
       <p>Something went wrong:</p>
-      <pre style={{ color: "red" }}>{error.message}</pre>
-      <pre style={{ color: lightGray }}>{error.stack}</pre>
+      <pre style={{ color: "red" }}>{errorText(error)}</pre>
+      <pre style={{ color: lightGray }}>{errorStack(error)}</pre>
 
       <div className="text-center">
         <Button onClick={resetErrorBoundary}>Restart</Button>

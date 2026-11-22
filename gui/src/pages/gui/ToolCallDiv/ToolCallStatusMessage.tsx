@@ -7,6 +7,20 @@ interface ToolCallStatusMessageProps {
   toolCallState: ToolCallState;
 }
 
+/** Mustache throws on an unclosed tag. A status line must not take the row with it. */
+function renderStatus(
+  template: string | undefined,
+  args: unknown,
+  fallback: string,
+): string {
+  if (!template) return fallback;
+  try {
+    return Mustache.render(template, args ?? {});
+  } catch {
+    return fallback;
+  }
+}
+
 export function ToolCallStatusMessage({
   tool,
   toolCallState,
@@ -15,10 +29,15 @@ export function ToolCallStatusMessage({
 
   const toolName = tool.displayTitle ?? tool.function.name;
   const defaultToolDescription = `${toolName} tool`;
+  const useFallback = `use the ${defaultToolDescription}`;
+  const usedFallback = `used the ${defaultToolDescription}`;
+  const callingFallback = `calling the ${defaultToolDescription}`;
 
-  const futureMessage: string = tool.wouldLikeTo
-    ? Mustache.render(tool.wouldLikeTo, toolCallState.parsedArgs)
-    : `use the ${defaultToolDescription}`;
+  const futureMessage = renderStatus(
+    tool.wouldLikeTo,
+    toolCallState.parsedArgs,
+    useFallback,
+  );
   // TODO go back and replace arg string values and tool names with <code> tags
   // to make them more readable
 
@@ -30,9 +49,11 @@ export function ToolCallStatusMessage({
     toolCallState.status === "done" ||
     (tool.isInstant && toolCallState.status === "calling")
   ) {
-    message = tool.hasAlready
-      ? Mustache.render(tool.hasAlready, toolCallState.parsedArgs)
-      : `used the ${defaultToolDescription}`;
+    message = renderStatus(
+      tool.hasAlready,
+      toolCallState.parsedArgs,
+      usedFallback,
+    );
   } else {
     switch (toolCallState.status) {
       case "generating":
@@ -42,9 +63,11 @@ export function ToolCallStatusMessage({
         message = futureMessage;
         break;
       case "calling":
-        message = tool.isCurrently
-          ? Mustache.render(tool.isCurrently, toolCallState.parsedArgs)
-          : `calling the ${defaultToolDescription}`;
+        message = renderStatus(
+          tool.isCurrently,
+          toolCallState.parsedArgs,
+          callingFallback,
+        );
         break;
       default:
         message = defaultToolDescription;

@@ -1,3 +1,4 @@
+import { ErrorBoundary } from "react-error-boundary";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import Layout from "./components/Layout";
 import { MainEditorProvider } from "./components/mainInput/TipTapEditor/MainEditorProvider";
@@ -5,7 +6,7 @@ import { SubmenuContextProvidersProvider } from "./context/SubmenuContextProvide
 import { VscThemeProvider } from "./context/VscTheme";
 import ParallelListeners from "./hooks/ParallelListeners";
 import ConfigPage from "./pages/config";
-import ErrorPage from "./pages/error";
+import ErrorPage, { AppErrorFallback } from "./pages/error";
 import Chat from "./pages/gui";
 import History from "./pages/history";
 import Stats from "./pages/stats";
@@ -55,7 +56,9 @@ function App() {
     <VscThemeProvider>
       <MainEditorProvider>
         <SubmenuContextProvidersProvider>
-          <RouterProvider router={router} />
+          <ErrorBoundary FallbackComponent={AppErrorFallback}>
+            <RouterProvider router={router} />
+          </ErrorBoundary>
         </SubmenuContextProvidersProvider>
       </MainEditorProvider>
       <ParallelListeners />

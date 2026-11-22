@@ -10,7 +10,10 @@ import { defaultBorderRadius, vscBackground } from "..";
 import { useAppSelector } from "../../redux/hooks";
 import { selectSlashCommandComboBoxInputs } from "../../redux/selectors";
 import { selectOpenQuestion } from "../../redux/selectors/selectToolCalls";
-import { AskQuestionPanel } from "./AskQuestionPanel/AskQuestionPanel";
+import {
+  AskQuestionPanel,
+  questionSetFromCall,
+} from "./AskQuestionPanel/AskQuestionPanel";
 import { ContextItemsPeek } from "./belowMainInput/ContextItemsPeek";
 import { RulesPeek } from "./belowMainInput/RulesPeek";
 import { GradientBorder } from "./GradientBorder";
@@ -67,6 +70,12 @@ function ContinueInputBox(props: ContinueInputBoxProps) {
   const openQuestionCall = useAppSelector(selectOpenQuestion);
   // Only the main input answers questions; earlier messages keep their editor.
   const openQuestion = props.isMainInput ? openQuestionCall : undefined;
+  // Invalid arguments throw from the normalizer. Leave the input up instead
+  // of replacing it with a panel that cannot render.
+  const questionSet = useMemo(
+    () => (openQuestion ? questionSetFromCall(openQuestion) : undefined),
+    [openQuestion],
+  );
 
   const filteredSlashCommands = useMemo(() => {
     if (isInEdit) {
@@ -119,7 +128,7 @@ function ContinueInputBox(props: ContinueInputBoxProps) {
     >
       <div className={`relative flex flex-col px-2`}>
         {props.isMainInput && <Lump />}
-        {openQuestion && (
+        {openQuestion && questionSet && (
           <AskQuestionPanel
             key={openQuestion.toolCallId}
             toolCallState={openQuestion}
@@ -127,7 +136,7 @@ function ContinueInputBox(props: ContinueInputBoxProps) {
         )}
         {/* Hidden, not unmounted, so a draft survives while a question is
             open. The hidden attribute, because GradientBorder sets display. */}
-        <div hidden={!!openQuestion}>
+        <div hidden={!!questionSet}>
           <GradientBorder
             loading={isStreaming && (props.isLastUserInput || isInEdit) ? 1 : 0}
             borderColor={

@@ -592,6 +592,59 @@ test("a long question scrolls inside the panel and follows the highlight", async
   }
 });
 
+test("invalid question arguments leave the chat input up", async () => {
+  const { store } = await renderWithProviders(<Chat />);
+  await act(async () => {
+    store.dispatch(setMode("plan"));
+    store.dispatch(
+      newSession({
+        sessionId: "bad-question",
+        title: "Bad question",
+        workspaceDirectory: "",
+        mode: "plan",
+        history: [
+          {
+            message: {
+              role: "user",
+              content: "Plan this",
+              id: "user-1",
+            } as ChatMessage & { id: string },
+            contextItems: [],
+          },
+          {
+            message: {
+              role: "assistant",
+              content: "",
+              id: "assistant-1",
+            } as ChatMessage & { id: string },
+            contextItems: [],
+            toolCallStates: [
+              {
+                toolCallId: "q1",
+                status: "calling",
+                toolCall: {
+                  id: "q1",
+                  type: "function",
+                  function: {
+                    name: BuiltInToolNames.AskQuestion,
+                    arguments: "{}",
+                  },
+                },
+                parsedArgs: {},
+              },
+            ],
+          },
+        ],
+      }),
+    );
+  });
+
+  // The panel cannot show these arguments, so it must not replace the input
+  expect(screen.queryByTestId("ask-question-panel")).not.toBeInTheDocument();
+  const input = screen.getByTestId("continue-input-box-main-editor-input");
+  expect(input.querySelector("[hidden]")).toBeNull();
+});
+
 test("plan mode offers the tool and chat mode doesn't", async () => {
   const { store } = await renderWithProviders(<Chat />);
   await act(async () => {
