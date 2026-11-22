@@ -9,7 +9,10 @@ import { renderChatMessage } from "core/util/messageContent";
 import { useAppDispatch, useAppSelector } from "../../redux/hooks";
 import { setDialogMessage, setShowDialog } from "../../redux/slices/uiSlice";
 import { isTurnOver } from "../../undo/turnSnapshot";
-import { useCompactConversation } from "../../util/compactConversation";
+import {
+  useCanCompact,
+  useCompactConversation,
+} from "../../util/compactConversation";
 import { FeedbackButtons } from "../FeedbackButtons";
 import { CopyIconButton } from "../gui/CopyIconButton";
 import HeaderButtonWithToolTip from "../gui/HeaderButtonWithToolTip";
@@ -46,6 +49,7 @@ export default function ResponseActions({
   const showLabel = isLast && (isPruned || percent >= 60);
 
   const compactConversation = useCompactConversation();
+  const canCompact = useCanCompact(index);
 
   const dispatch = useAppDispatch();
   const undoFromIndex = useAppSelector((state) => {
@@ -69,6 +73,7 @@ export default function ResponseActions({
             : "Compact conversation"
         }
         tabIndex={-1}
+        disabled={!canCompact}
         onClick={() => compactConversation(index)}
       >
         <div className="flex items-center space-x-1">

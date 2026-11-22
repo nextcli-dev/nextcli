@@ -665,22 +665,27 @@ export class Core {
       const currentModel = getSelectedChatModelOrThrow(
         await this.configHandler.loadConfig(),
       );
-      const key = compactionKey(msg.data.sessionId, msg.data.index);
+      const key = compactionKey(msg.data.sessionId, msg.data.messageId);
       const controller = startCompaction(key);
-      // Errors reach the GUI, which reports them
+      // Errors also reach the GUI, which reports them
       try {
         return await compactConversation({
           messages: msg.data.messages,
           currentModel,
           signal: controller.signal,
         });
+      } catch (e) {
+        if (!controller.signal.aborted) {
+          Logger.error(`Error compacting conversation: ${e}`);
+        }
+        throw e;
       } finally {
         finishCompaction(key, controller);
       }
     });
 
     on("conversation/compact/abort", async (msg) => {
-      abortCompaction(compactionKey(msg.data.sessionId, msg.data.index));
+      abortCompaction(compactionKey(msg.data.sessionId, msg.data.messageId));
     });
 
     // Autocomplete

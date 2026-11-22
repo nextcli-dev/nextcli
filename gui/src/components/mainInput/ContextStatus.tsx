@@ -2,7 +2,10 @@ import { useMemo, useRef } from "react";
 import { useStopRunGuard } from "../../hooks/useStopRunGuard";
 import { useAppDispatch, useAppSelector } from "../../redux/hooks";
 import { saveCurrentSession } from "../../redux/thunks/session";
-import { useCompactConversation } from "../../util/compactConversation";
+import {
+  useCanCompact,
+  useCompactConversation,
+} from "../../util/compactConversation";
 import { ToolTip } from "../gui/Tooltip";
 
 const ContextStatus = () => {
@@ -32,6 +35,7 @@ const ContextStatus = () => {
   }, [history.length, selectedChatModel]);
 
   const compactConversation = useCompactConversation();
+  const canCompact = useCanCompact(history.length - 1);
   if (!isPruned && percent < 60) {
     return null;
   }
@@ -67,8 +71,18 @@ const ContextStatus = () => {
               <div className="flex flex-col gap-1 whitespace-pre">
                 <div>
                   <span
-                    className="hover:text-link inline-block cursor-pointer underline"
-                    onClick={() => compactConversation(history.length - 1)}
+                    role="button"
+                    aria-disabled={!canCompact}
+                    className={
+                      canCompact
+                        ? "hover:text-link inline-block cursor-pointer underline"
+                        : "text-description-muted inline-block cursor-not-allowed"
+                    }
+                    onClick={
+                      canCompact
+                        ? () => compactConversation(history.length - 1)
+                        : undefined
+                    }
                   >
                     Compact conversation
                   </span>

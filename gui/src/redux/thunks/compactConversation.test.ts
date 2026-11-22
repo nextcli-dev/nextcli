@@ -1,16 +1,14 @@
-import { ModelDescription } from "core";
+import { Session } from "core";
 import { describe, expect, it, vi } from "vitest";
 
 import { createMockStore, getEmptyRootState } from "../../util/test/mockStore";
-import { ChatHistoryItemWithMessageId } from "../slices/sessionSlice";
+import {
+  ChatHistoryItemWithMessageId,
+  deleteMessage,
+  newSession,
+  setActive,
+} from "../slices/sessionSlice";
 import { cancelCompaction, compactConversation } from "./compactConversation";
-
-const model: ModelDescription = {
-  model: "mock",
-  provider: "mock",
-  title: "Mock LLM",
-  underlyingProviderName: "mock",
-};
 
 const item = (
   role: "user" | "assistant",
@@ -22,7 +20,11 @@ const item = (
   ...extra,
 });
 
-/** A store holding this session, with the mock model selected */
+/**
+ * A store holding session-1, with a rule that applies to every turn.
+ * Requests answer from `responses` (a value or a function of the data),
+ * or with an error reply from `errors`.
+ */
 function storeWith(history: ChatHistoryItemWithMessageId[]) {
   const empty = getEmptyRootState();
   const store = createMockStore({
@@ -30,10 +32,14 @@ function storeWith(history: ChatHistoryItemWithMessageId[]) {
       ...empty.config,
       config: {
         ...empty.config.config,
-        selectedModelByRole: {
-          ...empty.config.config.selectedModelByRole,
-          chat: model,
-        },
+        rules: [
+          {
+            name: "tests-first",
+            rule: "RULE: write the tests first.",
+            source: "rules-block",
+            alwaysApply: true,
+          },
+        ],
       },
     },
     session: { ...empty.session, id: "session-1", history },
@@ -42,15 +48,38 @@ function storeWith(history: ChatHistoryItemWithMessageId[]) {
     .spyOn(store.mockIdeMessenger.ide, "showToast")
     .mockResolvedValue(undefined);
   const requests: { type: string; data: any }[] = [];
+  const errors: Record<string, string | undefined> = {};
   const request = store.mockIdeMessenger.request.bind(store.mockIdeMessenger);
   vi.spyOn(store.mockIdeMessenger, "request").mockImplementation(
     async (type: any, data: any) => {
       requests.push({ type, data });
+      if (type in errors) {
+        return { status: "error", error: errors[type], done: true } as any;
+      }
       return request(type, data);
     },
   );
-  return { store, toast, requests };
+  const handlers = store.mockIdeMessenger.responseHandlers;
+  const sent = (type: string) => requests.filter((r) => r.type === type);
+  const state = () => (store.getState() as any).session;
+  return { store, toast, handlers, errors, sent, state };
 }
+
+/** A reply the test resolves or rejects when it chooses */
+function pending<T>() {
+  let resolve: (value: T) => void = () => {};
+  let reject: (error: Error) => void = () => {};
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+const reply = (summary: string, shortenedOutputs = 0) => ({
+  summary,
+  shortenedOutputs,
+});
 
 const history = [
   item("user", "Fix the token check", {
@@ -63,123 +92,249 @@ const history = [
       },
     ],
   }),
-  item("assistant", "Fixed it"),
+  item("assistant", "Fixed it", { conversationSummary: "EARLIER SUMMARY" }),
   // Never saved: only the GUI has it
   item("user", "Now add a test"),
+  item("assistant", "Added the test"),
 ];
+const targetId = history[3].message.id;
 
 describe("compactConversation", () => {
-  it("summarizes the conversation the GUI shows, as a turn sends it", async () => {
-    const { store, requests } = storeWith(history);
-    store.mockIdeMessenger.responseHandlers["conversation/compact"] =
-      async () => "The token check was fixed.";
+  it("sends the conversation without the agent prompt or rules", async () => {
+    const { store, handlers, sent } = storeWith(history);
+    handlers["conversation/compact"] = async () => reply("Summary");
 
-    await store.dispatch(compactConversation({ index: 2 }) as any);
+    await store.dispatch(compactConversation({ index: 3 }) as any);
 
-    const sent = requests.find((r) => r.type === "conversation/compact")!.data;
-    expect(sent).toMatchObject({ sessionId: "session-1", index: 2 });
-    const text = JSON.stringify(sent.messages);
-    // The system prompt, the attached file and the unsaved message
-    expect(sent.messages[0].role).toBe("system");
-    expect(text).toContain("export function checkToken() {}");
+    const data = sent("conversation/compact")[0].data;
+    expect(data).toMatchObject({ sessionId: "session-1", messageId: targetId });
+    const text = JSON.stringify(data.messages);
+    expect(text).not.toContain("RULE: write the tests first.");
+    // The only system message is the earlier summary
+    const system = data.messages.filter((m: any) => m.role === "system");
+    expect(system).toHaveLength(1);
+    expect(system[0].content.replace(/\s+/g, " ")).toBe(
+      "Previous conversation summary: EARLIER SUMMARY",
+    );
     expect(text).toContain("Now add a test");
   });
 
-  it("stores the summary on the message and saves, without a reload", async () => {
-    const { store, requests } = storeWith(history);
-    store.mockIdeMessenger.responseHandlers["conversation/compact"] =
-      async () => "The token check was fixed.";
-
-    await store.dispatch(compactConversation({ index: 2 }) as any);
-
-    const state = store.getState() as any;
-    expect(state.session.history[2].conversationSummary).toBe(
-      "The token check was fixed.",
-    );
-    expect(state.session.history).toHaveLength(3);
-    expect(state.session.compactionLoading[2]).toBeUndefined();
-    const types = requests.map((r) => r.type);
-    expect(types).toContain("history/save");
-    expect(types).not.toContain("history/load");
-  });
-
-  it("leaves out an older summary on the same message when compacting again", async () => {
-    const { store, requests } = storeWith([
-      item("user", "First request"),
-      item("assistant", "First answer", {
-        conversationSummary: "OLD SUMMARY",
-      }),
+  it("keeps the attached context of a conversation without a summary", async () => {
+    const { store, handlers, sent } = storeWith([
+      history[0],
+      item("assistant", "Fixed it"),
     ]);
-    store.mockIdeMessenger.responseHandlers["conversation/compact"] =
-      async () => "New summary";
+    handlers["conversation/compact"] = async () => reply("Summary");
 
     await store.dispatch(compactConversation({ index: 1 }) as any);
 
-    const sent = requests.find((r) => r.type === "conversation/compact")!.data;
-    const text = JSON.stringify(sent.messages);
-    expect(text).not.toContain("OLD SUMMARY");
-    expect(text).toContain("First request");
+    const text = JSON.stringify(sent("conversation/compact")[0].data.messages);
+    expect(text).toContain("export function checkToken() {}");
   });
 
-  it("reports a failure and leaves the conversation as it was", async () => {
-    const { store, toast } = storeWith(history);
-    store.mockIdeMessenger.responseHandlers["conversation/compact"] =
-      async () => {
-        throw new Error("401 invalid api key");
-      };
+  it("stores the summary on the message and saves, without a reload", async () => {
+    const { store, handlers, sent, state } = storeWith(history);
+    handlers["conversation/compact"] = async () => reply("New summary");
 
-    await store.dispatch(compactConversation({ index: 2 }) as any);
+    await store.dispatch(compactConversation({ index: 3 }) as any);
+
+    expect(state().history[3].conversationSummary).toBe("New summary");
+    expect(state().history).toHaveLength(4);
+    expect(state().compactionLoading).toEqual({});
+    expect(sent("history/save")).toHaveLength(1);
+    expect(sent("history/load")).toHaveLength(0);
+  });
+
+  it("leaves out an older summary on the same message when compacting again", async () => {
+    const { store, handlers, sent } = storeWith(history);
+    handlers["conversation/compact"] = async () => reply("Newer summary");
+
+    await store.dispatch(compactConversation({ index: 1 }) as any);
+
+    const text = JSON.stringify(sent("conversation/compact")[0].data.messages);
+    expect(text).not.toContain("EARLIER SUMMARY");
+    expect(text).toContain("Fix the token check");
+  });
+
+  it("stores the summary on the same message after earlier rows are deleted", async () => {
+    const { store, handlers, state } = storeWith(history);
+    handlers["conversation/compact"] = async () => {
+      // The first exchange is deleted while the summary is written
+      store.dispatch(deleteMessage(1));
+      return reply("Summary");
+    };
+
+    await store.dispatch(compactConversation({ index: 3 }) as any);
+
+    expect(state().history.map((i: any) => i.message.id)).toEqual([
+      history[2].message.id,
+      targetId,
+    ]);
+    expect(state().history[1].conversationSummary).toBe("Summary");
+    expect(state().history[0].conversationSummary).toBeUndefined();
+  });
+
+  it("writes nothing when the message itself is deleted meanwhile", async () => {
+    const { store, handlers, sent, state } = storeWith(history);
+    handlers["conversation/compact"] = async () => {
+      store.dispatch(deleteMessage(3));
+      return reply("Summary");
+    };
+
+    await store.dispatch(compactConversation({ index: 3 }) as any);
+
+    expect(
+      state().history.some((i: any) => i.conversationSummary === "Summary"),
+    ).toBe(false);
+    expect(sent("history/save")).toHaveLength(0);
+  });
+
+  it("saves the summary to its own chat when another one was opened", async () => {
+    const { store, handlers, sent, state } = storeWith(history);
+    const saved: Session = {
+      sessionId: "session-1",
+      title: "Token check",
+      workspaceDirectory: "",
+      history,
+    };
+    handlers["history/load"] = async () => saved;
+    let loadingMeanwhile: Record<string, boolean> = {};
+    handlers["conversation/compact"] = async () => {
+      store.dispatch(
+        newSession({
+          sessionId: "session-2",
+          title: "Other",
+          workspaceDirectory: "",
+          history: [item("user", "Other chat")],
+        }),
+      );
+      loadingMeanwhile = { ...state().compactionLoading };
+      return reply("Summary of session 1");
+    };
+
+    await store.dispatch(compactConversation({ index: 3 }) as any);
+
+    // The open chat has no row with that id, so it shows no spinner, and
+    // coming back to the first chat would show it
+    expect(loadingMeanwhile).toEqual({ [targetId]: true });
+    expect(state().id).toBe("session-2");
+    expect(state().history[0].conversationSummary).toBeUndefined();
+    expect(state().compactionLoading).toEqual({});
+    expect(sent("history/load")[0].data).toEqual({ id: "session-1" });
+    const written = sent("history/save")[0].data as Session;
+    expect(written.sessionId).toBe("session-1");
+    expect(written.history[3].conversationSummary).toBe("Summary of session 1");
+    expect(written.history[1].conversationSummary).toBe("EARLIER SUMMARY");
+  });
+
+  it("cancels the compaction of a chat that is no longer open", async () => {
+    const { store, handlers, sent, toast, state } = storeWith(history);
+    const answer = pending<ReturnType<typeof reply>>();
+    handlers["conversation/compact"] = () => answer.promise;
+    handlers["conversation/compact/abort"] = async () =>
+      answer.reject(new Error("This operation was aborted"));
+
+    const compacting = store.dispatch(compactConversation({ index: 3 }) as any);
+    store.dispatch(
+      newSession({
+        sessionId: "session-2",
+        title: "Other",
+        workspaceDirectory: "",
+        history: [item("user", "Other chat")],
+      }),
+    );
+    await store.dispatch(cancelCompaction({ messageId: targetId }) as any);
+    await compacting;
+
+    expect(sent("conversation/compact/abort")[0].data).toEqual({
+      sessionId: "session-1",
+      messageId: targetId,
+    });
+    expect(toast).not.toHaveBeenCalled();
+    expect(state().compactionLoading).toEqual({});
+  });
+
+  it("runs one compaction per message, and Cancel still stops it", async () => {
+    const { store, handlers, sent, toast, state } = storeWith(history);
+    const answer = pending<ReturnType<typeof reply>>();
+    handlers["conversation/compact"] = () => answer.promise;
+    handlers["conversation/compact/abort"] = async () =>
+      answer.reject(new Error("This operation was aborted"));
+
+    const first = store.dispatch(compactConversation({ index: 3 }) as any);
+    // A second click is ignored, and the spinner stays
+    await store.dispatch(compactConversation({ index: 3 }) as any);
+    expect(sent("conversation/compact")).toHaveLength(1);
+    expect(state().compactionLoading).toEqual({ [targetId]: true });
+
+    await store.dispatch(cancelCompaction({ messageId: targetId }) as any);
+    await first;
+
+    expect(sent("conversation/compact/abort")).toHaveLength(1);
+    expect(toast).not.toHaveBeenCalled();
+    expect(state().compactionLoading).toEqual({});
+  });
+
+  it("discards a summary that arrives after Cancel", async () => {
+    const { store, handlers, sent, toast, state } = storeWith(history);
+    const answer = pending<ReturnType<typeof reply>>();
+    handlers["conversation/compact"] = () => answer.promise;
+    // The provider ends the stream on abort, so a partial summary comes back
+    handlers["conversation/compact/abort"] = async () =>
+      answer.resolve(reply("Partial summ"));
+
+    const compacting = store.dispatch(compactConversation({ index: 3 }) as any);
+    await store.dispatch(cancelCompaction({ messageId: targetId }) as any);
+    await compacting;
+
+    expect(state().history[3].conversationSummary).toBeUndefined();
+    expect(sent("history/save")).toHaveLength(0);
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  it("reports a failure with its reason and leaves the conversation as it was", async () => {
+    const { store, errors, toast, state } = storeWith(history);
+    errors["conversation/compact"] = "401 invalid api key";
+
+    await store.dispatch(compactConversation({ index: 3 }) as any);
 
     expect(toast).toHaveBeenCalledWith(
       "error",
       "Compaction failed: 401 invalid api key",
     );
-    const state = store.getState() as any;
-    expect(state.session.history[2].conversationSummary).toBeUndefined();
-    expect(state.session.compactionLoading[2]).toBeUndefined();
+    expect(state().history[3].conversationSummary).toBeUndefined();
+    expect(state().compactionLoading).toEqual({});
   });
 
-  it("says nothing when the compaction is cancelled", async () => {
-    const { store, toast, requests } = storeWith(history);
-    let rejectCompaction: (error: Error) => void = () => {};
-    store.mockIdeMessenger.responseHandlers["conversation/compact"] = () =>
-      new Promise((_, reject) => {
-        rejectCompaction = reject;
-      });
-    store.mockIdeMessenger.responseHandlers["conversation/compact/abort"] =
-      async () => {
-        rejectCompaction(new Error("This operation was aborted"));
-      };
+  it("adds no toast to an error the extension already showed", async () => {
+    const { store, errors, toast, state } = storeWith(history);
+    errors["conversation/compact"] = undefined;
 
-    const compacting = store.dispatch(compactConversation({ index: 2 }) as any);
-    await store.dispatch(cancelCompaction({ index: 2 }) as any);
-    await compacting;
+    await store.dispatch(compactConversation({ index: 3 }) as any);
 
-    expect(
-      requests.find((r) => r.type === "conversation/compact/abort")?.data,
-    ).toEqual({ sessionId: "session-1", index: 2 });
     expect(toast).not.toHaveBeenCalled();
-    expect(
-      (store.getState() as any).session.history[2].conversationSummary,
-    ).toBeUndefined();
+    expect(state().compactionLoading).toEqual({});
   });
 
-  it("doesn't apply a summary to a session opened in the meantime", async () => {
-    const { store } = storeWith(history);
-    store.mockIdeMessenger.responseHandlers["conversation/compact"] =
-      async () => {
-        // The person opens another session while the summary is written
-        store.dispatch({
-          type: "session/newSession",
-          payload: { sessionId: "session-2", title: "", history },
-        });
-        return "Summary of the old session";
-      };
+  it("says how many tool outputs were shortened to fit", async () => {
+    const { store, handlers, toast } = storeWith(history);
+    handlers["conversation/compact"] = async () => reply("Summary", 3);
 
-    await store.dispatch(compactConversation({ index: 2 }) as any);
+    await store.dispatch(compactConversation({ index: 3 }) as any);
 
-    const state = store.getState() as any;
-    expect(state.session.id).toBe("session-2");
-    expect(state.session.history[2].conversationSummary).toBeUndefined();
+    expect(toast).toHaveBeenCalledWith(
+      "info",
+      "Compacted. 3 tool outputs were shortened to fit the summary request.",
+    );
+  });
+
+  it("doesn't compact while a turn runs", async () => {
+    const { store, sent, state } = storeWith(history);
+    store.dispatch(setActive());
+
+    await store.dispatch(compactConversation({ index: 3 }) as any);
+
+    expect(sent("conversation/compact")).toHaveLength(0);
+    expect(state().compactionLoading).toEqual({});
   });
 });

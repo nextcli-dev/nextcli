@@ -243,7 +243,8 @@ type SessionState = {
   streamThinkingHidden?: boolean;
   contextPercentage?: number;
   inlineErrorMessage?: InlineErrorMessageType;
-  compactionLoading: Record<number, boolean>; // Track compaction loading by message index
+  /** Compactions in progress, by the id of the message they summarize */
+  compactionLoading: Record<string, boolean>;
   /** Redo is offered until the next message */
   undoneTurn?: UndoneTurn;
 };
@@ -551,15 +552,14 @@ export const sessionSlice = createSlice({
     },
     setConversationSummary: (
       state,
-      action: PayloadAction<{ index: number; summary: string }>,
+      action: PayloadAction<{ messageId: string; summary: string }>,
     ) => {
-      const { index, summary } = action.payload;
-      const historyItem = state.history[index];
+      const { messageId, summary } = action.payload;
+      const historyItem = state.history.find(
+        (item) => item.message.id === messageId,
+      );
       if (historyItem) {
-        state.history[index] = {
-          ...historyItem,
-          conversationSummary: summary,
-        };
+        historyItem.conversationSummary = summary;
       }
     },
     deleteCompaction: (state, action: PayloadAction<number>) => {
@@ -1111,13 +1111,13 @@ export const sessionSlice = createSlice({
     },
     setCompactionLoading: (
       state,
-      action: PayloadAction<{ index: number; loading: boolean }>,
+      action: PayloadAction<{ messageId: string; loading: boolean }>,
     ) => {
-      const { index, loading } = action.payload;
+      const { messageId, loading } = action.payload;
       if (loading) {
-        state.compactionLoading[index] = true;
+        state.compactionLoading[messageId] = true;
       } else {
-        delete state.compactionLoading[index];
+        delete state.compactionLoading[messageId];
       }
     },
     setInlineErrorMessage: (

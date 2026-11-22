@@ -18,8 +18,11 @@ interface ConversationSummaryProps {
 
 export default function ConversationSummary(props: ConversationSummaryProps) {
   const [open, setOpen] = useState(true);
+  const messageId = useAppSelector(
+    (state) => state.session.history[props.index]?.message.id,
+  );
   const isLoading = useAppSelector(
-    (state) => state.session.compactionLoading[props.index] || false,
+    (state) => !!messageId && !!state.session.compactionLoading[messageId],
   );
   const deleteCompaction = useDeleteCompaction();
   const cancelCompaction = useCancelCompaction();
@@ -29,7 +32,7 @@ export default function ConversationSummary(props: ConversationSummaryProps) {
   }
 
   // Loading state - much simpler
-  if (isLoading) {
+  if (isLoading && messageId) {
     return (
       <div className="mx-1.5 mb-4 mt-2">
         <div className="bg-vsc-input-background rounded-md shadow-sm">
@@ -39,7 +42,7 @@ export default function ConversationSummary(props: ConversationSummaryProps) {
             <span
               role="button"
               className="ml-auto cursor-pointer hover:underline"
-              onClick={() => cancelCompaction(props.index)}
+              onClick={() => cancelCompaction(messageId)}
             >
               Cancel
             </span>

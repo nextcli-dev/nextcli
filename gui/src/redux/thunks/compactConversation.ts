@@ -1,31 +1,36 @@
-import { createAsyncThunk } from "@reduxjs/toolkit";
-import { ChatMessage, ModelDescription } from "core";
+import { createAsyncThunk, unwrapResult } from "@reduxjs/toolkit";
+import { ChatMessage } from "core";
 
-import { selectSelectedChatModel } from "../slices/configSlice";
+import { isTurnOver } from "../../undo/turnSnapshot";
 import {
+  ChatHistoryItemWithMessageId,
   setCompactionLoading,
   setConversationSummary,
 } from "../slices/sessionSlice";
-import type { RootState, ThunkApiType } from "../store";
+import type { ThunkApiType } from "../store";
 import { constructMessages } from "../util/constructMessages";
-import { selectTurnSetup } from "../util/turnSetup";
-import { saveCurrentSession } from "./session";
+import { getSession, saveCurrentSession, updateSession } from "./session";
 
-// Compactions the user cancelled: their abort error isn't a failure to report
-const cancelled = new Set<string>();
-const keyOf = (sessionId: string, index: number) => `${sessionId}:${index}`;
+interface Compaction {
+  sessionId: string;
+  cancelled: boolean;
+}
+
+// Compactions in progress, by message id: one per message
+const running = new Map<string, Compaction>();
 
 /**
- * The conversation up to `index` as the model sees it in a turn: the same
- * system message, rules, context and tool results. A summary already on the
- * target message is left out, so compacting again starts from the one before.
+ * The conversation up to `index`, to summarize: attached context, tool
+ * results and any earlier summary. The agent prompt, rules and tool
+ * instructions are left out, since the summary request has no tools. A
+ * summary already on the target message is left out too, so compacting
+ * again starts from the one before.
  */
-export function compactionMessages(
-  state: RootState,
-  model: ModelDescription,
+function compactionMessages(
+  history: ChatHistoryItemWithMessageId[],
   index: number,
 ): ChatMessage[] {
-  const history = state.session.history.slice(0, index + 1).map((item, i) => {
+  const items = history.slice(0, index + 1).map((item, i) => {
     const { id, ...message } = item.message;
     return {
       ...item,
@@ -33,19 +38,14 @@ export function compactionMessages(
       ...(i === index && { conversationSummary: undefined }),
     };
   });
-  const { systemMessage, systemToolsFramework } = selectTurnSetup(state, model);
-  return constructMessages(
-    history,
-    systemMessage,
-    state.config.config.rules,
-    state.ui.ruleSettings,
-    systemToolsFramework,
-  ).messages;
+  return constructMessages(items, undefined, [], {}).messages;
 }
 
 /**
- * Summarizes the conversation the GUI shows, up to `index`, and stores the
- * summary on that message. A failure is shown as a toast; a cancel isn't.
+ * Summarizes the conversation up to the message at `index` and stores the
+ * summary on that message, found by its id: in the open session, or in its
+ * saved file when another session was opened meanwhile. A failure is shown
+ * as a toast; a cancel isn't.
  */
 export const compactConversation = createAsyncThunk<
   void,
@@ -55,61 +55,106 @@ export const compactConversation = createAsyncThunk<
   "session/compactConversation",
   async ({ index }, { dispatch, extra, getState }) => {
     const state = getState();
-    const sessionId = state.session.id;
-    const model = selectSelectedChatModel(state);
-    if (!sessionId || !model || !state.session.history[index]) {
+    const { id: sessionId, history } = state.session;
+    const messageId = history[index]?.message.id;
+    // Mid-turn, the summary would cut off the rest of the turn
+    if (
+      !sessionId ||
+      !messageId ||
+      running.has(messageId) ||
+      !isTurnOver(state)
+    ) {
       return;
     }
-    const key = keyOf(sessionId, index);
-    cancelled.delete(key);
-    dispatch(setCompactionLoading({ index, loading: true }));
+    const compaction: Compaction = { sessionId, cancelled: false };
+    running.set(messageId, compaction);
+    dispatch(setCompactionLoading({ messageId, loading: true }));
 
     try {
       const result = await extra.ideMessenger.request("conversation/compact", {
-        index,
         sessionId,
-        messages: compactionMessages(state, model, index),
+        messageId,
+        messages: compactionMessages(history, index),
       });
-      if (result.status === "error") {
-        throw new Error(result.error);
+      if (compaction.cancelled) {
+        return;
       }
-      // Moved to another session, or the message is gone: nothing to apply
+      if (result.status === "error") {
+        // An error without text was already shown to the user
+        if (result.error) {
+          throw new Error(result.error);
+        }
+        return;
+      }
+      const { summary, shortenedOutputs } = result.content;
+
       const session = getState().session;
-      if (session.id === sessionId && session.history[index]) {
-        dispatch(setConversationSummary({ index, summary: result.content }));
-        await dispatch(
-          saveCurrentSession({ openNewSession: false, generateTitle: false }),
+      if (session.id === sessionId) {
+        // Not when the message was deleted or undone meanwhile
+        if (session.history.some((item) => item.message.id === messageId)) {
+          dispatch(setConversationSummary({ messageId, summary }));
+          unwrapResult(
+            await dispatch(
+              saveCurrentSession({
+                openNewSession: false,
+                generateTitle: false,
+              }),
+            ),
+          );
+        }
+      } else {
+        const saved = await getSession(extra.ideMessenger, sessionId);
+        // Saved by the GUI, so its messages keep their ids
+        const savedHistory = saved.history as ChatHistoryItemWithMessageId[];
+        if (savedHistory.some((item) => item.message.id === messageId)) {
+          unwrapResult(
+            await dispatch(
+              updateSession({
+                ...saved,
+                history: savedHistory.map((item) =>
+                  item.message.id === messageId
+                    ? { ...item, conversationSummary: summary }
+                    : item,
+                ),
+              }),
+            ),
+          );
+        }
+      }
+
+      if (shortenedOutputs > 0) {
+        void extra.ideMessenger.ide.showToast(
+          "info",
+          `Compacted. ${shortenedOutputs} tool outputs were shortened to fit the summary request.`,
         );
       }
     } catch (error) {
-      if (!cancelled.has(key)) {
+      if (!compaction.cancelled) {
         void extra.ideMessenger.ide.showToast(
           "error",
           `Compaction failed: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
     } finally {
-      cancelled.delete(key);
-      if (getState().session.id === sessionId) {
-        dispatch(setCompactionLoading({ index, loading: false }));
-      }
+      running.delete(messageId);
+      dispatch(setCompactionLoading({ messageId, loading: false }));
     }
   },
 );
 
-/** Stops the compaction running for the message at `index` */
+/** Stops the compaction of this message; whatever it returns is discarded */
 export const cancelCompaction = createAsyncThunk<
   void,
-  { index: number },
+  { messageId: string },
   ThunkApiType
->("session/cancelCompaction", async ({ index }, { extra, getState }) => {
-  const sessionId = getState().session.id;
-  if (!sessionId) {
+>("session/cancelCompaction", async ({ messageId }, { extra }) => {
+  const compaction = running.get(messageId);
+  if (!compaction) {
     return;
   }
-  cancelled.add(keyOf(sessionId, index));
+  compaction.cancelled = true;
   await extra.ideMessenger.request("conversation/compact/abort", {
-    index,
-    sessionId,
+    sessionId: compaction.sessionId,
+    messageId,
   });
 });
