@@ -113,7 +113,13 @@ describe("streamResponseThunk - tool calls", () => {
       ],
       didPrune: false,
       contextPercentage: 0.9,
-      snapshot: { window: 128000, used: 0, threshold: { tokens: 100000, action: "pruning", steps: [] }, segments: [], largestToolResults: [] },
+      snapshot: {
+        window: 128000,
+        used: 0,
+        threshold: { tokens: 100000, action: "pruning", steps: [] },
+        segments: [],
+        largestToolResults: [],
+      },
     };
     mockIdeMessengerWithTool.responses["tools/call"] = {
       contextItems: [
@@ -577,7 +583,13 @@ describe("streamResponseThunk - tool calls", () => {
       ],
       didPrune: false,
       contextPercentage: 0.9,
-      snapshot: { window: 128000, used: 0, threshold: { tokens: 100000, action: "pruning", steps: [] }, segments: [], largestToolResults: [] },
+      snapshot: {
+        window: 128000,
+        used: 0,
+        threshold: { tokens: 100000, action: "pruning", steps: [] },
+        segments: [],
+        largestToolResults: [],
+      },
     };
 
     // Setup streaming generator with tool call requiring approval
@@ -1087,7 +1099,13 @@ describe("streamResponseThunk - tool calls", () => {
       ],
       didPrune: false,
       contextPercentage: 0.85,
-      snapshot: { window: 128000, used: 0, threshold: { tokens: 100000, action: "pruning", steps: [] }, segments: [], largestToolResults: [] },
+      snapshot: {
+        window: 128000,
+        used: 0,
+        threshold: { tokens: 100000, action: "pruning", steps: [] },
+        segments: [],
+        largestToolResults: [],
+      },
     };
 
     mockIdeMessengerApproval.responses["tools/call"] = {
@@ -1914,7 +1932,13 @@ describe("streamResponseThunk - tool calls", () => {
         compiledChatMessages: [{ role: "user", content: "Run echo hello" }],
         didPrune: false,
         contextPercentage: 0.5,
-        snapshot: { window: 128000, used: 0, threshold: { tokens: 100000, action: "pruning", steps: [] }, segments: [], largestToolResults: [] },
+        snapshot: {
+          window: 128000,
+          used: 0,
+          threshold: { tokens: 100000, action: "pruning", steps: [] },
+          segments: [],
+          largestToolResults: [],
+        },
       };
       // Setup streaming with echo command (should require permission despite auto-approve base)
       async function* mockStreamWithEcho(): AsyncGenerator<
@@ -2001,7 +2025,13 @@ describe("streamResponseThunk - tool calls", () => {
           ],
           didPrune: false,
           contextPercentage: 0.5,
-          snapshot: { window: 128000, used: 0, threshold: { tokens: 100000, action: "pruning", steps: [] }, segments: [], largestToolResults: [] },
+          snapshot: {
+            window: 128000,
+            used: 0,
+            threshold: { tokens: 100000, action: "pruning", steps: [] },
+            segments: [],
+            largestToolResults: [],
+          },
         };
       };
       let numCalls = 0;
@@ -2133,7 +2163,13 @@ describe("streamResponseThunk - tool calls", () => {
             ],
             didPrune: false,
             contextPercentage: 0.5,
-            snapshot: { window: 128000, used: 0, threshold: { tokens: 100000, action: "pruning", steps: [] }, segments: [], largestToolResults: [] },
+            snapshot: {
+              window: 128000,
+              used: 0,
+              threshold: { tokens: 100000, action: "pruning", steps: [] },
+              segments: [],
+              largestToolResults: [],
+            },
           };
         };
 
@@ -2218,7 +2254,13 @@ describe("streamResponseThunk - tool calls", () => {
           ],
           didPrune: false,
           contextPercentage: 0.9,
-          snapshot: { window: 128000, used: 0, threshold: { tokens: 100000, action: "pruning", steps: [] }, segments: [], largestToolResults: [] },
+          snapshot: {
+            window: 128000,
+            used: 0,
+            threshold: { tokens: 100000, action: "pruning", steps: [] },
+            segments: [],
+            largestToolResults: [],
+          },
         };
       };
 

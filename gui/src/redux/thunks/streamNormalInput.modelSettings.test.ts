@@ -48,7 +48,13 @@ describe("streamNormalInput model settings", () => {
       compiledChatMessages: [{ role: "user", content: "Hi" }],
       didPrune: false,
       contextPercentage: 0.1,
-      snapshot: { window: 128000, used: 0, threshold: { tokens: 100000, action: "pruning", steps: [] }, segments: [], largestToolResults: [] },
+      snapshot: {
+        window: 128000,
+        used: 0,
+        threshold: { tokens: 100000, action: "pruning", steps: [] },
+        segments: [],
+        largestToolResults: [],
+      },
     };
     const streamChat = vi.fn().mockReturnValue(
       (async function* () {
