@@ -4,10 +4,7 @@ import type { ChatHistoryItem } from "core/index.js";
 import { encode } from "gpt-tokenizer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  autoCompactThreshold,
-  shouldAutoCompact,
-} from "../compaction.js";
+import { autoCompactThreshold, shouldAutoCompact } from "../compaction.js";
 
 import { logger } from "./logger.js";
 import {
@@ -616,15 +613,15 @@ describe("tokenizer", () => {
         },
       ];
       const chatHistory = createChatHistory(20);
-      expect(
-        shouldAutoCompact({ chatHistory, model, tools: shallow }),
-      ).toBe(false);
+      expect(shouldAutoCompact({ chatHistory, model, tools: shallow })).toBe(
+        false,
+      );
       expect(shouldAutoCompact({ chatHistory, model, tools: nested })).toBe(
         true,
       );
-      expect(countTotalInputTokens({ chatHistory, model, tools: nested })).toBeGreaterThanOrEqual(
-        compactionThreshold,
-      );
+      expect(
+        countTotalInputTokens({ chatHistory, model, tools: nested }),
+      ).toBeGreaterThanOrEqual(compactionThreshold);
     });
   });
 
