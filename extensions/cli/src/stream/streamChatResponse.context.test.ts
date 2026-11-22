@@ -17,7 +17,6 @@ import {
 } from "../context/lastUsage.js";
 import { logger } from "../util/logger.js";
 
-
 import { recordStreamTelemetry } from "./streamChatResponse.helpers.js";
 
 describe("request context on the trace", () => {
