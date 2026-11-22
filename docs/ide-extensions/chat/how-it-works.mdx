@@ -44,30 +44,32 @@ A long session fills the model's context window. Once it's full, the oldest mess
 
 ### Start a Compaction
 
-- Click the compact button (two arrows pointing in) under a response. It summarizes the conversation up to and including that response.
-- Once the window is 60% full, or the oldest messages are already left out, the button under the last response reads **Summarize conversation to reduce context length**. A context bar also appears next to the input. Hover it to see how full the window is, then choose **Compact conversation** or **Start a new session**.
+- Click the compact icon (arrows pointing inward) under a response. It summarizes the conversation up to and including that response.
+- Once the window is 60% full, or the oldest messages are already left out, the icon under the last response gets a **Compact conversation** label. A context bar also appears next to the input. Hover it to see how full the window is, then choose **Compact conversation** or **Start a new session**.
+- A last response that ends with tool calls has no icon under it. Use the context bar, or the icon under an earlier response.
 - You can't compact while a response streams or tools run, or while that response is already being summarized.
 
 The selected chat model writes the summary. While it runs, the response shows "Generating conversation summary" and a **Cancel** link. You can switch to another session meanwhile: the summary is saved to the session it belongs to.
 
 ### What the Summary Includes
 
-The summary request contains:
+If an earlier response already has a summary, the latest one stands in for everything up to that response. The summary request then contains:
 
-- the messages up to that response, with their attached context, such as `@` files;
-- tool calls and their results;
-- the summary from an earlier compaction, if there is one.
+- that earlier summary;
+- the messages after it, up to and including the response you chose, with their attached context, such as `@` files, and their tool calls and results.
 
-It leaves out the agent's system prompt, your rules and the tool definitions, because the summary request runs without tools.
+Without an earlier summary, it contains every message up to that response. Compacting a response again replaces its summary, starting from the summary before it.
+
+The request leaves out the agent's system prompt, your rules and the tool definitions, because it runs without tools.
 
 If the request doesn't fit the model's window, the longest tool outputs are shortened until it does, and a notification says how many. If it still doesn't fit, compaction fails and the conversation is left as it is.
 
-The summary appears under the response it covers, and the earlier messages stay in the chat, dimmed.
+The summary appears under the response it covers. The latest one comes after a **Previous Conversation Compacted** divider, and the messages up to and including its response stay in the chat, dimmed. The context bar hides until the next request reports the new size.
 
 ### Cancel or Remove a Summary
 
 - **Cancel** stops the summary. Nothing is saved.
-- The trash icon on **Conversation Summary** removes it, so later requests send the full conversation again.
+- The trash icon on **Conversation Summary** removes that summary. Later requests then use the summary before it, if there is one, with the turns after it. With no summary left, they send the full conversation again. Removing the summary in use, without leaving the session that made it, brings back the context bar's measure from before it.
 - If compaction fails, a notification gives the reason. If the response is deleted before the summary is saved, a notification says the summary wasn't saved. Deleting the session stops its compaction.
 
 ## What Advanced Features Are Available

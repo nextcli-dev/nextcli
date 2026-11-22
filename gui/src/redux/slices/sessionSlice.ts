@@ -45,6 +45,29 @@ import {
   isQuestionCall,
 } from "../util";
 
+/** Whether the summary at `index` is the latest one, the one requests use */
+function isSummaryInUse(state: SessionState, index: number): boolean {
+  return (
+    state.history.findLastIndex((item) => !!item.conversationSummary) === index
+  );
+}
+
+/**
+ * Both measures fall short of what requests send once the summary between
+ * them is gone, so the larger is the closer one
+ */
+function largerMeasure(a: ContextMeasure, b: ContextMeasure): ContextMeasure {
+  const percentages = [a.contextPercentage, b.contextPercentage].filter(
+    (p): p is number => p !== undefined,
+  );
+  return {
+    isPruned: !!(a.isPruned || b.isPruned),
+    contextPercentage: percentages.length
+      ? Math.max(...percentages)
+      : undefined,
+  };
+}
+
 /**
  * Helper function to filter out duplicate edit/search-replace tool calls.
  * Only keeps the first occurrence of edit tools.
@@ -245,9 +268,16 @@ type SessionState = {
   inlineErrorMessage?: InlineErrorMessageType;
   /** Compactions in progress, by the id of the message they summarize */
   compactionLoading: Record<string, boolean>;
+  /**
+   * The context measure from before each summary requests use, by the id of
+   * its message, put back when that summary is deleted
+   */
+  contextBeforeSummary: Record<string, ContextMeasure>;
   /** Redo is offered until the next message */
   undoneTurn?: UndoneTurn;
 };
+
+type ContextMeasure = Pick<SessionState, "isPruned" | "contextPercentage">;
 
 export interface UndoneTurn {
   roots: {
@@ -275,6 +305,7 @@ export const INITIAL_SESSION_STATE: SessionState = {
   lastSessionId: undefined,
   newestToolbarPreviewForInput: {},
   compactionLoading: {},
+  contextBeforeSummary: {},
 };
 
 export const sessionSlice = createSlice({
@@ -555,22 +586,52 @@ export const sessionSlice = createSlice({
       action: PayloadAction<{ messageId: string; summary: string }>,
     ) => {
       const { messageId, summary } = action.payload;
-      const historyItem = state.history.find(
+      const index = state.history.findIndex(
         (item) => item.message.id === messageId,
       );
-      if (historyItem) {
-        historyItem.conversationSummary = summary;
-        // Measured before the summary; the next request reports the new size
-        state.isPruned = false;
-        state.contextPercentage = undefined;
+      if (index === -1) {
+        return;
       }
+      state.history[index].conversationSummary = summary;
+      // A later summary is still the one requests use
+      if (!isSummaryInUse(state, index)) {
+        return;
+      }
+      // Kept for a delete of the summary; compacting the message again
+      // keeps the measure from before its first summary
+      const current = {
+        isPruned: state.isPruned,
+        contextPercentage: state.contextPercentage,
+      };
+      const before = state.contextBeforeSummary[messageId];
+      state.contextBeforeSummary[messageId] = before
+        ? largerMeasure(before, current)
+        : current;
+      // Measured before the summary; the next request reports the new size
+      state.isPruned = false;
+      state.contextPercentage = undefined;
     },
     deleteCompaction: (state, action: PayloadAction<{ messageId: string }>) => {
-      const historyItem = state.history.find(
-        (item) => item.message.id === action.payload.messageId,
+      const { messageId } = action.payload;
+      const index = state.history.findIndex(
+        (item) => item.message.id === messageId,
       );
-      if (historyItem) {
-        historyItem.conversationSummary = undefined;
+      if (index === -1) {
+        return;
+      }
+      const inUse = isSummaryInUse(state, index);
+      state.history[index].conversationSummary = undefined;
+      const before = state.contextBeforeSummary[messageId];
+      delete state.contextBeforeSummary[messageId];
+      // Requests send the history before the summary again: put back what
+      // was measured then, or a later request's measure if it is larger
+      if (inUse && before) {
+        const restored = largerMeasure(before, {
+          isPruned: state.isPruned,
+          contextPercentage: state.contextPercentage,
+        });
+        state.isPruned = restored.isPruned;
+        state.contextPercentage = restored.contextPercentage;
       }
     },
     updateHistoryItemAtIndex: (
@@ -818,6 +879,7 @@ export const sessionSlice = createSlice({
     newSession: (state, { payload }: PayloadAction<Session | undefined>) => {
       state.lastSessionId = state.id;
       state.undoneTurn = undefined;
+      state.contextBeforeSummary = {};
 
       state.streamAborter.abort();
       state.streamAborter = new AbortController();

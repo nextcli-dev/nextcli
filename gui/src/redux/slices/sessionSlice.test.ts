@@ -77,6 +77,7 @@ describe("sessionSlice streamUpdate", () => {
     newestToolbarPreviewForInput: {},
     isSessionMetadataLoading: false,
     compactionLoading: {},
+    contextBeforeSummary: {},
   });
 
   describe("Hidden thinking", () => {
@@ -634,6 +635,100 @@ describe("sessionSlice compaction summaries", () => {
     expect(state.history[1].conversationSummary).toBe("Summary");
     expect(state.isPruned).toBe(false);
     expect(state.contextPercentage).toBeUndefined();
+  });
+
+  const measure = (state: State) => ({
+    isPruned: state.isPruned,
+    contextPercentage: state.contextPercentage,
+  });
+  const exchange = () => [
+    row("user", "u1"),
+    row("assistant", "a1"),
+    row("user", "u2"),
+    row("assistant", "a2"),
+  ];
+
+  it("puts the measure back when the summary is deleted before any request", () => {
+    let state = reducer(
+      withHistory(exchange()),
+      actions.setConversationSummary({ messageId: "a2", summary: "Summary" }),
+    );
+    state = reducer(state, actions.deleteCompaction({ messageId: "a2" }));
+
+    expect(measure(state)).toEqual({ isPruned: true, contextPercentage: 0.9 });
+  });
+
+  it("keeps the larger measure when a request ran after the summary", () => {
+    let state = reducer(
+      withHistory(exchange()),
+      actions.setConversationSummary({ messageId: "a2", summary: "Summary" }),
+    );
+    // The next request measured the compacted history
+    state = reducer(state, actions.setIsPruned(false));
+    state = reducer(state, actions.setContextPercentage(0.3));
+    state = reducer(state, actions.deleteCompaction({ messageId: "a2" }));
+
+    expect(measure(state)).toEqual({ isPruned: true, contextPercentage: 0.9 });
+  });
+
+  it("keeps a later request's measure when it is the larger one", () => {
+    let state = reducer(
+      { ...withHistory(exchange()), isPruned: false, contextPercentage: 0.4 },
+      actions.setConversationSummary({ messageId: "a2", summary: "Summary" }),
+    );
+    // Long turns after the summary
+    state = reducer(state, actions.setContextPercentage(0.7));
+    state = reducer(state, actions.deleteCompaction({ messageId: "a2" }));
+
+    expect(measure(state)).toEqual({ isPruned: false, contextPercentage: 0.7 });
+  });
+
+  it("leaves the measure when a later summary is still the one in use", () => {
+    let state = reducer(
+      withHistory(exchange()),
+      actions.setConversationSummary({ messageId: "a1", summary: "Older" }),
+    );
+    state = reducer(state, actions.setContextPercentage(0.5));
+    state = reducer(
+      state,
+      actions.setConversationSummary({ messageId: "a2", summary: "Newer" }),
+    );
+    // Requests still send the newer summary
+    state = reducer(state, actions.deleteCompaction({ messageId: "a1" }));
+
+    expect(measure(state)).toEqual({
+      isPruned: false,
+      contextPercentage: undefined,
+    });
+  });
+
+  it("keeps the measure from before the first summary when compacting again", () => {
+    let state = reducer(
+      withHistory(exchange()),
+      actions.setConversationSummary({ messageId: "a2", summary: "First" }),
+    );
+    state = reducer(
+      state,
+      actions.setConversationSummary({ messageId: "a2", summary: "Second" }),
+    );
+    state = reducer(state, actions.deleteCompaction({ messageId: "a2" }));
+
+    expect(measure(state)).toEqual({ isPruned: true, contextPercentage: 0.9 });
+  });
+
+  it("doesn't clear the measure for a summary a later one overrides", () => {
+    const state = reducer(
+      withHistory([
+        row("user", "u1"),
+        row("assistant", "a1"),
+        row("user", "u2"),
+        row("assistant", "a2", "Newer"),
+      ]),
+      actions.setConversationSummary({ messageId: "a1", summary: "Older" }),
+    );
+
+    expect(state.history[1].conversationSummary).toBe("Older");
+    expect(measure(state)).toEqual({ isPruned: true, contextPercentage: 0.9 });
   });
 
   it("keeps the context measure when the summary's message is gone", () => {
