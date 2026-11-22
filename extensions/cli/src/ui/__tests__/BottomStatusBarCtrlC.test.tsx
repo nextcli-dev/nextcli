@@ -29,7 +29,7 @@ describe("BottomStatusBar Ctrl+C message", () => {
     navState: { currentScreen: "chat" },
     navigateTo: vi.fn(),
     closeCurrentScreen: vi.fn(),
-    contextPercentage: undefined,
+    contextUsage: undefined,
   };
 
   beforeEach(async () => {

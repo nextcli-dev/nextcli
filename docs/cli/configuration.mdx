@@ -142,4 +142,4 @@ The first line is a header with the `cn` version, Node version, platform and ids
 - An attempt that streamed and then failed is written once, with `"discarded": true`, its `"error"` and what it produced up to then. A call that failed before streaming has `"error"` only.
 - `"error"` is the provider's error message: its first line, at most 200 characters, with the HTTP `"status"` when there is one.
 
-Apart from that error text, the trace holds token counts, timings and tool names, not prompt or file text. Tracing is off unless the variable is set.
+Apart from that error text, the trace holds token counts, timings and tool names, not prompt or file text. When tracing is on, each `llm.request` also has a `context` object: the estimated tokens in the system prompt, the tools and the history, the compaction threshold, and the largest tool results. It names rules and tools. It does not include their text. Tracing is off unless the variable is set.

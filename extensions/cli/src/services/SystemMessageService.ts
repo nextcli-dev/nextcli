@@ -1,5 +1,8 @@
 import { PermissionMode } from "../permissions/types.js";
-import { constructSystemMessage } from "../systemMessage.js";
+import {
+  constructSystemMessageParts,
+  type SystemMessagePart,
+} from "../systemMessage.js";
 import { logger } from "../util/logger.js";
 
 import { BaseService } from "./BaseService.js";
@@ -16,6 +19,9 @@ export interface SystemMessageServiceState {
  * Provides fresh system messages that reflect current mode and configuration
  */
 export class SystemMessageService extends BaseService<SystemMessageServiceState> {
+  /** The message returned by the last `getSystemMessage` call, with its parts. */
+  lastBuilt?: { text: string; parts: SystemMessagePart[] };
+
   constructor() {
     super("SystemMessageService", {});
   }
@@ -49,12 +55,14 @@ export class SystemMessageService extends BaseService<SystemMessageServiceState>
   public async getSystemMessage(currentMode: PermissionMode): Promise<string> {
     const { additionalRules, format, headless } = this.currentState;
 
-    const systemMessage = await constructSystemMessage(
+    const parts = await constructSystemMessageParts(
       currentMode,
       additionalRules,
       format,
       headless,
     );
+    const systemMessage = parts.map((part) => part.text).join("");
+    this.lastBuilt = { text: systemMessage, parts };
 
     logger.debug("Generated fresh system message", {
       mode: currentMode,

@@ -1,4 +1,5 @@
 import { ModelConfig } from "@nextcli/config-yaml";
+import { countToolTokens, memoizeCount } from "@nextcli/context";
 import type { ChatHistoryItem, Reasoning } from "core/index.js";
 import { getAdjustedTokenCountFromModel } from "core/llm/getAdjustedTokenCount.js";
 import { encode } from "gpt-tokenizer";
@@ -6,6 +7,14 @@ import type { ChatCompletionTool } from "openai/resources/chat/completions.mjs";
 
 import { logger } from "./logger.js";
 import { getModelControlsFor, getModelSettings } from "./modelSettings.js";
+
+/**
+ * One cached count for every long text. Special-token markers such as
+ * `<|endoftext|>` are counted as ordinary text.
+ */
+export const countText = memoizeCount(
+  (text: string) => encode(text, { disallowedSpecial: new Set() }).length,
+);
 
 const DEFAULT_MAX_TOKENS_RATIO = 0.35;
 const MAX_MAX_TOKENS = 64_000;
@@ -69,7 +78,7 @@ function countContentTokens(
   model: ModelConfig,
 ): number {
   if (typeof content === "string") {
-    const count = encode(content).length;
+    const count = countText(content);
     return getAdjustedTokenCountFromModel(count, model.model ?? "");
   }
 
@@ -77,7 +86,7 @@ function countContentTokens(
     let tokenCount = 0;
     for (const part of content) {
       if (part.type === "text" && part.text) {
-        tokenCount += encode(part.text).length;
+        tokenCount += countText(part.text);
       }
       if (part.type === "imageUrl") {
         tokenCount += 1024; // Rough estimate for image tokens
@@ -100,15 +109,15 @@ function countToolCallFunctionTokens(
   }
 
   let tokenCount = 0;
-  tokenCount += encode(toolCallFunction.name ?? "").length + 10; // Function name and structure overhead
-  tokenCount += encode(toolCallFunction.arguments ?? "").length; // Arguments
+  tokenCount += countText(toolCallFunction.name ?? "") + 10; // Function name and structure overhead
+  tokenCount += countText(toolCallFunction.arguments ?? ""); // Arguments
   return tokenCount;
 }
 
 /**
  * Count tokens in tool call outputs
  */
-function countToolOutputTokens(
+export function countToolOutputTokens(
   output: Array<{ content?: string; name?: string }> | undefined,
 ): number {
   if (!output) {
@@ -118,7 +127,7 @@ function countToolOutputTokens(
   let tokenCount = 0;
   for (const item of output) {
     if (item.content) {
-      tokenCount += encode(item.content).length;
+      tokenCount += countText(item.content);
     }
     // Note: item.name is not sent to the model, only used for internal tracking
     tokenCount += 5; // Output structure overhead
@@ -139,13 +148,13 @@ function countToolOutputTokens(
  */
 export function countReasoningTokens(reasoning: Reasoning): number {
   if (!reasoning.details?.length) {
-    return reasoning.text ? encode(reasoning.text).length : 0;
+    return reasoning.text ? countText(reasoning.text) : 0;
   }
   let tokens = 0;
   for (const detail of reasoning.details) {
     for (const readable of [detail.text, detail.summary]) {
       if (typeof readable === "string" && readable) {
-        tokens += encode(readable).length;
+        tokens += countText(readable);
       }
     }
     for (const opaque of [detail.signature, detail.data]) {
@@ -157,62 +166,90 @@ export function countReasoningTokens(reasoning: Reasoning): number {
   return tokens;
 }
 
+export interface HistoryItemParts {
+  role: string;
+  messageTokens: number;
+  reasoningTokens: number;
+  toolResults: { label: string; tokens: number }[];
+}
+
+/** The same pieces `countChatHistoryItemTokens` adds, split for the snapshot. */
+export function historyItemParts(
+  historyItem: ChatHistoryItem,
+  model: ModelConfig,
+): HistoryItemParts {
+  const message = historyItem.message;
+  let messageTokens = 2;
+  const toolResults: { label: string; tokens: number }[] = [];
+
+  if (message.role === "tool") {
+    messageTokens += 5;
+    toolResults.push({
+      label:
+        "toolCallId" in message && message.toolCallId
+          ? message.toolCallId
+          : "Tool result",
+      tokens: countContentTokens(message.content, model),
+    });
+  } else {
+    messageTokens += countContentTokens(message.content, model);
+  }
+
+  // Skip if toolCallStates exists to avoid double-counting (toolCallStates includes the tool calls)
+  if (
+    "toolCalls" in message &&
+    message.toolCalls &&
+    !historyItem.toolCallStates
+  ) {
+    for (const toolCall of message.toolCalls) {
+      messageTokens += countToolCallFunctionTokens(toolCall.function);
+    }
+  }
+
+  for (const contextItem of historyItem.contextItems) {
+    messageTokens += countText(contextItem.content);
+    messageTokens += countText(contextItem.name);
+    messageTokens += 5;
+  }
+
+  const reasoningTokens = historyItem.reasoning
+    ? countReasoningTokens(historyItem.reasoning)
+    : 0;
+
+  if (historyItem.toolCallStates) {
+    for (const toolState of historyItem.toolCallStates) {
+      messageTokens += countToolCallFunctionTokens(
+        toolState.toolCall?.function,
+      );
+      const tokens = countToolOutputTokens(toolState.output);
+      if (tokens > 0) {
+        toolResults.push({
+          label: toolState.toolCall?.function?.name || "Tool result",
+          tokens,
+        });
+      }
+    }
+  }
+
+  return {
+    role: message.role,
+    messageTokens,
+    reasoningTokens,
+    toolResults,
+  };
+}
+
 export function countChatHistoryItemTokens(
   historyItem: ChatHistoryItem,
   model: ModelConfig,
 ): number {
   try {
-    let tokenCount = 0;
-
-    const message = historyItem.message;
-
-    // Count tokens in content
-    tokenCount += countContentTokens(message.content, model);
-
-    // Add tokens for role (roughly 1-2 tokens)
-    tokenCount += 2;
-
-    // Add tokens for tool calls if present
-    // Skip if toolCallStates exists to avoid double-counting (toolCallStates includes the tool calls)
-    if (
-      "toolCalls" in message &&
-      message.toolCalls &&
-      !historyItem.toolCallStates
-    ) {
-      for (const toolCall of message.toolCalls) {
-        tokenCount += countToolCallFunctionTokens(toolCall.function);
-      }
-    }
-
-    // Add tokens for tool call results
-    if (message.role === "tool" && "content" in message) {
-      tokenCount += 5; // Tool message structure overhead
-    }
-
-    // Add tokens for context items
-    for (const contextItem of historyItem.contextItems) {
-      tokenCount += encode(contextItem.content).length;
-      tokenCount += encode(contextItem.name).length;
-      tokenCount += 5; // Context item structure overhead
-    }
-
-    // Reasoning sent back with the message (#12246). Anthropic keeps earlier
-    // turns' thinking in context on newer models, so count it for every turn
-    if (historyItem.reasoning) {
-      tokenCount += countReasoningTokens(historyItem.reasoning);
-    }
-
-    // Add tokens for tool call states (tool results/outputs)
-    if (historyItem.toolCallStates) {
-      for (const toolState of historyItem.toolCallStates) {
-        // Count tokens in tool call function (name + arguments)
-        tokenCount += countToolCallFunctionTokens(toolState.toolCall?.function);
-        // Count tokens in tool outputs (can be very large - thousands of tokens)
-        tokenCount += countToolOutputTokens(toolState.output);
-      }
-    }
-
-    return tokenCount;
+    const parts = historyItemParts(historyItem, model);
+    return (
+      parts.messageTokens +
+      parts.reasoningTokens +
+      parts.toolResults.reduce((sum, result) => sum + result.tokens, 0)
+    );
   } catch (error) {
     logger.error("Error counting tokens for history item", error);
     // Return a rough estimate based on character count
@@ -277,94 +314,9 @@ export function calculateContextUsagePercentage(
   return Math.min(100, Math.round((tokenCount / limit) * 100));
 }
 
-/**
- * Count tokens for a single parameter field in a tool definition.
- * @param fields The field definition object
- * @returns Token count for this field
- */
-function countParameterFieldTokens(
-  fields: Record<string, unknown> | undefined,
-): number {
-  if (!fields) {
-    return 0;
-  }
-
-  let tokens = 0;
-  const fieldType = fields["type"];
-  const fieldDesc = fields["description"];
-  const fieldEnum = fields["enum"];
-
-  if (fieldType && typeof fieldType === "string") {
-    tokens += 2; // Structure overhead for type
-    tokens += encode(fieldType).length;
-  }
-
-  if (fieldDesc && typeof fieldDesc === "string") {
-    tokens += 2; // Structure overhead for description
-    tokens += encode(fieldDesc).length;
-  }
-
-  if (fieldEnum && Array.isArray(fieldEnum) && fieldEnum.length > 0) {
-    tokens -= 3;
-    for (const e of fieldEnum) {
-      tokens += 3;
-      tokens += typeof e === "string" ? encode(e).length : 5;
-    }
-  }
-
-  return tokens;
-}
-
-/**
- * Count tokens for a single tool's function definition.
- * @param tool The ChatCompletionTool to count
- * @returns Token count for this tool
- */
-function countSingleToolTokens(tool: ChatCompletionTool): number {
-  let tokens = encode(tool.function.name).length;
-
-  if (tool.function.description) {
-    tokens += encode(tool.function.description).length;
-  }
-
-  const params = tool.function.parameters as
-    | { properties?: Record<string, unknown> }
-    | undefined;
-  const props = params?.properties;
-
-  if (props) {
-    for (const key in props) {
-      tokens += encode(key).length;
-      tokens += countParameterFieldTokens(
-        props[key] as Record<string, unknown> | undefined,
-      );
-    }
-  }
-
-  return tokens;
-}
-
-/**
- * Count tokens for tool definitions sent to the API.
- * Based on OpenAI's token counting for function calling.
- * @see https://community.openai.com/t/how-to-calculate-the-tokens-when-using-function-call/266573/10
- * @param tools Array of ChatCompletionTool objects
- * @returns Estimated token count for all tool definitions
- */
+/** The whole tool schema, including nested fields, plus the list overhead. */
 export function countToolDefinitionTokens(tools: ChatCompletionTool[]): number {
-  if (!tools || tools.length === 0) {
-    return 0;
-  }
-
-  // Base overhead for the tools array structure
-  let numTokens = 12;
-
-  for (const tool of tools) {
-    numTokens += countSingleToolTokens(tool);
-  }
-
-  // Additional overhead for the tools wrapper
-  return numTokens + 12;
+  return countToolTokens(tools, countText).total;
 }
 
 /**
@@ -389,7 +341,7 @@ export function countTotalInputTokens(params: TotalInputTokenParams): number {
   let totalTokens = countChatHistoryTokens(chatHistory, params.model);
 
   if (systemMessage) {
-    totalTokens += encode(systemMessage).length;
+    totalTokens += countText(systemMessage);
     totalTokens += 4; // Message structure overhead (role + formatting)
   }
 

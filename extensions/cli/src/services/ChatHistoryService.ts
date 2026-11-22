@@ -2,6 +2,7 @@ import type { TurnCheckpoint } from "@nextcli/snapshot";
 import type { ChatHistoryItem, Reasoning, ToolStatus } from "core/index.js";
 import { createHistoryItem } from "core/util/messageConversion.js";
 
+import { clearLastResponseUsage } from "../context/lastUsage.js";
 import { loadSessionById, updateSessionHistory } from "../session.js";
 import { logger } from "../util/logger.js";
 
@@ -393,6 +394,7 @@ export class ChatHistoryService extends BaseService<ChatHistoryState> {
    * Clear the chat history
    */
   clear(): void {
+    clearLastResponseUsage();
     this.setHistoryInternal([], { compactionIndex: null });
 
     logger.debug("Cleared chat history");
@@ -404,6 +406,7 @@ export class ChatHistoryService extends BaseService<ChatHistoryState> {
   async loadSession(sessionId: string): Promise<void> {
     const session = loadSessionById(sessionId);
     if (session) {
+      clearLastResponseUsage();
       // Load new history without recording undo; set sessionId separately
       this.setHistoryInternal(session.history, { recordUndo: false });
       this.setState({ sessionId: session.sessionId });

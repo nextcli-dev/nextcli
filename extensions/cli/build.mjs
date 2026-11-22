@@ -85,6 +85,10 @@ try {
         __dirname,
         "../../packages/ask-question/dist/index.js",
       ),
+      "@nextcli/context": resolve(
+        __dirname,
+        "../../packages/context/dist/index.js",
+      ),
       "@nextcli/snapshot": resolve(
         __dirname,
         "../../packages/snapshot/dist/index.js",

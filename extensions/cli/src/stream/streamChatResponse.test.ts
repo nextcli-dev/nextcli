@@ -10,7 +10,10 @@ import { traceEvent } from "../trace/trace.js";
 import { preprocessStreamedToolCalls } from "./streamChatResponse.helpers.js";
 import { processStreamingResponse } from "./streamChatResponse.js";
 
-vi.mock("../trace/trace.js", () => ({ traceEvent: vi.fn() }));
+vi.mock("../trace/trace.js", () => ({
+  traceEvent: vi.fn(),
+  traceEnabled: () => false,
+}));
 
 // Test the chunk processing logic that was identified as buggy
 describe("processStreamingResponse - content preservation", () => {

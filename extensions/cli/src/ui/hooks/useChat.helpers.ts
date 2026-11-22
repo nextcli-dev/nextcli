@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from "uuid";
 import { logger } from "src/util/logger.js";
 
 import { DEFAULT_SESSION_TITLE } from "../../constants/session.js";
+import { clearLastResponseUsage } from "../../context/lastUsage.js";
 import { loadSession, startNewSession } from "../../session.js";
 import { telemetryService } from "../../telemetry/telemetryService.js";
 
@@ -122,6 +123,7 @@ export function processSlashCommandResult({
   }
 
   if (result.clear) {
+    clearLastResponseUsage();
     const systemMessage = chatHistory.find(
       (item) => item.message.role === "system",
     );

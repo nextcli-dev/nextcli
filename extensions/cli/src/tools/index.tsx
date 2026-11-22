@@ -206,14 +206,17 @@ export function convertMcpToolToContinueTool(mcpTool: MCPTool): Tool {
     name: mcpTool.name,
     displayName: mcpTool.name,
     description: mcpTool.description ?? "",
+    // Root keywords ($ref, $defs, $schema, examples, combinators) are not
+    // copied. Providers that only accept type, properties and required 400
+    // on them, and the request would no longer match what we count.
     parameters: {
       type: "object",
+      required: mcpTool.inputSchema.required,
       properties: (mcpTool.inputSchema.properties ?? {}) as Record<
         string,
         ParameterSchema
       >,
-      required: mcpTool.inputSchema.required,
-    },
+    } as ToolParametersSchema,
     readonly: undefined, // MCP tools don't have readonly property
     isBuiltIn: false,
     run: async (args: any) => {

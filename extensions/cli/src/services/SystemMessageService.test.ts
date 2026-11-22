@@ -7,7 +7,7 @@ const toolPermissionService = services.toolPermissions;
 
 // Mock the systemMessage module
 vi.mock("../systemMessage.js", () => ({
-  constructSystemMessage: vi.fn(),
+  constructSystemMessageParts: vi.fn(),
 }));
 
 // Mock the logger
@@ -29,8 +29,11 @@ describe("SystemMessageService", () => {
     vi.clearAllMocks();
 
     // Get mock reference
-    const { constructSystemMessage } = await import("../systemMessage.js");
-    constructSystemMessageMock = constructSystemMessage as any;
+    const { constructSystemMessageParts } = await import("../systemMessage.js");
+    constructSystemMessageMock = constructSystemMessageParts as any;
+    constructSystemMessageMock.mockImplementation(async (text?: string) => [
+      { id: "base", label: "Base instructions", text: text ?? "" },
+    ]);
 
     // Create new service instance
     service = new SystemMessageService();
@@ -70,7 +73,9 @@ describe("SystemMessageService", () => {
         headless: true,
       };
 
-      constructSystemMessageMock.mockResolvedValue("Test system message");
+      constructSystemMessageMock.mockResolvedValue([
+        { id: "base", label: "Base instructions", text: "Test system message" },
+      ]);
 
       await service.initialize(config);
       const message = await service.getSystemMessage("normal");
@@ -96,7 +101,9 @@ describe("SystemMessageService", () => {
         format: "json",
       });
 
-      constructSystemMessageMock.mockResolvedValue("Updated message");
+      constructSystemMessageMock.mockResolvedValue([
+        { id: "base", label: "Base instructions", text: "Updated message" },
+      ]);
       await service.getSystemMessage("normal");
 
       expect(constructSystemMessageMock).toHaveBeenCalledWith(
@@ -117,7 +124,9 @@ describe("SystemMessageService", () => {
         additionalRules: ["rule2", "rule3"],
       });
 
-      constructSystemMessageMock.mockResolvedValue("Updated message");
+      constructSystemMessageMock.mockResolvedValue([
+        { id: "base", label: "Base instructions", text: "Updated message" },
+      ]);
       await service.getSystemMessage("normal");
 
       expect(constructSystemMessageMock).toHaveBeenCalledWith(

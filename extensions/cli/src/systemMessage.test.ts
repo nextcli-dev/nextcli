@@ -6,9 +6,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 // Use the actual implementation instead of the mocked one
 vi.unmock("./systemMessage.js");
-const { constructSystemMessage, loadMarkdownRulesWithMetadata } = await import(
-  "./systemMessage.js"
-);
+const {
+  constructSystemMessage,
+  constructSystemMessageParts,
+  loadMarkdownRulesWithMetadata,
+} = await import("./systemMessage.js");
 const { env } = await import("./env.js");
 
 // Mock the service container to avoid "No factory registered for service 'config'" error
@@ -20,15 +22,40 @@ vi.mock("./services/ServiceContainer.js", () => ({
 }));
 
 // Mock processRule to avoid file system operations in tests
-vi.mock("./hubLoader.js", () => ({
-  processRule: vi
-    .fn()
-    .mockImplementation((spec: string) => Promise.resolve(spec)),
-}));
+vi.mock("./hubLoader.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./hubLoader.js")>();
+  return {
+    ...actual,
+    processRule: vi
+      .fn()
+      .mockImplementation((spec: string) => Promise.resolve(spec)),
+  };
+});
 
 const PLAN_MODE_STRING = "You are operating in _Plan Mode_";
 
 describe("constructSystemMessage", () => {
+  it("labels the agent file and each rule, and joins to the same string", async () => {
+    const rules = ["rule-from-the-flag.md"];
+    const [message, parts] = await Promise.all([
+      constructSystemMessage("normal", rules),
+      constructSystemMessageParts("normal", rules),
+    ]);
+    expect(parts.map((part) => part.text).join("")).toBe(message);
+    expect(parts.map((part) => part.label)).toEqual(
+      expect.arrayContaining(["AGENTS.md", "rule-from-the-flag.md"]),
+    );
+  });
+
+  it("does not use inline --rule text as a part label", async () => {
+    const text = "Always mention the secret project name Aurora";
+    const parts = await constructSystemMessageParts("normal", [text]);
+    const message = parts.map((part) => part.text).join("");
+    expect(message).toContain(text);
+    expect(parts.map((part) => part.label)).toContain("Inline rule");
+    expect(parts.map((part) => part.label)).not.toContain(text);
+  });
+
   it("should return base system message with rules when additionalRules is provided", async () => {
     const rules = ["These are the rules for the assistant."];
     const result = await constructSystemMessage("normal", rules);

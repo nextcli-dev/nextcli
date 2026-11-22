@@ -1,11 +1,7 @@
 import { ModelConfig } from "@nextcli/config-yaml";
 import { BaseLlmApi } from "@nextcli/openai-adapters";
 import type { ChatHistoryItem, Reasoning } from "core/index.js";
-import { convertFromUnifiedHistoryWithSystemMessage } from "core/util/messageConversion.js";
-import type {
-  ChatCompletionMessageParam,
-  ChatCompletionTool,
-} from "openai/resources.mjs";
+import type { ChatCompletionTool } from "openai/resources.mjs";
 
 import {
   describeFit,
@@ -46,6 +42,7 @@ import {
 } from "./streamChatResponse.compactionHelpers.js";
 import {
   addUserMessage,
+  compiledRequest,
   estimateFinalCallCost,
   finalAnswerMaxTokens,
   recordFailedCall,
@@ -215,12 +212,12 @@ export async function processStreamingResponse(
     throw new Error(`Context length validation failed: ${validation.error}`);
   }
 
-  // Create OpenAI format history with validated system message
-  const openaiChatHistory = convertFromUnifiedHistoryWithSystemMessage(
+  const { context, messages: openaiChatHistory } = await compiledRequest({
+    model,
     chatHistory,
     systemMessage,
-    { model: model.model },
-  ) as ChatCompletionMessageParam[];
+    tools,
+  });
   const requestStartTime = Date.now();
 
   const streamFactory = async (retryAbortSignal: AbortSignal) => {
@@ -259,6 +256,7 @@ export async function processStreamingResponse(
     requestStartTime,
     model,
     tools,
+    context,
     abortSignal: abortController.signal,
     estimateInputTokens: () =>
       countTotalInputTokens({ chatHistory, systemMessage, tools, model }),
@@ -323,6 +321,8 @@ export async function processStreamingResponse(
       model,
       tools,
       fullUsage,
+      context,
+      skipLastUsage: options.isCompacting,
       call: {
         finishReason: callEnd.finishReason,
         ttftMs: firstTokenTime ? firstTokenTime - requestStartTime : undefined,
@@ -342,7 +342,7 @@ export async function processStreamingResponse(
     const aborted =
       error.name === "AbortError" || abortController?.signal.aborted;
     if (!attempts.recorded(error)) {
-      recordFailedCall({ model, requestStartTime, error, aborted });
+      recordFailedCall({ model, requestStartTime, error, aborted, context });
     }
 
     if (aborted) {

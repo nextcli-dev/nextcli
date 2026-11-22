@@ -9,15 +9,29 @@ import { getVersion } from "../version.js";
 // NEXTCLI_TRACE=basic writes one JSON line per model call: timings, token
 // counts and tool names. Read once, at the first event, so a trusted
 // folder's .env (loaded after modules load) can set it.
+// Recognised levels live here. A later level is added once, and every caller follows.
+const TRACE_LEVELS = new Set(["basic"]);
+
+function readTraceLevel(): string | undefined {
+  const level = process.env.NEXTCLI_TRACE?.trim().toLowerCase();
+  return level || undefined;
+}
+
+/** True for a recognised NEXTCLI_TRACE level. An unknown value stays off. */
+export function traceEnabled(): boolean {
+  const level = readTraceLevel();
+  return level !== undefined && TRACE_LEVELS.has(level);
+}
+
 function traceOn(): boolean {
   const rawLevel = process.env.NEXTCLI_TRACE;
   const level = rawLevel?.trim().toLowerCase();
-  if (level && level !== "basic") {
+  if (level && !TRACE_LEVELS.has(level)) {
     warnBadEnv(
       `Unknown NEXTCLI_TRACE "${rawLevel}", tracing is off. Use basic.`,
     );
   }
-  return level === "basic";
+  return traceEnabled();
 }
 
 // Not read yet; then the open trace file, or null when tracing is off

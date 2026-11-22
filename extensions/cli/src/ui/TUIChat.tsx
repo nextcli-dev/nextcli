@@ -9,6 +9,7 @@ import React, {
 
 import { ToolPermissionServiceState } from "src/services/ToolPermissionService.js";
 
+import { clearLastResponseUsage } from "../context/lastUsage.js";
 import { useServices } from "../hooks/useService.js";
 import {
   ApiClientServiceState,
@@ -75,7 +76,8 @@ async function loadAndSetSession(
       "",
     );
 
-    // Set the chat history from the session
+    // The previous call's usage belongs to the chat we just left
+    clearLastResponseUsage();
     setChatHistory(session.history);
 
     // Clear the intro message since we're now showing a resumed session
@@ -289,6 +291,9 @@ const TUIChat: React.FC<TUIChatProps> = ({
   const contextData = useContextPercentage({
     chatHistory,
     model: services.model?.model || undefined,
+    mode: services?.toolPermissions?.currentMode ?? "normal",
+    isRemoteMode,
+    isStreaming: isWaitingForResponse,
   });
 
   const { renderMessage } = useMessageRenderer();
@@ -525,7 +530,7 @@ const TUIChat: React.FC<TUIChatProps> = ({
           navState={navState}
           navigateTo={navigateTo}
           closeCurrentScreen={closeCurrentScreen}
-          contextPercentage={contextData?.percentage}
+          contextUsage={contextData ?? undefined}
           hasImageInClipboard={hasImageInClipboard}
           isVerboseMode={isVerboseMode}
           totalCost={getTotalSessionCost()}

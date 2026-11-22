@@ -1,12 +1,10 @@
 import { ModelConfig } from "@nextcli/config-yaml";
+import { toolSchemaText } from "@nextcli/context";
 import type { ChatHistoryItem } from "core/index.js";
+import { encode } from "gpt-tokenizer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  AUTO_COMPACT_BUFFER_CAP,
-  AUTO_COMPACT_BUFFER_RATIO,
-  shouldAutoCompact,
-} from "../compaction.js";
+import { autoCompactThreshold, shouldAutoCompact } from "../compaction.js";
 
 import { logger } from "./logger.js";
 import {
@@ -30,9 +28,18 @@ vi.mock("./logger.js", () => ({
   },
 }));
 
-// Mock gpt-tokenizer
+// Mock gpt-tokenizer. The real encoder throws on special-token text unless
+// disallowedSpecial is empty, and this mock does the same.
 vi.mock("gpt-tokenizer", () => ({
-  encode: (text: string) => new Array(Math.ceil(text.length / 4)), // Rough 4 chars per token
+  encode: vi.fn(
+    (text: string, options?: { disallowedSpecial?: Set<string> | "all" }) => {
+      const disallowed = options?.disallowedSpecial ?? "all";
+      if (disallowed === "all" && text.includes("<|")) {
+        throw new Error("special token");
+      }
+      return new Array(Math.ceil(text.length / 4));
+    },
+  ),
 }));
 
 describe("tokenizer", () => {
@@ -155,6 +162,45 @@ describe("tokenizer", () => {
 
       const tokenCount = countChatHistoryItemTokens(historyItem, model);
       expect(tokenCount).toBe(1028); // 2 + 1024 + 2 role tokens
+    });
+
+    it("counts a message that contains a special token", () => {
+      const content = "see <|endoftext|> here";
+      const historyItem: ChatHistoryItem = {
+        message: { role: "user", content },
+        contextItems: [],
+      };
+      const model: ModelConfig = {
+        name: "test-model",
+        model: "test",
+        provider: "openai",
+      };
+
+      const tokenCount = countChatHistoryItemTokens(historyItem, model);
+      expect(tokenCount).toBe(Math.ceil(content.length / 4) + 2);
+      expect(logger.error).not.toHaveBeenCalled();
+    });
+
+    it("encodes each long text once when the same history is counted again", () => {
+      const encodeMock = vi.mocked(encode);
+      const content = `repeat-${"q".repeat(600)}`;
+      const history: ChatHistoryItem[] = [
+        {
+          message: { role: "user", content },
+          contextItems: [],
+        },
+      ];
+      const model: ModelConfig = {
+        name: "test-model",
+        model: "test",
+        provider: "openai",
+      };
+
+      countChatHistoryTokens(history, model);
+      const calls = encodeMock.mock.calls.length;
+      expect(calls).toBeGreaterThan(0);
+      countChatHistoryTokens(history, model);
+      expect(encodeMock.mock.calls.length).toBe(calls);
     });
 
     it("should count tokens for tool calls", () => {
@@ -342,21 +388,12 @@ describe("tokenizer", () => {
       ];
     };
 
-    // Helper to calculate threshold using the new formula
     const calculateThreshold = (
       contextLength: number,
       maxTokens: number,
-    ): number => {
-      const ratioCompactionBuffer = Math.ceil(
-        (1 - AUTO_COMPACT_BUFFER_RATIO) * (contextLength - maxTokens),
-      );
-      const safeCompactionBuffer = Math.max(maxTokens, ratioCompactionBuffer);
-      const compactionBuffer = Math.min(
-        safeCompactionBuffer,
-        AUTO_COMPACT_BUFFER_CAP,
-      );
-      return contextLength - maxTokens - compactionBuffer;
-    };
+    ): number =>
+      autoCompactThreshold(createModel(contextLength, maxTokens))
+        .compactionThreshold;
 
     it("should compact when input tokens exceed threshold with maxTokens", () => {
       const model = createModel(1000, 200); // 1000 context, 200 max output
@@ -382,10 +419,10 @@ describe("tokenizer", () => {
       const model = createModel(1000); // No maxTokens
       // Default maxTokens = min(1000 * 0.35, 64k) = 350
       // ratioBuffer = ceil(0.2 * 650) = 130, safeBuffer = max(350, 130) = 350
-      // compactionBuffer = min(350, 15k) = 350
-      // Threshold: 1000 - 350 - 350 = 300
+      // half the room after the reserve is 325, so the buffer is 325
+      // Threshold: 1000 - 350 - 325 = 325
       const threshold = calculateThreshold(1000, 350);
-      expect(threshold).toBe(300);
+      expect(threshold).toBe(325);
       const chatHistory = createChatHistory(350); // Above threshold
 
       expect(shouldAutoCompact({ chatHistory, model })).toBe(true);
@@ -543,6 +580,49 @@ describe("tokenizer", () => {
         expect(shouldAutoCompact({ chatHistory, model })).toBe(true);
       });
     });
+
+    it("triggers at the threshold once a nested tool schema is counted", () => {
+      const model = createModel(2_000, 100);
+      const { compactionThreshold } = autoCompactThreshold(model);
+      const shallow = [
+        {
+          type: "function" as const,
+          function: { name: "search" },
+        },
+      ];
+      const nested = [
+        {
+          type: "function" as const,
+          function: {
+            name: "search",
+            parameters: {
+              type: "object",
+              properties: {
+                query: {
+                  type: "object",
+                  properties: {
+                    text: {
+                      type: "string",
+                      description: "d".repeat(8_000),
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      ];
+      const chatHistory = createChatHistory(20);
+      expect(shouldAutoCompact({ chatHistory, model, tools: shallow })).toBe(
+        false,
+      );
+      expect(shouldAutoCompact({ chatHistory, model, tools: nested })).toBe(
+        true,
+      );
+      expect(
+        countTotalInputTokens({ chatHistory, model, tools: nested }),
+      ).toBeGreaterThanOrEqual(compactionThreshold);
+    });
   });
 
   describe("countToolDefinitionTokens", () => {
@@ -566,9 +646,9 @@ describe("tokenizer", () => {
       ];
 
       const tokenCount = countToolDefinitionTokens(tools);
-      // Base overhead (12) + tool tokens + wrapper overhead (12)
-      expect(tokenCount).toBeGreaterThan(24); // At least base overheads
-      expect(tokenCount).toBe(27); // 12 + 3 (name) + 12 = 27
+      expect(tokenCount).toBe(
+        24 + Math.ceil(toolSchemaText(tools[0].function).length / 4),
+      );
     });
 
     it("should count tokens for a tool with name and description", () => {
@@ -680,51 +760,51 @@ describe("tokenizer", () => {
       expect(tokensWithEnum).toBeGreaterThan(tokensWithoutEnum);
     });
 
-    it("should handle empty enum array without negative token count", () => {
-      const toolsWithEmptyEnum = [
-        {
-          type: "function" as const,
-          function: {
-            name: "set_mode",
-            parameters: {
-              type: "object",
-              properties: {
-                mode: {
-                  type: "string",
-                  description: "The mode to set",
-                  enum: [],
+    it("counts a description nested under items and anyOf", () => {
+      const shallow = {
+        type: "function" as const,
+        function: {
+          name: "search",
+          parameters: {
+            type: "object",
+            properties: {
+              filter: {
+                type: "array",
+                items: {
+                  anyOf: [{ type: "string", description: "short" }],
+                },
+              },
+            },
+            required: ["filter"],
+          },
+        },
+      };
+      const deeper = {
+        ...shallow,
+        function: {
+          ...shallow.function,
+          parameters: {
+            ...shallow.function.parameters,
+            properties: {
+              filter: {
+                type: "array",
+                items: {
+                  anyOf: [
+                    {
+                      type: "string",
+                      description: "a much longer nested description",
+                    },
+                  ],
                 },
               },
             },
           },
         },
-      ];
+      };
 
-      const toolsWithoutEnum = [
-        {
-          type: "function" as const,
-          function: {
-            name: "set_mode",
-            parameters: {
-              type: "object",
-              properties: {
-                mode: {
-                  type: "string",
-                  description: "The mode to set",
-                },
-              },
-            },
-          },
-        },
-      ];
-
-      const tokensWithEmptyEnum = countToolDefinitionTokens(toolsWithEmptyEnum);
-      const tokensWithoutEnum = countToolDefinitionTokens(toolsWithoutEnum);
-
-      // Empty enum should not subtract tokens - should be equal to no enum
-      expect(tokensWithEmptyEnum).toBe(tokensWithoutEnum);
-      // Token count should always be positive
-      expect(tokensWithEmptyEnum).toBeGreaterThan(0);
+      expect(countToolDefinitionTokens([deeper])).toBeGreaterThan(
+        countToolDefinitionTokens([shallow]),
+      );
     });
 
     it("should count tokens for multiple parameters", () => {
