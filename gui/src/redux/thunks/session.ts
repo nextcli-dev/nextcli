@@ -46,6 +46,29 @@ function stopTurnBeforeLeaving(
 // Async session functions live in thunks (because of IDE messaging mostly)
 // see sessionSlice for sync redux session functions
 
+// Writes of each session's file, chained in the order they read its
+// history, so an older copy is never written over a newer one
+const sessionWrites = new Map<string, Promise<unknown>>();
+
+/**
+ * Runs `write` once the earlier writes of this session's file have finished.
+ * Call it right where the history to write is read, before any await.
+ */
+export function queueSessionWrite<T>(
+  sessionId: string,
+  write: () => Promise<T>,
+): Promise<T> {
+  const run = (sessionWrites.get(sessionId) ?? Promise.resolve()).then(write);
+  const done = run.catch(() => {});
+  sessionWrites.set(sessionId, done);
+  void done.then(() => {
+    if (sessionWrites.get(sessionId) === done) {
+      sessionWrites.delete(sessionId);
+    }
+  });
+  return run;
+}
+
 export async function getSession(
   ideMessenger: IIdeMessenger,
   id: string,
@@ -103,7 +126,10 @@ export const updateSession = createAsyncThunk<void, Session, ThunkApiType>(
         title: session.title,
       }),
     ); // optimistic session metadata update
-    await extra.ideMessenger.request("history/save", session);
+    const result = await extra.ideMessenger.request("history/save", session);
+    if (result.status === "error") {
+      throw new Error(result.error);
+    }
     await dispatch(refreshSessionMetadata({}));
   },
 );
@@ -235,62 +261,76 @@ export const saveCurrentSession = createAsyncThunk<
 
     const selectedChatModel = selectSelectedChatModel(getState());
 
-    // New session has already been dispatched
-    // Now save previous session and update chat title if relevant
-    let title = session.title;
-    if (title === NEW_SESSION_TITLE) {
-      if (
-        !getState().config.config?.disableSessionTitles &&
-        selectedChatModel
-      ) {
-        let assistantResponse = session.history
-          ?.filter((h) => h.message.role === "assistant")[0]
-          ?.message?.content?.toString();
+    // Written after the earlier saves of this session: this copy of its
+    // history is newer than theirs, and the title below can take a while
+    await queueSessionWrite(session.id, async () => {
+      // New session has already been dispatched
+      // Now save previous session and update chat title if relevant
+      // A save that ran before this one may have named the session
+      const latest = getState().session;
+      const savedTitle =
+        latest.id === session.id
+          ? latest.title
+          : latest.allSessionMetadata.find((m) => m.sessionId === session.id)
+              ?.title;
+      let title =
+        session.title === NEW_SESSION_TITLE && savedTitle
+          ? savedTitle
+          : session.title;
+      if (title === NEW_SESSION_TITLE) {
+        if (
+          !getState().config.config?.disableSessionTitles &&
+          selectedChatModel
+        ) {
+          let assistantResponse = session.history
+            ?.filter((h) => h.message.role === "assistant")[0]
+            ?.message?.content?.toString();
 
-        if (assistantResponse && generateTitle) {
-          try {
-            const result = await extra.ideMessenger.request(
-              "chatDescriber/describe",
-              {
-                text: assistantResponse,
-              },
-            );
-            if (result.status === "success" && result.content) {
-              title = result.content;
+          if (assistantResponse && generateTitle) {
+            try {
+              const result = await extra.ideMessenger.request(
+                "chatDescriber/describe",
+                {
+                  text: assistantResponse,
+                },
+              );
+              if (result.status === "success" && result.content) {
+                title = result.content;
+              }
+            } catch (e) {
+              console.error("Error generating chat title", e);
             }
-          } catch (e) {
-            console.error("Error generating chat title", e);
           }
         }
+        // Fallbacks if above doesn't work out or session titles disabled
+        if (title === NEW_SESSION_TITLE) {
+          title = getChatTitleFromMessage(session.history[0].message);
+        }
       }
-      // Fallbacks if above doesn't work out or session titles disabled
-      if (title === NEW_SESSION_TITLE) {
-        title = getChatTitleFromMessage(session.history[0].message);
+      // More fallbacks in case of no title
+      if (!title.length) {
+        const metadata = session.allSessionMetadata.find(
+          (m) => m.sessionId === session.id,
+        );
+        if (metadata?.title) {
+          title = metadata.title;
+        }
       }
-    }
-    // More fallbacks in case of no title
-    if (!title.length) {
-      const metadata = session.allSessionMetadata.find(
-        (m) => m.sessionId === session.id,
-      );
-      if (metadata?.title) {
-        title = metadata.title;
+      if (!title.length) {
+        title = NEW_SESSION_TITLE;
       }
-    }
-    if (!title.length) {
-      title = NEW_SESSION_TITLE;
-    }
 
-    const updatedSession: Session = {
-      sessionId: session.id,
-      title,
-      workspaceDirectory: window.workspacePaths?.[0] || "",
-      history: session.history,
-      mode: session.mode,
-      chatModelTitle: selectedChatModel?.title ?? null,
-    };
+      const updatedSession: Session = {
+        sessionId: session.id,
+        title,
+        workspaceDirectory: window.workspacePaths?.[0] || "",
+        history: session.history,
+        mode: session.mode,
+        chatModelTitle: selectedChatModel?.title ?? null,
+      };
 
-    const result = await dispatch(updateSession(updatedSession));
-    unwrapResult(result);
+      const result = await dispatch(updateSession(updatedSession));
+      unwrapResult(result);
+    });
   },
 );

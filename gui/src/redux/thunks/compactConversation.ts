@@ -9,7 +9,12 @@ import {
 } from "../slices/sessionSlice";
 import type { ThunkApiType } from "../store";
 import { constructMessages } from "../util/constructMessages";
-import { getSession, saveCurrentSession, updateSession } from "./session";
+import {
+  getSession,
+  queueSessionWrite,
+  saveCurrentSession,
+  updateSession,
+} from "./session";
 
 interface Compaction {
   sessionId: string;
@@ -88,25 +93,38 @@ export const compactConversation = createAsyncThunk<
       }
       const { summary, shortenedOutputs } = result.content;
 
-      const session = getState().session;
-      if (session.id === sessionId) {
+      // Stores the summary in the open chat and saves it
+      const storeInOpenChat = async () => {
         // Not when the message was deleted or undone meanwhile
-        if (session.history.some((item) => item.message.id === messageId)) {
-          dispatch(setConversationSummary({ messageId, summary }));
-          unwrapResult(
-            await dispatch(
-              saveCurrentSession({
-                openNewSession: false,
-                generateTitle: false,
-              }),
-            ),
-          );
+        if (
+          !getState().session.history.some(
+            (item) => item.message.id === messageId,
+          )
+        ) {
+          return false;
         }
+        dispatch(setConversationSummary({ messageId, summary }));
+        unwrapResult(
+          await dispatch(
+            saveCurrentSession({ openNewSession: false, generateTitle: false }),
+          ),
+        );
+        return true;
+      };
+
+      let stored: boolean;
+      if (getState().session.id === sessionId) {
+        stored = await storeInOpenChat();
       } else {
-        const saved = await getSession(extra.ideMessenger, sessionId);
-        // Saved by the GUI, so its messages keep their ids
-        const savedHistory = saved.history as ChatHistoryItemWithMessageId[];
-        if (savedHistory.some((item) => item.message.id === messageId)) {
+        // After the chat's earlier saves, so its file exists and isn't
+        // overwritten by an older copy afterwards
+        stored = await queueSessionWrite(sessionId, async () => {
+          const saved = await getSession(extra.ideMessenger, sessionId);
+          // Saved by the GUI, so its messages keep their ids
+          const savedHistory = saved.history as ChatHistoryItemWithMessageId[];
+          if (!savedHistory.some((item) => item.message.id === messageId)) {
+            return false;
+          }
           unwrapResult(
             await dispatch(
               updateSession({
@@ -119,10 +137,21 @@ export const compactConversation = createAsyncThunk<
               }),
             ),
           );
+          return true;
+        });
+        // Reopened while its file was read or written: the open copy may
+        // predate the summary, and its next save would drop it
+        if (getState().session.id === sessionId) {
+          stored = (await storeInOpenChat()) || stored;
         }
       }
 
-      if (shortenedOutputs > 0) {
+      if (!stored) {
+        void extra.ideMessenger.ide.showToast(
+          "warning",
+          "The summary wasn't saved: its message is no longer in that chat.",
+        );
+      } else if (shortenedOutputs > 0) {
         void extra.ideMessenger.ide.showToast(
           "info",
           `Compacted. ${shortenedOutputs} tool outputs were shortened to fit the summary request.`,
@@ -132,7 +161,8 @@ export const compactConversation = createAsyncThunk<
       if (!compaction.cancelled) {
         void extra.ideMessenger.ide.showToast(
           "error",
-          `Compaction failed: ${error instanceof Error ? error.message : String(error)}`,
+          // A failed save arrives as a thunk's serialized error, not an Error
+          `Compaction failed: ${(error as { message?: string })?.message ?? String(error)}`,
         );
       }
     } finally {

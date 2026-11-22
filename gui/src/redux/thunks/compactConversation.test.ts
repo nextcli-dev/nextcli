@@ -1,4 +1,5 @@
-import { Session } from "core";
+import { ModelDescription, Session } from "core";
+import { NEW_SESSION_TITLE } from "core/util/constants";
 import { describe, expect, it, vi } from "vitest";
 
 import { createMockStore, getEmptyRootState } from "../../util/test/mockStore";
@@ -9,6 +10,14 @@ import {
   setActive,
 } from "../slices/sessionSlice";
 import { cancelCompaction, compactConversation } from "./compactConversation";
+import { loadSession, saveCurrentSession } from "./session";
+
+const model: ModelDescription = {
+  model: "mock",
+  provider: "mock",
+  title: "Mock LLM",
+  underlyingProviderName: "mock",
+};
 
 const item = (
   role: "user" | "assistant",
@@ -32,6 +41,10 @@ function storeWith(history: ChatHistoryItemWithMessageId[]) {
       ...empty.config,
       config: {
         ...empty.config.config,
+        selectedModelByRole: {
+          ...empty.config.config.selectedModelByRole,
+          chat: model,
+        },
         rules: [
           {
             name: "tests-first",
@@ -75,6 +88,34 @@ function pending<T>() {
   });
   return { promise, resolve, reject };
 }
+
+/**
+ * Session files kept as core keeps them: a missing file loads as an empty
+ * session, without an error
+ */
+function disk(
+  handlers: ReturnType<typeof storeWith>["handlers"],
+  files: Record<string, Session> = {},
+) {
+  const copy = (session: Session): Session =>
+    JSON.parse(JSON.stringify(session));
+  handlers["history/save"] = async (session) => {
+    files[session.sessionId] = copy(session);
+  };
+  handlers["history/load"] = async ({ id }) =>
+    files[id]
+      ? copy(files[id])
+      : {
+          sessionId: id,
+          title: NEW_SESSION_TITLE,
+          workspaceDirectory: "",
+          history: [],
+        };
+  return files;
+}
+
+// Lets pending promise callbacks run
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 const reply = (summary: string, shortenedOutputs = 0) => ({
   summary,
@@ -174,11 +215,11 @@ describe("compactConversation", () => {
     expect(state().history[0].conversationSummary).toBeUndefined();
   });
 
-  it("writes nothing when the message itself is deleted meanwhile", async () => {
-    const { store, handlers, sent, state } = storeWith(history);
+  it("writes nothing when the message itself is deleted meanwhile, and says so", async () => {
+    const { store, handlers, sent, state, toast } = storeWith(history);
     handlers["conversation/compact"] = async () => {
       store.dispatch(deleteMessage(3));
-      return reply("Summary");
+      return reply("Summary", 3);
     };
 
     await store.dispatch(compactConversation({ index: 3 }) as any);
@@ -187,6 +228,11 @@ describe("compactConversation", () => {
       state().history.some((i: any) => i.conversationSummary === "Summary"),
     ).toBe(false);
     expect(sent("history/save")).toHaveLength(0);
+    expect(toast).toHaveBeenCalledTimes(1);
+    expect(toast).toHaveBeenCalledWith(
+      "warning",
+      "The summary wasn't saved: its message is no longer in that chat.",
+    );
   });
 
   it("saves the summary to its own chat when another one was opened", async () => {
@@ -325,6 +371,143 @@ describe("compactConversation", () => {
     expect(toast).toHaveBeenCalledWith(
       "info",
       "Compacted. 3 tool outputs were shortened to fit the summary request.",
+    );
+  });
+
+  it("keeps a summary that lands while the chat's first save waits for its title", async () => {
+    const { store, handlers, state } = storeWith(history);
+    const files = disk(handlers);
+    const title = pending<string>();
+    handlers["chatDescriber/describe"] = () => title.promise;
+    handlers["conversation/compact"] = async () => reply("Summary");
+
+    // The save at the end of a turn, as streamThunkWrapper starts it
+    const firstSave = store.dispatch(
+      saveCurrentSession({ openNewSession: false, generateTitle: true }) as any,
+    );
+    const compacting = store.dispatch(compactConversation({ index: 3 }) as any);
+    await vi.waitFor(() =>
+      expect(state().history[3].conversationSummary).toBe("Summary"),
+    );
+    title.resolve("Token check");
+    await firstSave;
+    await compacting;
+
+    expect(files["session-1"].history[3].conversationSummary).toBe("Summary");
+    // The later save keeps the title the first one generated
+    expect(files["session-1"].title).toBe("Token check");
+  });
+
+  it("saves to a chat left before its first save was written", async () => {
+    const { store, handlers, toast } = storeWith(history);
+    const files = disk(handlers, {
+      "session-2": {
+        sessionId: "session-2",
+        title: "Other",
+        workspaceDirectory: "",
+        history: [item("user", "Other chat")],
+      },
+    });
+    const title = pending<string>();
+    handlers["chatDescriber/describe"] = () => title.promise;
+    handlers["conversation/compact"] = async () => {
+      // Opening another chat saves this one in the background
+      await store.dispatch(
+        loadSession({
+          sessionId: "session-2",
+          saveCurrentSession: true,
+        }) as any,
+      );
+      return reply("Summary of session 1");
+    };
+
+    const compacting = store.dispatch(compactConversation({ index: 3 }) as any);
+    await vi.waitFor(() =>
+      expect((store.getState() as any).session.id).toBe("session-2"),
+    );
+    await settle();
+    title.resolve("Token check");
+    await compacting;
+
+    expect(files["session-1"].history[3].conversationSummary).toBe(
+      "Summary of session 1",
+    );
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  it("says so when the chat it belongs to has no saved file", async () => {
+    const { store, handlers, sent, toast } = storeWith(history);
+    disk(handlers);
+    handlers["conversation/compact"] = async () => {
+      store.dispatch(
+        newSession({
+          sessionId: "session-2",
+          title: "Other",
+          workspaceDirectory: "",
+          history: [item("user", "Other chat")],
+        }),
+      );
+      return reply("Summary", 3);
+    };
+
+    await store.dispatch(compactConversation({ index: 3 }) as any);
+
+    expect(sent("history/save")).toHaveLength(0);
+    expect(toast).toHaveBeenCalledTimes(1);
+    expect(toast).toHaveBeenCalledWith(
+      "warning",
+      "The summary wasn't saved: its message is no longer in that chat.",
+    );
+  });
+
+  it("stores the summary in a chat reopened while its file is read", async () => {
+    const { store, handlers, state } = storeWith(history);
+    const saved: Session = {
+      sessionId: "session-1",
+      title: "Token check",
+      workspaceDirectory: "",
+      history,
+    };
+    const files = disk(handlers, { "session-1": saved });
+    const load = handlers["history/load"]!;
+    handlers["history/load"] = async (data) => {
+      const session = await load(data);
+      // The person goes back to the chat before the summary is written
+      store.dispatch(newSession(JSON.parse(JSON.stringify(saved))));
+      return session;
+    };
+    handlers["conversation/compact"] = async () => {
+      store.dispatch(
+        newSession({
+          sessionId: "session-2",
+          title: "Other",
+          workspaceDirectory: "",
+          history: [item("user", "Other chat")],
+        }),
+      );
+      return reply("Summary of session 1");
+    };
+
+    await store.dispatch(compactConversation({ index: 3 }) as any);
+
+    expect(state().id).toBe("session-1");
+    expect(state().history[3].conversationSummary).toBe("Summary of session 1");
+    expect(files["session-1"].history[3].conversationSummary).toBe(
+      "Summary of session 1",
+    );
+  });
+
+  it("reports a summary that couldn't be saved", async () => {
+    const { store, handlers, errors, toast } = storeWith(history);
+    handlers["conversation/compact"] = async () => reply("Summary", 3);
+    errors["history/save"] = "EACCES: permission denied";
+
+    await store.dispatch(compactConversation({ index: 3 }) as any);
+
+    expect(toast).toHaveBeenCalledTimes(1);
+    expect(toast).toHaveBeenCalledWith(
+      "error",
+      "Compaction failed: EACCES: permission denied",
     );
   });
 
