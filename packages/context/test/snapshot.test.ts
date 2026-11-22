@@ -48,4 +48,40 @@ describe("buildSnapshot", () => {
     ]);
     expect(snapshot.pruned).toEqual({ messages: 2, tokens: 400 });
   });
+
+  it("keeps used on the parents when children are larger", () => {
+    const history = segment("history", 100);
+    history.children = [segment("user", 50_000), segment("tool", 40_000)];
+    const snapshot = buildSnapshot({
+      window: 200_000,
+      threshold: {
+        tokens: 1_000,
+        action: "auto-compaction",
+        steps: [{ label: "model context length", tokens: 200_000 }],
+      },
+      segments: [segment("system", 20), history],
+      toolResults: [],
+    });
+    expect(snapshot.used).toBe(120);
+  });
+
+  it("keeps the counted breakdown when the caller changes the input", () => {
+    const segments = [segment("system", 100)];
+    const steps = [{ label: "model context length", tokens: 200_000 }];
+    const toolResults = [{ label: "read", tokens: 10 }];
+    const snapshot = buildSnapshot({
+      window: 200_000,
+      threshold: { tokens: 1_000, action: "auto-compaction", steps },
+      segments,
+      toolResults,
+    });
+    segments[0].tokens = 9_000;
+    segments.push(segment("extra", 9_000));
+    steps[0].tokens = 1;
+    toolResults[0].tokens = 9_000;
+    expect(snapshot.used).toBe(100);
+    expect(snapshot.segments).toEqual([segment("system", 100)]);
+    expect(snapshot.threshold.steps[0].tokens).toBe(200_000);
+    expect(snapshot.largestToolResults[0].tokens).toBe(10);
+  });
 });

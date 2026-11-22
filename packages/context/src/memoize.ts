@@ -28,6 +28,11 @@ export function memoizeCount(
     }
 
     const tokens = count(text);
+    // undefined and NaN must not occupy the budget: Map cannot tell a stored
+    // undefined from a miss, and a cached NaN would stick for that text.
+    if (!Number.isFinite(tokens)) {
+      return tokens;
+    }
     cache.set(text, tokens);
     cachedChars += text.length;
     while (cachedChars > maxChars) {

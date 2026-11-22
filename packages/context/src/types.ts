@@ -37,4 +37,6 @@ export interface FunctionSchema {
   name: string;
   description?: string;
   parameters?: unknown;
+  /** Sent by the OpenAI tool conversion. Omitted from the count when unset. */
+  strict?: boolean | null;
 }

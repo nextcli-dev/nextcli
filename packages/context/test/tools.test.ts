@@ -96,4 +96,40 @@ describe("tool schemas", () => {
   it("counts an empty list as zero", () => {
     expect(countToolTokens([], count)).toEqual({ total: 0, perTool: [] });
   });
+
+  it("changes the total when strict is set", () => {
+    const before = countToolTokens([{ function: search }], count).total;
+    const after = countToolTokens(
+      [{ function: { ...search, strict: true } }],
+      count,
+    ).total;
+    expect(toolSchemaText({ ...search, strict: true })).toContain(
+      '"strict":true',
+    );
+    expect(after).toBeGreaterThan(before);
+  });
+
+  it("counts a schema JSON cannot encode", () => {
+    const circular: Record<string, unknown> = { type: "object" };
+    circular.self = circular;
+    const circularText = toolSchemaText({
+      name: "loop",
+      parameters: circular,
+    });
+    expect(circularText).toContain("loop");
+    expect(circularText).toContain("object");
+
+    const throwing = {
+      type: "object",
+      toJSON() {
+        throw new Error("nope");
+      },
+    };
+    expect(toolSchemaText({ name: "big", parameters: throwing })).toBe(
+      JSON.stringify({ name: "big" }),
+    );
+    expect(toolSchemaText({ name: "wide", parameters: { n: 1n } })).toContain(
+      "1",
+    );
+  });
 });
