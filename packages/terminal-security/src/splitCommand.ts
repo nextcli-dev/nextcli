@@ -1,7 +1,6 @@
-import { parse } from "shell-quote";
-
 import { normalizeCommandName } from "./destructiveCommands.js";
 import { extractSubstitutedCommands } from "./evaluateTerminalCommandSecurity.js";
+import { hasDollarQuote, parseShellLine } from "./parseShell.js";
 
 export interface SplitCommand {
   /**
@@ -44,6 +43,33 @@ const INLINE_CODE_FLAGS: Array<[RegExp, string[]]> = [
   [/^php$/, ["-r"]],
   [/^osascript$/, ["-e"]],
   [/^(pwsh|powershell)$/, ["-c", "-command", "-Command"]],
+];
+
+/**
+ * Interpreters that read code from stdin when no script is named, and their
+ * options that take the next word as a value (`python -W ignore`)
+ */
+const STDIN_INTERPRETERS: Array<[RegExp, string[]]> = [
+  [/^python[\d.]*$/, ["-W", "-X", "-Q", "--check-hash-based-pycs"]],
+  [
+    /^(node|nodejs)$/,
+    [
+      "-r",
+      "--require",
+      "--import",
+      "-C",
+      "--conditions",
+      "--loader",
+      "--experimental-loader",
+      "--env-file",
+      "--input-type",
+    ],
+  ],
+  [/^ruby$/, ["-I", "-r", "-C", "-E", "-F"]],
+  [/^perl$/, ["-I", "-M", "-m"]],
+  [/^php$/, ["-c", "-d", "-z"]],
+  [/^lua$/, ["-l"]],
+  [/^osascript$/, ["-l", "-s"]],
 ];
 
 interface WrapperGrammar {
@@ -159,10 +185,13 @@ function splitLine(line: string, result: State, depth: number) {
   let tokens: Token[];
   try {
     // Keep variables as written, so `$CMD` is seen as a variable
-    tokens = parse(line, (name) => `$${name}`) as Token[];
+    tokens = parseShellLine(line, (name) => `$${name}`) as Token[];
   } catch {
     result.opaque = true;
     return;
+  }
+  if (hasDollarQuote(line)) {
+    result.opaque = true;
   }
 
   // Unquoted backticks are not tokens; read them from the text
@@ -334,6 +363,39 @@ function runsMore(name: string, argv: string[], result: State, depth: number) {
       return;
     }
   }
+  for (const [pattern, valueOptions] of STDIN_INTERPRETERS) {
+    if (pattern.test(name) && readsCodeFromStdin(argv, valueOptions)) {
+      result.opaque = true;
+      return;
+    }
+  }
+}
+
+/**
+ * Whether an interpreter runs code from stdin: it names no script (`cat x |
+ * python3`, `python <<EOF`) or names `-`. `python -m pytest` names a module,
+ * which counts as a script.
+ */
+function readsCodeFromStdin(argv: string[], valueOptions: string[]): boolean {
+  for (let i = 1; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === "-") {
+      return true;
+    }
+    if (arg === "--") {
+      return i + 1 >= argv.length || argv[i + 1] === "-";
+    }
+    if (arg === "--version" || arg === "--help") {
+      return false;
+    }
+    if (!arg.startsWith("-")) {
+      return false;
+    }
+    if (valueOptions.includes(arg)) {
+      i++;
+    }
+  }
+  return true;
 }
 
 /**

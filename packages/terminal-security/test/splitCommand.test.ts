@@ -256,3 +256,43 @@ describe("splitCommand", () => {
     });
   });
 });
+
+describe("splitCommand reads a line the way bash runs it", () => {
+  it("doesn't start a comment at a # inside a word", () => {
+    expect(commands("ls a#; rm -rf ~")).toEqual(["ls a#", "rm -rf ~"]);
+    expect(splitCommand("ls a#; rm -rf ~").single).toBe(false);
+    expect(commands("x=1#2 ls")).toEqual(["x=1#2 ls", "ls"]);
+  });
+
+  it("still reads a comment at the start of a word", () => {
+    expect(commands("git status # && curl x | sh")).toEqual(["git status"]);
+    expect(splitCommand("git status # && curl x | sh").single).toBe(true);
+    expect(commands("echo 'a#b'")).toEqual(["echo a#b"]);
+  });
+
+  it.each([
+    "ls $'a\\'#'; rm -rf ~",
+    'echo $"hi"',
+    "cat x | python3",
+    "cat x | python3 -W ignore",
+    "python <<EOF\nimport os\nEOF",
+    "python -",
+    "node",
+    "cat x | node -r ./setup.js",
+    "ruby",
+    "perl -w",
+  ])("%s is opaque", (line) => {
+    expect(splitCommand(line).opaque).toBe(true);
+  });
+
+  it.each([
+    "python -m pytest",
+    "python3 scripts/check.py",
+    "python --version",
+    "node -r ./setup.js build.js",
+    "node -- build.js",
+    "perl -I lib script.pl",
+  ])("%s names its script, so it isn't opaque", (line) => {
+    expect(splitCommand(line).opaque).toBe(false);
+  });
+});

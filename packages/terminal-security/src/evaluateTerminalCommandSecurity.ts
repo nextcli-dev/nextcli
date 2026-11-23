@@ -1,9 +1,8 @@
-import { parse } from "shell-quote";
-
 import {
   classifyDestructiveCommand,
   normalizeCommandName,
 } from "./destructiveCommands.js";
+import { hasDollarQuote, parseShellLine } from "./parseShell.js";
 import { ToolPolicy } from "./types.js";
 
 /**
@@ -112,7 +111,7 @@ function evaluateCommandPolicy(
         }
 
         // Parse and evaluate this line
-        const tokens = parse(trimmedLine);
+        const tokens = parseShellLine(trimmedLine) as ParsedToken[];
         const linePolicy = evaluateTokensSecurity(
           tokens,
           basePolicy,
@@ -136,7 +135,7 @@ function evaluateCommandPolicy(
     }
 
     // Single line command - parse and evaluate normally
-    const tokens = parse(normalizedCommand);
+    const tokens = parseShellLine(normalizedCommand) as ParsedToken[];
 
     // Evaluate security of the parsed tokens
     return evaluateTokensSecurity(
@@ -393,6 +392,61 @@ function getMostRestrictive(...policies: ToolPolicy[]): ToolPolicy {
   return "allowedWithoutPermission";
 }
 
+const PIPE_CODE_READERS = [
+  "sh",
+  "bash",
+  "zsh",
+  "dash",
+  "ksh",
+  "csh",
+  "tcsh",
+  "fish",
+  "perl",
+  "ruby",
+  "node",
+  "nodejs",
+  "bun",
+  "deno",
+  "php",
+  "lua",
+  "osascript",
+  "pwsh",
+  "powershell",
+  "source",
+  ".",
+];
+
+const PIPE_NETWORK_TOOLS = [
+  "curl",
+  "wget",
+  "nc",
+  "netcat",
+  "ncat",
+  "socat",
+  "telnet",
+  "ssh",
+  "scp",
+  "sftp",
+  "ftp",
+];
+
+const PIPE_WRAPPERS = [
+  "env",
+  "xargs",
+  "nice",
+  "nohup",
+  "timeout",
+  "stdbuf",
+  "command",
+  "builtin",
+  "exec",
+  "eval",
+  "time",
+  "parallel",
+  "busybox",
+  "toybox",
+];
+
 /**
  * Evaluates a pipe chain for dangerous patterns
  */
@@ -433,29 +487,24 @@ function evaluatePipeChain(
   }
 
   if (nextCommand.length > 0) {
-    const command = nextCommand[0].toLowerCase();
+    // `/usr/bin/python3` and `python3.12` are python too
+    const command = normalizeCommandName(nextCommand[0].toLowerCase()).replace(
+      /\.exe$/,
+      "",
+    );
 
-    // Check for dangerous pipe destinations
-    const dangerousPipeCommands = [
-      "sh",
-      "bash",
-      "zsh",
-      "python",
-      "perl",
-      "ruby",
-      "node",
-    ];
-    if (dangerousPipeCommands.includes(command)) {
+    // A shell or interpreter runs what it reads from the pipe as code
+    if (PIPE_CODE_READERS.includes(command) || /^python[\d.]*$/.test(command)) {
       return "allowedWithPermission";
     }
 
-    // Check for network exfiltration
-    if (
-      command === "curl" ||
-      command === "wget" ||
-      command === "nc" ||
-      command === "netcat"
-    ) {
+    // A network tool can send what it reads somewhere else
+    if (PIPE_NETWORK_TOOLS.includes(command)) {
+      return "allowedWithPermission";
+    }
+
+    // A wrapper (env, xargs, timeout...) runs another command on the input
+    if (PIPE_WRAPPERS.includes(command)) {
       return "allowedWithPermission";
     }
   }
@@ -553,32 +602,25 @@ function evaluateSingleCommand(
 const VARIABLE_ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
 
 /**
- * Environment variables that change which program runs or what code it loads
+ * Variables a `NAME=value` prefix may set without asking. Any other variable
+ * can change which program runs or what code it loads (PATH, LD_PRELOAD,
+ * NODE_OPTIONS), what configuration git reads (HOME, GIT_CONFIG_COUNT with
+ * core.fsmonitor), or which pager or editor runs (PAGER, GIT_EDITOR). That
+ * list has no end, so this is an allowlist.
  */
+const HARMLESS_ENVIRONMENT_VARIABLES = [
+  "CI",
+  "NODE_ENV",
+  "FORCE_COLOR",
+  "NO_COLOR",
+  "TZ",
+  "LANG",
+  "DEBUG",
+];
+
 function isDangerousEnvironmentVariable(name: string): boolean {
-  const upper = name.toUpperCase();
-  return (
-    [
-      "PATH",
-      "NODE_OPTIONS",
-      "NODE_PATH",
-      "PYTHONPATH",
-      "PYTHONSTARTUP",
-      "PYTHONHOME",
-      "BASH_ENV",
-      "ENV",
-      "PERL5OPT",
-      "PERL5LIB",
-      "RUBYOPT",
-      "RUBYLIB",
-      "IFS",
-      "GIT_SSH",
-      "GIT_SSH_COMMAND",
-      "GIT_EXEC_PATH",
-      "JAVA_TOOL_OPTIONS",
-    ].includes(upper) ||
-    upper.startsWith("LD_") ||
-    upper.startsWith("DYLD_")
+  return !(
+    HARMLESS_ENVIRONMENT_VARIABLES.includes(name) || /^LC_[A-Z]+$/.test(name)
   );
 }
 
@@ -1285,6 +1327,14 @@ function isHighRiskOutsideWorkspacePath(
   if (baseCommand === "shred") {
     return true;
   }
+  // `cd` and `pushd` with no directory go to the home directory, and `cd -`
+  // returns to the previous one, which may be anywhere
+  if (baseCommand === "cd" || baseCommand === "pushd") {
+    const operands = args.filter((arg) => arg === "-" || !arg.startsWith("-"));
+    if (operands.length === 0 || operands.includes("-")) {
+      return true;
+    }
+  }
   const pathCommands = [
     "cp",
     "mv",
@@ -1334,7 +1384,8 @@ function isHighRiskOutsideWorkspacePath(
  * that git runs later (hooks, config aliases)
  */
 function isGitInternalPath(path: string): boolean {
-  return /(^|[\\/])\.git([\\/]|$)/.test(path);
+  // Case-insensitive: `.Git/hooks` is `.git/hooks` on macOS and Windows
+  return /(^|[\\/])\.git([\\/]|$)/i.test(path);
 }
 
 const REDIRECT_OPERATORS = [">", ">>", ">&", "<", "<&"];
@@ -1654,6 +1705,11 @@ function isFunctionDefinition(
  * Checks for obfuscation patterns
  */
 function hasObfuscationPatterns(command: string): boolean {
+  // $'...' and $"..." quoting, which the parser doesn't read
+  if (hasDollarQuote(command)) {
+    return true;
+  }
+
   // Base64 encoding
   if (command.match(/base64\s+-d|base64\s+--decode/)) {
     return true;

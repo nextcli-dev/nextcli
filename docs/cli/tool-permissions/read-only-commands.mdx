@@ -20,7 +20,9 @@ Three places evaluate `Bash` strictly: `cn -p` with the default rules, `--readon
 - Archives: `tar`, `zip`.
 - Network: `curl`, `wget`, `ssh`.
 - Scripts and interpreters: `bash deploy.sh`, `python x.py`, `node script.js`. Their contents aren't read.
-- Inline code and variables: `python -c '...'`, `node -e '...'`, `$CMD`, `curl x | sh`.
+- Inline code and variables: `python -c '...'`, `node -e '...'`, `$CMD`, `curl x | sh`, `cat x | python3`, and `$'...'` quoting, which can spell any command.
+- A variable set in front of a command, except `CI`, `NODE_ENV`, `FORCE_COLOR`, `NO_COLOR`, `TZ`, `LANG`, `LC_*` and `DEBUG`. Others change what the command runs: `HOME=. git status` and `GIT_CONFIG_COUNT=1 ... git status` make git read a configuration the line chooses.
+- `cd` with no directory (the home directory) and `cd -` (the previous one).
 - Any command the checks don't recognise.
 
 ## Never run
@@ -30,5 +32,7 @@ In any mode and whatever the rules say:
 - Commands that destroy the system, a home directory or a disk: `rm -rf /`, `rm -rf ~`, `mkfs`, `find / -delete`, `wipefs -a`.
 
 Broad deletes (a top-level directory such as `/tmp`, or a path `cn` can't resolve such as `rm -rf $DIR`) always need a person, even under `--allow Bash` or `--auto`. The TUI asks; an unattended run refuses them.
+
+The checks read a line the way bash does: `#` starts a comment only at the beginning of a word, so `ls a#; rm -rf ~` is two commands, and the second never runs.
 
 These checks are best-effort. They read one command line, so they can't follow a `cd`, a symlink created earlier, or what a script file does. For untrusted prompts or repositories, run `cn -p` in a container, and prefer `--readonly`.

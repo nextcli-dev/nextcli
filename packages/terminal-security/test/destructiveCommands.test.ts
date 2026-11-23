@@ -270,3 +270,13 @@ describe("destructive command tiers (#13001)", () => {
     );
   });
 });
+
+describe("bash's reading of comments and quoting", () => {
+  expectTier(["ls a#; rm -rf ~", "echo a#;rm -rf /"], "catastrophic");
+  // shell-quote can't read $'...', so a person approves the line
+  expectTier(["echo $'hi'"], "destructive");
+  it("doesn't let $'...' hide a delete", () => {
+    expect(tier("ls $'a\\'#'; rm -rf ~")).not.toBe("none");
+  });
+  expectTier(["git status # rm -rf ~", "echo 'a#b'", "ls a#b"], "none");
+});
