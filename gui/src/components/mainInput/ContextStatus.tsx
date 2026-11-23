@@ -19,7 +19,8 @@ function segmentColor(index: number): string {
 }
 
 const CENTER = 12;
-const RING_RADIUS = 8;
+// With the 1.5 stroke, as wide as the heroicons beside it (19.5 of 24 units)
+const RING_RADIUS = 9;
 
 /** A point on the ring, `ratio` of the way round clockwise from the top */
 function pointOnRing(ratio: number): { x: number; y: number } {
