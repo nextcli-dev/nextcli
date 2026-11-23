@@ -164,7 +164,10 @@ describe("HistoryManager and model-call prompts", () => {
         workspaceDirectory: "/workspace",
       });
 
-      expect(historyManager.load(sessionId).title).toBe("No history");
+      const loaded = historyManager.load(sessionId);
+
+      expect(loaded.title).toBe("No history");
+      expect(loaded.history).toEqual([]);
     });
   });
 });

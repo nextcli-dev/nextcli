@@ -26,11 +26,12 @@ function safeParseArray<T>(
  * conversation again, so earlier versions' sessions held hundreds of MB of
  * them. Both load and save drop it: cn --resume and /import read session
  * files without load. A file can hold anything, so entries that aren't
- * objects stay as they are: a throw here would load the session empty.
+ * objects stay as they are: a throw here would load the session empty. A
+ * history that isn't an array becomes an empty one, as callers spread it.
  */
 function withoutPrompts(history: Session["history"]): Session["history"] {
   if (!Array.isArray(history)) {
-    return history;
+    return [];
   }
   return history.map((item) =>
     Array.isArray(item?.promptLogs)
