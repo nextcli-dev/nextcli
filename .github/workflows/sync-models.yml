@@ -106,21 +106,20 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
+      # The packages and core are set up as CI's core job does it:
+      # scripts/build-packages.js builds every package, so one that core
+      # starts to use is built here too. llm-info's dist then holds the new
+      # catalog.
+      - name: Build the packages
+        if: steps.branch.outputs.changed == 'true'
+        uses: ./.github/actions/setup-packages
+
       - name: Install core
         if: steps.branch.outputs.changed == 'true'
         uses: ./.github/actions/setup-component
         with:
           component: core
           include-packages: "false"
-
-      # Only the packages core uses, in dependency order. llm-info's dist then
-      # holds the new catalog.
-      - name: Build the packages core uses
-        if: steps.branch.outputs.changed == 'true'
-        run: |
-          for package in config-types terminal-security ask-question context fetch config-yaml llm-info openai-adapters; do
-            (cd "packages/$package" && npm ci --no-audit --no-fund && npm run build)
-          done
 
       - name: Update the golden snapshots
         if: steps.branch.outputs.changed == 'true'
