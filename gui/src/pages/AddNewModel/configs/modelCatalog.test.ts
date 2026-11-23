@@ -55,6 +55,8 @@ const RETIRED_MODEL_PATTERNS: RegExp[] = [
   /^grok-4-fast/,
   /^grok-4-1-fast/,
   /^grok-code-fast-1/,
+  // xAI release notes: shut down 2026-11-19
+  /^grok-build/,
   // DeepSeek
   /^deepseek-(?:chat|reasoner|coder)$/,
   // Mistral

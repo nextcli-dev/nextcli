@@ -391,7 +391,7 @@ describe("thinking modes", () => {
         .thinkingUnavailable.off,
     ).toBeDefined();
     expect(
-      getModelControls({ provider: "xAI", model: "grok-build-0.1" })
+      getModelControls({ provider: "xAI", model: "grok-4.20-0309-reasoning" })
         .thinkingUnavailable.off,
     ).toMatch(/always reasons/);
   });
@@ -413,7 +413,7 @@ describe("thinking modes", () => {
   });
 });
 
-describe("Gemini, Bedrock and xAI controls", () => {
+describe("Gemini and Bedrock controls", () => {
   it("uses the catalog's thinking levels on Gemini 3 and budgets on 2.5", () => {
     // gemini-3.1-pro is listed as gemini-3.1-pro-preview
     expect(
@@ -472,12 +472,6 @@ describe("Gemini, Bedrock and xAI controls", () => {
       getModelControls({ provider: "bedrock", model: "amazon.nova-pro-v1:0" })
         .thinkingModes,
     ).toEqual([]);
-  });
-
-  it("gives grok-build no effort and treats it as known", () => {
-    expect(
-      getModelControls({ provider: "xAI", model: "grok-build-0.1" }),
-    ).toMatchObject({ format: "xai", efforts: [], experimental: false });
   });
 });
 
@@ -795,13 +789,12 @@ describe("xAI levels per model", () => {
   });
 
   it("has no effort for models that reject it", () => {
-    for (const model of ["grok-4.20-0309-reasoning", "grok-build-0.1"]) {
-      expect(grok(model)).toMatchObject({
-        efforts: [],
-        thinkingModes: ["hidden", "shown"],
-        experimental: false,
-      });
-    }
+    expect(grok("grok-4.20-0309-reasoning")).toMatchObject({
+      format: "xai",
+      efforts: [],
+      thinkingModes: ["hidden", "shown"],
+      experimental: false,
+    });
     expect(grok("grok-4.20-0309-non-reasoning").thinkingModes).toEqual([]);
   });
 

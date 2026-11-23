@@ -106,7 +106,7 @@ exports[`prices of popular models > match the reviewed snapshot 1`] = `
     "priced": "estimated",
   },
   "openrouter deepseek/deepseek-v4-pro": {
-    "cost": 0.034,
+    "cost": 0.032,
     "priced": "catalog",
   },
   "xAI grok-4.7": {

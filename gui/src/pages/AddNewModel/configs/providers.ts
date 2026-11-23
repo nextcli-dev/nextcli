@@ -686,7 +686,6 @@ Select the \`GPT-5.5\` model below to complete your provider configuration, but 
       models.grok46,
       models.grok43,
       models.grok420Reasoning,
-      models.grokBuild01,
     ],
     apiKeyUrl: "https://console.x.ai/",
   },
