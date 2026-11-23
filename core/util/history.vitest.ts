@@ -124,4 +124,47 @@ describe("HistoryManager and model-call prompts", () => {
     expect(file).not.toContain(PROMPT_TEXT);
     expect(file).toContain("Reading the file");
   });
+
+  // An empty session under the same id would replace the file on its next save
+  describe("a session file that isn't the expected shape still loads", () => {
+    const writeRaw = (sessionId: string, session: object) =>
+      fs.writeFileSync(getSessionFilePath(sessionId), JSON.stringify(session));
+
+    it("keeps entries that aren't objects", () => {
+      const sessionId = uuidv4();
+      writeRaw(sessionId, {
+        sessionId,
+        title: "Odd entries",
+        workspaceDirectory: "/workspace",
+        history: [
+          null,
+          {
+            message: { role: "assistant", content: "Done" },
+            contextItems: [],
+            promptLogs: [null, { prompt: PROMPT_TEXT, completion: "Done" }],
+          },
+        ],
+      });
+
+      const loaded = historyManager.load(sessionId);
+
+      expect(loaded.title).toBe("Odd entries");
+      expect(loaded.history[0]).toBeNull();
+      expect(loaded.history[1].promptLogs).toEqual([
+        null,
+        { completion: "Done" },
+      ]);
+    });
+
+    it("keeps a session saved without a history", () => {
+      const sessionId = uuidv4();
+      writeRaw(sessionId, {
+        sessionId,
+        title: "No history",
+        workspaceDirectory: "/workspace",
+      });
+
+      expect(historyManager.load(sessionId).title).toBe("No history");
+    });
+  });
 });
