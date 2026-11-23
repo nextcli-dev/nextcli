@@ -49,6 +49,23 @@ describe("buildSnapshot", () => {
     expect(snapshot.pruned).toEqual({ messages: 2, tokens: 400 });
   });
 
+  it("keeps the call each tool result answers", () => {
+    const snapshot = buildSnapshot({
+      window: 200_000,
+      threshold: { tokens: 150_000, action: "pruning", steps: [] },
+      segments: [segment("history", 300)],
+      toolResults: [
+        { label: "read_file", tokens: 100, toolCallId: "call_a" },
+        { label: "Tool result", tokens: 200 },
+      ],
+    });
+
+    expect(snapshot.largestToolResults).toEqual([
+      { label: "Tool result", tokens: 200 },
+      { label: "read_file", tokens: 100, toolCallId: "call_a" },
+    ]);
+  });
+
   it("keeps used on the parents when children are larger", () => {
     const history = segment("history", 100);
     history.children = [segment("user", 50_000), segment("tool", 40_000)];

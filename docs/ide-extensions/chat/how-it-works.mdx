@@ -70,11 +70,21 @@ The summary appears under the response it covers. The latest one comes after a *
 
 - **Cancel** stops the summary. Nothing is saved.
 - The trash icon on **Conversation Summary** removes that summary. Later requests then use the summary before it, if there is one, with the turns after it. With no summary left, they send the full conversation again. Removing the summary in use, without leaving the session that made it, brings back the context ring's measure from before it.
+- If compaction fails, a notification gives the reason. If the response is deleted before the summary is saved, a notification says the summary wasn't saved. Deleting the session stops its compaction.
 
 ### See What Fills the Context
 
-**View report** opens the breakdown. Its rows are estimates. The prompt and output figures under them are the provider's counts for the last response. The pruning point is the window minus the safety buffer minus the output reserve. When the model has no known window, that window is the 128,000 default. The report also lists the largest tool results and the last response's measured usage beside the estimate.
-- If compaction fails, a notification gives the reason. If the response is deleted before the summary is saved, a notification says the summary wasn't saved. Deleting the session stops its compaction.
+**View report** opens a page with two tabs.
+
+**Context window** shows what the next request will carry:
+
+- How full the window is, with the pruning point marked on the bar. A banner appears near the pruning point and once older messages are left out.
+- The system prompt, tool definitions and conversation, largest parts first. Click a row to open it; long lists show the five largest with **Show all**. The conversation includes tool results, often its largest part. These counts are estimates.
+- The largest tool results, with the response that made each call.
+- How the pruning point is worked out: the model window, minus the space reserved for the reply, minus a safety buffer. When the model has no known window, the window is the 128,000 default.
+- The estimate for the next request beside the provider's count for the last one. The two differ because the next request also carries the last response and any new tool output.
+
+**Session usage** shows what each model used in the session: requests, input, cached and output tokens, and cost. The counts come from what the provider reported for each chat response. A response whose price isn't known shows no cost rather than $0, and a model running on your machine isn't priced. Compaction summaries and session titles aren't counted, and responses saved before this version have no cost.
 
 ## What Advanced Features Are Available
 

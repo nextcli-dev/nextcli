@@ -443,7 +443,7 @@ function compileSnapshot(input: {
     }
     segments.push({
       id: "system",
-      label: "System",
+      label: "System prompt",
       tokens: input.systemMsgTokens,
       source: "estimated",
       ...(children.length > 0 ? { children } : {}),
@@ -476,7 +476,7 @@ function compileSnapshot(input: {
     });
     segments.push({
       id: "tools",
-      label: "Tools",
+      label: "Tool definitions",
       tokens: input.toolTokens,
       source: "estimated",
       children: [...groups.values()],
@@ -485,7 +485,8 @@ function compileSnapshot(input: {
 
   const names = new Map<string, string>();
   const historyChildren = new Map<string, number>();
-  const toolResults: { label: string; tokens: number }[] = [];
+  const toolResults: { label: string; tokens: number; toolCallId?: string }[] =
+    [];
   const countMessage = (message: ChatMessage, tokens: number) => {
     if ("toolCalls" in message && message.toolCalls) {
       for (const call of message.toolCalls) {
@@ -496,12 +497,10 @@ function compileSnapshot(input: {
     }
     if (message.role === "tool") {
       toolResults.push({
-        label:
-          ("toolCallId" in message && names.get(message.toolCallId ?? "")) ||
-          "Tool result",
+        label: names.get(message.toolCallId) || "Tool result",
         tokens,
+        ...(message.toolCallId ? { toolCallId: message.toolCallId } : {}),
       });
-      return;
     }
     historyChildren.set(
       message.role,
@@ -518,10 +517,11 @@ function compileSnapshot(input: {
     user: "User",
     assistant: "Assistant",
     thinking: "Thinking",
+    tool: "Tool results",
   };
   segments.push({
     id: "history",
-    label: "History",
+    label: "Conversation",
     tokens: input.historyTokens,
     source: "estimated",
     children: [...historyChildren.entries()].map(([role, tokens]) => ({
@@ -533,7 +533,7 @@ function compileSnapshot(input: {
   });
 
   const windowLabel =
-    input.knownContextLength === undefined ? "default" : "model context length";
+    input.knownContextLength === undefined ? "Default window" : "Model window";
   return buildSnapshot({
     window: input.contextLength,
     threshold: {
@@ -542,8 +542,8 @@ function compileSnapshot(input: {
       action: "pruning",
       steps: [
         { label: windowLabel, tokens: input.contextLength },
-        { label: "safety buffer", tokens: -input.countingSafetyBuffer },
-        { label: "output reserve", tokens: -input.outputReserve },
+        { label: "Reserved for the reply", tokens: -input.outputReserve },
+        { label: "Safety buffer", tokens: -input.countingSafetyBuffer },
       ],
     },
     segments,

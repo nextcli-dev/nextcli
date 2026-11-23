@@ -342,7 +342,51 @@ describe("compileChatMessages", () => {
         includeSnapshot: true,
       });
       expect(withoutWindow.snapshot!.window).toBe(128_000);
-      expect(withoutWindow.snapshot!.threshold.steps[0].label).toBe("default");
+      expect(withoutWindow.snapshot!.threshold.steps[0].label).toBe(
+        "Default window",
+      );
+    });
+
+    test("counts tool results in the conversation and names the call each answers", () => {
+      const compiled = compileChatMessages({
+        modelName: MODEL,
+        msgs: [
+          { role: "user", content: "Read the file" },
+          {
+            role: "assistant",
+            content: "",
+            toolCalls: [
+              {
+                id: "call_1",
+                type: "function",
+                function: { name: "read_file", arguments: '{"path":"a.ts"}' },
+              },
+            ],
+          },
+          {
+            role: "tool",
+            content: "line ".repeat(500),
+            toolCallId: "call_1",
+          },
+        ],
+        knownContextLength: CONTEXT_LENGTH,
+        maxTokens: MAX_TOKENS,
+        supportsImages: false,
+        includeSnapshot: true,
+      });
+      const conversationSegment = compiled.snapshot!.segments.find(
+        (s) => s.id === "history",
+      )!;
+      const children = conversationSegment.children!;
+      const toolResults = children.find((c) => c.label === "Tool results");
+      expect(toolResults?.tokens).toBeGreaterThan(400);
+      expect(children.reduce((sum, c) => sum + c.tokens, 0)).toBe(
+        conversationSegment.tokens,
+      );
+      expect(compiled.snapshot!.largestToolResults[0]).toMatchObject({
+        label: "read_file",
+        toolCallId: "call_1",
+      });
     });
 
     test("omits the snapshot unless the caller asks for it", () => {

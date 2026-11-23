@@ -1,22 +1,14 @@
 import { useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAppSelector } from "../../redux/hooks";
-import { ROUTES } from "../../util/navigation";
 import {
   useCanCompact,
   useCompactConversation,
 } from "../../util/compactConversation";
+import { formatTokens, segmentColor } from "../../util/contextUsage";
+import { ROUTES } from "../../util/navigation";
 import { ToolTip } from "../gui/Tooltip";
 import HoverItem from "./InputToolbar/HoverItem";
-
-// Theme colours for the breakdown, in segment order (system, tools, history).
-// Distinct in every theme (accent and link are both blue in most), and not
-// warning or error, which the ring uses for "near the limit" and "pruned".
-const SEGMENT_COLORS = ["bg-description", "bg-success", "bg-link"];
-
-function segmentColor(index: number): string {
-  return SEGMENT_COLORS[index % SEGMENT_COLORS.length];
-}
 
 const CENTER = 12;
 // With the 1.5 stroke, as wide as the heroicons beside it (19.5 of 24 units)
@@ -36,17 +28,6 @@ function wedgePath(ratio: number): string {
   const end = pointOnRing(ratio);
   const largeArc = ratio > 0.5 ? 1 : 0;
   return `M${CENTER} ${CENTER} L${CENTER} ${CENTER - RING_RADIUS} A${RING_RADIUS} ${RING_RADIUS} 0 ${largeArc} 1 ${end.x} ${end.y} Z`;
-}
-
-/** 1.7K, 343.2K, 1.05M */
-function formatTokens(tokens: number): string {
-  if (tokens >= 1_000_000) {
-    return `${Number((tokens / 1_000_000).toFixed(2))}M`;
-  }
-  if (tokens >= 1000) {
-    return `${Number((tokens / 1000).toFixed(1))}K`;
-  }
-  return String(tokens);
 }
 
 const ContextStatus = () => {

@@ -18,6 +18,13 @@ export interface ThresholdStep {
   tokens: number;
 }
 
+export interface ToolResultSize {
+  label: string;
+  tokens: number;
+  /** The call the result answers, so a host can find it in the conversation */
+  toolCallId?: string;
+}
+
 export interface ContextSnapshot {
   window: number;
   threshold: {
@@ -28,7 +35,7 @@ export interface ContextSnapshot {
   segments: ContextSegment[];
   /** The estimate the trigger compares */
   used: number;
-  largestToolResults: { label: string; tokens: number }[];
+  largestToolResults: ToolResultSize[];
   /** Messages the VS Code pruner shifted out */
   pruned?: { messages: number; tokens: number };
 }

@@ -1,10 +1,14 @@
-import type { ContextSegment, ContextSnapshot } from "./types.js";
+import type {
+  ContextSegment,
+  ContextSnapshot,
+  ToolResultSize,
+} from "./types.js";
 
 export interface BuildSnapshotInput {
   window: number;
   threshold: ContextSnapshot["threshold"];
   segments: ContextSegment[];
-  toolResults: { label: string; tokens: number }[];
+  toolResults: ToolResultSize[];
   pruned?: { messages: number; tokens: number };
 }
 
@@ -27,7 +31,11 @@ export function buildSnapshot(input: BuildSnapshotInput): ContextSnapshot {
   const largestToolResults = [...input.toolResults]
     .sort((a, b) => b.tokens - a.tokens)
     .slice(0, 5)
-    .map((result) => ({ label: result.label, tokens: result.tokens }));
+    .map((result) => ({
+      label: result.label,
+      tokens: result.tokens,
+      ...(result.toolCallId ? { toolCallId: result.toolCallId } : {}),
+    }));
 
   return {
     window: input.window,

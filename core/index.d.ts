@@ -485,6 +485,13 @@ export interface PromptLog {
   outputTokens?: number;
   /** The token usage the provider reported for this call, when it did */
   usage?: Usage;
+  /**
+   * The call's cost in USD, priced as the CLI prices a request. Unset when
+   * the provider sent no usage or the price is unknown, never zero for that.
+   */
+  costUsd?: number;
+  /** How `costUsd` was priced */
+  priced?: import("@nextcli/llm-info").PriceSource;
 }
 
 export type MessageModes = "chat" | "agent" | "plan" | "background";
