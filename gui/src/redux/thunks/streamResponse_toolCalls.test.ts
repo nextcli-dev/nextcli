@@ -428,6 +428,24 @@ describe("streamResponseThunk - tool calls", () => {
       },
     });
 
+    // One history/save per model call: this turn makes two (the tool-call
+    // response and the final answer), so it saves twice, each save carrying
+    // content the previous one lacked. No redundant identical saves.
+    // (release-plans/vscode-extension-host-load.md, the PR 3 save count)
+    const savedSessions = requestSpy.mock.calls
+      .filter(([type]) => type === "history/save")
+      .map(([, session]) => session as any);
+    expect(savedSessions).toHaveLength(2);
+    // Both saves hold the same live history array: saveCurrentSession reads
+    // getState().session without copying, and queueSessionWrite defers the
+    // write, so the earlier save serializes the history as it is at write
+    // time. The second save of this turn is therefore redundant: identical
+    // content written twice.
+    expect(savedSessions[0].history).toBe(savedSessions[1].history);
+    const contents = savedSessions.map((s) => JSON.stringify(s.history));
+    expect(new Set(contents).size).toBe(1);
+    expect(contents[0]).toContain("Search completed.");
+
     // Verify that multiple compilation calls were made (due to tool call continuation)
     const compileCallsCount = requestSpy.mock.calls.filter(
       (call: any) => call[0] === "llm/compileChat",
