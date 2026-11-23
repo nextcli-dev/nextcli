@@ -99,9 +99,9 @@ describe("traceEvent", () => {
     expect(readLines()).toHaveLength(2);
   });
 
-  // Shared with core's dev-data logging: full traces as basic until cn's
-  // full mode lands, so one shell export works for both
-  it("traces full as basic, without a warning", async () => {
+  // full writes the same event lines as basic (plus request files, covered
+  // in trace.full.test.ts), so one shell export works for both products
+  it("traces full without a warning", async () => {
     const traceEvent = await loadTrace("full");
 
     traceEvent("llm.request", { model: "m" }, { ts: 1000 });

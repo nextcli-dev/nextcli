@@ -13,6 +13,8 @@ import { processStreamingResponse } from "./streamChatResponse.js";
 vi.mock("../trace/trace.js", () => ({
   traceEvent: vi.fn(),
   traceEnabled: () => false,
+  traceFullEnabled: () => false,
+  traceRequest: vi.fn(),
 }));
 
 // Test the chunk processing logic that was identified as buggy

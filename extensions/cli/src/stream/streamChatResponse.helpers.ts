@@ -42,7 +42,7 @@ import {
 } from "../tools/index.js";
 import { ToolInterruptedError } from "../tools/toolInterruptedError.js";
 import { PreprocessedToolCall, ToolCall } from "../tools/types.js";
-import { traceEvent } from "../trace/trace.js";
+import { traceEvent, traceFullEnabled, traceRequest } from "../trace/trace.js";
 import { logger } from "../util/logger.js";
 import { fastModeOn } from "../util/modelSettings.js";
 import { getModelMaxTokens } from "../util/tokenizer.js";
@@ -538,6 +538,24 @@ export function finalAnswerMaxTokens(
     FINAL_ANSWER_TOKENS,
     Math.max(floor, affordable),
   );
+}
+
+/**
+ * NEXTCLI_TRACE=full: one request file per attempt, secrets redacted. Off
+ * and basic compute nothing. apiKey and env ride along only for redaction.
+ */
+export function traceFullRequest(
+  model: ModelConfig,
+  requestBody: Record<string, unknown>,
+): void {
+  if (traceFullEnabled()) {
+    traceRequest({
+      ts: Date.now(),
+      ...requestBody,
+      apiKey: model.apiKey,
+      env: model.env,
+    });
+  }
 }
 
 export async function compiledRequest(input: {

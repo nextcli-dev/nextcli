@@ -47,6 +47,7 @@ import {
   finalAnswerMaxTokens,
   recordFailedCall,
   recordStreamTelemetry,
+  traceFullRequest,
   trackFirstTokenTime,
   warnUnknownZeroPrice,
 } from "./streamChatResponse.helpers.js";
@@ -220,25 +221,28 @@ export async function processStreamingResponse(
   });
   const requestStartTime = Date.now();
 
+  const requestBody = {
+    model: model.model,
+    messages: openaiChatHistory,
+    stream: true as const,
+    // OpenAI rejects an empty tools array, so send none at all
+    tools: tools?.length ? tools : undefined,
+    ...getCompletionOptions(model, { thinkingOff: options.thinkingOff }),
+    ...(options.maxTokens !== undefined && {
+      max_tokens: options.maxTokens,
+    }),
+  };
+
   const streamFactory = async (retryAbortSignal: AbortSignal) => {
     logger.debug("Creating chat completion stream", {
       model: model.model,
       messageCount: chatHistory.length,
       toolCount: tools?.length || 0,
     });
+    traceFullRequest(model, requestBody);
     return await chatCompletionStreamWithBackoff(
       llmApi,
-      {
-        model: model.model,
-        messages: openaiChatHistory,
-        stream: true,
-        // OpenAI rejects an empty tools array, so send none at all
-        tools: tools?.length ? tools : undefined,
-        ...getCompletionOptions(model, { thinkingOff: options.thinkingOff }),
-        ...(options.maxTokens !== undefined && {
-          max_tokens: options.maxTokens,
-        }),
-      },
+      requestBody,
       retryAbortSignal,
     );
   };

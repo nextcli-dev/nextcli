@@ -21,7 +21,7 @@ Events are appended as JSON lines to `~/.continue/dev_data/0.2.0/<eventName>.jso
 
 The chat panel still sends each model call's event, prompt included, to the extension when `NEXTCLI_TRACE` is unset; the extension discards it. Destinations in the [`data` block](#how-to-configure-custom-data-destinations) of `config.yaml` receive events whatever `NEXTCLI_TRACE` is set to, at the level each destination configures.
 
-The same variable controls `cn`'s [model-call trace](/cli/configuration#logs-and-traces), so one setting works for both. `cn` currently treats `full` as `basic` for its trace.
+The same variable controls `cn`'s [model-call trace](/cli/configuration#logs-and-traces), so one setting works for both. There, `full` also writes each request payload to a per-run folder of JSON files, with secrets redacted.
 
 On macOS and Linux, VS Code reads the login shell's environment at startup, so an `export NEXTCLI_TRACE=basic` in your shell profile works after a restart. On Windows, set it as a user environment variable.
 

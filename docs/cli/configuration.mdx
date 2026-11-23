@@ -130,7 +130,7 @@ For a remote MCP server that requires OAuth, `cn` opens your browser to sign in 
 
 Set it with `--log-level <level>`, or with `NEXTCLI_LOG_LEVEL` for every run. `--log-level` wins over `--verbose`, which wins over the environment variable. `cn review` passes the level on to its review workers.
 
-For a machine-readable record of each model call, set `NEXTCLI_TRACE=basic`. Both variables are read when `cn` starts, and an unknown value prints a warning. `cn` then writes one JSON line per call to `~/.continue/traces/<sessionId>-<runId>.jsonl`, or to the folder in `NEXTCLI_TRACE_DIR`. The variable also controls the VS Code extension's [local dev data](/customize/deep-dives/development-data#local-dev-data); `full` turns on content there, while `cn` traces it as `basic` for now:
+For a machine-readable record of each model call, set `NEXTCLI_TRACE=basic`. Both variables are read when `cn` starts, and an unknown value prints a warning. `cn` then writes one JSON line per call to `~/.continue/traces/<sessionId>-<runId>.jsonl`, or to the folder in `NEXTCLI_TRACE_DIR`. The same variable controls the VS Code extension's [local dev data](/customize/deep-dives/development-data#local-dev-data), so one setting works for both:
 
 ```json
 {"ts":1762685578123,"dur":41000,"name":"llm.request","attrs":{"model":"deepseek-v4.1-flash","usage":{"prompt_tokens":25000,"completion_tokens":32000},"costUsd":0.046,"priced":"exact","finishReason":"length","ttftMs":900,"contentChars":0,"reasoningChars":90000,"toolCalls":[]}}
@@ -142,4 +142,10 @@ The first line is a header with the `cn` version, Node version, platform and ids
 - An attempt that streamed and then failed is written once, with `"discarded": true`, its `"error"` and what it produced up to then. A call that failed before streaming has `"error"` only.
 - `"error"` is the provider's error message: its first line, at most 200 characters, with the HTTP `"status"` when there is one.
 
-Apart from that error text, the trace holds token counts, timings and tool names, not prompt or file text. When tracing is on, each `llm.request` also has a `context` object: the estimated tokens in the system prompt, the tools and the history, the compaction threshold, and the largest tool results. It names rules and tools. It does not include their text. Tracing is off unless the variable is set.
+Apart from that error text, the `basic` trace holds token counts, timings and tool names, not prompt or file text. When tracing is on, each `llm.request` also has a `context` object: the estimated tokens in the system prompt, the tools and the history, the compaction threshold, and the largest tool results. It names rules and tools. It does not include their text. Tracing is off unless the variable is set.
+
+`NEXTCLI_TRACE=full` writes the same lines and, in addition, one file per request attempt to `~/.continue/traces/<sessionId>-<runId>/request-<n>.json` (or under `NEXTCLI_TRACE_DIR`): the exact messages, tools and completion options sent to the provider. Values of secret-like environment variables (`*API_KEY*`, `*SECRET*`, `*TOKEN*`, `*PASSWORD*` and the other rules the Bash tool's environment filter uses) and the model's configured `apiKey` are replaced with `[redacted]`.
+
+<Warning>
+  These request files hold the exact prompts: pull-request text, source code and tool output. Keep them private and delete them when you no longer need them.
+</Warning>

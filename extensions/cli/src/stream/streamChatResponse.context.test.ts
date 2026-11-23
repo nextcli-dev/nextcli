@@ -5,6 +5,8 @@ const traceEvent = vi.hoisted(() => vi.fn());
 vi.mock("../trace/trace.js", () => ({
   traceEvent,
   traceEnabled: () => false,
+  traceFullEnabled: () => false,
+  traceRequest: vi.fn(),
 }));
 
 vi.mock("../util/logger.js", () => ({
