@@ -119,6 +119,7 @@ function InputToolbar(props: InputToolbarProps) {
                 </HoverItem>
               </ToolTip>
             )}
+            {!isInEdit && <ContextStatus />}
           </div>
         </div>
 
@@ -128,7 +129,6 @@ function InputToolbar(props: InputToolbarProps) {
             fontSize: controlFont,
           }}
         >
-          {!isInEdit && <ContextStatus />}
           {!props.toolbarOptions?.hideUseCodebase && !isInEdit && (
             <div className="hidden transition-colors duration-200 hover:underline md:flex">
               <HoverItem

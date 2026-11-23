@@ -9,14 +9,10 @@ import {
 import { ToolTip } from "../gui/Tooltip";
 import HoverItem from "./InputToolbar/HoverItem";
 
-// Theme colours for the breakdown, in segment order (system, tools, history)
-const SEGMENT_COLORS = [
-  "bg-description",
-  "bg-accent",
-  "bg-link",
-  "bg-success",
-  "bg-warning",
-];
+// Theme colours for the breakdown, in segment order (system, tools, history).
+// Distinct in every theme (accent and link are both blue in most), and not
+// warning or error, which the ring uses for "near the limit" and "pruned".
+const SEGMENT_COLORS = ["bg-description", "bg-success", "bg-link"];
 
 function segmentColor(index: number): string {
   return SEGMENT_COLORS[index % SEGMENT_COLORS.length];
@@ -108,134 +104,132 @@ const ContextStatus = () => {
       );
 
   return (
-    <div>
-      <ToolTip
-        closeEvents={{
-          mouseleave: true,
-          click: true,
-          mouseup: false,
-        }}
-        clickable
-        content={
-          <div className="flex w-64 flex-col gap-2 text-left text-xs">
-            <div className="flex items-center justify-between gap-4">
-              <span className="font-semibold">Context usage</span>
-              <span
-                className="text-description hover:text-link cursor-pointer"
-                onClick={() => navigate(ROUTES.CONTEXT)}
-              >
-                View report
-              </span>
-            </div>
-            {showEmpty ? (
-              <span className="text-description">
-                Measured when you send the next message
-              </span>
-            ) : (
-              <>
-                <div className="flex justify-between gap-4">
-                  <span>{`${percentOfWindow}% full`}</span>
-                  <span className="text-description tabular-nums">
-                    {`~${formatTokens(snapshot.used)} / ${formatTokens(snapshot.window)} tokens`}
-                  </span>
-                </div>
-                <div className="bg-border flex h-1.5 w-full gap-px overflow-hidden rounded-full">
-                  {snapshot.segments.map((segment, index) => (
-                    <div
-                      key={segment.id}
-                      className={segmentColor(index)}
-                      style={{
-                        width: `${(segment.tokens / Math.max(snapshot.window, 1)) * 100}%`,
-                      }}
-                    />
-                  ))}
-                </div>
-                <div className="flex flex-col gap-1">
-                  {snapshot.segments.map((segment, index) => (
-                    <div key={segment.id} className="flex items-center gap-2">
-                      <span
-                        className={`h-2.5 w-2.5 shrink-0 rounded-sm ${segmentColor(index)}`}
-                      />
-                      <span className="flex-1">{segment.label}</span>
-                      <span className="tabular-nums">
-                        {formatTokens(segment.tokens)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-                <div className="text-description flex justify-between gap-4">
-                  <span>Pruning starts at</span>
-                  <span className="tabular-nums">
-                    {formatTokens(snapshot.threshold.tokens)}
-                  </span>
-                </div>
-              </>
-            )}
-            {lastUsage && (
-              <div className="text-description flex justify-between gap-4">
-                <span>Last response</span>
-                <span className="tabular-nums">
-                  {`${formatTokens(lastUsage.promptTokens)} prompt · ${formatTokens(lastUsage.completionTokens)} output`}
-                </span>
-              </div>
-            )}
+    <ToolTip
+      closeEvents={{
+        mouseleave: true,
+        click: true,
+        mouseup: false,
+      }}
+      clickable
+      content={
+        <div className="flex w-64 flex-col gap-2 text-left text-xs">
+          <div className="flex items-center justify-between gap-4">
+            <span className="font-semibold">Context usage</span>
             <span
-              role="button"
-              aria-disabled={!canCompact}
-              className={
-                canCompact
-                  ? "hover:text-link inline-block cursor-pointer underline"
-                  : "text-description-muted inline-block cursor-not-allowed"
-              }
-              onClick={
-                canCompact
-                  ? () => compactConversation(history.length - 1)
-                  : undefined
-              }
+              className="text-description hover:text-link cursor-pointer"
+              onClick={() => navigate(ROUTES.CONTEXT)}
             >
-              Compact now
+              View report
             </span>
           </div>
-        }
-      >
-        <HoverItem>
-          <svg
-            viewBox="0 0 24 24"
-            className={`h-3 w-3 hover:brightness-125 ${colorClass}`}
-            aria-label="Context"
+          {showEmpty ? (
+            <span className="text-description">
+              Measured when you send the next message
+            </span>
+          ) : (
+            <>
+              <div className="flex justify-between gap-4">
+                <span>{`${percentOfWindow}% full`}</span>
+                <span className="text-description tabular-nums">
+                  {`~${formatTokens(snapshot.used)} / ${formatTokens(snapshot.window)} tokens`}
+                </span>
+              </div>
+              <div className="bg-border flex h-1.5 w-full gap-px overflow-hidden rounded-full">
+                {snapshot.segments.map((segment, index) => (
+                  <div
+                    key={segment.id}
+                    className={segmentColor(index)}
+                    style={{
+                      width: `${(segment.tokens / Math.max(snapshot.window, 1)) * 100}%`,
+                    }}
+                  />
+                ))}
+              </div>
+              <div className="flex flex-col gap-1">
+                {snapshot.segments.map((segment, index) => (
+                  <div key={segment.id} className="flex items-center gap-2">
+                    <span
+                      className={`h-2.5 w-2.5 shrink-0 rounded-sm ${segmentColor(index)}`}
+                    />
+                    <span className="flex-1">{segment.label}</span>
+                    <span className="tabular-nums">
+                      {formatTokens(segment.tokens)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="text-description flex justify-between gap-4">
+                <span>Pruning starts at</span>
+                <span className="tabular-nums">
+                  {formatTokens(snapshot.threshold.tokens)}
+                </span>
+              </div>
+            </>
+          )}
+          {lastUsage && (
+            <div className="text-description flex justify-between gap-4">
+              <span>Last response</span>
+              <span className="tabular-nums">
+                {`${formatTokens(lastUsage.promptTokens)} prompt · ${formatTokens(lastUsage.completionTokens)} output`}
+              </span>
+            </div>
+          )}
+          <span
+            role="button"
+            aria-disabled={!canCompact}
+            className={
+              canCompact
+                ? "hover:text-link inline-block cursor-pointer underline"
+                : "text-description-muted inline-block cursor-not-allowed"
+            }
+            onClick={
+              canCompact
+                ? () => compactConversation(history.length - 1)
+                : undefined
+            }
           >
+            Compact now
+          </span>
+        </div>
+      }
+    >
+      <HoverItem>
+        <svg
+          viewBox="0 0 24 24"
+          className={`h-3 w-3 hover:brightness-125 ${colorClass}`}
+          aria-label="Context"
+        >
+          <circle
+            cx={CENTER}
+            cy={CENTER}
+            r={RING_RADIUS}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.5}
+          />
+          {usedRatio >= 1 ? (
             <circle
               cx={CENTER}
               cy={CENTER}
               r={RING_RADIUS}
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1.5}
+              fill="currentColor"
             />
-            {usedRatio >= 1 ? (
-              <circle
-                cx={CENTER}
-                cy={CENTER}
-                r={RING_RADIUS}
-                fill="currentColor"
-              />
-            ) : (
-              usedRatio > 0 && (
-                <path d={wedgePath(usedRatio)} fill="currentColor" />
-              )
-            )}
-            {thresholdPoint && (
-              <circle
-                cx={thresholdPoint.x}
-                cy={thresholdPoint.y}
-                r={1.5}
-                fill="currentColor"
-              />
-            )}
-          </svg>
-        </HoverItem>
-      </ToolTip>
-    </div>
+          ) : (
+            usedRatio > 0 && (
+              <path d={wedgePath(usedRatio)} fill="currentColor" />
+            )
+          )}
+          {thresholdPoint && (
+            <circle
+              cx={thresholdPoint.x}
+              cy={thresholdPoint.y}
+              r={1.5}
+              fill="currentColor"
+            />
+          )}
+        </svg>
+      </HoverItem>
+    </ToolTip>
   );
 };
 
