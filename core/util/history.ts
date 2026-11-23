@@ -25,14 +25,24 @@ function safeParseArray<T>(
  * The history without each model call's prompt. The prompt is the whole
  * conversation again, so earlier versions' sessions held hundreds of MB of
  * them. Both load and save drop it: cn --resume and /import read session
- * files without load.
+ * files without load. A file can hold anything, so entries that aren't
+ * objects stay as they are: a throw here would load the session empty.
  */
 function withoutPrompts(history: Session["history"]): Session["history"] {
+  if (!Array.isArray(history)) {
+    return history;
+  }
   return history.map((item) =>
-    item.promptLogs
+    Array.isArray(item?.promptLogs)
       ? {
           ...item,
-          promptLogs: item.promptLogs.map(({ prompt, ...log }) => log),
+          promptLogs: item.promptLogs.map((log) => {
+            if (!log || typeof log !== "object") {
+              return log;
+            }
+            const { prompt, ...rest } = log;
+            return rest;
+          }),
         }
       : item,
   );
