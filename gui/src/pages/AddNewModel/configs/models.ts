@@ -1421,18 +1421,6 @@ export const models: { [key: string]: ModelPackage } = {
     providerOptions: ["xAI"],
     isOpenSource: false,
   },
-  grokBuild01: {
-    title: "Grok Build 0.1",
-    description: "xAI's Grok Build model for agentic coding.",
-    refUrl: "https://docs.x.ai/docs/models",
-    params: {
-      title: "Grok Build 0.1",
-      model: "grok-build-0.1",
-    },
-    icon: "xAI.png",
-    providerOptions: ["xAI"],
-    isOpenSource: false,
-  },
   mistralLarge4: {
     title: "Mistral Large 4",
     description:

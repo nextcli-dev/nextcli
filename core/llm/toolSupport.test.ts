@@ -258,13 +258,13 @@ describe("PROVIDER_TOOL_SUPPORT", () => {
       expect(supportsFn("grok-4.7")).toBe(true);
       expect(supportsFn("grok-4.3")).toBe(true);
       expect(supportsFn("grok-4.20-0309-reasoning")).toBe(true);
-      expect(supportsFn("grok-build-0.1")).toBe(true);
       expect(supportsFn("Grok-4.6")).toBe(true);
     });
 
-    it("should return false for retired Grok 2/3 models", () => {
+    it("should return false for retired Grok models", () => {
       expect(supportsFn("grok-2")).toBe(false);
       expect(supportsFn("grok-3-mini")).toBe(false);
+      expect(supportsFn("grok-build-0.1")).toBe(false);
     });
   });
 

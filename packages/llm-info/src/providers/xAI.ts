@@ -2,7 +2,8 @@ import { ModelProvider } from "../types.js";
 
 // Ids from docs.x.ai/docs/models (2026-11-04). Every earlier model (grok-beta,
 // grok-2, grok-3*, grok-4, grok-4-fast*, grok-4-1-fast*, grok-code-fast-1) was
-// retired on 2026-05-15. Context limits are left unset until confirmed per model.
+// retired on 2026-05-15, and grok-build-0.1 on 2026-11-19 (docs.x.ai release
+// notes). Context limits are left unset until confirmed per model.
 export const xAI: ModelProvider = {
   models: [
     {
@@ -28,12 +29,6 @@ export const xAI: ModelProvider = {
       displayName: "Grok 4.20 Reasoning",
       recommendedFor: ["chat"],
       regex: /^grok-4\.20/,
-    },
-    {
-      model: "grok-build-0.1",
-      displayName: "Grok Build 0.1",
-      recommendedFor: ["chat"],
-      regex: /^grok-build/,
     },
   ],
   id: "xAI",
