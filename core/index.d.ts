@@ -559,7 +559,8 @@ export interface ChatHistoryItem {
   contextItems: ContextItemWithId[];
   editorState?: any;
   modifiers?: InputModifiers;
-  promptLogs?: PromptLog[];
+  /** Each model call's completion and usage. Sessions don't keep its prompt. */
+  promptLogs?: (Omit<PromptLog, "prompt"> & { prompt?: never })[];
   toolCallStates?: ToolCallState[];
   isGatheringContext?: boolean;
   reasoning?: Reasoning;

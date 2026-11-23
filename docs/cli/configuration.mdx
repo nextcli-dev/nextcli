@@ -130,7 +130,7 @@ For a remote MCP server that requires OAuth, `cn` opens your browser to sign in 
 
 Set it with `--log-level <level>`, or with `NEXTCLI_LOG_LEVEL` for every run. `--log-level` wins over `--verbose`, which wins over the environment variable. `cn review` passes the level on to its review workers.
 
-For a machine-readable record of each model call, set `NEXTCLI_TRACE=basic`. Both variables are read when `cn` starts, and an unknown value prints a warning. `cn` then writes one JSON line per call to `~/.continue/traces/<sessionId>-<runId>.jsonl`, or to the folder in `NEXTCLI_TRACE_DIR`:
+For a machine-readable record of each model call, set `NEXTCLI_TRACE=basic`. Both variables are read when `cn` starts, and an unknown value prints a warning. `cn` then writes one JSON line per call to `~/.continue/traces/<sessionId>-<runId>.jsonl`, or to the folder in `NEXTCLI_TRACE_DIR`. The variable also controls the VS Code extension's [local dev data](/customize/deep-dives/development-data#local-dev-data); `full` turns on content there, while `cn` traces it as `basic` for now:
 
 ```json
 {"ts":1762685578123,"dur":41000,"name":"llm.request","attrs":{"model":"deepseek-v4.1-flash","usage":{"prompt_tokens":25000,"completion_tokens":32000},"costUsd":0.046,"priced":"exact","finishReason":"length","ttftMs":900,"contentChars":0,"reasoningChars":90000,"toolCalls":[]}}

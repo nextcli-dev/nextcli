@@ -493,7 +493,6 @@ describe("streamResponseThunk - tool calls", () => {
                 completion: "I'll search the codebase for you.",
                 modelProvider: "anthropic",
                 modelTitle: "Claude 3.5 Sonnet",
-                prompt: "Please search the codebase",
               },
             ],
             toolCallStates: [
@@ -544,7 +543,6 @@ describe("streamResponseThunk - tool calls", () => {
                 completion: "Search completed.",
                 modelProvider: "anthropic",
                 modelTitle: "Claude 3.5 Sonnet",
-                prompt: "continuing after tool",
               },
             ],
           },
@@ -1059,7 +1057,6 @@ describe("streamResponseThunk - tool calls", () => {
                 completion: "I'll search the codebase for you.",
                 modelProvider: "anthropic",
                 modelTitle: "Claude 3.5 Sonnet",
-                prompt: "Please search the codebase",
               },
             ],
             toolCallStates: [
@@ -1888,7 +1885,6 @@ describe("streamResponseThunk - tool calls", () => {
                 completion: "I'll search for test functions in the codebase.",
                 modelProvider: "anthropic",
                 modelTitle: "Claude 3.5 Sonnet",
-                prompt: "Please search the codebase for test functions",
               },
             ],
             toolCallStates: [
@@ -1943,7 +1939,6 @@ describe("streamResponseThunk - tool calls", () => {
                   "I found several test functions in your codebase. Here are the main ones I discovered...",
                 modelProvider: "anthropic",
                 modelTitle: "Claude 3.5 Sonnet",
-                prompt: "continuing after tool execution",
               },
             ],
           },

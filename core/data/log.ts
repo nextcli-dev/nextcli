@@ -6,6 +6,7 @@ import {
   DataLogLevel,
   DevDataLogEvent,
   devDataVersionedSchemas,
+  parseTraceLevel,
 } from "@nextcli/config-yaml";
 import { fetchwithRequestOptions } from "@nextcli/fetch";
 import * as URI from "uri-js";
@@ -18,6 +19,30 @@ import { joinPathsToUri } from "../util/uri.js";
 
 const DEFAULT_DEV_DATA_LEVEL: DataLogLevel = "all";
 export const LOCAL_DEV_DATA_VERSION = "0.2.0";
+
+// One warning per process for an unknown NEXTCLI_TRACE value
+let warnedBadTraceLevel = false;
+
+/**
+ * The local dev-data level from NEXTCLI_TRACE, shared with cn's trace:
+ * unset or unknown is off, `basic` writes the noCode schemas (no prompts,
+ * completions or file contents), `full` writes the content of the all level.
+ */
+function localDevDataLevel(): "all" | "noCode" | undefined {
+  const raw = process.env.NEXTCLI_TRACE;
+  const level = parseTraceLevel(raw);
+  if (!level) {
+    if (raw?.trim() && !warnedBadTraceLevel) {
+      warnedBadTraceLevel = true;
+      console.warn(
+        `Unknown NEXTCLI_TRACE "${raw}", local dev data logging is off. Use basic or full.`,
+      );
+    }
+    return undefined;
+  }
+  return level === "full" ? "all" : "noCode";
+}
+
 export class DataLogger {
   private static instance: DataLogger | null = null;
   core?: Core;
@@ -69,17 +94,18 @@ export class DataLogger {
   }
 
   async logLocalData(event: DevDataLogEvent) {
+    // Off unless NEXTCLI_TRACE is set: nothing is computed or written
+    const level = localDevDataLevel();
+    if (!level) {
+      return;
+    }
     try {
-      const filepath: string = getDevDataFilePath(
-        event.name,
-        LOCAL_DEV_DATA_VERSION,
-      );
       const localSchema =
-        devDataVersionedSchemas[LOCAL_DEV_DATA_VERSION]["all"][event.name];
+        devDataVersionedSchemas[LOCAL_DEV_DATA_VERSION][level][event.name];
 
       if (!localSchema) {
         throw new Error(
-          `Schema ${LOCAL_DEV_DATA_VERSION} doesn't exist at level "all"`,
+          `Schema ${LOCAL_DEV_DATA_VERSION} doesn't exist at level "${level}"`,
         );
       }
 
@@ -92,9 +118,14 @@ export class DataLogger {
 
       const parsed = localSchema?.safeParse(eventDataWithBaseValues);
       if (parsed?.success) {
-        fs.writeFileSync(filepath, `${JSON.stringify(parsed.data)}\n`, {
-          flag: "a",
-        });
+        const filepath: string = getDevDataFilePath(
+          event.name,
+          LOCAL_DEV_DATA_VERSION,
+        );
+        await fs.promises.appendFile(
+          filepath,
+          `${JSON.stringify(parsed.data)}\n`,
+        );
       }
     } catch (error) {
       console.error("Error logging local dev data:", error);
@@ -102,10 +133,11 @@ export class DataLogger {
   }
 
   async logDevData(event: DevDataLogEvent) {
-    // Local logs (always on for all levels)
+    // Local logs, only when NEXTCLI_TRACE is set
     await this.logLocalData(event);
 
-    // Remote logs
+    // Remote logs: destinations the user configured explicitly keep working
+    // whether local logging is on or off
     const config = (await this.core?.configHandler.loadConfig())?.config;
     if (config?.data?.length) {
       await Promise.allSettled(

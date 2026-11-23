@@ -99,13 +99,24 @@ describe("traceEvent", () => {
     expect(readLines()).toHaveLength(2);
   });
 
-  it("warns once and stays off for an unknown NEXTCLI_TRACE", async () => {
+  // Shared with core's dev-data logging: full traces as basic until cn's
+  // full mode lands, so one shell export works for both
+  it("traces full as basic, without a warning", async () => {
     const traceEvent = await loadTrace("full");
 
     traceEvent("llm.request", { model: "m" }, { ts: 1000 });
 
+    expect(warnBadEnv).not.toHaveBeenCalled();
+    expect(readLines()).toHaveLength(2);
+  });
+
+  it("warns once and stays off for an unknown NEXTCLI_TRACE", async () => {
+    const traceEvent = await loadTrace("loud");
+
+    traceEvent("llm.request", { model: "m" }, { ts: 1000 });
+
     expect(warnBadEnv).toHaveBeenCalledTimes(1);
-    expect(warnBadEnv.mock.calls[0][0]).toContain('NEXTCLI_TRACE "full"');
+    expect(warnBadEnv.mock.calls[0][0]).toContain('NEXTCLI_TRACE "loud"');
     expect(fs.existsSync(dir)).toBe(false);
   });
 

@@ -1,6 +1,8 @@
 import fs from "fs";
 import path from "path";
 
+import { parseTraceLevel } from "@nextcli/config-yaml";
+
 import { env } from "../env.js";
 import { getCurrentSession } from "../session.js";
 import { logger, warnBadEnv } from "../util/logger.js";
@@ -8,27 +10,20 @@ import { getVersion } from "../version.js";
 
 // NEXTCLI_TRACE=basic writes one JSON line per model call: timings, token
 // counts and tool names. Read once, at the first event, so a trusted
-// folder's .env (loaded after modules load) can set it.
-// Recognised levels live here. A later level is added once, and every caller follows.
-const TRACE_LEVELS = new Set(["basic"]);
-
-function readTraceLevel(): string | undefined {
-  const level = process.env.NEXTCLI_TRACE?.trim().toLowerCase();
-  return level || undefined;
-}
+// folder's .env (loaded after modules load) can set it. The levels are
+// shared with core's dev-data logging: `full` is traced as basic until
+// cn's full mode lands, so one shell export works for both.
 
 /** True for a recognised NEXTCLI_TRACE level. An unknown value stays off. */
 export function traceEnabled(): boolean {
-  const level = readTraceLevel();
-  return level !== undefined && TRACE_LEVELS.has(level);
+  return parseTraceLevel(process.env.NEXTCLI_TRACE) !== undefined;
 }
 
 function traceOn(): boolean {
   const rawLevel = process.env.NEXTCLI_TRACE;
-  const level = rawLevel?.trim().toLowerCase();
-  if (level && !TRACE_LEVELS.has(level)) {
+  if (rawLevel?.trim() && !parseTraceLevel(rawLevel)) {
     warnBadEnv(
-      `Unknown NEXTCLI_TRACE "${rawLevel}", tracing is off. Use basic.`,
+      `Unknown NEXTCLI_TRACE "${rawLevel}", tracing is off. Use basic or full.`,
     );
   }
   return traceEnabled();

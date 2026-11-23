@@ -34,7 +34,7 @@ vi.mock(
   }),
 );
 
-import { ModelDescription } from "core";
+import { ModelDescription, Session } from "core";
 import { serializeTool } from "core/tools";
 import { grepSearchTool } from "core/tools/definitions";
 import { resolveEditorContent } from "../../components/mainInput/TipTapEditor/utils/resolveEditorContent";
@@ -439,6 +439,19 @@ describe("streamResponseThunk", () => {
     // Verify session save was called
     expect(requestSpy).toHaveBeenCalledWith("history/save", expect.anything());
 
+    // The saved session keeps the call's completion, not its prompt
+    const saveCall = requestSpy.mock.calls.find(
+      ([messageType]) => messageType === "history/save",
+    );
+    const saved = saveCall![1] as Session;
+    expect(saved.history.flatMap((item) => item.promptLogs ?? [])).toEqual([
+      {
+        completion: "Hi there!",
+        modelProvider: "anthropic",
+        modelTitle: "Claude 3.5 Sonnet",
+      },
+    ]);
+
     expect(result.type).toBe("chat/streamResponse/fulfilled");
 
     // Verify final state after thunk completion
@@ -487,7 +500,6 @@ describe("streamResponseThunk", () => {
               {
                 completion: "Hi there!",
                 modelProvider: "anthropic",
-                prompt: "Hello",
                 modelTitle: "Claude 3.5 Sonnet",
               },
             ],
@@ -849,7 +861,6 @@ describe("streamResponseThunk", () => {
                 completion: "I'll search the codebase for you.",
                 modelProvider: "anthropic",
                 modelTitle: "Claude 3.5 Sonnet",
-                prompt: "Please search the codebase",
               },
             ],
             toolCallStates: [
@@ -900,7 +911,6 @@ describe("streamResponseThunk", () => {
                 completion: "Search completed.",
                 modelProvider: "anthropic",
                 modelTitle: "Claude 3.5 Sonnet",
-                prompt: "continuing after tool",
               },
             ],
           },

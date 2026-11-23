@@ -755,3 +755,41 @@ describe("sessionSlice compaction summaries", () => {
     expect(state.contextPercentage).toBe(0.9);
   });
 });
+
+describe("sessionSlice addPromptCompletionPair", () => {
+  const { reducer, actions } = sessionSlice;
+  const call = (n: number) => ({
+    modelTitle: "Model",
+    modelProvider: "openai",
+    prompt: `the whole conversation, call ${n}`,
+    completion: `answer ${n}`,
+    usage: { promptTokens: 100 * n, completionTokens: n },
+    costUsd: 0.01 * n,
+  });
+  const state = () => ({
+    ...sessionSlice.getInitialState(),
+    history: [
+      {
+        message: { role: "assistant" as const, content: "", id: "a1" },
+        contextItems: [],
+      },
+    ],
+  });
+
+  it("stores the call's completion, usage and cost without its prompt", () => {
+    const next = reducer(state(), actions.addPromptCompletionPair([call(1)]));
+
+    const { prompt, ...withoutPrompt } = call(1);
+    expect(next.history[0].promptLogs).toEqual([withoutPrompt]);
+  });
+
+  it("appends each call in order", () => {
+    let next = reducer(state(), actions.addPromptCompletionPair([call(1)]));
+    next = reducer(next, actions.addPromptCompletionPair([call(2)]));
+
+    expect(next.history[0].promptLogs?.map((log) => log.completion)).toEqual([
+      "answer 1",
+      "answer 2",
+    ]);
+  });
+});

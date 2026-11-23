@@ -96,6 +96,13 @@ export class HistoryManager {
       }
       const session: Session = JSON.parse(fs.readFileSync(sessionFile, "utf8"));
       session.sessionId = sessionId;
+      // Earlier versions stored each model call's full prompt, hundreds of MB
+      // in a long session; the next save writes the session without them
+      for (const item of session.history) {
+        for (const log of item.promptLogs ?? []) {
+          delete log.prompt;
+        }
+      }
       return session;
     } catch (e) {
       console.log(`Error loading session: ${e}`);

@@ -83,6 +83,21 @@ export const dataSchema = z.object({
 export type DataDestination = z.infer<typeof dataSchema>;
 export type DataLogLevel = z.infer<typeof dataLevel>;
 
+/**
+ * The shared parser for NEXTCLI_TRACE, used by cn's trace and core's local
+ * dev-data logging. `basic` means timings, counts and names without content;
+ * `full` adds content (prompts, completions, file text) where the caller
+ * records it, and cn traces it as basic for now. Unset or unknown is off.
+ */
+export type TraceLevel = "basic" | "full";
+
+export function parseTraceLevel(
+  raw: string | undefined,
+): TraceLevel | undefined {
+  const level = raw?.trim().toLowerCase();
+  return level === "basic" || level === "full" ? level : undefined;
+}
+
 // Schemas for data that the log function should have
 // In order to build event bodies for ALL versions of an event
 const devEventAllVersionDataSchemas = z.object({
