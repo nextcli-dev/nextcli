@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { useAppSelector } from "../redux/hooks";
+import { selectContextMeasure } from "../redux/selectors/selectContextMeasure";
 import { selectSelectedChatModel } from "../redux/slices/configSlice";
 import {
   formatTokens,
@@ -249,7 +250,7 @@ function ContextTab({
       {near && (
         <div className="border-warning rounded border border-solid px-2.5 py-2">
           <b className="text-warning">Close to the pruning point.</b>{" "}
-          {`The next request uses ${percent(snapshot.used, snapshot.threshold.tokens)}% of the ${formatTokens(snapshot.threshold.tokens)} before older messages are left out. Compacting replaces them with a summary.`}
+          {`The last request used ${percent(snapshot.used, snapshot.threshold.tokens)}% of the ${formatTokens(snapshot.threshold.tokens)} before older messages are left out, and the next one also sends its reply. Compacting replaces older messages with a summary.`}
         </div>
       )}
       {isPruned && (
@@ -297,7 +298,7 @@ function ContextTab({
 
       <section className="flex flex-col gap-2">
         <h3 className={SECTION_TITLE}>
-          <span>What fills the next request</span>
+          <span>What filled the last request</span>
           <span className="text-description-muted font-normal normal-case tracking-normal">
             tokens
           </span>
@@ -313,7 +314,7 @@ function ContextTab({
         </div>
         {toolResults && percent(toolResults.tokens, snapshot.used) > 0 && (
           <p className="text-description m-0">
-            {`Tool results are ${percent(toolResults.tokens, snapshot.used)}% of the next request. Compacting replaces older ones with a summary.`}
+            {`Tool results were ${percent(toolResults.tokens, snapshot.used)}% of the last request. Compacting replaces older ones with a summary.`}
           </p>
         )}
       </section>
@@ -395,30 +396,39 @@ function ContextTab({
 
       <section className="flex flex-col gap-2">
         <h3 className={SECTION_TITLE}>
-          <span>Requests</span>
+          <span>Last request</span>
         </h3>
         <div className="grid grid-cols-2 gap-2">
           <div className="border-border flex min-w-0 flex-col gap-0.5 rounded border border-solid px-2.5 py-2">
-            <span className="text-description text-xs">Next request</span>
+            <span className="text-description text-xs">
+              Estimated by NextCLI
+            </span>
             <span className="text-base font-semibold tabular-nums">
               {exact(snapshot.used)}
             </span>
             <span className="text-description-muted text-xs">
-              Estimated by NextCLI
+              Before it was sent
             </span>
           </div>
           <div className="border-border flex min-w-0 flex-col gap-0.5 rounded border border-solid px-2.5 py-2">
-            <span className="text-description text-xs">Last request</span>
+            <span className="text-description text-xs">
+              Counted by the provider
+            </span>
             <span className="text-base font-semibold tabular-nums">
               {lastUsage ? exact(lastUsage.promptTokens) : "—"}
             </span>
             <span className="text-description-muted text-xs tabular-nums">
               {lastUsage
-                ? `Provider count · output ${exact(lastUsage.completionTokens)}`
+                ? `Prompt · reply ${exact(lastUsage.completionTokens)}`
                 : "The provider sent no count"}
             </span>
           </div>
         </div>
+        {lastUsage && (
+          <p className="text-description m-0">
+            {`The next request also sends this reply, about ${exact(lastUsage.completionTokens)} more tokens, plus any new tool output.`}
+          </p>
+        )}
       </section>
     </div>
   );
@@ -648,12 +658,10 @@ function SessionTab({
 export default function ContextPage() {
   const navigate = useNavigate();
   const [tab, setTab] = useState<"context" | "session">("context");
-  const snapshot = useAppSelector((state) => state.session.contextSnapshot);
+  // Empty after a change of chat model or mode, as in the ring
+  const { snapshot, isPruned, contextPercentage } =
+    useAppSelector(selectContextMeasure);
   const history = useAppSelector((state) => state.session.history);
-  const isPruned = useAppSelector((state) => !!state.session.isPruned);
-  const contextPercentage = useAppSelector(
-    (state) => state.session.contextPercentage,
-  );
   const inUseTitle = useAppSelector(selectSelectedChatModel)?.title;
 
   const tabButton = (id: "context" | "session", label: string) => (

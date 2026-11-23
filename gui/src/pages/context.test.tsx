@@ -4,8 +4,10 @@ import { describe, expect, it } from "vitest";
 import { MockIdeMessenger } from "../context/MockIdeMessenger";
 import {
   newSession,
+  setContextMeasuredFor,
   setContextSnapshot,
   setIsPruned,
+  setMode,
 } from "../redux/slices/sessionSlice";
 import { setupStore } from "../redux/store";
 import { renderWithProviders } from "../util/test/render";
@@ -197,8 +199,30 @@ describe("ContextPage", () => {
     expect(screen.getByText("· response 2")).toBeInTheDocument();
     expect(screen.getByText("Pruning starts at")).toBeInTheDocument();
     expect(screen.getByText("862,000")).toBeInTheDocument();
-    // The last request is the provider's count, kept apart from the estimate
+    // Both figures are the last request: estimated, and counted by the provider
+    expect(screen.getByText("Estimated by NextCLI")).toBeInTheDocument();
     expect(screen.getByText("38,472")).toBeInTheDocument();
+    // The next request also sends that reply, which neither figure includes
+    expect(
+      screen.getByText(/next request also sends this reply, about 920 more/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Next request/)).toBeNull();
+  });
+
+  it("drops the breakdown after a change of mode, until the next request", async () => {
+    const { ideMessenger, store } = setup();
+    store.dispatch(setContextSnapshot(SNAPSHOT));
+    store.dispatch(setContextMeasuredFor({ model: "Qwen 4.0", mode: "agent" }));
+    store.dispatch(setMode("chat"));
+    await renderWithProviders(<ContextPage />, {
+      store,
+      mockIdeMessenger: ideMessenger,
+    });
+
+    expect(
+      screen.getByText(/Measured when you send the next message/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("5% full")).toBeNull();
   });
 
   it("explains a pruned request", async () => {

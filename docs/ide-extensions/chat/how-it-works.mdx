@@ -76,13 +76,13 @@ The summary appears under the response it covers. The latest one comes after a *
 
 **View report** opens a page with two tabs.
 
-**Context window** shows what the next request will carry:
+**Context window** shows what the last request carried. After you switch the chat model or the mode, it is empty, like the ring, until the next request:
 
 - How full the window is, with the pruning point marked on the bar. A banner appears near the pruning point and once older messages are left out.
 - The system prompt, tool definitions and conversation, largest parts first. Click a row to open it; long lists show the five largest with **Show all**. The conversation includes tool results, often its largest part. These counts are estimates.
 - The largest tool results, with the response that made each call.
 - How the pruning point is worked out: the model window, minus the space reserved for the reply, minus a safety buffer. When the model has no known window, the window is the 128,000 default.
-- The estimate for the next request beside the provider's count for the last one. The two differ because the next request also carries the last response and any new tool output.
+- NextCLI's estimate for the last request beside the provider's count of the same request. The next request is larger: it also sends the last reply and any new tool output.
 
 **Session usage** shows what each model used in the session: requests, input, cached and output tokens, and cost. The counts come from what the provider reported for each chat response. A response whose price isn't known shows no cost rather than $0, and a model running on your machine isn't priced. Compaction summaries and session titles aren't counted, and responses saved before this version have no cost.
 

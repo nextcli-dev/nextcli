@@ -54,16 +54,13 @@ function isSummaryInUse(state: SessionState, index: number): boolean {
 
 /**
  * Both measures fall short of what requests send once the summary between
- * them is gone, so the larger is the closer one
+ * them is gone, so the larger is the closer one. It is kept whole: its
+ * pruned flag belongs to its own breakdown, not to the other request's.
  */
 function largerMeasure(a: ContextMeasure, b: ContextMeasure): ContextMeasure {
   const aScore = a.contextPercentage ?? -1;
   const bScore = b.contextPercentage ?? -1;
-  const larger = aScore >= bScore ? a : b;
-  return {
-    ...larger,
-    isPruned: !!(a.isPruned || b.isPruned),
-  };
+  return aScore >= bScore ? a : b;
 }
 
 /**
@@ -264,6 +261,11 @@ type SessionState = {
   streamThinkingHidden?: boolean;
   contextPercentage?: number;
   contextSnapshot?: import("core").CompiledMessagesResult["snapshot"];
+  /**
+   * The chat model (by title) and mode the measure was taken for. Another
+   * model or mode sends a different request, so the measure doesn't apply.
+   */
+  contextMeasuredFor?: { model: string; mode: MessageModes };
   inlineErrorMessage?: InlineErrorMessageType;
   /** Compactions in progress, by the id of the message they summarize */
   compactionLoading: Record<string, boolean>;
@@ -278,7 +280,7 @@ type SessionState = {
 
 type ContextMeasure = Pick<
   SessionState,
-  "isPruned" | "contextPercentage" | "contextSnapshot"
+  "isPruned" | "contextPercentage" | "contextSnapshot" | "contextMeasuredFor"
 >;
 
 export interface UndoneTurn {
@@ -560,6 +562,7 @@ export const sessionSlice = createSlice({
         state.isPruned = false;
         state.contextPercentage = undefined;
         state.contextSnapshot = undefined;
+        state.contextMeasuredFor = undefined;
       }
     },
     truncateHistoryFrom: (state, action: PayloadAction<number>) => {
@@ -568,6 +571,7 @@ export const sessionSlice = createSlice({
       state.isPruned = false;
       state.contextPercentage = undefined;
       state.contextSnapshot = undefined;
+      state.contextMeasuredFor = undefined;
     },
     appendHistory: (
       state,
@@ -585,6 +589,7 @@ export const sessionSlice = createSlice({
       state.isPruned = false;
       state.contextPercentage = undefined;
       state.contextSnapshot = undefined;
+      state.contextMeasuredFor = undefined;
     },
     setConversationSummary: (
       state,
@@ -608,6 +613,7 @@ export const sessionSlice = createSlice({
         isPruned: state.isPruned,
         contextPercentage: state.contextPercentage,
         contextSnapshot: state.contextSnapshot,
+        contextMeasuredFor: state.contextMeasuredFor,
       };
       const before = state.contextBeforeSummary[messageId];
       state.contextBeforeSummary[messageId] = before
@@ -617,6 +623,7 @@ export const sessionSlice = createSlice({
       state.isPruned = false;
       state.contextPercentage = undefined;
       state.contextSnapshot = undefined;
+      state.contextMeasuredFor = undefined;
     },
     deleteCompaction: (state, action: PayloadAction<{ messageId: string }>) => {
       const { messageId } = action.payload;
@@ -637,10 +644,12 @@ export const sessionSlice = createSlice({
           isPruned: state.isPruned,
           contextPercentage: state.contextPercentage,
           contextSnapshot: state.contextSnapshot,
+          contextMeasuredFor: state.contextMeasuredFor,
         });
         state.isPruned = restored.isPruned;
         state.contextPercentage = restored.contextPercentage;
         state.contextSnapshot = restored.contextSnapshot;
+        state.contextMeasuredFor = restored.contextMeasuredFor;
       }
     },
     updateHistoryItemAtIndex: (
@@ -900,6 +909,7 @@ export const sessionSlice = createSlice({
       state.isPruned = false;
       state.contextPercentage = undefined;
       state.contextSnapshot = undefined;
+      state.contextMeasuredFor = undefined;
 
       if (payload) {
         state.history = payload.history as any;
@@ -1210,6 +1220,14 @@ export const sessionSlice = createSlice({
       action: PayloadAction<SessionState["contextSnapshot"]>,
     ) => {
       state.contextSnapshot = action.payload;
+      // A new measure; setContextMeasuredFor says what it was taken for
+      state.contextMeasuredFor = undefined;
+    },
+    setContextMeasuredFor: (
+      state,
+      action: PayloadAction<SessionState["contextMeasuredFor"]>,
+    ) => {
+      state.contextMeasuredFor = action.payload;
     },
   },
   selectors: {
@@ -1304,6 +1322,7 @@ export const {
   setIsPruned,
   setContextPercentage,
   setContextSnapshot,
+  setContextMeasuredFor,
   setCompactionLoading,
   setStreamThinkingHidden,
 } = sessionSlice.actions;

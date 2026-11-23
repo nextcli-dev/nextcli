@@ -1,6 +1,6 @@
-import { useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAppSelector } from "../../redux/hooks";
+import { selectContextMeasure } from "../../redux/selectors/selectContextMeasure";
 import {
   useCanCompact,
   useCompactConversation,
@@ -32,27 +32,13 @@ function wedgePath(ratio: number): string {
 
 const ContextStatus = () => {
   const navigate = useNavigate();
-  const contextPercentage = useAppSelector(
-    (state) => state.session.contextPercentage,
-  );
-  const snapshot = useAppSelector((state) => state.session.contextSnapshot);
-  const pruned = useAppSelector((state) => state.session.isPruned);
+  // Empty after a change of chat model or mode, until the next request
+  const {
+    snapshot,
+    contextPercentage,
+    isPruned: pruned,
+  } = useAppSelector(selectContextMeasure);
   const history = useAppSelector((state) => state.session.history);
-  const selectedChatModel = useAppSelector(
-    (state) => state.config.config.selectedModelByRole.chat?.model,
-  );
-  const previousHistoryLength = useRef<number | null>(null);
-  const previousSelectedChatModel = useRef<string | null>(null);
-
-  const modelChanged = useMemo(() => {
-    if (!selectedChatModel) return false;
-    if (previousHistoryLength.current !== history.length) {
-      previousHistoryLength.current = history.length;
-      previousSelectedChatModel.current = selectedChatModel;
-      return false;
-    }
-    return previousSelectedChatModel.current !== selectedChatModel;
-  }, [history.length, selectedChatModel]);
 
   const compactConversation = useCompactConversation();
   const canCompact = useCanCompact(history.length - 1);
@@ -60,7 +46,7 @@ const ContextStatus = () => {
     return null;
   }
 
-  const showEmpty = !snapshot || modelChanged;
+  const showEmpty = !snapshot;
   const percentOfWindow = snapshot
     ? Math.round((snapshot.used / snapshot.window) * 100)
     : 0;

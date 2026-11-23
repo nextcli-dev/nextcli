@@ -249,6 +249,10 @@ describe("streamResponseThunk", () => {
         },
       },
       {
+        type: "session/setContextMeasuredFor",
+        payload: { model: "Claude 3.5 Sonnet", mode: "agent" },
+      },
+      {
         type: "symbols/updateFromContextItems/fulfilled",
         meta: expect.objectContaining({
           arg: [],
@@ -455,6 +459,7 @@ describe("streamResponseThunk", () => {
           segments: [],
           largestToolResults: [],
         },
+        contextMeasuredFor: { model: "Claude 3.5 Sonnet", mode: "agent" },
         history: [
           {
             contextItems: [],
@@ -634,6 +639,7 @@ describe("streamResponseThunk", () => {
       "session/setIsPruned",
       "session/setContextPercentage",
       "session/setContextSnapshot",
+      "session/setContextMeasuredFor",
       "symbols/updateFromContextItems/fulfilled",
       "session/streamUpdate",
       "session/streamUpdate",
@@ -654,6 +660,7 @@ describe("streamResponseThunk", () => {
       "session/setIsPruned",
       "session/setContextPercentage",
       "session/setContextSnapshot",
+      "session/setContextMeasuredFor",
       "session/streamUpdate",
       "session/addPromptCompletionPair",
       "session/setInactive",
@@ -909,6 +916,7 @@ describe("streamResponseThunk", () => {
           segments: [],
           largestToolResults: [],
         },
+        contextMeasuredFor: { model: "Claude 3.5 Sonnet", mode: "agent" },
         isPruned: false,
         inlineErrorMessage: undefined,
       },
@@ -1090,6 +1098,10 @@ describe("streamResponseThunk", () => {
           segments: [],
           largestToolResults: [],
         },
+      },
+      {
+        type: "session/setContextMeasuredFor",
+        payload: { model: "Claude 3.5 Sonnet", mode: "agent" },
       },
       {
         type: "symbols/updateFromContextItems/fulfilled",
@@ -1331,10 +1343,77 @@ describe("streamResponseThunk", () => {
           segments: [],
           largestToolResults: [],
         },
+        contextMeasuredFor: { model: "Claude 3.5 Sonnet", mode: "agent" },
         inlineErrorMessage: undefined,
         isPruned: false,
         title: "Session summary",
       },
+    });
+  });
+});
+
+describe("the context measure", () => {
+  it("pairs the stored breakdown with the prompt log of the same request", async () => {
+    const initialState = getRootStateWithClaude();
+    initialState.session.history = [
+      {
+        message: { id: "1", role: "user", content: "Hello" },
+        contextItems: [],
+      },
+    ];
+    const mockStore = createMockStore(initialState);
+    const mockIdeMessenger = mockStore.mockIdeMessenger;
+
+    // Each send compiles its own breakdown, then saves its provider count
+    const send = async (used: number, promptTokens: number) => {
+      mockIdeMessenger.responses["llm/compileChat"] = {
+        compiledChatMessages: [{ role: "user", content: "Hello" }],
+        didPrune: false,
+        contextPercentage: used / 100_000,
+        snapshot: {
+          window: 128_000,
+          used,
+          threshold: { tokens: 100_000, action: "pruning", steps: [] },
+          segments: [],
+          largestToolResults: [],
+        },
+      };
+      async function* stream(): AsyncGenerator<
+        AssistantChatMessage[],
+        PromptLog
+      > {
+        yield [{ role: "assistant", content: `Answer ${used}` }];
+        return {
+          prompt: "Hello",
+          completion: `Answer ${used}`,
+          modelProvider: "anthropic",
+          modelTitle: "Claude 3.5 Sonnet",
+          usage: { promptTokens, completionTokens: 10 },
+        };
+      }
+      mockIdeMessenger.llmStreamChat = vi.fn().mockReturnValue(stream());
+      await mockStore.dispatch(
+        streamResponseThunk({
+          editorState: mockEditorState,
+          modifiers: mockModifiers,
+        }) as any,
+      );
+    };
+
+    await send(1_000, 950);
+    await send(2_000, 1_900);
+
+    const session = (mockStore.getState() as RootState).session;
+    const lastLog = [...session.history]
+      .reverse()
+      .find((item) => item.promptLogs?.length)
+      ?.promptLogs?.at(-1);
+    // The report shows both as the last request: they must be the same one
+    expect(session.contextSnapshot?.used).toBe(2_000);
+    expect(lastLog?.usage?.promptTokens).toBe(1_900);
+    expect(session.contextMeasuredFor).toEqual({
+      model: "Claude 3.5 Sonnet",
+      mode: "agent",
     });
   });
 });

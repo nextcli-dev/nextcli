@@ -157,8 +157,39 @@ function countTokens(
 }
 
 // https://community.openai.com/t/how-to-calculate-the-tokens-when-using-function-call/266573/10
-function countToolsTokens(tools: Tool[], modelName: string): number {
-  return countToolTokens(tools, (text) => countTokens(text, modelName)).total;
+// Raw tokenizer lengths, as tool schemas were always counted (and as cn
+// counts them): the per-model multiplier is for message text, and applying
+// it to each schema would also round each one up.
+function countToolsTokens(
+  tools: Tool[],
+  modelName: string,
+): { total: number; perTool: number[] } {
+  return countToolTokens(tools, (text) => countEncoded(text, modelName));
+}
+
+/**
+ * Shares `total` across parts in proportion to their own counts, the
+ * largest remainders rounding up, so the parts add up to it
+ */
+function apportion(total: number, counts: number[]): number[] {
+  const sum = counts.reduce((acc, count) => acc + count, 0);
+  if (sum === 0) {
+    return counts.map(() => 0);
+  }
+  const exact = counts.map((count) => (count / sum) * total);
+  const shares = exact.map(Math.floor);
+  let left = total - shares.reduce((acc, share) => acc + share, 0);
+  const byRemainder = exact
+    .map((value, index) => ({ index, remainder: value - shares[index] }))
+    .sort((a, b) => b.remainder - a.remainder);
+  for (const { index } of byRemainder) {
+    if (left <= 0) {
+      break;
+    }
+    shares[index] += 1;
+    left -= 1;
+  }
+  return shares;
 }
 
 function countChatMessageTokens(
@@ -429,18 +460,26 @@ function compileSnapshot(input: {
       input.systemMsg && typeof input.systemMsg.content === "string"
         ? input.systemMsg.content
         : "";
-    const children: ContextSegment[] = [];
+    // Each slice counted alone costs a little more than the whole text (each
+    // is rounded up after the model's multiplier), so the parts share the
+    // count of the text they cover and add up to it
+    const parts = input.systemParts ?? [];
     let cursor = 0;
-    for (const [index, part] of (input.systemParts ?? []).entries()) {
+    const sliceCounts = parts.map((part) => {
       const slice = text.slice(cursor, cursor + part.chars);
-      children.push({
-        id: `system-${index}`,
-        label: part.label,
-        tokens: countTokens(slice, input.modelName),
-        source: "estimated",
-      });
       cursor += part.chars;
-    }
+      return countTokens(slice, input.modelName);
+    });
+    const shares = apportion(
+      countTokens(text.slice(0, cursor), input.modelName),
+      sliceCounts,
+    );
+    const children: ContextSegment[] = parts.map((part, index) => ({
+      id: `system-${index}`,
+      label: part.label,
+      tokens: shares[index],
+      source: "estimated",
+    }));
     segments.push({
       id: "system",
       label: "System prompt",
@@ -623,9 +662,7 @@ function compileChatMessages({
   let toolTokens = 0;
   let perTool: number[] = [];
   if (tools && tools.length > 0) {
-    const counted = countToolTokens(tools, (text) =>
-      countTokens(text, modelName),
-    );
+    const counted = countToolsTokens(tools, modelName);
     toolTokens = counted.total;
     perTool = counted.perTool;
   }
@@ -770,7 +807,7 @@ function maxTokensThatFit({
     messages.reduce(
       (sum, message) => sum + countChatMessageTokens(modelName, message),
       0,
-    ) + (tools ? countToolsTokens(tools, modelName) : 0);
+    ) + (tools ? countToolsTokens(tools, modelName).total : 0);
   const left =
     contextLength - getTokenCountingBufferSafety(contextLength) - inputTokens;
   return Math.min(

@@ -15,6 +15,7 @@ import {
   errorToolCall,
   setActive,
   setAppliedRulesAtIndex,
+  setContextMeasuredFor,
   setContextPercentage,
   setContextSnapshot,
   setInactive,
@@ -236,6 +237,12 @@ export const streamNormalInput = createAsyncThunk<
     dispatch(setIsPruned(didPrune));
     dispatch(setContextPercentage(contextPercentage));
     dispatch(setContextSnapshot(snapshot));
+    dispatch(
+      setContextMeasuredFor({
+        model: selectedChatModel.title,
+        mode: state.session.mode,
+      }),
+    );
 
     const start = Date.now();
     const streamAborter = state.session.streamAborter;

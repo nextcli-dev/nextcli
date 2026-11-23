@@ -347,6 +347,69 @@ describe("compileChatMessages", () => {
       );
     });
 
+    test("counts tool schemas without the model's multiplier", () => {
+      const tools = Array.from({ length: 40 }, (_, i) => ({
+        type: "function" as const,
+        displayTitle: `Tool ${i}`,
+        readonly: true,
+        group: "Built-In",
+        function: {
+          name: `tool_${i}`,
+          description: `Does thing number ${i}`,
+          parameters: {
+            type: "object" as const,
+            properties: { path: { type: "string", description: "A path" } },
+          },
+        },
+      }));
+      const toolsSegment = (modelName: string) =>
+        compileChatMessages({
+          modelName,
+          msgs: [{ role: "user", content: "hi" }],
+          knownContextLength: CONTEXT_LENGTH,
+          maxTokens: MAX_TOKENS,
+          supportsImages: false,
+          tools: tools as any,
+          includeSnapshot: true,
+        }).snapshot!.segments.find((s) => s.id === "tools")!.tokens;
+
+      // Claude counts text with GPT-4's tokenizer, then x1.23 for messages
+      expect(toolsSegment("claude-sonnet-4-5")).toBe(toolsSegment("gpt-4"));
+    });
+
+    test("shares the system prompt's count across its parts, so they add up", () => {
+      const parts = [
+        "You are a coding agent. Follow the user's instructions carefully.",
+        "\n\nAlways run the tests before you say a change is done.",
+        "\n\nPrefer small diffs. Never edit generated files in dist/.",
+        "\n\nWrite commit messages in the imperative mood.",
+      ];
+      const text = parts.join("");
+      const compiled = compileChatMessages({
+        modelName: "claude-sonnet-4-5",
+        msgs: [
+          { role: "system", content: text },
+          { role: "user", content: "hi" },
+        ],
+        knownContextLength: CONTEXT_LENGTH,
+        maxTokens: MAX_TOKENS,
+        supportsImages: false,
+        systemParts: parts.map((part, i) => ({
+          label: `Part ${i}`,
+          chars: part.length,
+        })),
+        includeSnapshot: true,
+      });
+      const system = compiled.snapshot!.segments.find(
+        (s) => s.id === "system",
+      )!;
+      const childSum = system.children!.reduce((sum, c) => sum + c.tokens, 0);
+
+      expect(childSum).toBe(countTokens(text, "claude-sonnet-4-5"));
+      // What's left is the message framing, never negative
+      expect(system.tokens - childSum).toBeGreaterThan(0);
+    });
+
     test("counts tool results in the conversation and names the call each answers", () => {
       const compiled = compileChatMessages({
         modelName: MODEL,

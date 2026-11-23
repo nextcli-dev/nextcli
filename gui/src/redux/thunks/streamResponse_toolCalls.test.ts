@@ -271,6 +271,7 @@ describe("streamResponseThunk - tool calls", () => {
       "session/setIsPruned",
       "session/setContextPercentage",
       "session/setContextSnapshot",
+      "session/setContextMeasuredFor",
       "symbols/updateFromContextItems/fulfilled",
       "session/streamUpdate",
       "session/streamUpdate",
@@ -291,6 +292,7 @@ describe("streamResponseThunk - tool calls", () => {
       "session/setIsPruned",
       "session/setContextPercentage",
       "session/setContextSnapshot",
+      "session/setContextMeasuredFor",
       "session/streamUpdate",
       "session/addPromptCompletionPair",
       "session/setInactive",
@@ -557,6 +559,7 @@ describe("streamResponseThunk - tool calls", () => {
           segments: [],
           largestToolResults: [],
         },
+        contextMeasuredFor: { model: "Claude 3.5 Sonnet", mode: "agent" },
         isPruned: false,
         title: "Session summary",
         inlineErrorMessage: undefined,
@@ -770,6 +773,10 @@ describe("streamResponseThunk - tool calls", () => {
           segments: [],
           largestToolResults: [],
         },
+      },
+      {
+        type: "session/setContextMeasuredFor",
+        payload: { model: "Claude 3.5 Sonnet", mode: "agent" },
       },
       {
         type: "symbols/updateFromContextItems/fulfilled",
@@ -1082,6 +1089,7 @@ describe("streamResponseThunk - tool calls", () => {
           segments: [],
           largestToolResults: [],
         },
+        contextMeasuredFor: { model: "Claude 3.5 Sonnet", mode: "agent" },
         isPruned: false,
         title: "Session summary",
         inlineErrorMessage: undefined,
@@ -1349,6 +1357,10 @@ describe("streamResponseThunk - tool calls", () => {
           segments: [],
           largestToolResults: [],
         },
+      },
+      {
+        type: "session/setContextMeasuredFor",
+        payload: { model: "Claude 3.5 Sonnet", mode: "agent" },
       },
       {
         type: "symbols/updateFromContextItems/fulfilled",
@@ -1657,6 +1669,10 @@ describe("streamResponseThunk - tool calls", () => {
         },
       },
       {
+        type: "session/setContextMeasuredFor",
+        payload: { model: "Claude 3.5 Sonnet", mode: "agent" },
+      },
+      {
         type: "session/streamUpdate",
         payload: [
           {
@@ -1943,6 +1959,7 @@ describe("streamResponseThunk - tool calls", () => {
           segments: [],
           largestToolResults: [],
         },
+        contextMeasuredFor: { model: "Claude 3.5 Sonnet", mode: "agent" },
         inlineErrorMessage: undefined,
         isPruned: false,
       },
