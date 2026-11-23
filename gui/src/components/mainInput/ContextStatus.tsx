@@ -197,7 +197,8 @@ const ContextStatus = () => {
       <HoverItem>
         <svg
           viewBox="0 0 24 24"
-          className={`h-3 w-3 hover:brightness-125 ${colorClass}`}
+          // Block, so the toolbar centres the ring itself, not a text line
+          className={`block h-3 w-3 hover:brightness-125 ${colorClass}`}
           aria-label="Context"
         >
           <circle

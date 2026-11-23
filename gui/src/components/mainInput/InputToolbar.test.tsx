@@ -1,3 +1,4 @@
+import { screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MockIdeMessenger } from "../../context/MockIdeMessenger";
@@ -23,7 +24,7 @@ describe("InputToolbar", () => {
     vi.unstubAllGlobals();
   });
 
-  it("puts the context ring in the same group as the attach-context icon", async () => {
+  it("puts the context ring on the right, before Active file", async () => {
     const ideMessenger = new MockIdeMessenger();
     const store = setupStore({ ideMessenger });
     store.dispatch(
@@ -39,22 +40,20 @@ describe("InputToolbar", () => {
         ] as any,
       }),
     );
-    const onAddContextItem = vi.fn();
-    const { container, user } = await renderWithProviders(
-      <InputToolbar activeKey={null} onAddContextItem={onAddContextItem} />,
+    const { container } = await renderWithProviders(
+      <InputToolbar activeKey={null} />,
       { store, mockIdeMessenger: ideMessenger },
     );
 
     const ring = container.querySelector('svg[aria-label="Context"]');
     expect(ring).not.toBeNull();
-    // With no image support, the only other icon in the ring's group is
-    // attach context: clicking it must open the context menu
+    // Where the old context indicator was: the send-options group, first
     const group = ring!.closest("div")!;
-    const others = [...group.querySelectorAll("svg")].filter(
-      (svg) => svg !== ring,
-    );
-    expect(others).toHaveLength(1);
-    await user.click(others[0]);
-    expect(onAddContextItem).toHaveBeenCalledTimes(1);
+    const activeFile = screen.getByText(/Active file/);
+    expect(group.contains(activeFile)).toBe(true);
+    expect(
+      ring!.compareDocumentPosition(activeFile) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });
