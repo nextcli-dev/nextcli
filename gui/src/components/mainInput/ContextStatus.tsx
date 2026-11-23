@@ -86,12 +86,12 @@ const ContextStatus = () => {
             )}
             {snapshot?.segments.map((segment) => (
               <span key={segment.id}>
-                {`${segment.label}  ${segment.tokens}  ${segment.source}`}
+                {`${segment.label}  ${segment.tokens}`}
               </span>
             ))}
             {lastUsage && (
               <span>
-                {`Measured prompt ${lastUsage.promptTokens} · output ${lastUsage.completionTokens}`}
+                {`Prompt ${lastUsage.promptTokens} · output ${lastUsage.completionTokens}`}
               </span>
             )}
             <span

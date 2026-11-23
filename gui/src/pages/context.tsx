@@ -14,7 +14,7 @@ type Segment = {
 function rows(segments: Segment[], indent = 0): JSX.Element[] {
   return segments.flatMap((segment) => [
     <div key={segment.id} style={{ paddingLeft: indent }}>
-      {segment.label} {segment.tokens.toLocaleString("en-US")} {segment.source}
+      {segment.label} {segment.tokens.toLocaleString("en-US")}
     </div>,
     ...(segment.children ? rows(segment.children, indent + 12) : []),
   ]);
@@ -44,7 +44,7 @@ export default function ContextPage() {
             <p className="mt-3 font-bold">Largest tool results</p>
             {snapshot.largestToolResults.map((result) => (
               <div key={`${result.label}-${result.tokens}`}>
-                {result.label} {result.tokens.toLocaleString("en-US")} estimated
+                {result.label} {result.tokens.toLocaleString("en-US")}
               </div>
             ))}
             <p className="mt-3 font-bold">Threshold</p>
@@ -55,7 +55,7 @@ export default function ContextPage() {
             ))}
             {usage && (
               <p className="mt-3">
-                {`Measured prompt ${usage.promptTokens.toLocaleString("en-US")} · output ${usage.completionTokens.toLocaleString("en-US")}`}
+                {`Prompt ${usage.promptTokens.toLocaleString("en-US")} · output ${usage.completionTokens.toLocaleString("en-US")}`}
               </p>
             )}
           </>
