@@ -48,6 +48,9 @@ export class DataLogger {
   core?: Core;
   ideSettingsPromise?: Promise<IdeSettings>;
   ideInfoPromise?: Promise<IdeInfo>;
+  // The latest append to each local file. Callers don't await logDevData and
+  // a large line is written in chunks, so appends to one file run in turn.
+  private appends = new Map<string, Promise<void>>();
 
   private constructor() {}
 
@@ -122,10 +125,16 @@ export class DataLogger {
           event.name,
           LOCAL_DEV_DATA_VERSION,
         );
-        await fs.promises.appendFile(
-          filepath,
-          `${JSON.stringify(parsed.data)}\n`,
+        const line = `${JSON.stringify(parsed.data)}\n`;
+        const append = (this.appends.get(filepath) ?? Promise.resolve()).then(
+          () => fs.promises.appendFile(filepath, line),
         );
+        // A failed append is reported below and doesn't stop the next one
+        this.appends.set(
+          filepath,
+          append.catch(() => {}),
+        );
+        await append;
       }
     } catch (error) {
       console.error("Error logging local dev data:", error);
