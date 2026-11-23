@@ -52,6 +52,14 @@ export const clearDocumentContentCache = (uri: string): void => {
   documentContentCache.delete(uri);
 };
 
+/**
+ * Drops every cached document, e.g. when Next Edit is deactivated and
+ * edit tracking stops.
+ */
+export const clearAllDocumentContentCache = (): void => {
+  documentContentCache.clear();
+};
+
 export const getBeforeCursorPos = (range: Range, activePos: Position) => {
   // whichever side of the range isn't active is the before position
   if (
@@ -85,9 +93,7 @@ export const handleTextDocumentChange = async (
 ) => {
   const changes = event.contentChanges;
   const editor = vscode.window.activeTextEditor;
-  const { config } = await configHandler.loadConfig();
 
-  // if (!config?.experimental?.logEditingData) return;
   if (!editor) {
     return;
   }
@@ -139,4 +145,28 @@ export const handleTextDocumentChange = async (
     recentlyEditedRanges,
     recentlyVisitedRanges,
   };
+};
+
+/**
+ * Tracks a document edit for Next Edit, but only while Next Edit is active.
+ * While it is inactive nothing reads the edit history or the autocomplete
+ * context this feeds, so no config is loaded and no document text is copied.
+ */
+export const trackDocumentEdit = async (
+  event: vscode.TextDocumentChangeEvent,
+  configHandler: ConfigHandler,
+  ide: IDE,
+  completionProvider: ContinueCompletionProvider,
+  getDefinitionsFromLsp: GetLspDefinitionsFunction,
+) => {
+  if (!completionProvider?.nextEditActive) {
+    return;
+  }
+  return handleTextDocumentChange(
+    event,
+    configHandler,
+    ide,
+    completionProvider,
+    getDefinitionsFromLsp,
+  );
 };

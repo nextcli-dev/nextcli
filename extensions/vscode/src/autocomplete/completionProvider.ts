@@ -73,6 +73,11 @@ export class ContinueCompletionProvider
   private isNextEditActive: boolean = false;
   private usingFullFileDiff: boolean = true;
 
+  /** The runtime Next Edit state, the one flag edit tracking gates on. */
+  public get nextEditActive(): boolean {
+    return this.isNextEditActive;
+  }
+
   public activateNextEdit() {
     this.isNextEditActive = true;
   }

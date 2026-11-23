@@ -1,3 +1,5 @@
+import { parseTraceLevel } from "@nextcli/config-yaml";
+
 import { IDE, Position } from "../..";
 import { AutocompleteCodeSnippet } from "../../autocomplete/snippets/types";
 import { GetLspDefinitionsFunction } from "../../autocomplete/types";
@@ -79,9 +81,12 @@ export const processNextEditData = async ({
 
   NextEditProvider.getInstance().addAutocompleteContext(autocompleteContext);
 
-  // console.log(
-  //   createDiff(beforeContent, afterContent, filePath, DiffFormatType.Unified),
-  // );
+  // The nextEditWithHistory log and the prev-edit cache that only feeds it
+  // run only with NEXTCLI_TRACE set (#216). The autocomplete context above
+  // stays on: Instinct's prompt reads it.
+  if (!parseTraceLevel(process.env.NEXTCLI_TRACE)) {
+    return;
+  }
 
   let filenamesAndDiffs: filenameAndDiff[] = [];
 
