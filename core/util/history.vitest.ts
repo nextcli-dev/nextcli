@@ -3,6 +3,7 @@ import fs from "fs";
 import { v4 as uuidv4 } from "uuid";
 import { describe, expect, it } from "vitest";
 
+import { Session } from "..";
 import historyManager from "./history";
 import { getSessionFilePath } from "./paths";
 
@@ -107,5 +108,66 @@ describe("HistoryManager and model-call prompts", () => {
     const file = fs.readFileSync(getSessionFilePath(sessionId), "utf8");
     expect(file).not.toContain(PROMPT_TEXT);
     expect(historyManager.load(sessionId)).toEqual(loaded);
+  });
+
+  // cn --resume and /import parse a session file themselves, prompts included
+  it("save writes no prompt that is still on the session", () => {
+    const sessionId = uuidv4();
+    writeSessionWithPrompts(sessionId);
+    const session: Session = JSON.parse(
+      fs.readFileSync(getSessionFilePath(sessionId), "utf8"),
+    );
+
+    historyManager.save(session);
+
+    const file = fs.readFileSync(getSessionFilePath(sessionId), "utf8");
+    expect(file).not.toContain(PROMPT_TEXT);
+    expect(file).toContain("Reading the file");
+  });
+
+  // An empty session under the same id would replace the file on its next save
+  describe("a session file that isn't the expected shape still loads", () => {
+    const writeRaw = (sessionId: string, session: object) =>
+      fs.writeFileSync(getSessionFilePath(sessionId), JSON.stringify(session));
+
+    it("keeps entries that aren't objects", () => {
+      const sessionId = uuidv4();
+      writeRaw(sessionId, {
+        sessionId,
+        title: "Odd entries",
+        workspaceDirectory: "/workspace",
+        history: [
+          null,
+          {
+            message: { role: "assistant", content: "Done" },
+            contextItems: [],
+            promptLogs: [null, { prompt: PROMPT_TEXT, completion: "Done" }],
+          },
+        ],
+      });
+
+      const loaded = historyManager.load(sessionId);
+
+      expect(loaded.title).toBe("Odd entries");
+      expect(loaded.history[0]).toBeNull();
+      expect(loaded.history[1].promptLogs).toEqual([
+        null,
+        { completion: "Done" },
+      ]);
+    });
+
+    it("keeps a session saved without a history", () => {
+      const sessionId = uuidv4();
+      writeRaw(sessionId, {
+        sessionId,
+        title: "No history",
+        workspaceDirectory: "/workspace",
+      });
+
+      const loaded = historyManager.load(sessionId);
+
+      expect(loaded.title).toBe("No history");
+      expect(loaded.history).toEqual([]);
+    });
   });
 });

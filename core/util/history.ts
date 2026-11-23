@@ -21,6 +21,34 @@ function safeParseArray<T>(
   }
 }
 
+/**
+ * The history without each model call's prompt. The prompt is the whole
+ * conversation again, so earlier versions' sessions held hundreds of MB of
+ * them. Both load and save drop it: cn --resume and /import read session
+ * files without load. A file can hold anything, so entries that aren't
+ * objects stay as they are: a throw here would load the session empty. A
+ * history that isn't an array becomes an empty one, as callers spread it.
+ */
+function withoutPrompts(history: Session["history"]): Session["history"] {
+  if (!Array.isArray(history)) {
+    return [];
+  }
+  return history.map((item) =>
+    Array.isArray(item?.promptLogs)
+      ? {
+          ...item,
+          promptLogs: item.promptLogs.map((log) => {
+            if (!log || typeof log !== "object") {
+              return log;
+            }
+            const { prompt, ...rest } = log;
+            return rest;
+          }),
+        }
+      : item,
+  );
+}
+
 export class HistoryManager {
   list(options: ListHistoryOptions): BaseSessionMetadata[] {
     const filepath = getSessionsListPath();
@@ -96,13 +124,7 @@ export class HistoryManager {
       }
       const session: Session = JSON.parse(fs.readFileSync(sessionFile, "utf8"));
       session.sessionId = sessionId;
-      // Earlier versions stored each model call's full prompt, hundreds of MB
-      // in a long session; the next save writes the session without them
-      for (const item of session.history) {
-        for (const log of item.promptLogs ?? []) {
-          delete log.prompt;
-        }
-      }
+      session.history = withoutPrompts(session.history);
       return session;
     } catch (e) {
       console.log(`Error loading session: ${e}`);
@@ -123,7 +145,7 @@ export class HistoryManager {
       sessionId: session.sessionId,
       title: session.title,
       workspaceDirectory: session.workspaceDirectory,
-      history: session.history,
+      history: withoutPrompts(session.history),
     };
     if (session.mode) {
       orderedSession.mode = session.mode;

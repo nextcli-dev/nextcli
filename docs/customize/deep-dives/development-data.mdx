@@ -13,11 +13,13 @@ Local dev-data logging is **off by default**. To turn it on, set the `NEXTCLI_TR
 
 | Value | What is written |
 | --- | --- |
-| unset | Nothing. No event is computed or written. |
+| unset | Nothing is written. The extension drops each event before validating it. |
 | `basic` | Events without prompts, completions or file contents (the `noCode` schema level). |
 | `full` | Events with the full content: prompts, completions and file text (the `all` level). |
 
 Events are appended as JSON lines to `~/.continue/dev_data/0.2.0/<eventName>.jsonl`. An unknown value keeps logging off and prints one warning. Files written by earlier versions stay where they are; delete them yourself if you don't want them.
+
+The chat panel still sends each model call's event, prompt included, to the extension when `NEXTCLI_TRACE` is unset; the extension discards it. Destinations in the [`data` block](#how-to-configure-custom-data-destinations) of `config.yaml` receive events whatever `NEXTCLI_TRACE` is set to, at the level each destination configures.
 
 The same variable controls `cn`'s [model-call trace](/cli/configuration#logs-and-traces), so one setting works for both. `cn` currently treats `full` as `basic` for its trace.
 

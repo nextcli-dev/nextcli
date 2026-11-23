@@ -307,6 +307,31 @@ describe("DataLogger", () => {
       );
       expect(logToOneDestinationSpy).toHaveBeenCalledTimes(1);
     });
+
+    // Callers don't await logDevData, and a large append is written in chunks
+    it("keeps each line whole when two events are written at once", async () => {
+      process.env.NEXTCLI_TRACE = "full";
+      const large: DevDataLogEvent = {
+        name: "chatInteraction",
+        data: {
+          ...TEST_AGENT_INTERACTION_EVENT.data,
+          prompt: "p".repeat(2_000_000),
+        },
+      } as DevDataLogEvent;
+
+      await Promise.all([
+        dataLogger.logDevData(large),
+        dataLogger.logDevData(TEST_AGENT_INTERACTION_EVENT),
+      ]);
+
+      const lines = fs.readFileSync(chatFile(), "utf8").trim().split("\n");
+      expect(lines).toHaveLength(2);
+      const prompts = lines.map((line) => JSON.parse(line).prompt.length);
+      expect(prompts.sort((a, b) => a - b)).toEqual([
+        "Hello, world!".length,
+        2_000_000,
+      ]);
+    });
   });
 
   // Sessions don't keep prompts, so thumbs feedback arrives without one
