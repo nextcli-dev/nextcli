@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.6.25](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.24...vscode-v1.6.25) (2026-11-23)
+
+
+### Features
+
+* **context:** add a shared context snapshot and tool-schema count ([#212](https://github.com/nextcli-dev/nextcli/issues/212)) ([84f3582](https://github.com/nextcli-dev/nextcli/commit/84f3582526e9d9e8ee8db2e7ce03eefda061dfeb))
+* **vscode:** show a context ring and what fills the window ([#214](https://github.com/nextcli-dev/nextcli/issues/214)) ([a51fb1a](https://github.com/nextcli-dev/nextcli/commit/a51fb1acb41341627884742ea32db3e5a0846812))
+
+
+### Bug Fixes
+
+* **vscode:** delete summaries by message, keep deleted chats deleted, and document compaction ([#210](https://github.com/nextcli-dev/nextcli/issues/210)) ([165fa64](https://github.com/nextcli-dev/nextcli/commit/165fa645d0b0c12180ad78cd0a309c0987582234))
+
 ## [1.6.24](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.23...vscode-v1.6.24) (2026-11-22)
 
 
