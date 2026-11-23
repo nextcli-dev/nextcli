@@ -7,6 +7,7 @@ import {
   useCompactConversation,
 } from "../../util/compactConversation";
 import { ToolTip } from "../gui/Tooltip";
+import HoverItem from "./InputToolbar/HoverItem";
 
 // Theme colours for the breakdown, in segment order (system, tools, history)
 const SEGMENT_COLORS = [
@@ -19,6 +20,25 @@ const SEGMENT_COLORS = [
 
 function segmentColor(index: number): string {
   return SEGMENT_COLORS[index % SEGMENT_COLORS.length];
+}
+
+const CENTER = 12;
+const RING_RADIUS = 8;
+
+/** A point on the ring, `ratio` of the way round clockwise from the top */
+function pointOnRing(ratio: number): { x: number; y: number } {
+  const angle = ratio * 2 * Math.PI;
+  return {
+    x: CENTER + RING_RADIUS * Math.sin(angle),
+    y: CENTER - RING_RADIUS * Math.cos(angle),
+  };
+}
+
+/** The used share as a pie wedge from the top, for 0 < ratio < 1 */
+function wedgePath(ratio: number): string {
+  const end = pointOnRing(ratio);
+  const largeArc = ratio > 0.5 ? 1 : 0;
+  return `M${CENTER} ${CENTER} L${CENTER} ${CENTER - RING_RADIUS} A${RING_RADIUS} ${RING_RADIUS} 0 ${largeArc} 1 ${end.x} ${end.y} Z`;
 }
 
 /** 1.7K, 343.2K, 1.05M */
@@ -67,24 +87,25 @@ const ContextStatus = () => {
     ? Math.round((snapshot.used / snapshot.window) * 100)
     : 0;
   const nearThreshold = (contextPercentage ?? 0) > 0.8;
-  const color = pruned
-    ? "var(--vscode-errorForeground, #f14c4c)"
+  const colorClass = pruned
+    ? "text-error"
     : nearThreshold
-      ? "var(--vscode-editorWarning-foreground, #cca700)"
-      : "var(--vscode-descriptionForeground, #9d9d9d)";
+      ? "text-warning"
+      : "text-description";
   const lastUsage = [...history]
     .reverse()
     .find((item) => item.promptLogs?.length)
     ?.promptLogs?.at(-1)?.usage;
 
-  const radius = 6;
-  const circumference = 2 * Math.PI * radius;
-  const usedRatio = snapshot
-    ? Math.min(1, snapshot.used / Math.max(snapshot.window, 1))
-    : 0;
-  const thresholdRatio = snapshot
-    ? Math.min(1, snapshot.threshold.tokens / Math.max(snapshot.window, 1))
-    : 0;
+  // Same 24-unit grid and stroke as the heroicons beside it
+  const usedRatio = showEmpty
+    ? 0
+    : Math.min(1, snapshot.used / Math.max(snapshot.window, 1));
+  const thresholdPoint = showEmpty
+    ? undefined
+    : pointOnRing(
+        Math.min(1, snapshot.threshold.tokens / Math.max(snapshot.window, 1)),
+      );
 
   return (
     <div>
@@ -177,36 +198,42 @@ const ContextStatus = () => {
           </div>
         }
       >
-        <svg width="16" height="16" viewBox="0 0 16 16" aria-label="Context">
-          <circle
-            cx="8"
-            cy="8"
-            r={radius}
-            fill="none"
-            stroke={color}
-            strokeWidth="1.5"
-            opacity="0.35"
-          />
-          <circle
-            cx="8"
-            cy="8"
-            r={radius}
-            fill="none"
-            stroke={color}
-            strokeWidth="1.5"
-            strokeDasharray={`${usedRatio * circumference} ${circumference}`}
-            strokeLinecap="round"
-            transform="rotate(-90 8 8)"
-          />
-          {snapshot && (
+        <HoverItem>
+          <svg
+            viewBox="0 0 24 24"
+            className={`h-3 w-3 hover:brightness-125 ${colorClass}`}
+            aria-label="Context"
+          >
             <circle
-              cx={8 + radius * Math.sin(thresholdRatio * 2 * Math.PI)}
-              cy={8 - radius * Math.cos(thresholdRatio * 2 * Math.PI)}
-              r="1"
-              fill={color}
+              cx={CENTER}
+              cy={CENTER}
+              r={RING_RADIUS}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.5}
             />
-          )}
-        </svg>
+            {usedRatio >= 1 ? (
+              <circle
+                cx={CENTER}
+                cy={CENTER}
+                r={RING_RADIUS}
+                fill="currentColor"
+              />
+            ) : (
+              usedRatio > 0 && (
+                <path d={wedgePath(usedRatio)} fill="currentColor" />
+              )
+            )}
+            {thresholdPoint && (
+              <circle
+                cx={thresholdPoint.x}
+                cy={thresholdPoint.y}
+                r={1.5}
+                fill="currentColor"
+              />
+            )}
+          </svg>
+        </HoverItem>
       </ToolTip>
     </div>
   );

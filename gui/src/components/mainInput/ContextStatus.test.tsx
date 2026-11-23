@@ -119,6 +119,56 @@ describe("ContextStatus", () => {
     expect(screen.getByText("450K")).toBeInTheDocument();
   });
 
+  it("fills the gauge by the share used and empties it without a snapshot", async () => {
+    const ideMessenger = new MockIdeMessenger();
+    const store = setupStore({ ideMessenger });
+    store.dispatch(
+      newSession({
+        sessionId: "s",
+        title: "t",
+        workspaceDirectory: "",
+        history: [
+          {
+            message: { role: "user", content: "Hello", id: "u1" },
+            contextItems: [],
+          },
+        ] as any,
+      }),
+    );
+    const { container } = await renderWithProviders(<ContextStatus />, {
+      store,
+      mockIdeMessenger: ideMessenger,
+    });
+    expect(container.querySelector("svg path")).toBeNull();
+
+    act(() => {
+      store.dispatch(
+        setContextSnapshot({
+          window: 200_000,
+          used: 150_000,
+          threshold: { tokens: 180_000, action: "pruning", steps: [] },
+          segments: [],
+          largestToolResults: [],
+        }),
+      );
+    });
+    // Three quarters: the wedge takes the large arc
+    expect(container.querySelector("svg path")?.getAttribute("d")).toMatch(
+      / 0 1 1 /,
+    );
+    expect(container.querySelector("svg")).toHaveClass("text-description");
+
+    act(() => {
+      store.dispatch(setIsPruned(true));
+    });
+    expect(container.querySelector("svg")).toHaveClass("text-error");
+
+    act(() => {
+      store.dispatch(setContextSnapshot(undefined));
+    });
+    expect(container.querySelector("svg path")).toBeNull();
+  });
+
   it("offers no compaction while a turn runs", async () => {
     const ideMessenger = new MockIdeMessenger();
     const store = setupStore({ ideMessenger });
