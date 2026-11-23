@@ -1,8 +1,6 @@
 import { useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { useStopRunGuard } from "../../hooks/useStopRunGuard";
-import { useAppDispatch, useAppSelector } from "../../redux/hooks";
-import { saveCurrentSession } from "../../redux/thunks/session";
+import { useAppSelector } from "../../redux/hooks";
 import { ROUTES } from "../../util/navigation";
 import {
   useCanCompact,
@@ -11,9 +9,7 @@ import {
 import { ToolTip } from "../gui/Tooltip";
 
 const ContextStatus = () => {
-  const dispatch = useAppDispatch();
   const navigate = useNavigate();
-  const guardRunningTurn = useStopRunGuard();
   const contextPercentage = useAppSelector(
     (state) => state.session.contextPercentage,
   );
@@ -115,21 +111,6 @@ const ContextStatus = () => {
               onClick={() => navigate(ROUTES.CONTEXT)}
             >
               View report
-            </span>
-            <span
-              className="hover:text-link inline-block cursor-pointer underline"
-              onClick={() => {
-                guardRunningTurn(() =>
-                  dispatch(
-                    saveCurrentSession({
-                      openNewSession: true,
-                      generateTitle: false,
-                    }),
-                  ),
-                );
-              }}
-            >
-              New session
             </span>
           </div>
         }
