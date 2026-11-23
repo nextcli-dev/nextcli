@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.26](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.25...vscode-v1.6.26) (2026-11-23)
+
+
+### Bug Fixes
+
+* **vscode:** keep prompts out of saved sessions and write dev data only with NEXTCLI_TRACE ([#216](https://github.com/nextcli-dev/nextcli/issues/216)) ([aa674b7](https://github.com/nextcli-dev/nextcli/commit/aa674b78da4caf2b4de6663b43419fae0e69daba))
+
 ## [1.6.25](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.24...vscode-v1.6.25) (2026-11-23)
 
 
