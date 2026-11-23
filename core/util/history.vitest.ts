@@ -3,6 +3,7 @@ import fs from "fs";
 import { v4 as uuidv4 } from "uuid";
 import { describe, expect, it } from "vitest";
 
+import { Session } from "..";
 import historyManager from "./history";
 import { getSessionFilePath } from "./paths";
 
@@ -107,5 +108,20 @@ describe("HistoryManager and model-call prompts", () => {
     const file = fs.readFileSync(getSessionFilePath(sessionId), "utf8");
     expect(file).not.toContain(PROMPT_TEXT);
     expect(historyManager.load(sessionId)).toEqual(loaded);
+  });
+
+  // cn --resume and /import parse a session file themselves, prompts included
+  it("save writes no prompt that is still on the session", () => {
+    const sessionId = uuidv4();
+    writeSessionWithPrompts(sessionId);
+    const session: Session = JSON.parse(
+      fs.readFileSync(getSessionFilePath(sessionId), "utf8"),
+    );
+
+    historyManager.save(session);
+
+    const file = fs.readFileSync(getSessionFilePath(sessionId), "utf8");
+    expect(file).not.toContain(PROMPT_TEXT);
+    expect(file).toContain("Reading the file");
   });
 });
