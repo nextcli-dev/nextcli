@@ -325,10 +325,14 @@ export const sessionSlice = createSlice({
       }
 
       const lastMessage = state.history[state.history.length - 1];
+      // The prompt is the whole conversation again, so keeping it made a
+      // session grow with the square of its calls. Dev data records it
+      // under NEXTCLI_TRACE=full.
+      const logs = payload.map(({ prompt, ...log }) => log);
 
       lastMessage.promptLogs = lastMessage.promptLogs
-        ? lastMessage.promptLogs.concat(payload)
-        : payload;
+        ? lastMessage.promptLogs.concat(logs)
+        : logs;
 
       // Inactive thinking for reasoning models when '</think>' tag is not received on request completion
       if (lastMessage.reasoning?.active) {

@@ -27,6 +27,14 @@ On macOS and Linux, VS Code reads the login shell's environment at startup, so a
   `full` records the exact prompts and file contents you work with. Keep those files private.
 </Warning>
 
+## Chat sessions
+
+Saved chats in `~/.continue/sessions` keep each model call's completion, token usage and cost, but not the prompt sent to the model. That prompt is the whole conversation again, so storing it made long sessions grow to hundreds of MB and froze VS Code when switching chats.
+
+To keep prompts, set `NEXTCLI_TRACE=full`: each call's prompt and completion are appended to `chatInteraction.jsonl` with the chat's `sessionId`. `chatFeedback` events from the thumbs buttons no longer include the prompt; match them to `chatInteraction` lines by `sessionId`.
+
+Sessions saved by earlier versions drop their stored prompts the next time they are saved. To keep a copy, back up `~/.continue/sessions` before upgrading.
+
 ## How to Configure Custom Data Destinations
 
 You can also configure custom destinations for your data, including remote HTTP endpoints and local file directories.

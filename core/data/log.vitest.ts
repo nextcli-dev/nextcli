@@ -309,6 +309,53 @@ describe("DataLogger", () => {
     });
   });
 
+  // Sessions don't keep prompts, so thumbs feedback arrives without one
+  describe("chatFeedback without the prompt", () => {
+    const FEEDBACK_EVENT: DevDataLogEvent = {
+      name: "chatFeedback",
+      data: {
+        completion: "Fixed it",
+        modelProvider: "openai",
+        modelName: "gpt-4",
+        modelTitle: "gpt-4",
+        completionOptions: {},
+        feedback: true,
+        sessionId: "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+      },
+    };
+    const feedbackFile = () => getDevDataFilePath("chatFeedback", SCHEMA);
+
+    afterEach(() => {
+      delete process.env.NEXTCLI_TRACE;
+      fs.rmSync(feedbackFile(), { force: true });
+    });
+
+    it("full writes the feedback line", async () => {
+      process.env.NEXTCLI_TRACE = "full";
+
+      await dataLogger.logDevData(FEEDBACK_EVENT);
+
+      const line = JSON.parse(fs.readFileSync(feedbackFile(), "utf8").trim());
+      expect(line).not.toHaveProperty("prompt");
+      expect(line.feedback).toBe(true);
+      expect(line.completion).toBe("Fixed it");
+      expect(line.sessionId).toBe(FEEDBACK_EVENT.data.sessionId);
+    });
+
+    it.each(["0.1.0", "0.2.0"])(
+      "a destination at the all level accepts it at %s",
+      async (schema) => {
+        const data = await dataLogger.parseEventData(
+          FEEDBACK_EVENT,
+          schema,
+          "all",
+        );
+
+        expect(data).toMatchObject({ completion: "Fixed it", feedback: true });
+      },
+    );
+  });
+
   describe("logDevData", () => {
     it("should log data locally and to configured destinations", async () => {
       // Spy on logLocalData and logToOneDestination
