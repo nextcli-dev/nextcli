@@ -113,6 +113,13 @@ describe("streamResponseThunk - tool calls", () => {
       ],
       didPrune: false,
       contextPercentage: 0.9,
+      snapshot: {
+        window: 128000,
+        used: 0,
+        threshold: { tokens: 100000, action: "pruning", steps: [] },
+        segments: [],
+        largestToolResults: [],
+      },
     };
     mockIdeMessengerWithTool.responses["tools/call"] = {
       contextItems: [
@@ -263,6 +270,8 @@ describe("streamResponseThunk - tool calls", () => {
       "session/setInlineErrorMessage",
       "session/setIsPruned",
       "session/setContextPercentage",
+      "session/setContextSnapshot",
+      "session/setContextMeasuredFor",
       "symbols/updateFromContextItems/fulfilled",
       "session/streamUpdate",
       "session/streamUpdate",
@@ -282,6 +291,8 @@ describe("streamResponseThunk - tool calls", () => {
       "session/setInlineErrorMessage",
       "session/setIsPruned",
       "session/setContextPercentage",
+      "session/setContextSnapshot",
+      "session/setContextMeasuredFor",
       "session/streamUpdate",
       "session/addPromptCompletionPair",
       "session/setInactive",
@@ -403,6 +414,7 @@ describe("streamResponseThunk - tool calls", () => {
       options: {
         tools: [grepTool],
       },
+      systemParts: [{ label: "Base instructions", chars: 28 }],
     });
 
     expect(requestSpy).toHaveBeenCalledWith("tools/call", {
@@ -540,6 +552,14 @@ describe("streamResponseThunk - tool calls", () => {
         id: "session-123",
         streamAborter: expect.any(AbortController),
         contextPercentage: 0.9,
+        contextSnapshot: {
+          window: 128000,
+          used: 0,
+          threshold: { tokens: 100000, action: "pruning", steps: [] },
+          segments: [],
+          largestToolResults: [],
+        },
+        contextMeasuredFor: { model: "Claude 3.5 Sonnet", mode: "agent" },
         isPruned: false,
         title: "Session summary",
         inlineErrorMessage: undefined,
@@ -576,6 +596,13 @@ describe("streamResponseThunk - tool calls", () => {
       ],
       didPrune: false,
       contextPercentage: 0.9,
+      snapshot: {
+        window: 128000,
+        used: 0,
+        threshold: { tokens: 100000, action: "pruning", steps: [] },
+        segments: [],
+        largestToolResults: [],
+      },
     };
 
     // Setup streaming generator with tool call requiring approval
@@ -736,6 +763,20 @@ describe("streamResponseThunk - tool calls", () => {
       {
         type: "session/setContextPercentage",
         payload: 0.9,
+      },
+      {
+        type: "session/setContextSnapshot",
+        payload: {
+          window: 128000,
+          used: 0,
+          threshold: { tokens: 100000, action: "pruning", steps: [] },
+          segments: [],
+          largestToolResults: [],
+        },
+      },
+      {
+        type: "session/setContextMeasuredFor",
+        payload: { model: "Claude 3.5 Sonnet", mode: "agent" },
       },
       {
         type: "symbols/updateFromContextItems/fulfilled",
@@ -942,6 +983,7 @@ describe("streamResponseThunk - tool calls", () => {
         },
       ],
       options: { tools: [grepTool] },
+      systemParts: [{ label: "Base instructions", chars: 28 }],
     });
 
     expect(mockIdeMessengerManual.llmStreamChat).toHaveBeenCalledWith(
@@ -1040,6 +1082,14 @@ describe("streamResponseThunk - tool calls", () => {
         ],
         streamAborter: expect.any(AbortController),
         contextPercentage: 0.9,
+        contextSnapshot: {
+          window: 128000,
+          used: 0,
+          threshold: { tokens: 100000, action: "pruning", steps: [] },
+          segments: [],
+          largestToolResults: [],
+        },
+        contextMeasuredFor: { model: "Claude 3.5 Sonnet", mode: "agent" },
         isPruned: false,
         title: "Session summary",
         inlineErrorMessage: undefined,
@@ -1085,6 +1135,13 @@ describe("streamResponseThunk - tool calls", () => {
       ],
       didPrune: false,
       contextPercentage: 0.85,
+      snapshot: {
+        window: 128000,
+        used: 0,
+        threshold: { tokens: 100000, action: "pruning", steps: [] },
+        segments: [],
+        largestToolResults: [],
+      },
     };
 
     mockIdeMessengerApproval.responses["tools/call"] = {
@@ -1290,6 +1347,20 @@ describe("streamResponseThunk - tool calls", () => {
       {
         type: "session/setContextPercentage",
         payload: 0.85,
+      },
+      {
+        type: "session/setContextSnapshot",
+        payload: {
+          window: 128000,
+          used: 0,
+          threshold: { tokens: 100000, action: "pruning", steps: [] },
+          segments: [],
+          largestToolResults: [],
+        },
+      },
+      {
+        type: "session/setContextMeasuredFor",
+        payload: { model: "Claude 3.5 Sonnet", mode: "agent" },
       },
       {
         type: "symbols/updateFromContextItems/fulfilled",
@@ -1588,6 +1659,20 @@ describe("streamResponseThunk - tool calls", () => {
         payload: 0.85,
       },
       {
+        type: "session/setContextSnapshot",
+        payload: {
+          window: 128000,
+          used: 0,
+          threshold: { tokens: 100000, action: "pruning", steps: [] },
+          segments: [],
+          largestToolResults: [],
+        },
+      },
+      {
+        type: "session/setContextMeasuredFor",
+        payload: { model: "Claude 3.5 Sonnet", mode: "agent" },
+      },
+      {
         type: "session/streamUpdate",
         payload: [
           {
@@ -1867,6 +1952,14 @@ describe("streamResponseThunk - tool calls", () => {
         id: "session-123",
         streamAborter: expect.any(AbortController),
         contextPercentage: 0.85,
+        contextSnapshot: {
+          window: 128000,
+          used: 0,
+          threshold: { tokens: 100000, action: "pruning", steps: [] },
+          segments: [],
+          largestToolResults: [],
+        },
+        contextMeasuredFor: { model: "Claude 3.5 Sonnet", mode: "agent" },
         inlineErrorMessage: undefined,
         isPruned: false,
       },
@@ -1911,6 +2004,13 @@ describe("streamResponseThunk - tool calls", () => {
         compiledChatMessages: [{ role: "user", content: "Run echo hello" }],
         didPrune: false,
         contextPercentage: 0.5,
+        snapshot: {
+          window: 128000,
+          used: 0,
+          threshold: { tokens: 100000, action: "pruning", steps: [] },
+          segments: [],
+          largestToolResults: [],
+        },
       };
       // Setup streaming with echo command (should require permission despite auto-approve base)
       async function* mockStreamWithEcho(): AsyncGenerator<
@@ -1997,6 +2097,13 @@ describe("streamResponseThunk - tool calls", () => {
           ],
           didPrune: false,
           contextPercentage: 0.5,
+          snapshot: {
+            window: 128000,
+            used: 0,
+            threshold: { tokens: 100000, action: "pruning", steps: [] },
+            segments: [],
+            largestToolResults: [],
+          },
         };
       };
       let numCalls = 0;
@@ -2128,6 +2235,13 @@ describe("streamResponseThunk - tool calls", () => {
             ],
             didPrune: false,
             contextPercentage: 0.5,
+            snapshot: {
+              window: 128000,
+              used: 0,
+              threshold: { tokens: 100000, action: "pruning", steps: [] },
+              segments: [],
+              largestToolResults: [],
+            },
           };
         };
 
@@ -2212,6 +2326,13 @@ describe("streamResponseThunk - tool calls", () => {
           ],
           didPrune: false,
           contextPercentage: 0.9,
+          snapshot: {
+            window: 128000,
+            used: 0,
+            threshold: { tokens: 100000, action: "pruning", steps: [] },
+            segments: [],
+            largestToolResults: [],
+          },
         };
       };
 

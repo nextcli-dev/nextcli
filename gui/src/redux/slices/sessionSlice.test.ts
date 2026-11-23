@@ -683,6 +683,20 @@ describe("sessionSlice compaction summaries", () => {
     expect(measure(state)).toEqual({ isPruned: false, contextPercentage: 0.7 });
   });
 
+  it("keeps the larger measure whole, with its own pruned flag", () => {
+    let state = reducer(
+      { ...withHistory(exchange()), isPruned: false, contextPercentage: 0.9 },
+      actions.setConversationSummary({ messageId: "a2", summary: "Summary" }),
+    );
+    // A later turn on the summary came back pruned, at a lower share
+    state = reducer(state, actions.setIsPruned(true));
+    state = reducer(state, actions.setContextPercentage(0.5));
+    state = reducer(state, actions.deleteCompaction({ messageId: "a2" }));
+
+    // The 90% breakdown wasn't pruned; the later request's flag isn't its
+    expect(measure(state)).toEqual({ isPruned: false, contextPercentage: 0.9 });
+  });
+
   it("leaves the measure when a later summary is still the one in use", () => {
     let state = reducer(
       withHistory(exchange()),

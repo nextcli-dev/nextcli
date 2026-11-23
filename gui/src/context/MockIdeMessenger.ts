@@ -98,6 +98,17 @@ const DEFAULT_MOCK_CORE_RESPONSES: MockResponses = {
     compiledChatMessages: [],
     didPrune: false,
     contextPercentage: 0.5,
+    snapshot: {
+      window: 128000,
+      used: 0,
+      threshold: {
+        tokens: 100000,
+        action: "pruning" as const,
+        steps: [{ label: "default", tokens: 128000 }],
+      },
+      segments: [],
+      largestToolResults: [],
+    },
   },
   "context/getContextItems": [
     {

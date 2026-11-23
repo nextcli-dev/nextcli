@@ -1,3 +1,10 @@
+import {
+  buildSnapshot,
+  countToolTokens,
+  memoizeCount,
+  type ContextSegment,
+  type ContextSnapshot,
+} from "@nextcli/context";
 import { Tiktoken, encodingForModel as _encodingForModel } from "js-tiktoken";
 
 import {
@@ -109,71 +116,80 @@ async function countTokensAsync(
   return (await encoding.encode(content ?? "")).length;
 }
 
+const countGptText = memoizeCount((text: string) => {
+  if (!gptEncoding) {
+    gptEncoding = _encodingForModel("gpt-4");
+  }
+  return gptEncoding.encode(text, "all", []).length;
+});
+
+const countLlamaText = memoizeCount(
+  (text: string) => llamaEncoding.encode(text).length,
+);
+
+function countEncoded(text: string, modelName: string): number {
+  const modelType = autodetectTemplateType(modelName);
+  if (!modelType || modelType === "none") {
+    return countGptText(text);
+  }
+  return countLlamaText(text);
+}
+
 function countTokens(
   content: MessageContent,
   // defaults to llama2 because the tokenizer tends to produce more tokens
   modelName = "llama2",
 ): number {
-  const encoding = encodingForModel(modelName);
   let baseTokens = 0;
   if (Array.isArray(content)) {
     baseTokens = content.reduce((acc, part) => {
       return (
         acc +
         (part.type === "text"
-          ? encoding.encode(part.text ?? "", "all", []).length
+          ? countEncoded(part.text ?? "", modelName)
           : countImageTokens(part))
       );
     }, 0);
   } else {
-    baseTokens = encoding.encode(content ?? "", "all", []).length;
+    baseTokens = countEncoded(content ?? "", modelName);
   }
   return getAdjustedTokenCountFromModel(baseTokens, modelName);
 }
 
 // https://community.openai.com/t/how-to-calculate-the-tokens-when-using-function-call/266573/10
-function countToolsTokens(tools: Tool[], modelName: string): number {
-  const count = (value: string) =>
-    encodingForModel(modelName).encode(value).length;
+// Raw tokenizer lengths, as tool schemas were always counted (and as cn
+// counts them): the per-model multiplier is for message text, and applying
+// it to each schema would also round each one up.
+function countToolsTokens(
+  tools: Tool[],
+  modelName: string,
+): { total: number; perTool: number[] } {
+  return countToolTokens(tools, (text) => countEncoded(text, modelName));
+}
 
-  let numTokens = 12;
-
-  for (const tool of tools) {
-    let functionTokens = count(tool.function.name);
-    if (tool.function.description) {
-      functionTokens += count(tool.function.description);
-    }
-    const props = tool.function.parameters?.properties;
-    if (props) {
-      for (const key in props) {
-        functionTokens += count(key);
-        const fields = props[key];
-        if (fields) {
-          const fieldType = fields["type"];
-          const fieldDesc = fields["description"];
-          const fieldEnum = fields["enum"];
-          if (fieldType && typeof fieldType === "string") {
-            functionTokens += 2;
-            functionTokens += count(fieldType);
-          }
-          if (fieldDesc && typeof fieldDesc === "string") {
-            functionTokens += 2;
-            functionTokens += count(fieldDesc);
-          }
-          if (fieldEnum && Array.isArray(fieldEnum)) {
-            functionTokens -= 3;
-            for (const e of fieldEnum) {
-              functionTokens += 3;
-              functionTokens += typeof e === "string" ? count(e) : 5;
-            }
-          }
-        }
-      }
-    }
-    numTokens += functionTokens;
+/**
+ * Shares `total` across parts in proportion to their own counts, the
+ * largest remainders rounding up, so the parts add up to it
+ */
+function apportion(total: number, counts: number[]): number[] {
+  const sum = counts.reduce((acc, count) => acc + count, 0);
+  if (sum === 0) {
+    return counts.map(() => 0);
   }
-
-  return numTokens + 12;
+  const exact = counts.map((count) => (count / sum) * total);
+  const shares = exact.map(Math.floor);
+  let left = total - shares.reduce((acc, share) => acc + share, 0);
+  const byRemainder = exact
+    .map((value, index) => ({ index, remainder: value - shares[index] }))
+    .sort((a, b) => b.remainder - a.remainder);
+  for (const { index } of byRemainder) {
+    if (left <= 0) {
+      break;
+    }
+    shares[index] += 1;
+    left -= 1;
+  }
+  return shares;
 }
 
 function countChatMessageTokens(
@@ -419,6 +435,169 @@ function pruneRawPromptFromTop(
  * @returns Processed array of chat messages that fit within context constraints
  * @throws Error if non-negotiable elements exceed available context
  */
+function compileSnapshot(input: {
+  modelName: string;
+  systemMsg: ChatMessage | undefined;
+  systemMsgTokens: number;
+  systemParts?: { label: string; chars: number }[];
+  tools?: Tool[];
+  perTool: number[];
+  toolTokens: number;
+  kept: { message: ChatMessage; tokens: number }[];
+  toolSequence: ChatMessage[];
+  historyTokens: number;
+  knownContextLength: number | undefined;
+  contextLength: number;
+  countingSafetyBuffer: number;
+  outputReserve: number;
+  prunedMessages: number;
+  prunedTokens: number;
+  didPrune: boolean;
+}): ContextSnapshot {
+  const segments: ContextSegment[] = [];
+  if (input.systemMsgTokens > 0) {
+    const text =
+      input.systemMsg && typeof input.systemMsg.content === "string"
+        ? input.systemMsg.content
+        : "";
+    // Each slice counted alone costs a little more than the whole text (each
+    // is rounded up after the model's multiplier), so the parts share the
+    // count of the text they cover and add up to it
+    const parts = input.systemParts ?? [];
+    let cursor = 0;
+    const sliceCounts = parts.map((part) => {
+      const slice = text.slice(cursor, cursor + part.chars);
+      cursor += part.chars;
+      return countTokens(slice, input.modelName);
+    });
+    const shares = apportion(
+      countTokens(text.slice(0, cursor), input.modelName),
+      sliceCounts,
+    );
+    const children: ContextSegment[] = parts.map((part, index) => ({
+      id: `system-${index}`,
+      label: part.label,
+      tokens: shares[index],
+      source: "estimated",
+    }));
+    segments.push({
+      id: "system",
+      label: "System prompt",
+      tokens: input.systemMsgTokens,
+      source: "estimated",
+      ...(children.length > 0 ? { children } : {}),
+    });
+  }
+
+  if (input.tools && input.tools.length > 0) {
+    const groups = new Map<string, ContextSegment>();
+    input.tools.forEach((tool, index) => {
+      const groupName = tool.group || "Tools";
+      const child: ContextSegment = {
+        id: `tool-${tool.function.name}`,
+        label: tool.function.name,
+        tokens: input.perTool[index] ?? 0,
+        source: "estimated",
+      };
+      const group = groups.get(groupName);
+      if (group) {
+        group.tokens += child.tokens;
+        group.children?.push(child);
+      } else {
+        groups.set(groupName, {
+          id: `tools-${groupName}`,
+          label: groupName,
+          tokens: child.tokens,
+          source: "estimated",
+          children: [child],
+        });
+      }
+    });
+    segments.push({
+      id: "tools",
+      label: "Tool definitions",
+      tokens: input.toolTokens,
+      source: "estimated",
+      children: [...groups.values()],
+    });
+  }
+
+  const names = new Map<string, string>();
+  const historyChildren = new Map<string, number>();
+  const toolResults: { label: string; tokens: number; toolCallId?: string }[] =
+    [];
+  const countMessage = (message: ChatMessage, tokens: number) => {
+    if ("toolCalls" in message && message.toolCalls) {
+      for (const call of message.toolCalls) {
+        if (call.id && call.function?.name) {
+          names.set(call.id, call.function.name);
+        }
+      }
+    }
+    if (message.role === "tool") {
+      toolResults.push({
+        label: names.get(message.toolCallId) || "Tool result",
+        tokens,
+        ...(message.toolCallId ? { toolCallId: message.toolCallId } : {}),
+      });
+    }
+    historyChildren.set(
+      message.role,
+      (historyChildren.get(message.role) ?? 0) + tokens,
+    );
+  };
+  for (const item of input.kept) {
+    countMessage(item.message, item.tokens);
+  }
+  for (const message of input.toolSequence) {
+    countMessage(message, countChatMessageTokens(input.modelName, message));
+  }
+  const roleLabel: Record<string, string> = {
+    user: "User",
+    assistant: "Assistant",
+    thinking: "Thinking",
+    tool: "Tool results",
+  };
+  segments.push({
+    id: "history",
+    label: "Conversation",
+    tokens: input.historyTokens,
+    source: "estimated",
+    children: [...historyChildren.entries()].map(([role, tokens]) => ({
+      id: `history-${role}`,
+      label: roleLabel[role] ?? role,
+      tokens,
+      source: "estimated" as const,
+    })),
+  });
+
+  const windowLabel =
+    input.knownContextLength === undefined ? "Default window" : "Model window";
+  return buildSnapshot({
+    window: input.contextLength,
+    threshold: {
+      tokens:
+        input.contextLength - input.countingSafetyBuffer - input.outputReserve,
+      action: "pruning",
+      steps: [
+        { label: windowLabel, tokens: input.contextLength },
+        { label: "Reserved for the reply", tokens: -input.outputReserve },
+        { label: "Safety buffer", tokens: -input.countingSafetyBuffer },
+      ],
+    },
+    segments,
+    toolResults,
+    ...(input.didPrune
+      ? {
+          pruned: {
+            messages: input.prunedMessages,
+            tokens: input.prunedTokens,
+          },
+        }
+      : {}),
+  });
+}
+
 function compileChatMessages({
   modelName,
   msgs,
@@ -426,6 +605,8 @@ function compileChatMessages({
   maxTokens,
   supportsImages,
   tools,
+  systemParts,
+  includeSnapshot = false,
   shortensAnswerToFit = false,
 }: {
   modelName: string;
@@ -434,6 +615,9 @@ function compileChatMessages({
   maxTokens: number;
   supportsImages: boolean;
   tools?: Tool[];
+  systemParts?: { label: string; chars: number }[];
+  /** The breakdown. Callers that only read the fitted messages skip it. */
+  includeSnapshot?: boolean;
   shortensAnswerToFit?: boolean;
 }): CompiledMessagesResult {
   let didPrune = false;
@@ -476,8 +660,11 @@ function compileChatMessages({
 
   // Tools
   let toolTokens = 0;
-  if (tools) {
-    toolTokens = countToolsTokens(tools, modelName);
+  let perTool: number[] = [];
+  if (tools && tools.length > 0) {
+    const counted = countToolsTokens(tools, modelName);
+    toolTokens = counted.total;
+    perTool = counted.perTool;
   }
 
   const contextLength = knownContextLength ?? DEFAULT_PRUNING_LENGTH;
@@ -519,6 +706,8 @@ function compileChatMessages({
 
   // Now remove messages till we're under the limit
   let currentTotal = 0;
+  let prunedMessages = 0;
+  let prunedTokens = 0;
   const historyWithTokens = msgsCopy.map((message) => {
     const tokens = countChatMessageTokens(modelName, message);
     currentTotal += tokens;
@@ -531,12 +720,16 @@ function compileChatMessages({
   while (historyWithTokens.length > 0 && currentTotal > inputTokensAvailable) {
     const message = historyWithTokens.shift()!;
     currentTotal -= message.tokens;
+    prunedMessages += 1;
+    prunedTokens += message.tokens;
     didPrune = true;
 
     // At this point make sure no latent tool response without corresponding call
     while (historyWithTokens[0]?.role === "tool") {
       const message = historyWithTokens.shift()!;
       currentTotal -= message.tokens;
+      prunedMessages += 1;
+      prunedTokens += message.tokens;
     }
   }
 
@@ -556,6 +749,32 @@ function compileChatMessages({
     compiledChatMessages: reassembled,
     didPrune,
     contextPercentage,
+    ...(includeSnapshot
+      ? {
+          snapshot: compileSnapshot({
+            modelName,
+            systemMsg,
+            systemMsgTokens,
+            systemParts,
+            tools,
+            perTool,
+            toolTokens,
+            kept: historyWithTokens.map(({ tokens, ...rest }) => ({
+              message: rest,
+              tokens,
+            })),
+            toolSequence,
+            historyTokens: currentTotal + lastMessagesTokens,
+            knownContextLength,
+            contextLength,
+            countingSafetyBuffer,
+            outputReserve,
+            prunedMessages,
+            prunedTokens,
+            didPrune,
+          }),
+        }
+      : {}),
   };
 }
 
@@ -588,7 +807,7 @@ function maxTokensThatFit({
     messages.reduce(
       (sum, message) => sum + countChatMessageTokens(modelName, message),
       0,
-    ) + (tools ? countToolsTokens(tools, modelName) : 0);
+    ) + (tools ? countToolsTokens(tools, modelName).total : 0);
   const left =
     contextLength - getTokenCountingBufferSafety(contextLength) - inputTokens;
   return Math.min(

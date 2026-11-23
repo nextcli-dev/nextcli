@@ -15,7 +15,9 @@ import {
   errorToolCall,
   setActive,
   setAppliedRulesAtIndex,
+  setContextMeasuredFor,
   setContextPercentage,
+  setContextSnapshot,
   setInactive,
   setInlineErrorMessage,
   setIsPruned,
@@ -161,20 +163,31 @@ export const streamNormalInput = createAsyncThunk<
       activeTools,
     );
 
-    const systemMessage = systemToolsFramework
+    const withTools = systemToolsFramework
       ? addSystemMessageToolsToSystemMessage(
           systemToolsFramework,
           baseSystemMessage,
           activeTools,
         )
       : baseSystemMessage;
+    const systemMessage = withTools;
+    const toolInstructions =
+      withTools.length > baseSystemMessage.length &&
+      withTools.startsWith(baseSystemMessage)
+        ? withTools.slice(baseSystemMessage.length)
+        : "";
 
     const withoutMessageIds = state.session.history.map((item) => {
       const { id, ...messageWithoutId } = item.message;
       return { ...item, message: messageWithoutId };
     });
 
-    const { messages, appliedRules, appliedRuleIndex } = constructMessages(
+    const {
+      messages,
+      appliedRules,
+      appliedRuleIndex,
+      systemParts: ruleParts,
+    } = constructMessages(
       withoutMessageIds,
       systemMessage,
       state.config.config.rules,
@@ -194,9 +207,18 @@ export const streamNormalInput = createAsyncThunk<
     dispatch(setActive());
     dispatch(setInlineErrorMessage(undefined));
 
+    const systemParts = [
+      { label: "Base instructions", chars: baseSystemMessage.length },
+      ...(toolInstructions
+        ? [{ label: "Tool instructions", chars: toolInstructions.length }]
+        : []),
+      ...ruleParts,
+    ];
+
     const precompiledRes = await extra.ideMessenger.request("llm/compileChat", {
       messages,
       options: completionOptions,
+      systemParts,
     });
 
     if (precompiledRes.status === "error") {
@@ -209,11 +231,18 @@ export const streamNormalInput = createAsyncThunk<
       }
     }
 
-    const { compiledChatMessages, didPrune, contextPercentage } =
+    const { compiledChatMessages, didPrune, contextPercentage, snapshot } =
       precompiledRes.content;
 
     dispatch(setIsPruned(didPrune));
     dispatch(setContextPercentage(contextPercentage));
+    dispatch(setContextSnapshot(snapshot));
+    dispatch(
+      setContextMeasuredFor({
+        model: selectedChatModel.title,
+        mode: state.session.mode,
+      }),
+    );
 
     const start = Date.now();
     const streamAborter = state.session.streamAborter;

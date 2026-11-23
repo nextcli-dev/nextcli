@@ -79,7 +79,7 @@ vi.mock("core/llm/rules/getSystemMessageWithRules", async (importOriginal) => {
         }
       }
 
-      return { systemMessage, appliedRules };
+      return { systemMessage, appliedRules, ruleParts: [] };
     },
   };
 });

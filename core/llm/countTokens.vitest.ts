@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { ChatMessage } from "../index.js";
-import { countTokens, getTokenCountingBufferSafety } from "./countTokens.js";
+import {
+  compileChatMessages,
+  countTokens,
+  getTokenCountingBufferSafety,
+} from "./countTokens.js";
+import { LlamaTokenizer } from "./llamaTokenizer.js";
 import { BaseLLM } from "./index.js";
 import Docker from "./llms/Docker.js";
 import HuggingFaceTGI from "./llms/HuggingFaceTGI.js";
@@ -313,6 +318,171 @@ describe("compileChatMessages", () => {
       const sent = await sentBody(OpenAI, conversation(0), 8_192, 4_096);
 
       expect(sent.maxTokens).toBe(4_096);
+    });
+
+    test("reports used over the pruning threshold, and the 128000 default", () => {
+      const compiled = compileChatMessages({
+        modelName: MODEL,
+        msgs: conversation(1),
+        knownContextLength: CONTEXT_LENGTH,
+        maxTokens: MAX_TOKENS,
+        supportsImages: false,
+        includeSnapshot: true,
+      });
+      expect(compiled.snapshot).toBeDefined();
+      expect(
+        compiled.snapshot!.used / compiled.snapshot!.threshold.tokens,
+      ).toBe(compiled.contextPercentage);
+      const withoutWindow = compileChatMessages({
+        modelName: MODEL,
+        msgs: conversation(0),
+        knownContextLength: undefined,
+        maxTokens: MAX_TOKENS,
+        supportsImages: false,
+        includeSnapshot: true,
+      });
+      expect(withoutWindow.snapshot!.window).toBe(128_000);
+      expect(withoutWindow.snapshot!.threshold.steps[0].label).toBe(
+        "Default window",
+      );
+    });
+
+    test("counts tool schemas without the model's multiplier", () => {
+      const tools = Array.from({ length: 40 }, (_, i) => ({
+        type: "function" as const,
+        displayTitle: `Tool ${i}`,
+        readonly: true,
+        group: "Built-In",
+        function: {
+          name: `tool_${i}`,
+          description: `Does thing number ${i}`,
+          parameters: {
+            type: "object" as const,
+            properties: { path: { type: "string", description: "A path" } },
+          },
+        },
+      }));
+      const toolsSegment = (modelName: string) =>
+        compileChatMessages({
+          modelName,
+          msgs: [{ role: "user", content: "hi" }],
+          knownContextLength: CONTEXT_LENGTH,
+          maxTokens: MAX_TOKENS,
+          supportsImages: false,
+          tools: tools as any,
+          includeSnapshot: true,
+        }).snapshot!.segments.find((s) => s.id === "tools")!.tokens;
+
+      // Claude counts text with GPT-4's tokenizer, then x1.23 for messages
+      expect(toolsSegment("claude-sonnet-4-5")).toBe(toolsSegment("gpt-4"));
+    });
+
+    test("shares the system prompt's count across its parts, so they add up", () => {
+      const parts = [
+        "You are a coding agent. Follow the user's instructions carefully.",
+        "\n\nAlways run the tests before you say a change is done.",
+        "\n\nPrefer small diffs. Never edit generated files in dist/.",
+        "\n\nWrite commit messages in the imperative mood.",
+      ];
+      const text = parts.join("");
+      const compiled = compileChatMessages({
+        modelName: "claude-sonnet-4-5",
+        msgs: [
+          { role: "system", content: text },
+          { role: "user", content: "hi" },
+        ],
+        knownContextLength: CONTEXT_LENGTH,
+        maxTokens: MAX_TOKENS,
+        supportsImages: false,
+        systemParts: parts.map((part, i) => ({
+          label: `Part ${i}`,
+          chars: part.length,
+        })),
+        includeSnapshot: true,
+      });
+      const system = compiled.snapshot!.segments.find(
+        (s) => s.id === "system",
+      )!;
+      const childSum = system.children!.reduce((sum, c) => sum + c.tokens, 0);
+
+      expect(childSum).toBe(countTokens(text, "claude-sonnet-4-5"));
+      // What's left is the message framing, never negative
+      expect(system.tokens - childSum).toBeGreaterThan(0);
+    });
+
+    test("counts tool results in the conversation and names the call each answers", () => {
+      const compiled = compileChatMessages({
+        modelName: MODEL,
+        msgs: [
+          { role: "user", content: "Read the file" },
+          {
+            role: "assistant",
+            content: "",
+            toolCalls: [
+              {
+                id: "call_1",
+                type: "function",
+                function: { name: "read_file", arguments: '{"path":"a.ts"}' },
+              },
+            ],
+          },
+          {
+            role: "tool",
+            content: "line ".repeat(500),
+            toolCallId: "call_1",
+          },
+        ],
+        knownContextLength: CONTEXT_LENGTH,
+        maxTokens: MAX_TOKENS,
+        supportsImages: false,
+        includeSnapshot: true,
+      });
+      const conversationSegment = compiled.snapshot!.segments.find(
+        (s) => s.id === "history",
+      )!;
+      const children = conversationSegment.children!;
+      const toolResults = children.find((c) => c.label === "Tool results");
+      expect(toolResults?.tokens).toBeGreaterThan(400);
+      expect(children.reduce((sum, c) => sum + c.tokens, 0)).toBe(
+        conversationSegment.tokens,
+      );
+      expect(compiled.snapshot!.largestToolResults[0]).toMatchObject({
+        label: "read_file",
+        toolCallId: "call_1",
+      });
+    });
+
+    test("omits the snapshot unless the caller asks for it", () => {
+      const compiled = compileChatMessages({
+        modelName: MODEL,
+        msgs: conversation(0),
+        knownContextLength: CONTEXT_LENGTH,
+        maxTokens: MAX_TOKENS,
+        supportsImages: false,
+      });
+      expect(compiled.snapshot).toBeUndefined();
+    });
+
+    test("encodes each long message once when the same conversation is compiled twice", () => {
+      const encode = vi.spyOn(LlamaTokenizer.prototype, "encode");
+      const messages = conversation(1);
+      const llm = new OpenAI({
+        model: "llama2",
+        apiKey: "k",
+        contextLength: CONTEXT_LENGTH,
+        completionOptions: { model: "llama2", maxTokens: MAX_TOKENS },
+      });
+      llm.compileChatMessages(messages, {});
+      const longCalls = encode.mock.calls.filter(
+        (call) => String(call[0] ?? "").length >= 512,
+      ).length;
+      llm.compileChatMessages(messages, {});
+      const longCallsAfter = encode.mock.calls.filter(
+        (call) => String(call[0] ?? "").length >= 512,
+      ).length;
+      expect(longCalls).toBeGreaterThan(0);
+      expect(longCallsAfter).toBe(longCalls);
+      encode.mockRestore();
     });
 
     test("is the configured one for a server that cuts the answer short", async () => {

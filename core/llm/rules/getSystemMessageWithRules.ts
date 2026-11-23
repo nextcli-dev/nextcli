@@ -388,6 +388,7 @@ export const getSystemMessageWithRules = ({
 }): {
   systemMessage: string;
   appliedRules: RuleMetadata[];
+  ruleParts: { label: string; chars: number }[];
 } => {
   const appliedRules = getApplicableRules(
     userMessage,
@@ -396,12 +397,16 @@ export const getSystemMessageWithRules = ({
     rulePolicies,
   );
   let systemMessage = baseSystemMessage ?? "";
+  const ruleParts: { label: string; chars: number }[] = [];
 
   for (const rule of appliedRules) {
-    if (systemMessage) {
-      systemMessage += "\n\n";
-    }
-    systemMessage += rule.rule;
+    const separator = systemMessage ? "\n\n" : "";
+    const piece = `${separator}${rule.rule}`;
+    ruleParts.push({
+      label: rule.name ?? getRuleId(rule),
+      chars: piece.length,
+    });
+    systemMessage += piece;
   }
 
   const ruleMetadata = appliedRules.map(({ rule, ...rest }) => rest);
@@ -409,5 +414,6 @@ export const getSystemMessageWithRules = ({
   return {
     systemMessage,
     appliedRules: ruleMetadata,
+    ruleParts,
   };
 };

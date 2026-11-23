@@ -14,6 +14,7 @@ import Handlebars from "handlebars";
 
 import { DevDataSqliteDb } from "../data/devdataSqlite.js";
 import { DataLogger } from "../data/log.js";
+import { calculateRequestCost } from "./utils/calculateRequestCost.js";
 import {
   CacheBehavior,
   ChatMessage,
@@ -1143,6 +1144,8 @@ export abstract class BaseLLM implements ILLM {
   compileChatMessages(
     message: ChatMessage[],
     options: LLMFullCompletionOptions,
+    systemParts?: { label: string; chars: number }[],
+    includeSnapshot = false,
   ) {
     let { completionOptions } = this._parseCompletionOptions(options);
     completionOptions = this._modifyCompletionOptions(completionOptions);
@@ -1154,6 +1157,8 @@ export abstract class BaseLLM implements ILLM {
       maxTokens: completionOptions.maxTokens ?? DEFAULT_MAX_TOKENS,
       supportsImages: this.supportsImages(),
       tools: options.tools,
+      systemParts,
+      includeSnapshot,
       shortensAnswerToFit: this.shortensAnswerToFit,
     });
   }
@@ -1608,12 +1613,32 @@ export abstract class BaseLLM implements ILLM {
       prompt,
       completion: completion.join(""),
       ...(usage && { usage }),
+      ...this.responseCost(usage, completionOptions),
       ...(streamEnd && {
         finishReason: streamEnd.finishReason,
         streamEndedWithoutFinish: !streamEnd.finishReason,
         outputTokens: streamEnd.outputTokens,
       }),
     };
+  }
+
+  /**
+   * A response's cost, priced like the console prices an interaction, so a
+   * saved session keeps what each response cost when it ran. Nothing when
+   * the provider sent no usage or the price is unknown.
+   */
+  private responseCost(
+    usage: Usage | undefined,
+    options: CompletionOptions,
+  ): Pick<PromptLog, "costUsd" | "priced"> {
+    const price =
+      usage &&
+      calculateRequestCost(this.providerName, options.model, usage, {
+        apiBase: this.apiBase,
+        fast: options.fast,
+        pricing: this.pricing,
+      });
+    return price ? { costUsd: price.cost, priced: price.priced } : {};
   }
 
   getBatchedChunks(chunks: string[]): string[][] {

@@ -44,6 +44,7 @@ export function constructMessages(
   messages: ChatMessage[];
   appliedRules: RuleMetadata[];
   appliedRuleIndex: number;
+  systemParts: { label: string; chars: number }[];
 } {
   // Find the most recent conversation summary and filter history accordingly
   let summaryContent = "";
@@ -195,7 +196,7 @@ export function constructMessages(
     .map((item) => item.ctxItems)
     .flat();
 
-  const { systemMessage, appliedRules } = getSystemMessageWithRules({
+  const { systemMessage, appliedRules, ruleParts } = getSystemMessageWithRules({
     baseSystemMessage,
     availableRules,
     userMessage: lastUserOrToolMsg,
@@ -205,10 +206,13 @@ export function constructMessages(
 
   // Append conversation summary to system message if it exists
   let finalSystemMessage = systemMessage;
+  const systemParts = [...ruleParts];
   if (summaryContent) {
-    finalSystemMessage = systemMessage
-      ? `${systemMessage}\n\nPrevious conversation summary:\n\n ${summaryContent}`
+    const summary = systemMessage
+      ? `\n\nPrevious conversation summary:\n\n ${summaryContent}`
       : `Previous conversation summary:\n\n ${summaryContent}`;
+    systemParts.push({ label: "Conversation summary", chars: summary.length });
+    finalSystemMessage = systemMessage ? `${systemMessage}${summary}` : summary;
   }
 
   if (finalSystemMessage.trim()) {
@@ -226,5 +230,6 @@ export function constructMessages(
     messages,
     appliedRules,
     appliedRuleIndex,
+    systemParts,
   };
 }

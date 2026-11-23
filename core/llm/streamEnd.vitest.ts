@@ -262,6 +262,41 @@ describe("usage on the OpenAI adapter", () => {
   });
 });
 
+describe("the cost of a saved response", () => {
+  test("is priced from the model's configured prices", async () => {
+    const { log } = await streamWith(
+      [chunk({ content: "The plan" }, "stop"), usageChunk(300)],
+      (llm) => {
+        // USD per million tokens
+        (llm as any).pricing = { input: 1, output: 2 };
+      },
+    );
+    // 10 prompt tokens at $1/M and 300 output tokens at $2/M
+    expect(log.costUsd).toBeCloseTo(0.00061, 10);
+    expect(log.priced).toBeDefined();
+  });
+
+  test("is left out when the provider reports no usage", async () => {
+    const { log } = await streamWith(
+      [chunk({ content: "Hi" }, "stop")],
+      (llm) => {
+        (llm as any).pricing = { input: 1, output: 2 };
+      },
+    );
+    expect(log.costUsd).toBeUndefined();
+  });
+
+  test("is left out when the price is unknown, never priced as zero", async () => {
+    const { log } = await streamWith(
+      [chunk({ content: "Hi" }, "stop"), usageChunk(300)],
+      undefined,
+      { model: "nextcli-test-unlisted-model" },
+    );
+    expect(log.usage).toBeDefined();
+    expect(log.costUsd).toBeUndefined();
+  });
+});
+
 describe("the Responses API", () => {
   const responsesUsage = {
     input_tokens: 2_000,

@@ -121,8 +121,10 @@ export interface ILLM
 
   compileChatMessages(
     messages: ChatMessage[],
-    options: LLMFullCompletionOpeions,
-  ): CompiledChatMessagesReport;
+    options: LLMFullCompletionOptions,
+    systemParts?: SystemMessagePart[],
+    includeSnapshot?: boolean,
+  ): CompiledMessagesResult;
 
   embed(chunks: string[]): Promise<number[][]>;
 
@@ -483,6 +485,13 @@ export interface PromptLog {
   outputTokens?: number;
   /** The token usage the provider reported for this call, when it did */
   usage?: Usage;
+  /**
+   * The call's cost in USD, priced as the CLI prices a request. Unset when
+   * the provider sent no usage or the price is unknown, never zero for that.
+   */
+  costUsd?: number;
+  /** How `costUsd` was priced */
+  priced?: import("@nextcli/llm-info").PriceSource;
 }
 
 export type MessageModes = "chat" | "agent" | "plan" | "background";
@@ -2024,10 +2033,16 @@ export interface CompleteOnboardingPayload {
   apiKey?: string;
 }
 
+export interface SystemMessagePart {
+  label: string;
+  chars: number;
+}
+
 export interface CompiledMessagesResult {
   compiledChatMessages: ChatMessage[];
   didPrune: boolean;
   contextPercentage: number;
+  snapshot?: import("@nextcli/context").ContextSnapshot;
 }
 
 export interface AddToChatPayload {
