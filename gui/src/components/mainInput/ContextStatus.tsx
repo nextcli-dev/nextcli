@@ -8,6 +8,30 @@ import {
 } from "../../util/compactConversation";
 import { ToolTip } from "../gui/Tooltip";
 
+// Theme colours for the breakdown, in segment order (system, tools, history)
+const SEGMENT_COLORS = [
+  "bg-description",
+  "bg-accent",
+  "bg-link",
+  "bg-success",
+  "bg-warning",
+];
+
+function segmentColor(index: number): string {
+  return SEGMENT_COLORS[index % SEGMENT_COLORS.length];
+}
+
+/** 1.7K, 343.2K, 1.05M */
+function formatTokens(tokens: number): string {
+  if (tokens >= 1_000_000) {
+    return `${Number((tokens / 1_000_000).toFixed(2))}M`;
+  }
+  if (tokens >= 1000) {
+    return `${Number((tokens / 1000).toFixed(1))}K`;
+  }
+  return String(tokens);
+}
+
 const ContextStatus = () => {
   const navigate = useNavigate();
   const contextPercentage = useAppSelector(
@@ -72,23 +96,67 @@ const ContextStatus = () => {
         }}
         clickable
         content={
-          <div className="flex flex-col gap-1 text-left text-xs">
+          <div className="flex w-64 flex-col gap-2 text-left text-xs">
+            <div className="flex items-center justify-between gap-4">
+              <span className="font-semibold">Context usage</span>
+              <span
+                className="text-description hover:text-link cursor-pointer"
+                onClick={() => navigate(ROUTES.CONTEXT)}
+              >
+                View report
+              </span>
+            </div>
             {showEmpty ? (
-              <span>Measured when you send the next message</span>
+              <span className="text-description">
+                Measured when you send the next message
+              </span>
             ) : (
-              <span>
-                {`${Math.round(snapshot.used / 1000)}K of ${Math.round(snapshot.window / 1000)}K (${percentOfWindow}%) · pruning starts at ${Math.round(snapshot.threshold.tokens / 1000)}K`}
-              </span>
+              <>
+                <div className="flex justify-between gap-4">
+                  <span>{`${percentOfWindow}% full`}</span>
+                  <span className="text-description tabular-nums">
+                    {`~${formatTokens(snapshot.used)} / ${formatTokens(snapshot.window)} tokens`}
+                  </span>
+                </div>
+                <div className="bg-border flex h-1.5 w-full gap-px overflow-hidden rounded-full">
+                  {snapshot.segments.map((segment, index) => (
+                    <div
+                      key={segment.id}
+                      className={segmentColor(index)}
+                      style={{
+                        width: `${(segment.tokens / Math.max(snapshot.window, 1)) * 100}%`,
+                      }}
+                    />
+                  ))}
+                </div>
+                <div className="flex flex-col gap-1">
+                  {snapshot.segments.map((segment, index) => (
+                    <div key={segment.id} className="flex items-center gap-2">
+                      <span
+                        className={`h-2.5 w-2.5 shrink-0 rounded-sm ${segmentColor(index)}`}
+                      />
+                      <span className="flex-1">{segment.label}</span>
+                      <span className="tabular-nums">
+                        {formatTokens(segment.tokens)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div className="text-description flex justify-between gap-4">
+                  <span>Pruning starts at</span>
+                  <span className="tabular-nums">
+                    {formatTokens(snapshot.threshold.tokens)}
+                  </span>
+                </div>
+              </>
             )}
-            {snapshot?.segments.map((segment) => (
-              <span key={segment.id}>
-                {`${segment.label}  ${segment.tokens}`}
-              </span>
-            ))}
             {lastUsage && (
-              <span>
-                {`Prompt ${lastUsage.promptTokens} · output ${lastUsage.completionTokens}`}
-              </span>
+              <div className="text-description flex justify-between gap-4">
+                <span>Last response</span>
+                <span className="tabular-nums">
+                  {`${formatTokens(lastUsage.promptTokens)} prompt · ${formatTokens(lastUsage.completionTokens)} output`}
+                </span>
+              </div>
             )}
             <span
               role="button"
@@ -105,12 +173,6 @@ const ContextStatus = () => {
               }
             >
               Compact now
-            </span>
-            <span
-              className="hover:text-link inline-block cursor-pointer underline"
-              onClick={() => navigate(ROUTES.CONTEXT)}
-            >
-              View report
             </span>
           </div>
         }

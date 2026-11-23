@@ -5,6 +5,7 @@ import { MockIdeMessenger } from "../../context/MockIdeMessenger";
 import {
   newSession,
   setActive,
+  setContextSnapshot,
   setInactive,
   setIsPruned,
 } from "../../redux/slices/sessionSlice";
@@ -63,6 +64,59 @@ describe("ContextStatus", () => {
     });
 
     expect(container.querySelector("svg")).not.toBeNull();
+  });
+
+  it("shows each segment with its count at the end of the row", async () => {
+    const ideMessenger = new MockIdeMessenger();
+    const store = setupStore({ ideMessenger });
+    store.dispatch(
+      newSession({
+        sessionId: "s",
+        title: "t",
+        workspaceDirectory: "",
+        history: [
+          {
+            message: { role: "user", content: "Hello", id: "u1" },
+            contextItems: [],
+          },
+        ] as any,
+      }),
+    );
+    store.dispatch(
+      setContextSnapshot({
+        window: 500_000,
+        used: 343_200,
+        threshold: { tokens: 450_000, action: "pruning", steps: [] },
+        segments: [
+          { id: "system", label: "System", tokens: 1_700, source: "estimated" },
+          { id: "tools", label: "Tools", tokens: 4_200, source: "estimated" },
+          {
+            id: "history",
+            label: "History",
+            tokens: 337_300,
+            source: "estimated",
+          },
+        ],
+        largestToolResults: [],
+      }),
+    );
+    const { container, user } = await renderWithProviders(<ContextStatus />, {
+      store,
+      mockIdeMessenger: ideMessenger,
+    });
+
+    await user.hover(container.querySelector("[data-tooltip-id]")!);
+    expect(await screen.findByText("69% full")).toBeInTheDocument();
+    expect(screen.getByText("~343.2K / 500K tokens")).toBeInTheDocument();
+    for (const [label, count] of [
+      ["System", "1.7K"],
+      ["Tools", "4.2K"],
+      ["History", "337.3K"],
+    ]) {
+      const row = screen.getByText(label).parentElement!;
+      expect(row.lastElementChild).toHaveTextContent(count);
+    }
+    expect(screen.getByText("450K")).toBeInTheDocument();
   });
 
   it("offers no compaction while a turn runs", async () => {
