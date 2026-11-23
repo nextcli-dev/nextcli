@@ -59,6 +59,8 @@ export class CodebaseIndexer {
   private codebaseIndexingState: IndexingProgressUpdate;
   private readonly pauseToken: PauseToken;
   private builtIndexes: CodebaseIndex[] = [];
+  private pendingFiles = new Set<string>();
+  private drainingPendingFiles = false;
 
   private static warnedNoFullTextSearch = false;
 
@@ -833,11 +835,16 @@ export class CodebaseIndexer {
         this.indexingCancellationController.abort();
       }
     }
+    await this.drainPendingFiles();
   }
 
   public async refreshCodebaseIndexFiles(files: string[]) {
-    // Can be cancelled by codebase index but not vice versa
+    // Can be cancelled by codebase index but not vice versa. A file saved
+    // during a running refresh is queued and indexed when that refresh ends.
     if (!this.indexingCancellationController.signal.aborted) {
+      for (const file of files) {
+        this.pendingFiles.add(file);
+      }
       return;
     }
     const localController = new AbortController();
@@ -864,6 +871,28 @@ export class CodebaseIndexer {
     }
     if (this.indexingCancellationController === localController) {
       this.indexingCancellationController.abort();
+    }
+    await this.drainPendingFiles();
+  }
+
+  /** Indexes the files saved during the refresh that just ended. */
+  private async drainPendingFiles(): Promise<void> {
+    if (this.drainingPendingFiles || this.pendingFiles.size === 0) {
+      return;
+    }
+    // Another refresh started in the meantime; it drains the queue when it ends
+    if (!this.indexingCancellationController.signal.aborted) {
+      return;
+    }
+    this.drainingPendingFiles = true;
+    try {
+      while (this.pendingFiles.size > 0) {
+        const files = [...this.pendingFiles];
+        this.pendingFiles.clear();
+        await this.refreshCodebaseIndexFiles(files);
+      }
+    } finally {
+      this.drainingPendingFiles = false;
     }
   }
 

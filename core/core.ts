@@ -1303,7 +1303,9 @@ export class Core {
     if (data?.uris?.length) {
       const diffCache = GitDiffCache.getInstance(getDiffFn(this.ide));
       diffCache.invalidate();
-      walkDirCache.invalidate(); // safe approach for now - TODO - only invalidate on relevant changes
+      // A plain save doesn't change any directory listing, so the walk cache
+      // stays (its entries expire after 30 s anyway). Ignore-file saves below
+      // force a re-index, which clears it.
       const currentProfileUri =
         this.configHandler.currentProfile?.profileDescription.uri ?? "";
       for (const uri of data.uris) {
