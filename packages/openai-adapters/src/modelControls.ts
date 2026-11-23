@@ -267,7 +267,7 @@ function geminiControls(
 /**
  * Grok returns its reasoning in `reasoning_content`. Models that take
  * "none" as an effort (grok-4.3) turn reasoning off; models without effort
- * levels in the catalog (grok-4.20 reasoning, grok-build) reject
+ * levels in the catalog (grok-4.20 reasoning) reject
  * `reasoning_effort` and always reason.
  */
 function xaiControls(
