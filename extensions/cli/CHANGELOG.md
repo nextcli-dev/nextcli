@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.19.0](https://github.com/nextcli-dev/nextcli/compare/cli-v0.18.0...cli-v0.19.0) (2026-11-23)
+
+
+### Features
+
+* **cli:** show what fills the context window ([#213](https://github.com/nextcli-dev/nextcli/issues/213)) ([8170cfb](https://github.com/nextcli-dev/nextcli/commit/8170cfbaf03a6ca3df61aef7075a30047bd8db72))
+* **context:** add a shared context snapshot and tool-schema count ([#212](https://github.com/nextcli-dev/nextcli/issues/212)) ([84f3582](https://github.com/nextcli-dev/nextcli/commit/84f3582526e9d9e8ee8db2e7ce03eefda061dfeb))
+* **vscode:** show a context ring and what fills the window ([#214](https://github.com/nextcli-dev/nextcli/issues/214)) ([a51fb1a](https://github.com/nextcli-dev/nextcli/commit/a51fb1acb41341627884742ea32db3e5a0846812))
+
+
+### Bug Fixes
+
+* **vscode:** keep prompts out of saved sessions and write dev data only with NEXTCLI_TRACE ([#216](https://github.com/nextcli-dev/nextcli/issues/216)) ([aa674b7](https://github.com/nextcli-dev/nextcli/commit/aa674b78da4caf2b4de6663b43419fae0e69daba))
+
 ## [0.18.0](https://github.com/nextcli-dev/nextcli/compare/cli-v0.17.0...cli-v0.18.0) (2026-11-22)
 
 
