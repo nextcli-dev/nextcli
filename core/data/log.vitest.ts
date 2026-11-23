@@ -1,8 +1,10 @@
-import { DevDataLogEvent } from "@nextcli/config-yaml";
+import { DevDataLogEvent, devDataVersionedSchemas } from "@nextcli/config-yaml";
+import { z } from "zod";
 import fs from "fs";
 import path from "path";
 import {
   afterAll,
+  afterEach,
   beforeAll,
   beforeEach,
   describe,
@@ -13,7 +15,11 @@ import {
 import { IdeInfo, IdeSettings } from "..";
 import { Core } from "../core";
 import { getDevDataFilePath } from "../util/paths";
-import { DataLogger } from "./log";
+import { DataLogger, LOCAL_DEV_DATA_VERSION } from "./log";
+
+// The schemas the logger writes with, at the version it writes
+const localSchemas = (level: "all" | "noCode") =>
+  devDataVersionedSchemas[LOCAL_DEV_DATA_VERSION][level];
 
 // Only mock fetch, not fs
 vi.mock("@nextcli/fetch");
@@ -65,6 +71,9 @@ describe("DataLogger", () => {
   beforeEach(() => {
     // Reset mocks
     vi.clearAllMocks();
+
+    // The local log is off unless the test sets a level
+    delete process.env.NEXTCLI_TRACE;
 
     // Remove test file if it exists
     if (fs.existsSync(testFilePath)) {
@@ -163,7 +172,13 @@ describe("DataLogger", () => {
   });
 
   describe("logLocalData", () => {
+    afterEach(() => {
+      delete process.env.NEXTCLI_TRACE;
+    });
+
     it("should actually write data to the local file", async () => {
+      process.env.NEXTCLI_TRACE = "full";
+
       // Call the method to log data locally
       await dataLogger.logLocalData(TEST_EVENT);
 
@@ -179,6 +194,8 @@ describe("DataLogger", () => {
     });
 
     it("should write agent interaction data to local file", async () => {
+      process.env.NEXTCLI_TRACE = "full";
+
       // Call the method to log data locally
       await dataLogger.logLocalData(TEST_AGENT_INTERACTION_EVENT);
 
@@ -195,6 +212,100 @@ describe("DataLogger", () => {
       expect(fileContent).toContain('"prompt":"Hello, world!"');
       expect(fileContent).toContain('"completion":"Hello, world!"');
       expect(fileContent).toContain('"tools":["test-tool1"]');
+    });
+  });
+
+  describe("local logging levels (NEXTCLI_TRACE)", () => {
+    const chatFile = () => getDevDataFilePath("chatInteraction", SCHEMA);
+
+    afterEach(() => {
+      delete process.env.NEXTCLI_TRACE;
+      for (const file of [
+        chatFile(),
+        getDevDataFilePath("tokensGenerated", SCHEMA),
+      ]) {
+        fs.rmSync(file, { force: true });
+      }
+    });
+
+    it("writes no file and runs no schema parse when unset", async () => {
+      // getDevDataFilePath creates the file's folder; start from none
+      fs.rmSync(path.dirname(chatFile()), { recursive: true, force: true });
+      const schema = localSchemas("all").chatInteraction as z.ZodObject<any>;
+      const parseSpy = vi.spyOn(schema, "safeParse");
+
+      await dataLogger.logDevData(TEST_AGENT_INTERACTION_EVENT);
+
+      expect(parseSpy).not.toHaveBeenCalled();
+      expect(fs.existsSync(chatFile())).toBe(false);
+    });
+
+    it("basic writes the noCode line, without prompt or completion", async () => {
+      process.env.NEXTCLI_TRACE = "basic";
+
+      await dataLogger.logDevData(TEST_AGENT_INTERACTION_EVENT);
+
+      const line = JSON.parse(fs.readFileSync(chatFile(), "utf8").trim());
+      expect(line).not.toHaveProperty("prompt");
+      expect(line).not.toHaveProperty("completion");
+      expect(line.eventName).toBe("chatInteraction");
+      expect(line.tools).toEqual(["test-tool1"]);
+      const noCode = localSchemas("noCode").chatInteraction as z.ZodObject<any>;
+      expect(noCode.safeParse(line).success).toBe(true);
+    });
+
+    it("full writes the same content as the all level", async () => {
+      process.env.NEXTCLI_TRACE = "full";
+
+      await dataLogger.logDevData(TEST_AGENT_INTERACTION_EVENT);
+
+      const line = JSON.parse(fs.readFileSync(chatFile(), "utf8").trim());
+      expect(line.prompt).toBe("Hello, world!");
+      expect(line.completion).toBe("Hello, world!");
+      const all = localSchemas("all").chatInteraction as z.ZodObject<any>;
+      expect(all.safeParse(line).success).toBe(true);
+    });
+
+    it("an unknown value stays off and warns once", async () => {
+      process.env.NEXTCLI_TRACE = "loud";
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      await dataLogger.logDevData(TEST_AGENT_INTERACTION_EVENT);
+      await dataLogger.logDevData(TEST_AGENT_INTERACTION_EVENT);
+
+      expect(fs.existsSync(chatFile())).toBe(false);
+      const traceWarnings = warnSpy.mock.calls.filter((call) =>
+        String(call[0]).includes("NEXTCLI_TRACE"),
+      );
+      expect(traceWarnings).toHaveLength(1);
+      warnSpy.mockRestore();
+    });
+
+    it("accepts the value in any case and with spaces", async () => {
+      process.env.NEXTCLI_TRACE = " Basic ";
+
+      await dataLogger.logDevData(TEST_AGENT_INTERACTION_EVENT);
+
+      const line = JSON.parse(fs.readFileSync(chatFile(), "utf8").trim());
+      expect(line).not.toHaveProperty("prompt");
+    });
+
+    it("still sends to a configured destination when local logging is off", async () => {
+      const logToOneDestinationSpy = vi
+        .spyOn(dataLogger, "logToOneDestination")
+        .mockResolvedValue();
+      dataLogger.core!.configHandler.loadConfig = vi.fn().mockResolvedValue({
+        config: {
+          data: [{ destination: "https://example.com/logs", schema: SCHEMA }],
+        },
+      });
+
+      await dataLogger.logDevData(TEST_EVENT);
+
+      expect(fs.existsSync(getDevDataFilePath(TEST_EVENT.name, SCHEMA))).toBe(
+        false,
+      );
+      expect(logToOneDestinationSpy).toHaveBeenCalledTimes(1);
     });
   });
 

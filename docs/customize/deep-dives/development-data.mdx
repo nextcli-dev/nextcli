@@ -5,7 +5,27 @@ keywords: [development data, dev data, LLM-aided development]
 sidebarTitle: "Development Data"
 ---
 
-When you use NextCLI, you automatically collect data on how you build software. By default, this development data is saved to `.continue/dev_data` on your local machine.
+NextCLI can record development data — events about chats, edits and completions — for your own analysis. Nothing is sent to NextCLI's developers.
+
+## Local dev data
+
+Local dev-data logging is **off by default**. To turn it on, set the `NEXTCLI_TRACE` environment variable before starting VS Code:
+
+| Value | What is written |
+| --- | --- |
+| unset | Nothing. No event is computed or written. |
+| `basic` | Events without prompts, completions or file contents (the `noCode` schema level). |
+| `full` | Events with the full content: prompts, completions and file text (the `all` level). |
+
+Events are appended as JSON lines to `~/.continue/dev_data/0.2.0/<eventName>.jsonl`. An unknown value keeps logging off and prints one warning. Files written by earlier versions stay where they are; delete them yourself if you don't want them.
+
+The same variable controls `cn`'s [model-call trace](/cli/configuration#logs-and-traces), so one setting works for both. `cn` currently treats `full` as `basic` for its trace.
+
+On macOS and Linux, VS Code reads the login shell's environment at startup, so an `export NEXTCLI_TRACE=basic` in your shell profile works after a restart. On Windows, set it as a user environment variable.
+
+<Warning>
+  `full` records the exact prompts and file contents you work with. Keep those files private.
+</Warning>
 
 ## How to Configure Custom Data Destinations
 
