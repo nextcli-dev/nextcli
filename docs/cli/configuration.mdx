@@ -130,7 +130,7 @@ For a remote MCP server that requires OAuth, `cn` opens your browser to sign in 
 
 Set it with `--log-level <level>`, or with `NEXTCLI_LOG_LEVEL` for every run. `--log-level` wins over `--verbose`, which wins over the environment variable. `cn review` passes the level on to its review workers.
 
-For a machine-readable record of each model call, set `NEXTCLI_TRACE=basic`. Both variables are read when `cn` starts, and an unknown value prints a warning. `cn` then writes one JSON line per call to `~/.continue/traces/<sessionId>-<runId>.jsonl`, or to the folder in `NEXTCLI_TRACE_DIR`. The same variable controls the VS Code extension's [local dev data](/customize/deep-dives/development-data#local-dev-data), so one setting works for both:
+For a machine-readable record of each model call, set `NEXTCLI_TRACE=basic`. Both variables are read when `cn` starts, and an unknown value prints a warning. `cn` then writes one JSON line per call to `~/.continue/traces/<sessionId>-<runId>.jsonl`, or to the folder in `NEXTCLI_TRACE_DIR`. A new chat or a resumed session in the same run writes to its own file. The same variable controls the VS Code extension's [local dev data](/customize/deep-dives/development-data#local-dev-data), so one setting works for both:
 
 ```json
 {"ts":1762685578123,"dur":41000,"name":"llm.request","attrs":{"model":"deepseek-v4.1-flash","usage":{"prompt_tokens":25000,"completion_tokens":32000},"costUsd":0.046,"priced":"exact","finishReason":"length","ttftMs":900,"contentChars":0,"reasoningChars":90000,"toolCalls":[]}}
@@ -144,12 +144,20 @@ The first line is a header with the `cn` version, Node version, platform and ids
 
 Apart from that error text, the `basic` trace holds token counts, timings and tool names, not prompt or file text. When tracing is on, each `llm.request` also has a `context` object: the estimated tokens in the system prompt, the tools and the history, the compaction threshold, and the largest tool results. It names rules and tools. It does not include their text. Tracing is off unless the variable is set.
 
-`NEXTCLI_TRACE=full` writes the same lines and, in addition, one file for each HTTP request `cn` sends to a model provider, to `~/.continue/traces/<sessionId>-<runId>/request-<n>.json` (or under `NEXTCLI_TRACE_DIR`). Each file holds the method, the URL and the body as the provider received it, in that provider's format: for example Anthropic's message shape and cache markers, and any `extraBodyProperties`. Request headers aren't written. Every attempt gets its own file, retries included, and so do title generation, compaction and subagents. Bedrock requests go through the AWS SDK and aren't written.
+`NEXTCLI_TRACE=full` writes the same lines and, in addition, one file for each HTTP request `cn` sends to a model provider, to `~/.continue/traces/<sessionId>-<runId>/request-<n>.json` (or under `NEXTCLI_TRACE_DIR`). Each file holds the method, the URL and the body as the provider received it, in that provider's format: for example Anthropic's message shape and cache markers, and any `extraBodyProperties`. Request headers aren't written. Every attempt gets its own file, retries included, and so do title generation, compaction and subagents. Each session has its own folder, like the trace file.
+
+Some requests aren't written:
+
+- requests an SDK sends itself: Bedrock (the AWS SDK), the `gemini` provider, and Gemini models on `vertexai` when streaming (`@google/genai`). `cn` prints a warning once when it builds such a model, and their trace lines are still written;
+- token exchanges, which post credentials rather than a prompt: WatsonX and AskSage sign-in requests;
+- requests without a body, such as model lists.
 
 Credentials are replaced with `[redacted]` wherever they appear:
 
-- each configured model's `apiKey`, credential headers in `requestOptions.headers` (`Authorization`, `Cookie` and names such as `X-Api-Key`), and the client certificate's key and passphrase, whatever their length;
+- each configured model's `apiKey`, credential headers in `requestOptions.headers` (`Authorization`, `Cookie` and names such as `X-Api-Key`), and the client certificate's key and passphrase, whatever their length. Within a header, also the token after `Bearer`, the `user:password` a `Basic` token encodes and its password, and cookie values of 8 characters or more;
 - values of 8 characters or more of secret-like variables, in your environment or a model's `env`: `*API_KEY*`, `*SECRET*`, `*TOKEN*`, `*PASSWORD*` and the other rules the Bash tool's environment filter uses.
+
+Each of these is also redacted in its URL-encoded form, as a key in a query string appears.
 
 On macOS and Linux, only your user can read the request folder and its files.
 

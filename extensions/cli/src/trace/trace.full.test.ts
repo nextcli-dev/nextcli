@@ -9,9 +9,10 @@ import type { ChatCompletionCreateParamsStreaming } from "openai/resources/index
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const warn = vi.hoisted(() => vi.fn());
+const session = vi.hoisted(() => ({ sessionId: "s1" }));
 
 vi.mock("../session.js", () => ({
-  getCurrentSession: () => ({ sessionId: "s1" }),
+  getCurrentSession: () => ({ sessionId: session.sessionId }),
 }));
 const warnBadEnv = vi.hoisted(() => vi.fn());
 
@@ -84,15 +85,25 @@ describe("request files (NEXTCLI_TRACE=full)", () => {
     ).rejects.toThrow();
   }
 
-  const requestDir = () => path.join(dir, "s1-r1");
-  const readRequest = (n: number) =>
+  const requestDir = (sessionId = "s1") => path.join(dir, `${sessionId}-r1`);
+  const readRequest = (n: number, sessionId = "s1") =>
     JSON.parse(
-      fs.readFileSync(path.join(requestDir(), `request-${n}.json`), "utf-8"),
+      fs.readFileSync(
+        path.join(requestDir(sessionId), `request-${n}.json`),
+        "utf-8",
+      ),
     );
+  /** Every request file of the run, as text */
+  const allWritten = () =>
+    fs
+      .readdirSync(requestDir())
+      .map((file) => fs.readFileSync(path.join(requestDir(), file), "utf-8"))
+      .join("\n");
 
   beforeEach(async () => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), "cn-trace-full-"));
     dir = path.join(root, "traces");
+    session.sessionId = "s1";
     warn.mockClear();
     warnBadEnv.mockClear();
     received = [];
@@ -253,6 +264,123 @@ describe("request files (NEXTCLI_TRACE=full)", () => {
     expect(written).toContain("region eu-west-1");
     // The provider got the request as configured
     expect(received[0].body).toContain("12345678901234");
+  });
+
+  it("redacts the secrets inside Basic and Cookie headers", async () => {
+    const { createLlmApi } = await load("full");
+    const basic = Buffer.from("alice:pw-basic-9").toString("base64");
+
+    await send(
+      createLlmApi,
+      {
+        requestOptions: {
+          headers: {
+            "Proxy-Authorization": `Basic ${basic}`,
+            Cookie: "theme=dark; session=abc12345secret",
+          },
+        },
+      },
+      {
+        messages: [
+          {
+            role: "user",
+            content: `login alice:pw-basic-9, then pw-basic-9 alone; cookie abc12345secret; theme dark`,
+          },
+        ],
+      },
+    );
+
+    const written = allWritten();
+    for (const secret of ["pw-basic-9", "abc12345secret", basic]) {
+      expect(written).not.toContain(secret);
+    }
+    // A short cookie value is a setting: redacting it would hit every "dark"
+    expect(written).toContain("theme dark");
+  });
+
+  it("redacts a key that a URL carries percent-encoded", async () => {
+    const { createLlmApi } = await load("full");
+    const llmApi = createLlmApi(
+      {
+        name: "m",
+        model: "gemini-2.5-flash",
+        provider: "vertexai",
+        apiBase,
+        apiKey: "abc+def/ghi=",
+      },
+      {} as never,
+    )!;
+
+    await expect(
+      llmApi.chatCompletionNonStream(
+        {
+          model: "gemini-2.5-flash",
+          messages: [{ role: "user", content: "Review this PR text" }],
+        },
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow();
+
+    expect(received[0].url).toContain("key=abc%2Bdef%2Fghi%3D");
+    const request = readRequest(1);
+    expect(request.url).not.toContain("abc%2Bdef");
+    expect(request.url).toContain("key=[redacted]");
+  });
+
+  // On-prem WatsonX trades a base64 user:key for a token, posting the key
+  // decoded. A token exchange is not a model request and is never written.
+  it("doesn't write a token exchange, only the model request", async () => {
+    const { createLlmApi } = await load("full");
+
+    await send(createLlmApi, {
+      provider: "watsonx",
+      apiKey: Buffer.from("user:supersecretkey").toString("base64"),
+      env: { apiVersion: "2024-03-14", projectId: "p" },
+    });
+
+    expect(received.map((request) => request.url)).toEqual([
+      "/v1/icp4d-api/v1/authorize",
+      expect.stringContaining("/ml/v1/text/chat"),
+    ]);
+    expect(received[0].body).toContain("supersecretkey");
+    expect(fs.readdirSync(requestDir())).toEqual(["request-1.json"]);
+    expect(readRequest(1).url).toContain("/ml/v1/text/chat");
+    expect(allWritten()).not.toContain("supersecretkey");
+  });
+
+  it("warns once per provider whose SDK sends the requests", async () => {
+    const { createLlmApi } = await load("full");
+    const build = (provider: string) =>
+      createLlmApi(
+        { name: "m", model: "gemini-2.5-flash", provider, apiKey: "k" },
+        {} as never,
+      );
+
+    build("gemini");
+    build("gemini");
+    build("openai");
+
+    expect(warnBadEnv).toHaveBeenCalledTimes(1);
+    expect(warnBadEnv.mock.calls[0][0]).toContain(
+      "NEXTCLI_TRACE=full can't write Gemini requests",
+    );
+  });
+
+  it("writes each session's requests to that session's folder", async () => {
+    const { createLlmApi } = await load("full");
+
+    await send(createLlmApi, {});
+    session.sessionId = "s2";
+    await send(createLlmApi, {});
+    session.sessionId = "s1";
+    await send(createLlmApi, {});
+
+    expect(fs.readdirSync(requestDir("s1")).sort()).toEqual([
+      "request-1.json",
+      "request-2.json",
+    ]);
+    expect(fs.readdirSync(requestDir("s2"))).toEqual(["request-1.json"]);
+    expect(readRequest(1, "s2").body).toEqual(JSON.parse(received[1].body));
   });
 
   it("redacts secret-like environment values wherever they appear", async () => {
