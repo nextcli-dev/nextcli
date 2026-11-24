@@ -1,6 +1,6 @@
 import * as path from "node:path";
 
-import { parse } from "shell-quote";
+import { hasDollarQuote, parseShellLine } from "./parseShell.js";
 
 /**
  * How dangerous a command's deletions or disk writes are:
@@ -165,10 +165,15 @@ function classifyLine(line: string, depth: number): DestructiveRisk | null {
     risk = maxRisk(risk, classifyDestructiveCommand(match[1], depth + 1));
   }
 
+  // `$'...'` can hide what follows it from the parser, and spell any path
+  if (hasDollarQuote(line)) {
+    risk = maxRisk(risk, "destructive");
+  }
+
   let tokens: ParsedToken[];
   try {
     // Keep variables as `${NAME}` instead of expanding them to ""
-    tokens = parse(line, (key) => `\${${key}}`) as ParsedToken[];
+    tokens = parseShellLine(line, (key) => `\${${key}}`) as ParsedToken[];
   } catch {
     return maxRisk(risk, "destructive");
   }

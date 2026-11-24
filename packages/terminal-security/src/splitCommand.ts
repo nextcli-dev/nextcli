@@ -1,7 +1,6 @@
-import { parse } from "shell-quote";
-
 import { normalizeCommandName } from "./destructiveCommands.js";
 import { extractSubstitutedCommands } from "./evaluateTerminalCommandSecurity.js";
+import { hasDollarQuote, parseShellLine } from "./parseShell.js";
 
 export interface SplitCommand {
   /**
@@ -20,9 +19,9 @@ export interface SplitCommand {
   /**
    * Part of what the line runs can't be read from it: a command named by a
    * variable or substitution (`$CMD`), inline code (`python -c`, `node -e`,
-   * also glued to its flag: `python -c'...'`), a shell reading stdin
-   * (`curl x | sh`) or given `-c` with no command, or a line that doesn't
-   * parse. A script file (`bash deploy.sh`, `python x.py`, `source env.sh`)
+   * also glued to its flag: `python -c'...'`), a shell or interpreter
+   * reading stdin (`curl x | sh`, `cat x | python3`), a shell given `-c` with
+   * no command, or a line that doesn't parse. A script file (`bash deploy.sh`, `python x.py`, `source env.sh`)
    * is a command like any other: its contents are not read.
    */
   opaque: boolean;
@@ -34,16 +33,99 @@ const MAX_DEPTH = 8;
 
 const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh", "fish"]);
 
-/** Interpreters and the flags that make them run code given on the line */
-const INLINE_CODE_FLAGS: Array<[RegExp, string[]]> = [
-  [/^python[\d.]*$/, ["-c"]],
-  [/^(node|nodejs|bun)$/, ["-e", "--eval", "-p", "--print"]],
-  [/^deno$/, ["eval"]],
-  [/^(ruby|lua)$/, ["-e"]],
-  [/^perl$/, ["-e", "-E"]],
-  [/^php$/, ["-r"]],
-  [/^osascript$/, ["-e"]],
-  [/^(pwsh|powershell)$/, ["-c", "-command", "-Command"]],
+/**
+ * An interpreter runs code given on the line with one of its inline-code
+ * flags (`python -c`), and code from stdin when it names no script
+ */
+interface Interpreter {
+  name: RegExp;
+  inlineCode: string[];
+  /** Options that take the next word as a value (`python -W ignore`) */
+  valueOptions: string[];
+  /** Options that name what runs instead of a script (`python -m pytest`) */
+  codeOptions: string[];
+  /** Its scripts: after an option it doesn't list, a word that isn't one may be that option's value */
+  scripts: RegExp;
+}
+
+const JS_SCRIPTS = /\.[cm]?[jt]sx?$/i;
+
+const INTERPRETERS: Interpreter[] = [
+  {
+    name: /^python[\d.]*$/,
+    inlineCode: ["-c"],
+    valueOptions: ["-W", "-X", "-Q", "--check-hash-based-pycs"],
+    codeOptions: ["-m"],
+    scripts: /\.(py|pyw|pyz|pyc)$/i,
+  },
+  {
+    // `bun install` and `bun x.ts` name what runs like a script does
+    name: /^(node|nodejs|bun)$/,
+    inlineCode: ["-e", "--eval", "-p", "--print"],
+    valueOptions: [
+      "-r",
+      "--require",
+      "--import",
+      "-C",
+      "--conditions",
+      "--loader",
+      "--experimental-loader",
+      "--env-file",
+      "--input-type",
+    ],
+    codeOptions: [],
+    scripts: JS_SCRIPTS,
+  },
+  {
+    name: /^deno$/,
+    inlineCode: ["eval"],
+    valueOptions: [],
+    codeOptions: [],
+    scripts: JS_SCRIPTS,
+  },
+  {
+    name: /^ruby$/,
+    inlineCode: ["-e"],
+    valueOptions: ["-I", "-r", "-C", "-E", "-F"],
+    codeOptions: [],
+    scripts: /\.rb$/i,
+  },
+  {
+    name: /^lua$/,
+    inlineCode: ["-e"],
+    valueOptions: ["-l"],
+    codeOptions: [],
+    scripts: /\.lua$/i,
+  },
+  {
+    name: /^perl$/,
+    inlineCode: ["-e", "-E"],
+    valueOptions: ["-I", "-M", "-m"],
+    codeOptions: [],
+    scripts: /\.(pl|pm|t)$/i,
+  },
+  {
+    name: /^php$/,
+    inlineCode: ["-r"],
+    valueOptions: ["-c", "-d", "-z"],
+    // The built-in web server
+    codeOptions: ["-S"],
+    scripts: /\.(php|phar)$/i,
+  },
+  {
+    name: /^osascript$/,
+    inlineCode: ["-e"],
+    valueOptions: ["-l", "-s"],
+    codeOptions: [],
+    scripts: /\.(scpt|applescript|js)$/i,
+  },
+  {
+    name: /^(pwsh|powershell)$/,
+    inlineCode: ["-c", "-command", "-Command"],
+    valueOptions: [],
+    codeOptions: [],
+    scripts: /\.ps1$/i,
+  },
 ];
 
 interface WrapperGrammar {
@@ -141,10 +223,7 @@ function splitInto(command: string, result: State, depth: number) {
     result.opaque = true;
     return;
   }
-  // A backslash before a line break joins the lines
-  const lines = command
-    .replace(/\\\r?\n/g, "")
-    .split(/\r?\n|\r/)
+  const lines = logicalLines(command)
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
   if (lines.length > 1) {
@@ -155,14 +234,50 @@ function splitInto(command: string, result: State, depth: number) {
   }
 }
 
+/**
+ * The lines bash runs: a backslash before a line break joins the lines,
+ * except one that is escaped itself (`\\`) or inside a comment, which bash
+ * leaves alone, so `git status # x \` and the next line are two commands.
+ */
+function logicalLines(command: string): string[] {
+  const lines: string[] = [];
+  let joined = "";
+  for (const physical of command.split(/\r?\n|\r/)) {
+    const line = joined + physical;
+    const backslashes = /\\*$/.exec(line)![0].length;
+    if (backslashes % 2 === 1 && !endsInComment(line)) {
+      joined = line.slice(0, -1);
+    } else {
+      lines.push(line);
+      joined = "";
+    }
+  }
+  if (joined) {
+    lines.push(joined);
+  }
+  return lines;
+}
+
+function endsInComment(line: string): boolean {
+  try {
+    const last = parseShellLine(line).at(-1);
+    return typeof last === "object" && "comment" in last;
+  } catch {
+    return false;
+  }
+}
+
 function splitLine(line: string, result: State, depth: number) {
   let tokens: Token[];
   try {
     // Keep variables as written, so `$CMD` is seen as a variable
-    tokens = parse(line, (name) => `$${name}`) as Token[];
+    tokens = parseShellLine(line, (name) => `$${name}`) as Token[];
   } catch {
     result.opaque = true;
     return;
+  }
+  if (hasDollarQuote(line)) {
+    result.opaque = true;
   }
 
   // Unquoted backticks are not tokens; read them from the text
@@ -272,7 +387,10 @@ function addSimpleCommand(words: string[], result: State, depth: number) {
       result.opaque = true;
       return;
     }
-    const name = normalizeCommandName(argv[0]);
+    // Case and `.exe` don't change the program on Windows and macOS
+    const name = normalizeCommandName(argv[0])
+      .toLowerCase()
+      .replace(/\.exe$/, "");
     const grammar = WRAPPERS[name];
     if (!grammar) {
       if (argv !== words) {
@@ -325,15 +443,51 @@ function runsMore(name: string, argv: string[], result: State, depth: number) {
     }
     return;
   }
-  for (const [pattern, flags] of INLINE_CODE_FLAGS) {
+  const interpreter = INTERPRETERS.find((entry) => entry.name.test(name));
+  if (
+    interpreter &&
+    (argv.slice(1).some((arg) => runsInlineCode(arg, interpreter.inlineCode)) ||
+      readsCodeFromStdin(argv, interpreter))
+  ) {
+    result.opaque = true;
+  }
+}
+
+/**
+ * Whether an interpreter runs code from stdin: it names no script (`cat x |
+ * python3`, `python <<EOF`) or names `-`. `python -m pytest` names a module,
+ * which counts as a script. An option the interpreter's list doesn't know
+ * may take the next word as its value (`node --max-http-header-size 80000`,
+ * `ruby --encoding UTF-8`), so that word counts as the script only when it
+ * looks like one.
+ */
+function readsCodeFromStdin(argv: string[], interpreter: Interpreter): boolean {
+  for (let i = 1; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === "-") {
+      return true;
+    }
+    if (arg === "--") {
+      return i + 1 >= argv.length || argv[i + 1] === "-";
+    }
+    if (arg === "--version" || arg === "--help") {
+      return false;
+    }
+    if (!arg.startsWith("-") || interpreter.codeOptions.includes(arg)) {
+      return false;
+    }
+    const next = argv[i + 1];
     if (
-      pattern.test(name) &&
-      argv.slice(1).some((arg) => runsInlineCode(arg, flags))
+      interpreter.valueOptions.includes(arg) ||
+      (!arg.includes("=") &&
+        next !== undefined &&
+        !next.startsWith("-") &&
+        !interpreter.scripts.test(next))
     ) {
-      result.opaque = true;
-      return;
+      i++;
     }
   }
+  return true;
 }
 
 /**

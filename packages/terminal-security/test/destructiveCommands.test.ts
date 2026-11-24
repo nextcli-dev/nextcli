@@ -270,3 +270,32 @@ describe("destructive command tiers (#13001)", () => {
     );
   });
 });
+
+describe("bash's reading of comments and quoting", () => {
+  expectTier(
+    [
+      "ls a#; rm -rf ~",
+      "echo a#;rm -rf /",
+      // Not a word boundary for bash, so not a comment either
+      "ls a\f#; rm -rf ~",
+      "ls a\v#; rm -rf ~",
+      "ls a\u00a0#; rm -rf ~",
+      "ls a\u2028#; rm -rf ~",
+      // An escaped separator stays in the word
+      "ls a\\ #; rm -rf ~",
+      "ls a\\;#; rm -rf ~",
+    ],
+    "catastrophic",
+  );
+  // shell-quote can't read $'...', so a person approves the line
+  expectTier(["echo $'hi'", "echo a$'\\x41'"], "destructive");
+  // A $ inside quotes or escaped is a plain character
+  expectTier(
+    ["grep 'foo$' README.md", 'echo "total $"', "echo \\$'x'"],
+    "none",
+  );
+  it("doesn't let $'...' hide a delete", () => {
+    expect(tier("ls $'a\\'#'; rm -rf ~")).not.toBe("none");
+  });
+  expectTier(["git status # rm -rf ~", "echo 'a#b'", "ls a#b"], "none");
+});
