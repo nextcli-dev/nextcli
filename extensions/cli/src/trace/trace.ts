@@ -85,7 +85,7 @@ let requestFilesOff = false;
 
 type TracedModel = Pick<
   ModelConfig,
-  "provider" | "apiKey" | "env" | "requestOptions"
+  "provider" | "model" | "apiKey" | "env" | "requestOptions"
 >;
 
 // The models whose credentials are redacted from request files
@@ -100,13 +100,28 @@ const CREDENTIAL_HEADERS = new Set([
   "cookie",
 ]);
 
-// Providers whose model requests an SDK sends, past the adapters' fetch
-const UNRECORDED_PROVIDERS: Record<string, string> = {
-  bedrock: "Bedrock",
-  gemini: "Gemini",
-  vertexai: "Vertex AI Gemini streaming",
-};
-const warnedProviders = new Set<string>();
+/**
+ * The model requests an SDK sends past the adapters' fetch, if this model
+ * makes any. On Vertex AI only Gemini streams through @google/genai; Claude,
+ * Mistral and non-streaming Gemini go through customFetch (the adapter's
+ * determineVertexProvider order).
+ */
+function unrecordedRequests(model: TracedModel): string | undefined {
+  switch (model.provider) {
+    case "bedrock":
+      return "Bedrock";
+    case "gemini":
+      return "Gemini";
+    case "vertexai":
+      return model.model.includes("gemini") &&
+        !/mistral|codestral|mixtral|claude/.test(model.model)
+        ? "Vertex AI Gemini streaming"
+        : undefined;
+    default:
+      return undefined;
+  }
+}
+const warnedUnrecorded = new Set<string>();
 
 /**
  * NEXTCLI_TRACE=full: from now on, writes each request the model adapters
@@ -119,9 +134,9 @@ export function traceModelRequests(model: TracedModel): void {
   }
   tracedModels.push(model);
   observeAdapterRequests(traceRequest);
-  const unrecorded = UNRECORDED_PROVIDERS[model.provider];
-  if (unrecorded && !warnedProviders.has(model.provider)) {
-    warnedProviders.add(model.provider);
+  const unrecorded = unrecordedRequests(model);
+  if (unrecorded && !warnedUnrecorded.has(unrecorded)) {
+    warnedUnrecorded.add(unrecorded);
     warnBadEnv(
       `NEXTCLI_TRACE=full can't write ${unrecorded} requests: an SDK sends them. Their trace lines are still written.`,
     );
@@ -145,10 +160,27 @@ function clientKeyCredentials(key: string): string[] {
 }
 
 /**
+ * The user:password a base64 credential encodes (a Basic token, an on-prem
+ * WatsonX apiKey) and that password, each when 8 characters or more: a
+ * shorter one, such as the "a" of user:a, would redact common words.
+ */
+function decodedCredentials(encoded: string): string[] {
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) {
+    return [];
+  }
+  const decoded = Buffer.from(encoded, "base64").toString("utf8");
+  if (!/^[\x20-\x7e]+$/.test(decoded) || !decoded.includes(":")) {
+    return [];
+  }
+  const password = decoded.slice(decoded.indexOf(":") + 1).trim();
+  return [decoded, password].filter((part) => part.length >= 8);
+}
+
+/**
  * A credential header's value and the secrets inside it: the token after a
- * scheme ("Bearer <token>"), the user:password a Basic token encodes and that
- * password, and cookie values of 8 characters or more (shorter ones are
- * settings such as theme=dark, and would redact common words).
+ * scheme ("Bearer <token>"), what a Basic token encodes, and cookie values of
+ * 8 characters or more (shorter ones are settings such as theme=dark, and
+ * would redact common words).
  */
 function headerCredentials(name: string, value: string): string[] {
   const credentials = [value];
@@ -156,11 +188,7 @@ function headerCredentials(name: string, value: string): string[] {
   if (token) {
     credentials.push(token);
     if (scheme.toLowerCase() === "basic") {
-      const decoded = Buffer.from(token, "base64").toString("utf8");
-      const password = decoded.slice(decoded.indexOf(":") + 1);
-      if (decoded.includes(":") && password) {
-        credentials.push(decoded, password);
-      }
+      credentials.push(...decodedCredentials(token));
     }
   }
   if (name.toLowerCase() === "cookie") {
@@ -177,12 +205,13 @@ function headerCredentials(name: string, value: string): string[] {
 /**
  * A model's configured credentials, whatever their length: a field that
  * holds a credential is one even when it is short. Entries of its `env`
- * follow the rule for environment variables instead.
+ * follow the rule for environment variables instead, and parts decoded from
+ * a credential need 8 characters.
  */
 function modelCredentials(model: TracedModel): string[] {
   const credentials: string[] = [];
   if (model.apiKey) {
-    credentials.push(model.apiKey);
+    credentials.push(model.apiKey, ...decodedCredentials(model.apiKey));
   }
   for (const [name, value] of Object.entries(
     model.requestOptions?.headers ?? {},

@@ -298,6 +298,22 @@ describe("request files (NEXTCLI_TRACE=full)", () => {
     expect(written).toContain("theme dark");
   });
 
+  it("leaves a decoded password under 8 characters alone", async () => {
+    const { createLlmApi } = await load("full");
+    const basic = Buffer.from("user:a").toString("base64");
+
+    await send(
+      createLlmApi,
+      { requestOptions: { headers: { Authorization: `Basic ${basic}` } } },
+      { messages: [{ role: "user", content: `a banana, then ${basic}` }] },
+    );
+
+    const written = allWritten();
+    // The header value and its token are redacted; "a" would hit every word
+    expect(written).not.toContain(basic);
+    expect(written).toContain("a banana, then [redacted]");
+  });
+
   it("redacts a key that a URL carries percent-encoded", async () => {
     const { createLlmApi } = await load("full");
     const llmApi = createLlmApi(
@@ -332,11 +348,16 @@ describe("request files (NEXTCLI_TRACE=full)", () => {
   it("doesn't write a token exchange, only the model request", async () => {
     const { createLlmApi } = await load("full");
 
-    await send(createLlmApi, {
-      provider: "watsonx",
-      apiKey: Buffer.from("user:supersecretkey").toString("base64"),
-      env: { apiVersion: "2024-03-14", projectId: "p" },
-    });
+    await send(
+      createLlmApi,
+      {
+        provider: "watsonx",
+        apiKey: Buffer.from("user:supersecretkey").toString("base64"),
+        env: { apiVersion: "2024-03-14", projectId: "p" },
+      },
+      // The decoded key is a credential too, wherever it appears
+      { messages: [{ role: "user", content: "my key is supersecretkey" }] },
+    );
 
     expect(received.map((request) => request.url)).toEqual([
       "/v1/icp4d-api/v1/authorize",
@@ -348,21 +369,26 @@ describe("request files (NEXTCLI_TRACE=full)", () => {
     expect(allWritten()).not.toContain("supersecretkey");
   });
 
-  it("warns once per provider whose SDK sends the requests", async () => {
+  it("warns once for each kind of request an SDK sends", async () => {
     const { createLlmApi } = await load("full");
-    const build = (provider: string) =>
-      createLlmApi(
-        { name: "m", model: "gemini-2.5-flash", provider, apiKey: "k" },
-        {} as never,
-      );
+    const build = (provider: string, model = "gemini-2.5-flash") =>
+      createLlmApi({ name: "m", model, provider, apiKey: "k" }, {} as never);
 
     build("gemini");
     build("gemini");
     build("openai");
-
+    // Claude and Mistral on Vertex go through customFetch and are written
+    build("vertexai", "claude-sonnet-4-5");
+    build("vertexai", "mistral-medium-3");
     expect(warnBadEnv).toHaveBeenCalledTimes(1);
     expect(warnBadEnv.mock.calls[0][0]).toContain(
       "NEXTCLI_TRACE=full can't write Gemini requests",
+    );
+
+    build("vertexai");
+    expect(warnBadEnv).toHaveBeenCalledTimes(2);
+    expect(warnBadEnv.mock.calls[1][0]).toContain(
+      "can't write Vertex AI Gemini streaming requests",
     );
   });
 

@@ -154,7 +154,8 @@ Some requests aren't written:
 
 Credentials are replaced with `[redacted]` wherever they appear:
 
-- each configured model's `apiKey`, credential headers in `requestOptions.headers` (`Authorization`, `Cookie` and names such as `X-Api-Key`), and the client certificate's key and passphrase, whatever their length. Within a header, also the token after `Bearer`, the `user:password` a `Basic` token encodes and its password, and cookie values of 8 characters or more;
+- each configured model's `apiKey`, credential headers in `requestOptions.headers` (`Authorization`, `Cookie` and names such as `X-Api-Key`), and the client certificate's key and passphrase, whatever their length. Within a header, also the token after `Bearer`;
+- parts of 8 characters or more inside those credentials: the `user:password` that a `Basic` token or a base64 `apiKey` (on-prem WatsonX) encodes, its password, and cookie values. Shorter parts are left alone, because redacting a value like `a` would hit every word that contains it;
 - values of 8 characters or more of secret-like variables, in your environment or a model's `env`: `*API_KEY*`, `*SECRET*`, `*TOKEN*`, `*PASSWORD*` and the other rules the Bash tool's environment filter uses.
 
 Each of these is also redacted in its URL-encoded form, as a key in a query string appears.
