@@ -22,6 +22,7 @@ export function parseShellLine(
   // Each pass escapes one more `#`, so a line can't need more passes than it
   // has characters
   for (let pass = 0; pass <= line.length; pass++) {
+    // shell-quote's types take an env object or a function, not `undefined`
     const tokens = env ? parse(text, env) : parse(text);
     const last = tokens[tokens.length - 1];
     if (!last || typeof last !== "object" || !("comment" in last)) {
@@ -56,8 +57,26 @@ function isEscaped(text: string, index: number): boolean {
 /**
  * Whether a line uses `$'...'` or `$"..."` quoting, which shell-quote doesn't
  * read: `$'a\'#'` is one word to bash, so what follows it can't be split
- * reliably, and `$'\x72\x6d'` spells any command.
+ * reliably, and `$'\x72\x6d'` spells any command. Only an unquoted,
+ * unescaped `$` starts one: in `grep 'foo$' x`, `echo "total $"` and
+ * `echo \$'x'` the `$` is a plain character.
  */
 export function hasDollarQuote(line: string): boolean {
-  return /\$['"]/.test(line);
+  let quote: "'" | '"' | null = null;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    // A backslash escapes the next character, except inside single quotes
+    if (char === "\\" && quote !== "'") {
+      i++;
+    } else if (quote) {
+      if (char === quote) {
+        quote = null;
+      }
+    } else if (char === "'" || char === '"') {
+      quote = char;
+    } else if (char === "$" && (line[i + 1] === "'" || line[i + 1] === '"')) {
+      return true;
+    }
+  }
+  return false;
 }

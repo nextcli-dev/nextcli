@@ -288,7 +288,12 @@ describe("bash's reading of comments and quoting", () => {
     "catastrophic",
   );
   // shell-quote can't read $'...', so a person approves the line
-  expectTier(["echo $'hi'"], "destructive");
+  expectTier(["echo $'hi'", "echo a$'\\x41'"], "destructive");
+  // A $ inside quotes or escaped is a plain character
+  expectTier(
+    ["grep 'foo$' README.md", 'echo "total $"', "echo \\$'x'"],
+    "none",
+  );
   it("doesn't let $'...' hide a delete", () => {
     expect(tier("ls $'a\\'#'; rm -rf ~")).not.toBe("none");
   });

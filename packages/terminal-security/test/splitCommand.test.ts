@@ -325,6 +325,8 @@ describe("splitCommand reads a line the way bash runs it", () => {
   it.each([
     "ls $'a\\'#'; rm -rf ~",
     'echo $"hi"',
+    // $'...' starts mid-word too
+    "echo a$'\\x41'",
     "cat x | python3",
     "cat x | python3 -W ignore",
     "python <<EOF\nimport os\nEOF",
@@ -365,6 +367,12 @@ describe("splitCommand reads a line the way bash runs it", () => {
     "php -S localhost:8000",
     "bun install",
     "bun run build",
+    // A $ inside quotes or escaped is a plain character, not $'...'
+    "grep 'foo$' README.md",
+    'echo "total $"',
+    "sed 's/x$/y/' notes.txt",
+    "echo \\$'x'",
+    `echo "$'x'"`,
     "deno run main.ts",
     "pwsh -NoProfile -File build.ps1",
   ])("%s names its script, so it isn't opaque", (line) => {

@@ -2094,7 +2094,16 @@ describe("the evaluator reads a line the way bash runs it", () => {
       evaluateTerminalCommandSecurity(AUTO, "ls $'a\\'#'; rm -rf ~"),
     ).not.toBe(AUTO);
     expect(evaluateTerminalCommandSecurity(AUTO, "echo $'hi'")).toBe(ASK);
+    expect(evaluateTerminalCommandSecurity(AUTO, "echo a$'\\x41'")).toBe(ASK);
     expect(evaluateTerminalCommandSecurity(AUTO, "echo 'hi'")).toBe(AUTO);
+    // A $ inside quotes or escaped is a plain character, not $'...'
+    for (const command of [
+      "grep 'foo$' README.md",
+      'echo "total $"',
+      "echo \\$'x'",
+    ]) {
+      expect(evaluateTerminalCommandSecurity(AUTO, command, strict)).toBe(AUTO);
+    }
   });
 
   describe("a NAME=value prefix asks unless the variable is harmless", () => {
