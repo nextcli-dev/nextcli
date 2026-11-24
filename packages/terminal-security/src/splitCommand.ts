@@ -1,6 +1,10 @@
 import { normalizeCommandName } from "./destructiveCommands.js";
 import { extractSubstitutedCommands } from "./evaluateTerminalCommandSecurity.js";
-import { hasDollarQuote, parseShellLine } from "./parseShell.js";
+import {
+  hasBackgroundJob,
+  hasDollarQuote,
+  parseShellLine,
+} from "./parseShell.js";
 
 export interface SplitCommand {
   /**
@@ -401,6 +405,10 @@ function splitLine(line: string, result: State, depth: number) {
       // file, delimiter or string
       while (isRedirect(tokens[i + 1]) || isOp(tokens[i + 1], "|")) i++;
       if (typeof tokens[i + 1] === "string") i++;
+      continue;
+    }
+    // `&>` and `&>>` redirect both streams; the redirect is read next
+    if (token.op === "&" && isRedirect(next) && !hasBackgroundJob(line)) {
       continue;
     }
     // Control operators and a subshell's `(`: the command ends here

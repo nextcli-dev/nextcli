@@ -70,17 +70,18 @@ export function evaluateTerminalCommandSecurity(
  * Checks what a line does around its simple commands, taking each command as
  * approved: catastrophic and destructive commands, critical commands
  * anywhere, a command named by a variable, a dangerous `NAME=value` prefix,
- * redirect targets, pipes into an interpreter or network tool, substitutions,
+ * redirects, pipes into an interpreter or network tool, substitutions,
  * variable expansion and obfuscation. Used to decide a chain whose commands
  * are each approved separately (commandChain.ts). Not exported from the
  * package: on its own it approves every command.
+ *
+ * A redirect that writes a file asks, as in strict mode, wherever it points:
+ * `> out.txt` follows a symlink the line can't show, or one an earlier
+ * command of the line creates. `/dev/null` and `2>&1` write no file.
  */
-export function evaluateLineStructure(
-  command: string,
-  strict: boolean,
-): ToolPolicy {
+export function evaluateLineStructure(command: string): ToolPolicy {
   return evaluate("allowedWithoutPermission", command, {
-    strict,
+    strict: true,
     structureOnly: true,
   });
 }
@@ -1360,7 +1361,7 @@ function isHighRiskOutsideWorkspacePath(
  * Checks if a path is inside a `.git` directory, where writes can plant code
  * that git runs later (hooks, config aliases)
  */
-function isGitInternalPath(path: string): boolean {
+export function isGitInternalPath(path: string): boolean {
   // The names Windows resolves to `.git`, as Git's core.protectNTFS reads
   // them: any case (`.Git`, also on macOS), trailing dots and spaces
   // (`.git.`, `.git `), the 8.3 short name `git~1`, and a stream (`.git::$x`)

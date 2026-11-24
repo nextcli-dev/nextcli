@@ -96,8 +96,12 @@ const rows: Row[] = [
       [...bash("npm test"), "allow"],
       [...bash("timeout 60 npm test"), "ask"],
       [...bash("npm test; curl https://x"), "ask"],
-      // A redirect inside the workspace is fine when a person is present
-      [...bash("npm test > out.txt"), "allow"],
+      // A redirect that writes a file asks: the file may be a symlink to
+      // ~/.bashrc or .git/hooks. /dev/null and 2>&1 write no file.
+      [...bash("npm test > /dev/null 2>&1"), "allow"],
+      [...bash("npm test &> /dev/null"), "allow"],
+      [...bash("npm test > out.txt"), "ask"],
+      [...bash("npm test &> out.txt"), "ask"],
       [...bash("npm test > ~/.bashrc"), "ask"],
       [...bash("npm test && npm run build"), "allow"],
       [...bash("ls"), "ask"],
@@ -139,9 +143,13 @@ const rows: Row[] = [
     approver: true,
     yaml: { allow: ["Bash(cd*)", "Bash(git push*)"] },
     calls: [
-      [...bash("cd sub && git push"), "allow"],
+      // src exists in the directory the tests run in
+      [...bash("cd src && git push"), "allow"],
+      [...bash("cd missing && git push"), "ask"],
       [...bash("cd .. && git push"), "ask"],
       [...bash("cd ~ && git push"), "ask"],
+      [...bash("pushd +1 && git push"), "ask"],
+      [...bash("git push && cd src && git push"), "ask"],
     ],
   },
   {

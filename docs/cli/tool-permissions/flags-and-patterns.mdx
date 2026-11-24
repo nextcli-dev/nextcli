@@ -104,10 +104,11 @@ A `Bash(...)` pattern is matched against the **commands** in the line, not the r
 
 An allow covers one command, exactly as written. A line runs when every command in it is allowed, by this pattern or by another rule, and nothing between the commands is risky. Commands can be joined by `&&`, `||`, `;`, `|` and line breaks. These make a line ask instead:
 
-- a redirect outside the working directory or into `.git`, or in a headless run any redirect that writes a file;
+- a redirect that writes a file (`> out.txt`, `&> log.txt`), wherever it points, because the file may be a symlink to `~/.bashrc` or a git hook. `> /dev/null` and `2>&1` write no file;
 - a pipe into a shell, an interpreter or a network tool;
 - `$(...)`, backticks, a subshell, `&`, a heredoc or `sh -c`;
-- a `cd` out of the working directory, or `export` or `source`, before another command.
+- `export` or `source` before another command;
+- a `cd` or `pushd` before another command, unless it comes first and enters an existing folder inside the working directory, with symlinks followed and `.git` excluded (`cd packages/app && npm test`).
 
 When the line doesn't run, the next rule decides. In a headless run that usually means refused.
 
@@ -120,10 +121,11 @@ With `--allow "Bash(npm test*)"` in a headless run:
 | `"npm"  test` | ✅ | quotes and spaces don't matter |
 | `npm tests` | ✅ | `*` is plain text matching, so `test*` also matches `tests` |
 | `npm test 2>&1 \| tail -20` | ✅ | the defaults allow `tail` on its own |
+| `npm test > /dev/null 2>&1` | ✅ | writes no file |
 | `npm run test` | ❌ | different words |
 | `npm test && npm run lint` | ❌ | `npm run lint` isn't allowed. Add `--allow "Bash(npm run lint*)"` |
 | `npm test; curl https://example.com` | ❌ | `curl` isn't allowed |
-| `npm test > out.txt` | ❌ | a headless run asks before writing a file. The TUI allows it |
+| `npm test > out.txt` | ❌ | a redirect that writes a file asks |
 | `timeout 60 npm test` | ❌ | `timeout` needs a pattern too, such as `Bash(timeout*)` |
 | `CI=1 npm test` | ❌ | variable set in front of the command |
 | `./npm test` or `/usr/bin/npm test` | ❌ | path differs from the pattern |

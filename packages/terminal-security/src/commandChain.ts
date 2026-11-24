@@ -1,9 +1,13 @@
+import fs from "node:fs";
+import path from "node:path";
+
 import { quote } from "shell-quote";
 
 import { normalizeCommandName } from "./destructiveCommands.js";
 import {
   evaluateLineStructure,
   evaluateTerminalCommandSecurity,
+  isGitInternalPath,
 } from "./evaluateTerminalCommandSecurity.js";
 import { runsAnotherCommand, splitCommand } from "./splitCommand.js";
 import { ToolPolicy } from "./types.js";
@@ -136,23 +140,52 @@ const SHELL_STATE_COMMANDS = new Set([
 
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
 
-/** A directory under the current one: no `..`, `~`, `$`, `-` or root */
-function isPlainSubdirectory(dir: string): boolean {
-  return (
-    dir !== "-" &&
-    !/^[~/\\]/.test(dir) &&
-    !/^[a-z]:/i.test(dir) &&
-    !dir.includes("$") &&
-    !dir.split(/[\\/]/).includes("..")
-  );
+/**
+ * Whether `cd dir` or `pushd dir` names an existing path inside `cwd` and
+ * outside `.git` (a file makes `cd` fail, which leaves the shell in `cwd`),
+ * read the way the shell will: symlinks followed, and a relative name taken
+ * from `cwd` (the shell runs without CDPATH, see secureShellCommand). A name
+ * the shell would expand (`~`, `$`, a glob or a
+ * brace), a stack entry (`-`, `+1`) and `..` (which `cd` reads before
+ * symlinks, and `cd -P` after) don't qualify.
+ */
+function entersSubdirectory(args: readonly string[], cwd: string): boolean {
+  const operands = args.filter((word) => word === "-" || !word.startsWith("-"));
+  const dir = operands[0];
+  if (
+    operands.length !== 1 ||
+    dir === "" ||
+    /^[-+~]|[$*?[{]/.test(dir) ||
+    dir.split(/[\\/]/).includes("..")
+  ) {
+    return false;
+  }
+  try {
+    const root = fs.realpathSync(cwd);
+    const target = fs.realpathSync(path.resolve(root, dir));
+    const relative = path.relative(root, target);
+    return (
+      !path.isAbsolute(relative) &&
+      relative.split(path.sep)[0] !== ".." &&
+      !isGitInternalPath(relative)
+    );
+  } catch {
+    return false;
+  }
 }
 
 /**
  * Whether a command changes what the commands after it do: an assignment on
- * its own, `export`, `source`, `alias`..., or a `cd` that leaves the
- * workspace (`cd .. && git push` pushes another repository)
+ * its own, `export`, `source`, `alias`..., or a `cd` or `pushd` other than
+ * into a subdirectory at the start of the line (`cd .. && git push` pushes
+ * another repository). Later in the line, an earlier command could have made
+ * the directory a symlink. Without `cwd`, every `cd` counts.
  */
-function changesShellState(words: readonly string[]): boolean {
+function changesShellState(
+  words: readonly string[],
+  index: number,
+  cwd: string | undefined,
+): boolean {
   if (words.every((word) => ASSIGNMENT.test(word))) {
     return true;
   }
@@ -161,10 +194,7 @@ function changesShellState(words: readonly string[]): boolean {
     return true;
   }
   if (name === "cd" || name === "pushd") {
-    const operands = words
-      .slice(1)
-      .filter((word) => word === "-" || !word.startsWith("-"));
-    return operands.length !== 1 || !isPlainSubdirectory(operands[0]);
+    return index > 0 || !cwd || !entersSubdirectory(words.slice(1), cwd);
   }
   return false;
 }
@@ -191,14 +221,22 @@ function commandText(words: readonly string[]): string {
  * command splitCommand lists is included, so a wrapper (`timeout 60 npm
  * test`) is there both as written and as the command it runs. A command that
  * changes the shell for later commands (`export`, `source`, `cd ..`) makes a
- * line of several commands ineligible.
+ * line of several commands ineligible; see changesShellState for `cd`.
  */
-export function chainCommands(line: string): ChainCommand[] | undefined {
+export function chainCommands(
+  line: string,
+  options?: ChainOptions,
+): ChainCommand[] | undefined {
   const split = splitCommand(line);
   if (split.opaque || split.nested || split.commands.length === 0) {
     return undefined;
   }
-  if (!split.single && split.commands.some(changesShellState)) {
+  if (
+    !split.single &&
+    split.commands.some((words, index) =>
+      changesShellState(words, index, options?.cwd),
+    )
+  ) {
     return undefined;
   }
   return split.commands.map((words) => ({ words, text: commandText(words) }));
@@ -206,30 +244,29 @@ export function chainCommands(line: string): ChainCommand[] | undefined {
 
 export interface ChainOptions {
   /**
-   * Unattended or read-only: a redirect that writes a file asks, as in
-   * EvaluateOptions.strict
+   * The directory the line runs in. With it, a line may start with a `cd`
+   * or `pushd` into one of its subdirectories (`cd sub && npm test`).
    */
-  strict?: boolean;
+  cwd?: string;
 }
 
 /**
  * Whether a line runs without asking because each of its commands would on
  * its own: it is a plain chain (chainCommands), what joins the commands is
- * safe (no catastrophic or destructive command, no redirect outside the
- * workspace or into `.git`, no pipe into an interpreter or a network tool,
- * no substitution or obfuscation), and `isAllowed` allows every command.
- * A single command is a chain of one.
+ * safe (no catastrophic or destructive command, no redirect that writes a
+ * file, no pipe into an interpreter or a network tool, no substitution or
+ * obfuscation; see evaluateLineStructure), and `isAllowed` allows every
+ * command. A single command is a chain of one.
  */
 export function allowsCommandChain(
   line: string,
   isAllowed: (command: ChainCommand) => boolean,
   options?: ChainOptions,
 ): boolean {
-  const commands = chainCommands(line);
+  const commands = chainCommands(line, options);
   return (
     !!commands &&
-    evaluateLineStructure(line, options?.strict === true) ===
-      "allowedWithoutPermission" &&
+    evaluateLineStructure(line) === "allowedWithoutPermission" &&
     commands.every(isAllowed)
   );
 }
@@ -246,11 +283,9 @@ export function rulesToRemember(
   isAllowed: (command: ChainCommand) => boolean,
   options?: ChainOptions,
 ): string[] | undefined {
-  const commands = chainCommands(line);
+  const commands = chainCommands(line, options);
   if (
     !commands ||
-    evaluateLineStructure(line, options?.strict === true) !==
-      "allowedWithoutPermission" ||
     commands.some((command) => runsAnotherCommand(command.words))
   ) {
     return undefined;
@@ -288,11 +323,14 @@ export function isTrustedTerminalCommand(
   line: string,
   trustedRules: readonly string[],
   basePolicy: ToolPolicy,
+  options?: ChainOptions,
 ): boolean {
   return (
     basePolicy !== "disabled" &&
-    allowsCommandChain(line, (command) =>
-      isCoveredWithoutAsking(command, trustedRules, basePolicy),
+    allowsCommandChain(
+      line,
+      (command) => isCoveredWithoutAsking(command, trustedRules, basePolicy),
+      options,
     )
   );
 }
@@ -305,12 +343,15 @@ export function trustedCommandRulesToRemember(
   line: string,
   trustedRules: readonly string[],
   basePolicy: ToolPolicy,
+  options?: ChainOptions,
 ): string[] | undefined {
   if (basePolicy === "disabled") {
     return undefined;
   }
-  return rulesToRemember(line, (command) =>
-    isCoveredWithoutAsking(command, trustedRules, basePolicy),
+  return rulesToRemember(
+    line,
+    (command) => isCoveredWithoutAsking(command, trustedRules, basePolicy),
+    options,
   );
 }
 

@@ -392,6 +392,9 @@ describe("splitCommand nested", () => {
     "eval ls",
     "find . -exec rm {} \;",
     "npm test & git push",
+    // `& >` is a background job, then a redirect on its own
+    "npm test & > out.txt",
+    "npm test \\&& > out.txt",
     "cat > notes.txt <<EOF\nhi\nEOF",
     "if true; then ls; fi",
     "for f in a b; do echo $f; done",
@@ -412,7 +415,18 @@ describe("splitCommand nested", () => {
     "bash deploy.sh",
     "cat < input.txt",
     "grep -c x <<< 'a x'",
+    // `&>` and `&>>` redirect both streams
+    "npm test &> out.txt",
+    "npm test &>> out.txt && git status",
+    "echo 'a & b' &> /dev/null",
+    "npm test |& tee out.txt",
   ])("%j is a plain chain", (line) => {
     expect(splitCommand(line).nested).toBe(false);
+  });
+
+  it("keeps the words after `&>` in the command", () => {
+    expect(splitCommand("npm test &> out.txt --watch").commands).toEqual([
+      ["npm", "test", "--watch"],
+    ]);
   });
 });

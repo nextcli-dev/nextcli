@@ -62,6 +62,31 @@ function isEscaped(text: string, index: number): boolean {
  * `echo \$'x'` the `$` is a plain character.
  */
 export function hasDollarQuote(line: string): boolean {
+  return someUnquoted(
+    line,
+    (i) => line[i] === "$" && (line[i + 1] === "'" || line[i + 1] === '"'),
+  );
+}
+
+/**
+ * Whether a line runs a job in the background: an unquoted, unescaped `&`
+ * that isn't part of `&&`, `&>`, `>&`, `<&` or `|&`. shell-quote reads
+ * `npm test &> out.txt` as `&` then `>`, the same as `npm test & > out.txt`,
+ * so only the text tells them apart.
+ */
+export function hasBackgroundJob(line: string): boolean {
+  return someUnquoted(
+    line,
+    (i) =>
+      line[i] === "&" &&
+      line[i + 1] !== "&" &&
+      line[i + 1] !== ">" &&
+      !(/[&<>|]/.test(line[i - 1] ?? "") && !isEscaped(line, i - 1)),
+  );
+}
+
+/** Whether `test` holds at an unquoted, unescaped character of the line */
+function someUnquoted(line: string, test: (index: number) => boolean): boolean {
   let quote: "'" | '"' | null = null;
   for (let i = 0; i < line.length; i++) {
     const char = line[i];
@@ -74,7 +99,7 @@ export function hasDollarQuote(line: string): boolean {
       }
     } else if (char === "'" || char === '"') {
       quote = char;
-    } else if (char === "$" && (line[i + 1] === "'" || line[i + 1] === '"')) {
+    } else if (test(i)) {
       return true;
     }
   }

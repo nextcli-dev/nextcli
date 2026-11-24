@@ -120,7 +120,7 @@ Note: Dangerous commands will be blocked regardless of your preference.
 ```
 
 - **Continue** (Tab or `y`) approves this call.
-- **Continue + don't ask again** (Shift+Tab) approves it and saves a rule to `~/.continue/permissions.yaml`, so the same command or tool runs without asking from now on. For a shell command the rule covers the command and its subcommand (`npm test` saves `Bash(npm test*)`); a chained or wrapped command is approved once and nothing is saved.
+- **Continue + don't ask again** (Shift+Tab) approves it and saves a rule to `~/.continue/permissions.yaml`, so the same command or tool runs without asking from now on. For a shell command the rule covers the command and its subcommand (`npm test` saves `Bash(npm test*)`). A chain saves one rule for each command not yet allowed (`git add -A && git commit -m x` saves `Bash(git add*)` and `Bash(git commit*)`). A wrapped command (`timeout 60 npm test`) or a line that writes a file (`npm test > out.txt`) is approved once and nothing is saved.
 - **No, and tell NextCLI what to do differently** (Esc or `n`) rejects the call, stops the turn and lets you type new instructions. Ctrl+C does the same.
 
 The note under a shell command means what it says: `rm -rf /` and the like never run, whatever you answer.

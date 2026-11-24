@@ -305,9 +305,8 @@ export function checkToolPermission(
       firstMatch ??= memberResult;
       return memberResult.permission === "allow";
     },
-    {
-      strict: permissions.readonly === true || permissions.unattended === true,
-    },
+    // The Bash tool runs in this directory
+    { cwd: process.cwd() },
   );
   return allowed
     ? { permission: "allow", matchedPolicy: firstMatch?.matchedPolicy }

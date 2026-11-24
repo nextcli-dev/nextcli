@@ -34,10 +34,8 @@ export function generatePolicyRules(
   if (toolName !== "Bash") {
     return [toolName];
   }
-  const command =
-    typeof toolArgs === "object" && toolArgs !== null
-      ? (toolArgs as { command?: unknown }).command
-      : undefined;
+  const command = (toolArgs as { command?: unknown } | null | undefined)
+    ?.command;
   if (typeof command !== "string") {
     return undefined;
   }
@@ -45,10 +43,7 @@ export function generatePolicyRules(
     command,
     (member) =>
       permissions !== undefined && isChainCommandAllowed(member, permissions),
-    {
-      strict:
-        permissions?.readonly === true || permissions?.unattended === true,
-    },
+    { cwd: process.cwd() },
   );
   return rules?.map((rule) => `Bash(${rule})`);
 }

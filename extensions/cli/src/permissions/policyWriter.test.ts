@@ -55,7 +55,12 @@ describe("policyWriter", () => {
         "Bash(npm test*)",
         "Bash(tail -20)",
       ]);
-      expect(rules("npm test > out.txt")).toEqual(["Bash(npm test*)"]);
+      expect(rules("npm test > /dev/null")).toEqual(["Bash(npm test*)"]);
+      // src exists in the directory the tests run in
+      expect(rules("cd src && npm test")).toEqual([
+        "Bash(cd src*)",
+        "Bash(npm test*)",
+      ]);
     });
 
     it("skips commands the rules already allow", () => {
@@ -77,6 +82,7 @@ describe("policyWriter", () => {
     it.each([
       // Substitutions and lines whose structure isn't safe
       "echo $(whoami)",
+      "npm test > out.txt",
       "npm test > ~/.bashrc",
       "cd .. && git push",
       "npm test & git push",
