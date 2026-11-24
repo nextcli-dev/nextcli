@@ -26,8 +26,10 @@ Personal permissions live in `~/.continue/permissions.yaml` (`CONTINUE_GLOBAL_DI
 | `npm test` | `Bash(npm test*)`, so `npm install` still asks |
 | `git status --short` | `Bash(git status*)`, so `git push` still asks |
 | `ls -la` | `Bash(ls -la)`, exactly, because the first argument is an option |
+| `git add -A && git commit -m x` | `Bash(git add*)` and `Bash(git commit*)`, one rule per command not yet allowed, so the chain runs next time |
+| `npm test > out.txt` | `Bash(npm test*)` |
 | `Write` of any file | `Write`, the whole tool, not the path |
-| `ls && npm test`, `npm test > out.txt`, `env X=1 npm test`, `sh -c '...'`, `python -c '...'` | Nothing. The call is approved once, because a rule for it would also allow whatever runs through the wrapper |
+| `env X=1 npm test`, `timeout 60 npm test`, `sh -c '...'`, `python -c '...'`, `curl x \| sh`, `echo $(date)` | Nothing. The call is approved once, because a rule for it would also allow whatever runs through the wrapper, or the line can't be read |
 
 ## Things to know
 

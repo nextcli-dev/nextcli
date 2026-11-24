@@ -1,107 +1,110 @@
 import fs from "fs";
 
-import { splitCommand } from "@continuedev/terminal-security";
+import { rulesToRemember } from "@continuedev/terminal-security";
 import YAML from "yaml";
 
 import { logger } from "../util/logger.js";
 
+import { isChainCommandAllowed } from "./permissionChecker.js";
 import {
   PERMISSIONS_YAML_PATH,
   PermissionsYamlConfig,
   loadPermissionsYaml,
 } from "./permissionsYamlLoader.js";
+import { ToolPermissions } from "./types.js";
 
 /**
- * The rule to remember when someone picks "don't ask again" for a call, or
- * undefined when the call can't be remembered safely. A Bash call is
- * remembered by its command and subcommand (`npm test` → `Bash(npm test*)`),
- * or exactly when the first argument is an option (`ls -la` →
- * `Bash(ls -la)`). Remembering only the command name would let `npm test`
- * approve `npm install` and `git status` approve `git push`. It is
- * remembered only when the line is one plain command: no chain, redirect,
- * substitution, wrapper (`env`, `timeout`, `sudo`...), `NAME=value` prefix,
- * `sh -c` or code that can't be read.
+ * The rules to remember when someone picks "don't ask again" for a call, or
+ * undefined when the call can't be remembered safely. A tool other than Bash
+ * is remembered whole. A Bash line is remembered one rule per command that
+ * `permissions` doesn't allow yet: by its command and subcommand (`npm test`
+ * → `Bash(npm test*)`), or exactly when the first argument is an option
+ * (`ls -la` → `Bash(ls -la)`), so `npm test` never approves `npm install`. A
+ * chain gets a rule for each of its commands (`git add -A && git commit -m x`
+ * → `Bash(git add*)`, `Bash(git commit*)`). Nothing is remembered for a line
+ * that isn't a plain chain or fails its checks (see rulesToRemember in
+ * @continuedev/terminal-security), or that has a wrapper (`env`, `timeout`,
+ * `sudo`...), a `NAME=value` prefix, `sh -c` or code that can't be read.
  */
-export function generatePolicyRule(
+export function generatePolicyRules(
   toolName: string,
-  toolArgs: any,
-): string | undefined {
+  toolArgs: unknown,
+  permissions?: ToolPermissions,
+): string[] | undefined {
   if (toolName !== "Bash") {
-    return toolName;
+    return [toolName];
   }
-  const command = toolArgs?.command;
+  const command =
+    typeof toolArgs === "object" && toolArgs !== null
+      ? (toolArgs as { command?: unknown }).command
+      : undefined;
   if (typeof command !== "string") {
     return undefined;
   }
-  const split = splitCommand(command);
-  if (!split.single || split.opaque || split.commands.length !== 1) {
-    return undefined;
-  }
-  const argv = split.commands[0];
-  const prefix = argv.length > 1 && !argv[1].startsWith("-");
-  const words = prefix ? argv.slice(0, 2) : argv;
-  // A word with a glob character, a parenthesis or a space can't be written
-  // back as the same rule
-  if (words.some((word) => word === "" || /[*?()\s]/.test(word))) {
-    return undefined;
-  }
-  const rule = words.join(" ");
-  return prefix ? `Bash(${rule}*)` : `Bash(${rule})`;
+  const rules = rulesToRemember(
+    command,
+    (member) =>
+      permissions !== undefined && isChainCommandAllowed(member, permissions),
+    {
+      strict:
+        permissions?.readonly === true || permissions?.unattended === true,
+    },
+  );
+  return rules?.map((rule) => `Bash(${rule})`);
 }
 
 /**
- * Adds a policy rule to the permissions.yaml file
+ * Adds allow rules to permissions.yaml in one write, through a temporary file
+ * and a rename, so a crash never leaves the file half written
  */
-export async function addPolicyToYaml(policyRule: string): Promise<void> {
+export async function addPoliciesToYaml(policyRules: string[]): Promise<void> {
   try {
-    // Load existing config or create empty one
     const config: PermissionsYamlConfig = loadPermissionsYaml() || {};
-
-    // Ensure allow array exists
-    if (!config.allow) {
-      config.allow = [];
+    const allow = config.allow ?? [];
+    const added = policyRules.filter((rule) => !allow.includes(rule));
+    if (added.length === 0) {
+      logger.debug(`Policy rules already exist: ${policyRules.join(", ")}`);
+      return;
     }
+    config.allow = [...allow, ...added];
 
-    // Add the policy if it doesn't already exist
-    if (config.allow.includes(policyRule)) {
-      logger.debug(`Policy rule already exists: ${policyRule}`);
-    } else {
-      config.allow.push(policyRule);
-
-      // Write the updated config back to the file
-      const yamlContent = YAML.stringify(config);
-
-      // Add header comment
-      const finalContent = `# NextCLI CLI Permissions Configuration
+    const finalContent = `# NextCLI CLI Permissions Configuration
 # This file is managed by the NextCLI CLI and should not be edited manually.
 # Use the TUI to modify permissions interactively.
 
-${yamlContent}`;
+${YAML.stringify(config)}`;
 
-      await fs.promises.writeFile(PERMISSIONS_YAML_PATH, finalContent, "utf-8");
-      logger.info(`Added policy rule to permissions.yaml: ${policyRule}`);
+    const temporary = `${PERMISSIONS_YAML_PATH}.${process.pid}.${Date.now()}.tmp`;
+    await fs.promises.writeFile(temporary, finalContent, "utf-8");
+    try {
+      await fs.promises.rename(temporary, PERMISSIONS_YAML_PATH);
+    } catch (error) {
+      await fs.promises.rm(temporary, { force: true });
+      throw error;
     }
+    logger.info(`Added policy rules to permissions.yaml: ${added.join(", ")}`);
   } catch (error) {
-    logger.error("Failed to add policy to permissions.yaml", {
+    logger.error("Failed to add policies to permissions.yaml", {
       error,
-      policyRule,
+      policyRules,
     });
     throw error;
   }
 }
 
 /**
- * Saves "don't ask again" for a call to permissions.yaml. Returns the rule
+ * Saves "don't ask again" for a call to permissions.yaml. Returns the rules
  * saved, or undefined when the call can't be remembered (see
- * generatePolicyRule) and was approved once only.
+ * generatePolicyRules) and was approved once only.
  */
 export async function rememberToolApproval(
   toolName: string,
-  toolArgs: any,
-): Promise<string | undefined> {
-  const policyRule = generatePolicyRule(toolName, toolArgs);
-  if (policyRule) {
-    await addPolicyToYaml(policyRule);
+  toolArgs: unknown,
+  permissions?: ToolPermissions,
+): Promise<string[] | undefined> {
+  const policyRules = generatePolicyRules(toolName, toolArgs, permissions);
+  if (policyRules) {
+    await addPoliciesToYaml(policyRules);
   }
-  return policyRule;
+  return policyRules;
 }

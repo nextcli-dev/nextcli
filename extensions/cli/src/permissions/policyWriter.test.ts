@@ -1,62 +1,85 @@
-import { generatePolicyRule } from "./policyWriter.js";
+import { generatePolicyRules } from "./policyWriter.js";
+import { ToolPermissions } from "./types.js";
+
+const rules = (command: string, permissions?: ToolPermissions) =>
+  generatePolicyRules("Bash", { command }, permissions);
 
 describe("policyWriter", () => {
-  describe("generatePolicyRule", () => {
-    it("should return display name for regular tools", () => {
-      expect(generatePolicyRule("Read", { file_path: "/test" })).toBe("Read");
+  describe("generatePolicyRules", () => {
+    it("remembers a tool other than Bash whole", () => {
+      expect(generatePolicyRules("Read", { file_path: "/test" })).toEqual([
+        "Read",
+      ]);
       expect(
-        generatePolicyRule("Write", { file_path: "/test", content: "test" }),
-      ).toBe("Write");
-      expect(generatePolicyRule("List", { path: "/test" })).toBe("List");
-      expect(generatePolicyRule("Search", { pattern: "test" })).toBe("Search");
-      expect(generatePolicyRule("Grep", { pattern: "test" })).toBe("Grep"); // Unknown tool, passes through
+        generatePolicyRules("Write", { file_path: "/test", content: "test" }),
+      ).toEqual(["Write"]);
+      expect(generatePolicyRules("List", { path: "/test" })).toEqual(["List"]);
+      expect(generatePolicyRules("Grep", { pattern: "test" })).toEqual([
+        "Grep",
+      ]); // Unknown tool, passes through
     });
 
     it("remembers a command with its subcommand", () => {
-      expect(generatePolicyRule("Bash", { command: "git status" })).toBe(
-        "Bash(git status*)",
-      );
-      expect(generatePolicyRule("Bash", { command: "npm test" })).toBe(
-        "Bash(npm test*)",
-      );
-      expect(
-        generatePolicyRule("Bash", { command: "npm install left-pad" }),
-      ).toBe("Bash(npm install*)");
-      expect(generatePolicyRule("Bash", { command: '"npm" test' })).toBe(
-        "Bash(npm test*)",
-      );
-      expect(generatePolicyRule("Bash", { command: "bash deploy.sh" })).toBe(
-        "Bash(bash deploy.sh*)",
-      );
+      expect(rules("git status")).toEqual(["Bash(git status*)"]);
+      expect(rules("npm test")).toEqual(["Bash(npm test*)"]);
+      expect(rules("npm install left-pad")).toEqual(["Bash(npm install*)"]);
+      expect(rules('"npm" test')).toEqual(["Bash(npm test*)"]);
+      expect(rules("bash deploy.sh")).toEqual(["Bash(bash deploy.sh*)"]);
     });
 
     it("remembers a command exactly when it has no subcommand", () => {
-      expect(generatePolicyRule("Bash", { command: "ls -la" })).toBe(
-        "Bash(ls -la)",
-      );
-      expect(
-        generatePolicyRule("Bash", { command: "  grep -r test .  " }),
-      ).toBe("Bash(grep -r test .)");
-      expect(generatePolicyRule("Bash", { command: "./scripts/check" })).toBe(
-        "Bash(./scripts/check)",
-      );
+      expect(rules("ls -la")).toEqual(["Bash(ls -la)"]);
+      expect(rules("  grep -r test .  ")).toEqual(["Bash(grep -r test .)"]);
+      expect(rules("./scripts/check")).toEqual(["Bash(./scripts/check)"]);
     });
 
     it("never remembers the command name alone", () => {
       // Bash(npm*) would let `npm test` approve `npm install`
       for (const command of ["npm test", "git status", "ls -la"]) {
-        expect(generatePolicyRule("Bash", { command })).not.toMatch(
-          /^Bash\(\S+\*\)$/,
-        );
+        for (const rule of rules(command) ?? []) {
+          expect(rule).not.toMatch(/^Bash\(\S+\*\)$/);
+        }
       }
     });
 
+    it("remembers each command of a chain", () => {
+      expect(rules("git add -A && git commit -m x")).toEqual([
+        "Bash(git add*)",
+        "Bash(git commit*)",
+      ]);
+      expect(rules("ls -la && echo test")).toEqual([
+        "Bash(ls -la)",
+        "Bash(echo test*)",
+      ]);
+      expect(rules("npm test 2>&1 | tail -20")).toEqual([
+        "Bash(npm test*)",
+        "Bash(tail -20)",
+      ]);
+      expect(rules("npm test > out.txt")).toEqual(["Bash(npm test*)"]);
+    });
+
+    it("skips commands the rules already allow", () => {
+      const permissions: ToolPermissions = {
+        policies: [
+          {
+            tool: "Bash",
+            permission: "allow",
+            argumentMatches: { command: "git add*" },
+          },
+          { tool: "Bash", permission: "ask" },
+        ],
+      };
+      expect(rules("git add -A && git commit -m x", permissions)).toEqual([
+        "Bash(git commit*)",
+      ]);
+    });
+
     it.each([
-      // Chains, pipes, redirects and substitutions: an allow can't cover them
-      "ls -la && echo test",
-      "find . -name '*.ts' | head -10",
-      "npm test > out.txt",
+      // Substitutions and lines whose structure isn't safe
       "echo $(whoami)",
+      "npm test > ~/.bashrc",
+      "cd .. && git push",
+      "npm test & git push",
       // Wrappers and shells would allow every command run through them
       "sh -c 'ls'",
       "bash -lc 'npm test'",
@@ -65,6 +88,7 @@ describe("policyWriter", () => {
       "timeout 60 npm test",
       "sudo ls",
       "xargs rm",
+      "git ls-files | xargs rm",
       "eval ls",
       // Code that can't be read
       "python -c 'print(1)'",
@@ -73,23 +97,23 @@ describe("policyWriter", () => {
       // Words that can't be written back as the same rule
       "cat 'my notes.txt'",
       "ls *.ts",
+      "git add . && cat 'my notes.txt'",
     ])("doesn't remember %j", (command) => {
-      expect(generatePolicyRule("Bash", { command })).toBeUndefined();
+      expect(rules(command)).toBeUndefined();
     });
 
     it("doesn't remember all of Bash for a call without a command", () => {
-      expect(generatePolicyRule("Bash", {})).toBeUndefined();
-      expect(generatePolicyRule("Bash", { command: "" })).toBeUndefined();
-      expect(generatePolicyRule("Bash", { command: "   " })).toBeUndefined();
+      expect(generatePolicyRules("Bash", {})).toBeUndefined();
+      expect(rules("")).toBeUndefined();
+      expect(rules("   ")).toBeUndefined();
     });
 
     it("should use exact tool names without normalization", () => {
-      expect(generatePolicyRule("bash", { command: "ls" })).toBe("bash");
-      expect(generatePolicyRule("BASH", { command: "pwd" })).toBe("BASH");
-      expect(generatePolicyRule("read", { file_path: "/test" })).toBe("read");
-      expect(
-        generatePolicyRule("write", { file_path: "/test", content: "test" }),
-      ).toBe("write");
+      expect(generatePolicyRules("bash", { command: "ls" })).toEqual(["bash"]);
+      expect(generatePolicyRules("BASH", { command: "pwd" })).toEqual(["BASH"]);
+      expect(generatePolicyRules("read", { file_path: "/test" })).toEqual([
+        "read",
+      ]);
     });
   });
 });

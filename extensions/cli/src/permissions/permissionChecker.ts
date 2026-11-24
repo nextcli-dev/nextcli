@@ -2,8 +2,12 @@ import fs from "fs";
 import path from "path";
 
 import {
-  normalizeCommandName,
+  allowsCommandChain,
+  commandMatchesAllowRule,
+  commandMatchesDenyRule,
+  globToRegExp,
   splitCommand,
+  type ChainCommand,
   type ToolPolicy,
 } from "@continuedev/terminal-security";
 import { minimatch } from "minimatch";
@@ -18,15 +22,6 @@ import {
   ToolPermissionPolicy,
   ToolPermissions,
 } from "./types.js";
-
-/** `*` matches any characters (newlines too), `?` one character */
-function globToRegExp(glob: string): RegExp {
-  const escaped = glob.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(
-    `^${escaped.replace(/\*/g, ".*").replace(/\?/g, ".")}$`,
-    "s",
-  );
-}
 
 /**
  * Checks if a tool name matches a pattern.
@@ -80,43 +75,6 @@ export function matchesArguments(
 }
 
 /**
- * Whether an exclude or ask written as `Bash(glob)` covers one command. It
- * errs toward matching: the command name is compared without its directory
- * (`/usr/bin/npm`), and the glob's other words need only appear in order, so
- * `npm install*` covers `npm -g install x` and `npm --prefix /tmp install x`.
- * An argument with an unexpanded `$` could be anything, so it matches any
- * word. A rule that names a concrete command (`npm install*`) doesn't match
- * a command named by a variable (`$CMD`); `Bash(*)` and a rule that spells
- * the variable out (`Bash($CMD*)`) do.
- */
-function commandMatchesDenyRule(words: string[], glob: string): boolean {
-  if (words.length === 0) {
-    return false;
-  }
-  const argv = [normalizeCommandName(words[0]), ...words.slice(1)];
-  if (globToRegExp(glob).test(argv.join(" "))) {
-    return true;
-  }
-  const [name, ...rest] = glob.trim().split(/\s+/);
-  if (!globToRegExp(normalizeCommandName(name)).test(argv[0])) {
-    return false;
-  }
-  const argumentMatches = (word: string, part: string) =>
-    word.includes("$") || globToRegExp(part).test(word);
-  let next = 1;
-  for (const part of rest) {
-    while (next < argv.length && !argumentMatches(argv[next], part)) {
-      next++;
-    }
-    if (next === argv.length) {
-      return false;
-    }
-    next++;
-  }
-  return true;
-}
-
-/**
  * Whether a scoped rule covers an argument it can't read. A missing one is
  * the probe for the tools offered to the model (see isToolOffered) and
  * matches no scoped rule; one that isn't a string is covered only by an
@@ -130,33 +88,37 @@ function matchesUnreadableArgument(
 }
 
 /**
- * Matches a `Bash(glob)` rule against the commands in a shell line (see
- * splitCommand). An allow covers only a line that is one simple command, as
- * written, matching the glob, so `Bash(git log*)` doesn't allow
- * `git log; curl x`, `./git log` or `python -c '...'`. An exclude or ask
- * covers a line where any command it can see matches (see
- * commandMatchesDenyRule), including one behind a wrapper or inside `sh -c`.
+ * Matches a `Bash(glob)` rule. Checking a whole line, an exclude or ask covers
+ * it when any command it can see matches (see commandMatchesDenyRule),
+ * including one behind a wrapper or inside `sh -c`, and an allow covers
+ * nothing: an allow covers commands, so checkToolPermission checks it on
+ * each command of a plain chain (`member`). There an allow covers the
+ * command as written, so `Bash(git log*)` covers neither `./git log` nor
+ * `FOO=1 git log`.
  */
 function matchesBashCommand(
   policy: ToolPermissionPolicy,
   glob: string,
   command: unknown,
+  member?: ChainCommand,
 ): boolean {
   if (glob === "*") {
     return true;
   }
+  if (member) {
+    return policy.permission === "allow"
+      ? commandMatchesAllowRule(member.words, glob)
+      : commandMatchesDenyRule(member.words, glob);
+  }
   if (typeof command !== "string") {
     return matchesUnreadableArgument(policy, command);
   }
-  const split = splitCommand(command);
   if (policy.permission === "allow") {
-    return (
-      split.single &&
-      !split.opaque &&
-      globToRegExp(glob).test(split.commands[0].join(" "))
-    );
+    return false;
   }
-  return split.commands.some((words) => commandMatchesDenyRule(words, glob));
+  return splitCommand(command).commands.some((words) =>
+    commandMatchesDenyRule(words, glob),
+  );
 }
 
 /** The real path, following symlinks, of a path that may not exist yet */
@@ -223,6 +185,7 @@ function matchesPathArgument(
 function policyMatches(
   policy: ToolPermissionPolicy,
   toolCall: ToolCallRequest,
+  member?: ChainCommand,
 ): boolean {
   if (!matchesToolPattern(toolCall.name, policy.tool)) {
     return false;
@@ -231,7 +194,12 @@ function policyMatches(
   const glob = argument ? policy.argumentMatches?.[argument] : undefined;
   if (typeof glob === "string") {
     if (toolCall.name === "Bash") {
-      return matchesBashCommand(policy, glob, toolCall.arguments?.command);
+      return matchesBashCommand(
+        policy,
+        glob,
+        toolCall.arguments?.command,
+        member,
+      );
     }
     if (PATH_TOOLS.has(toolCall.name)) {
       return matchesPathArgument(policy, glob, toolCall.arguments?.[argument]);
@@ -309,10 +277,73 @@ export function isToolOffered(
  *   --readonly, and in a headless run for any allow that isn't an operator's
  *   flag: only calls it approves on its own run, and the rest ask, which a
  *   headless run refuses.
+ * - A Bash line that this doesn't allow as a whole runs when it is a plain
+ *   chain and each of its commands would be allowed as a call of its own
+ *   (see allowsCommandChain). That is how `Bash(glob)` allow rules apply: a
+ *   chain of `git add` and `git commit` runs under `Bash(git add*)` and
+ *   `Bash(git commit*)`.
  */
 export function checkToolPermission(
   toolCall: ToolCallRequest,
   permissions: ToolPermissions,
+): PermissionCheckResult {
+  const result = decide(toolCall, permissions);
+  const command = toolCall.arguments?.command;
+  if (
+    result.permission === "allow" ||
+    toolCall.name !== "Bash" ||
+    typeof command !== "string"
+  ) {
+    return result;
+  }
+  // The rule that allowed the first command, as written, is reported
+  let firstMatch: PermissionCheckResult | undefined;
+  const allowed = allowsCommandChain(
+    command,
+    (member) => {
+      const memberResult = decideChainCommand(member, permissions, toolCall);
+      firstMatch ??= memberResult;
+      return memberResult.permission === "allow";
+    },
+    {
+      strict: permissions.readonly === true || permissions.unattended === true,
+    },
+  );
+  return allowed
+    ? { permission: "allow", matchedPolicy: firstMatch?.matchedPolicy }
+    : result;
+}
+
+/**
+ * Whether one command of a plain chain would be allowed as a Bash call of its
+ * own, under the same policies, strictness and limits
+ */
+export function isChainCommandAllowed(
+  member: ChainCommand,
+  permissions: ToolPermissions,
+): boolean {
+  return (
+    decideChainCommand(member, permissions, { name: "Bash", arguments: {} })
+      .permission === "allow"
+  );
+}
+
+function decideChainCommand(
+  member: ChainCommand,
+  permissions: ToolPermissions,
+  toolCall: ToolCallRequest,
+): PermissionCheckResult {
+  return decide(
+    { ...toolCall, arguments: { ...toolCall.arguments, command: member.text } },
+    permissions,
+    member,
+  );
+}
+
+function decide(
+  toolCall: ToolCallRequest,
+  permissions: ToolPermissions,
+  member?: ChainCommand,
 ): PermissionCheckResult {
   const policies = permissions.policies;
 
@@ -321,7 +352,7 @@ export function checkToolPermission(
   let matchedPolicy: ToolPermissionPolicy | undefined = undefined;
 
   for (const policy of policies) {
-    if (policyMatches(policy, toolCall)) {
+    if (policyMatches(policy, toolCall, member)) {
       basePermission = policy.permission;
       matchedPolicy = policy;
       break;

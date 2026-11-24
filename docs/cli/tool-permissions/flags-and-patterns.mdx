@@ -97,14 +97,21 @@ A `Bash(...)` pattern is matched against the **commands** in the line, not the r
 
 | | `--allow` | `--exclude` and `--ask` |
 |---|---|---|
-| Matches | one plain command, exactly as written | any command anywhere in the line |
+| Matches | each command of a plain chain, exactly as written | any command anywhere in the line |
 | When in doubt | doesn't match, so the command is not allowed | matches, so the command is blocked |
 
-#### `--allow`: one plain command only
+#### `--allow`: each command of a plain chain
 
-An allow covers a line only when the whole line is a single command that matches the pattern. Anything extra (another command, a pipe, a redirect, a wrapper, a path) means it doesn't match, and the next rule decides. In a headless run that usually means refused.
+An allow covers one command, exactly as written. A line runs when every command in it is allowed, by this pattern or by another rule, and nothing between the commands is risky. Commands can be joined by `&&`, `||`, `;`, `|` and line breaks. These make a line ask instead:
 
-With `--allow "Bash(npm test*)"`:
+- a redirect outside the working directory or into `.git`, or in a headless run any redirect that writes a file;
+- a pipe into a shell, an interpreter or a network tool;
+- `$(...)`, backticks, a subshell, `&`, a heredoc or `sh -c`;
+- a `cd` out of the working directory, or `export` or `source`, before another command.
+
+When the line doesn't run, the next rule decides. In a headless run that usually means refused.
+
+With `--allow "Bash(npm test*)"` in a headless run:
 
 | Command | Allowed | Why |
 |---|---|---|
@@ -112,12 +119,12 @@ With `--allow "Bash(npm test*)"`:
 | `npm test -- --watch=false` | ✅ | `*` covers the extra arguments |
 | `"npm"  test` | ✅ | quotes and spaces don't matter |
 | `npm tests` | ✅ | `*` is plain text matching, so `test*` also matches `tests` |
+| `npm test 2>&1 \| tail -20` | ✅ | the defaults allow `tail` on its own |
 | `npm run test` | ❌ | different words |
-| `npm test && npm run lint` | ❌ | two commands |
-| `npm test; curl https://example.com` | ❌ | two commands |
-| `npm test \| tee out.txt` | ❌ | pipe |
-| `npm test > out.txt` | ❌ | redirect |
-| `timeout 60 npm test` | ❌ | wrapped in another command |
+| `npm test && npm run lint` | ❌ | `npm run lint` isn't allowed. Add `--allow "Bash(npm run lint*)"` |
+| `npm test; curl https://example.com` | ❌ | `curl` isn't allowed |
+| `npm test > out.txt` | ❌ | a headless run asks before writing a file. The TUI allows it |
+| `timeout 60 npm test` | ❌ | `timeout` needs a pattern too, such as `Bash(timeout*)` |
 | `CI=1 npm test` | ❌ | variable set in front of the command |
 | `./npm test` or `/usr/bin/npm test` | ❌ | path differs from the pattern |
 | `sh -c 'npm test'` | ❌ | inline shell code |

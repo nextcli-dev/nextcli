@@ -34,6 +34,12 @@ export interface EvaluateOptions {
   strict?: boolean;
 }
 
+interface Mode {
+  strict: boolean;
+  /** Check only the line around its commands; see evaluateLineStructure */
+  structureOnly?: boolean;
+}
+
 /**
  * Evaluates the security policy for a terminal command.
  *
@@ -57,7 +63,33 @@ export function evaluateTerminalCommandSecurity(
   command: string | null | undefined,
   options?: EvaluateOptions,
 ): ToolPolicy {
-  const strict = options?.strict === true;
+  return evaluate(basePolicy, command, { strict: options?.strict === true });
+}
+
+/**
+ * Checks what a line does around its simple commands, taking each command as
+ * approved: catastrophic and destructive commands, critical commands
+ * anywhere, a command named by a variable, a dangerous `NAME=value` prefix,
+ * redirect targets, pipes into an interpreter or network tool, substitutions,
+ * variable expansion and obfuscation. Used to decide a chain whose commands
+ * are each approved separately (commandChain.ts). Not exported from the
+ * package: on its own it approves every command.
+ */
+export function evaluateLineStructure(
+  command: string,
+  strict: boolean,
+): ToolPolicy {
+  return evaluate("allowedWithoutPermission", command, {
+    strict,
+    structureOnly: true,
+  });
+}
+
+function evaluate(
+  basePolicy: ToolPolicy,
+  command: string | null | undefined,
+  mode: Mode,
+): ToolPolicy {
   // If tool is already disabled, keep it disabled
   if (basePolicy === "disabled") {
     return "disabled";
@@ -82,7 +114,7 @@ export function evaluateTerminalCommandSecurity(
   if (destructiveRisk === "catastrophic") {
     return "disabled";
   }
-  const policy = evaluateCommandPolicy(basePolicy, normalizedCommand, strict);
+  const policy = evaluateCommandPolicy(basePolicy, normalizedCommand, mode);
   return destructiveRisk
     ? getMostRestrictive(policy, "allowedWithPermission")
     : policy;
@@ -91,7 +123,7 @@ export function evaluateTerminalCommandSecurity(
 function evaluateCommandPolicy(
   basePolicy: ToolPolicy,
   normalizedCommand: string,
-  strict: boolean,
+  mode: Mode,
 ): ToolPolicy {
   try {
     // Split on line breaks to handle multi-line commands
@@ -116,7 +148,7 @@ function evaluateCommandPolicy(
           tokens,
           basePolicy,
           trimmedLine,
-          strict,
+          mode,
         );
 
         // Track the most restrictive policy
@@ -138,12 +170,7 @@ function evaluateCommandPolicy(
     const tokens = parseShellLine(normalizedCommand) as ParsedToken[];
 
     // Evaluate security of the parsed tokens
-    return evaluateTokensSecurity(
-      tokens,
-      basePolicy,
-      normalizedCommand,
-      strict,
-    );
+    return evaluateTokensSecurity(tokens, basePolicy, normalizedCommand, mode);
   } catch (error) {
     // If parsing fails, be conservative and require permission
     console.error("Failed to parse command:", error);
@@ -179,7 +206,7 @@ function evaluateTokensSecurity(
   tokens: ParsedToken[],
   basePolicy: ToolPolicy,
   originalCommand: string,
-  strict: boolean,
+  mode: Mode,
 ): ToolPolicy {
   // Check for empty strings that might indicate variable expansion
   const hasEmptyStrings = tokens.some((t) => typeof t === "string" && t === "");
@@ -199,7 +226,7 @@ function evaluateTokensSecurity(
         tokens,
         basePolicy,
         originalCommand,
-        strict,
+        mode,
       );
 
       // 2. Evaluate without empty strings
@@ -210,7 +237,7 @@ function evaluateTokensSecurity(
               tokensWithoutEmpty,
               basePolicy,
               originalCommand,
-              strict,
+              mode,
             )
           : basePolicy;
 
@@ -224,7 +251,7 @@ function evaluateTokensSecurity(
   }
 
   // Normal evaluation for commands without variable expansion
-  return evaluateTokens(tokens, basePolicy, originalCommand, strict);
+  return evaluateTokens(tokens, basePolicy, originalCommand, mode);
 }
 
 /**
@@ -234,7 +261,7 @@ function evaluateTokens(
   tokens: ParsedToken[],
   basePolicy: ToolPolicy,
   originalCommand: string,
-  strict: boolean,
+  mode: Mode,
 ): ToolPolicy {
   let mostRestrictivePolicy = basePolicy;
   let currentCommand: string[] = [];
@@ -255,7 +282,7 @@ function evaluateTokens(
           currentCommand,
           originalCommand,
           basePolicy,
-          strict,
+          mode,
         );
         mostRestrictivePolicy = getMostRestrictive(
           mostRestrictivePolicy,
@@ -285,7 +312,7 @@ function evaluateTokens(
         // Strict mode: a redirect that writes a file (echo x > notes.txt) is a
         // file change like cp or tee, even inside the workspace
         if (
-          strict &&
+          mode.strict &&
           op !== "<" &&
           op !== "<&" &&
           !(typeof target === "string" && isHarmlessRedirectTarget(op, target))
@@ -299,7 +326,11 @@ function evaluateTokens(
           if (
             op !== "<" &&
             op !== "<&" &&
-            (isOutsideWorkspacePath(target) || isGitInternalPath(target))
+            // An empty target is a variable that expanded to nothing here
+            // (`> $F`), so it could be any file
+            (target === "" ||
+              isOutsideWorkspacePath(target) ||
+              isGitInternalPath(target))
           ) {
             mostRestrictivePolicy = getMostRestrictive(
               mostRestrictivePolicy,
@@ -336,7 +367,7 @@ function evaluateTokens(
       currentCommand,
       originalCommand,
       basePolicy,
-      strict,
+      mode,
     );
     mostRestrictivePolicy = getMostRestrictive(
       mostRestrictivePolicy,
@@ -352,7 +383,7 @@ function evaluateTokens(
       const nestedPolicy = evaluateTerminalCommandSecurity(
         basePolicy,
         subCmd,
-        strict ? { strict: true } : undefined,
+        mode.strict ? { strict: true } : undefined,
       );
       mostRestrictivePolicy = getMostRestrictive(
         mostRestrictivePolicy,
@@ -460,7 +491,7 @@ function evaluateSingleCommand(
   commandTokens: string[],
   originalCommand: string,
   basePolicy: ToolPolicy,
-  strict: boolean,
+  mode: Mode,
 ): ToolPolicy {
   if (commandTokens.length === 0) {
     return "allowedWithoutPermission";
@@ -505,6 +536,11 @@ function evaluateSingleCommand(
     return "allowedWithPermission";
   }
 
+  // The command itself is decided by the caller (evaluateLineStructure)
+  if (mode.structureOnly) {
+    return "allowedWithoutPermission";
+  }
+
   // A program named by its path (./build.sh, bin/app, /tmp/x, .\app.exe)
   // is not a command the checks below know, so it requires permission
   if (/[\\/]/.test(commandName.replace(/^\\/, ""))) {
@@ -523,7 +559,7 @@ function evaluateSingleCommand(
   // but that run repo code or write files (npm run, make, cargo, tar, git
   // branch, git log --output=) need permission. Read-only ones stay approved.
   if (isSafeCommand(baseCommand, args)) {
-    if (strict && strictSafeCommandNeedsPermission(baseCommand, args)) {
+    if (mode.strict && strictSafeCommandNeedsPermission(baseCommand, args)) {
       return "allowedWithPermission";
     }
     return "allowedWithoutPermission";
@@ -532,7 +568,7 @@ function evaluateSingleCommand(
   // Build, test and file commands follow the base policy, except in strict
   // mode (unattended runs), where they require permission (#10512)
   if (isPolicyFollowingCommand(baseCommand, args)) {
-    return strict ? "allowedWithPermission" : basePolicy;
+    return mode.strict ? "allowedWithPermission" : basePolicy;
   }
 
   // Anything else (argument-checked commands in a risky form such as git push

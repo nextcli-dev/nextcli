@@ -5,8 +5,8 @@ vi.mock("../../services/index.js");
 
 // Mock the permission system
 vi.mock("../../permissions/policyWriter.js", () => ({
-  generatePolicyRule: vi.fn(),
-  addPolicyToYaml: vi.fn(),
+  generatePolicyRules: vi.fn(),
+  addPoliciesToYaml: vi.fn(),
 }));
 
 describe("Permission Policy Reload Workflow", () => {
@@ -16,13 +16,13 @@ describe("Permission Policy Reload Workflow", () => {
 
   it("should call reloadPermissions after creating a policy", async () => {
     // Mock the policy writer
-    const { generatePolicyRule, addPolicyToYaml } = await import(
+    const { generatePolicyRules, addPoliciesToYaml } = await import(
       "../../permissions/policyWriter.js"
     );
-    vi.mocked(generatePolicyRule).mockReturnValue(
+    vi.mocked(generatePolicyRules).mockReturnValue([
       "tool: Edit\npermission: allow",
-    );
-    vi.mocked(addPolicyToYaml).mockResolvedValue(undefined);
+    ]);
+    vi.mocked(addPoliciesToYaml).mockResolvedValue(undefined);
 
     // Test the workflow that should happen in useChat.handleToolPermissionResponse
     const mockActiveRequest = {
@@ -36,18 +36,18 @@ describe("Permission Policy Reload Workflow", () => {
     // Simulate the policy creation flow from useChat
     if (approved && createPolicy && mockActiveRequest) {
       try {
-        const { generatePolicyRule, addPolicyToYaml } = await import(
+        const { generatePolicyRules, addPoliciesToYaml } = await import(
           "../../permissions/policyWriter.js"
         );
         const { services } = await import("../../services/index.js");
 
-        const policyRule = generatePolicyRule(
+        const policyRule = generatePolicyRules(
           mockActiveRequest.toolName,
           mockActiveRequest.toolArgs,
         );
 
         if (policyRule) {
-          await addPolicyToYaml(policyRule);
+          await addPoliciesToYaml(policyRule);
         }
 
         // This is the key part we're testing - reload should be called
@@ -58,24 +58,24 @@ describe("Permission Policy Reload Workflow", () => {
     }
 
     // Verify the complete workflow executed
-    expect(generatePolicyRule).toHaveBeenCalledWith("Edit", {
+    expect(generatePolicyRules).toHaveBeenCalledWith("Edit", {
       file_path: "test.txt",
     });
-    expect(addPolicyToYaml).toHaveBeenCalledWith(
+    expect(addPoliciesToYaml).toHaveBeenCalledWith([
       "tool: Edit\npermission: allow",
-    );
+    ]);
     expect(services.toolPermissions.reloadPermissions).toHaveBeenCalled();
   });
 
   it("should handle permission reload failure gracefully", async () => {
     // Mock the policy writer
-    const { generatePolicyRule, addPolicyToYaml } = await import(
+    const { generatePolicyRules, addPoliciesToYaml } = await import(
       "../../permissions/policyWriter.js"
     );
-    vi.mocked(generatePolicyRule).mockReturnValue(
+    vi.mocked(generatePolicyRules).mockReturnValue([
       "tool: Write\npermission: allow",
-    );
-    vi.mocked(addPolicyToYaml).mockResolvedValue(undefined);
+    ]);
+    vi.mocked(addPoliciesToYaml).mockResolvedValue(undefined);
 
     // Mock reloadPermissions to fail
     vi.mocked(services.toolPermissions.reloadPermissions).mockRejectedValue(
@@ -93,18 +93,18 @@ describe("Permission Policy Reload Workflow", () => {
     // Test that error handling works correctly - this should not throw
     let errorCaught = false;
     try {
-      const { generatePolicyRule, addPolicyToYaml } = await import(
+      const { generatePolicyRules, addPoliciesToYaml } = await import(
         "../../permissions/policyWriter.js"
       );
       const { services } = await import("../../services/index.js");
 
-      const policyRule = generatePolicyRule(
+      const policyRule = generatePolicyRules(
         mockActiveRequest.toolName,
         mockActiveRequest.toolArgs,
       );
 
       if (policyRule) {
-        await addPolicyToYaml(policyRule);
+        await addPoliciesToYaml(policyRule);
       }
 
       // This should fail but not break the flow
@@ -116,20 +116,20 @@ describe("Permission Policy Reload Workflow", () => {
     }
 
     // Verify that despite the reload failure, the policy was still created
-    expect(addPolicyToYaml).toHaveBeenCalled();
+    expect(addPoliciesToYaml).toHaveBeenCalled();
     expect(services.toolPermissions.reloadPermissions).toHaveBeenCalled();
     expect(errorCaught).toBe(true);
   });
 
   it("verifies the expected improvement: policy takes effect immediately", async () => {
     // This test documents what the user should experience
-    const { generatePolicyRule, addPolicyToYaml } = await import(
+    const { generatePolicyRules, addPoliciesToYaml } = await import(
       "../../permissions/policyWriter.js"
     );
-    vi.mocked(generatePolicyRule).mockReturnValue(
+    vi.mocked(generatePolicyRules).mockReturnValue([
       "tool: Edit\npermission: allow",
-    );
-    vi.mocked(addPolicyToYaml).mockResolvedValue(undefined);
+    ]);
+    vi.mocked(addPoliciesToYaml).mockResolvedValue(undefined);
 
     // Mock successful reload
     vi.mocked(services.toolPermissions.reloadPermissions).mockResolvedValue(
@@ -148,18 +148,18 @@ describe("Permission Policy Reload Workflow", () => {
 
     // The workflow should complete successfully
     if (approved && createPolicy && mockActiveRequest) {
-      const { generatePolicyRule, addPolicyToYaml } = await import(
+      const { generatePolicyRules, addPoliciesToYaml } = await import(
         "../../permissions/policyWriter.js"
       );
       const { services } = await import("../../services/index.js");
 
-      const policyRule = generatePolicyRule(
+      const policyRule = generatePolicyRules(
         mockActiveRequest.toolName,
         mockActiveRequest.toolArgs,
       );
 
       if (policyRule) {
-        await addPolicyToYaml(policyRule);
+        await addPoliciesToYaml(policyRule);
       }
       await services.toolPermissions.reloadPermissions();
     }
