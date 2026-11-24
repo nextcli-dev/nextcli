@@ -436,13 +436,15 @@ describe("streamResponseThunk", () => {
       },
     });
 
-    // Verify session save was called
-    expect(requestSpy).toHaveBeenCalledWith("history/save", expect.anything());
-
-    // The saved session keeps the call's completion, not its prompt
-    const saveCall = requestSpy.mock.calls.find(
+    // One history/save per model call: this turn has one, so it saves once
+    // (release-plans/vscode-extension-host-load.md, the PR 3 save count)
+    const saveCalls = requestSpy.mock.calls.filter(
       ([messageType]) => messageType === "history/save",
     );
+    expect(saveCalls).toHaveLength(1);
+
+    // The saved session keeps the call's completion, not its prompt
+    const saveCall = saveCalls[0];
     const saved = saveCall![1] as Session;
     expect(saved.history.flatMap((item) => item.promptLogs ?? [])).toEqual([
       {

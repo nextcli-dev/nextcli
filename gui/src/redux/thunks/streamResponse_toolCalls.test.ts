@@ -105,7 +105,19 @@ describe("streamResponseThunk - tool calls", () => {
     const mockStoreWithToolSettings = createMockStore(initialState);
     const mockIdeMessengerWithTool = mockStoreWithToolSettings.mockIdeMessenger;
 
+    // Each history/save serialized when it is sent, as the IDE writes it
+    const savedSessionJson: string[] = [];
+    const request = mockIdeMessengerWithTool.request.bind(
+      mockIdeMessengerWithTool,
+    );
     const requestSpy = vi.spyOn(mockIdeMessengerWithTool, "request");
+    // Not async: an extra await would shift the action order checked below
+    requestSpy.mockImplementation((messageType, data) => {
+      if (messageType === "history/save") {
+        savedSessionJson.push(JSON.stringify(data));
+      }
+      return request(messageType, data);
+    });
 
     mockIdeMessengerWithTool.responses["llm/compileChat"] = {
       compiledChatMessages: [
@@ -427,6 +439,19 @@ describe("streamResponseThunk - tool calls", () => {
         },
       },
     });
+
+    // This turn saves twice, and the second save writes exactly what the first
+    // did. streamResponseAfterToolCall runs inside the outer
+    // streamThunkWrapper's runStream, and each wrapper saves only after its
+    // own stream finishes. So the inner save runs once the final answer is in
+    // history, and the outer wrapper then saves that same session again.
+    // (release-plans/vscode-extension-host-load.md, the skip-unchanged-save
+    // follow-up)
+    expect(savedSessionJson).toHaveLength(2);
+    const firstSave = JSON.parse(savedSessionJson[0]);
+    expect(firstSave.title).toBe("Session summary");
+    expect(JSON.stringify(firstSave.history)).toContain("Search completed.");
+    expect(savedSessionJson[1]).toBe(savedSessionJson[0]);
 
     // Verify that multiple compilation calls were made (due to tool call continuation)
     const compileCallsCount = requestSpy.mock.calls.filter(
