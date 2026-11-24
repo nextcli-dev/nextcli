@@ -1305,7 +1305,7 @@ export class Core {
       diffCache.invalidate();
       // A plain save doesn't change any directory listing, so the walk cache
       // stays (its entries expire after 30 s anyway). Ignore-file saves below
-      // force a re-index, which clears it.
+      // clear it.
       const currentProfileUri =
         this.configHandler.currentProfile?.profileDescription.uri ?? "";
       for (const uri of data.uris) {
@@ -1344,6 +1344,9 @@ export class Core {
           uri.endsWith(".continueignore") ||
           uri.endsWith(".gitignore")
         ) {
+          // Cleared here, not only by the re-index: @file, the repo map and
+          // rules walk the tree with indexing off too
+          walkDirCache.invalidate();
           // Reindex the workspaces
           this.invoke("index/forceReIndex", {
             shouldClearIndexes: true,

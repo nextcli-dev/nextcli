@@ -9,7 +9,7 @@ import type { Message } from "./protocol/messenger";
 // config loading, indexing startup).
 import { Core } from "./core";
 
-function makeCoreStub() {
+function makeCoreStub({ disableIndexing = false } = {}) {
   const refreshCodebaseIndexFiles = vi.fn(async () => {});
   const invoke = vi.fn();
   const stub = {
@@ -21,7 +21,7 @@ function makeCoreStub() {
     configHandler: {
       currentProfile: undefined,
       loadConfig: vi.fn(async () => ({
-        config: { disableIndexing: false },
+        config: { disableIndexing },
       })),
       reloadConfig: vi.fn(async () => {}),
     },
@@ -63,15 +63,24 @@ describe("handleFilesChanged walk-cache invalidation", () => {
     ]);
   });
 
-  it.each([".gitignore", ".continueignore"])(
-    "a %s save forces a re-index, which clears the walk cache",
-    async (ignoreFile) => {
-      const { handle, invoke, refreshCodebaseIndexFiles } = makeCoreStub();
+  it.each([
+    [".gitignore", false],
+    [".continueignore", false],
+    [".gitignore", true],
+    [".continueignore", true],
+  ])(
+    "a %s save clears the walk cache and forces a re-index (indexing off: %s)",
+    async (ignoreFile, disableIndexing) => {
+      const { handle, invoke, refreshCodebaseIndexFiles } = makeCoreStub({
+        disableIndexing,
+      });
 
       await handle({
         data: { uris: [`file:///workspace/${ignoreFile}`] },
       } as Message<{ uris?: string[] }>);
 
+      // Here, since the re-index handler returns first when indexing is off
+      expect(invalidate).toHaveBeenCalledTimes(1);
       expect(invoke).toHaveBeenCalledWith("index/forceReIndex", {
         shouldClearIndexes: true,
       });
