@@ -1303,7 +1303,6 @@ export class Core {
     if (data?.uris?.length) {
       const diffCache = GitDiffCache.getInstance(getDiffFn(this.ide));
       diffCache.invalidate();
-      walkDirCache.invalidate(); // safe approach for now - TODO - only invalidate on relevant changes
       const currentProfileUri =
         this.configHandler.currentProfile?.profileDescription.uri ?? "";
       for (const uri of data.uris) {
@@ -1342,6 +1341,7 @@ export class Core {
           uri.endsWith(".continueignore") ||
           uri.endsWith(".gitignore")
         ) {
+          walkDirCache.invalidate();
           // Reindex the workspaces
           this.invoke("index/forceReIndex", {
             shouldClearIndexes: true,

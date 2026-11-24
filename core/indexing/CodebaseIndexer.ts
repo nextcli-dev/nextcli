@@ -31,6 +31,7 @@ import {
   PathAndCacheKey,
   RefreshIndexResults,
 } from "./types.js";
+import { shouldIgnore } from "./shouldIgnore.js";
 import { walkDirAsync } from "./walkDir.js";
 
 export class PauseToken {
@@ -59,6 +60,8 @@ export class CodebaseIndexer {
   private codebaseIndexingState: IndexingProgressUpdate;
   private readonly pauseToken: PauseToken;
   private builtIndexes: CodebaseIndex[] = [];
+  private pendingFiles = new Set<string>();
+  private drainingPendingFiles = false;
 
   private static warnedNoFullTextSearch = false;
 
@@ -774,7 +777,6 @@ export class CodebaseIndexer {
     let indexLockTimestampUpdateInterval:
       | ReturnType<typeof setInterval>
       | undefined;
-    let locked = false;
 
     try {
       try {
@@ -783,7 +785,6 @@ export class CodebaseIndexer {
         }
 
         await IndexLock.lock(paths.join(", ")); // acquire the index lock to prevent multiple windows to begin indexing
-        locked = true;
       } catch (e: any) {
         // index.sqlite itself can't be used (corrupt, full, unreadable)
         console.log(`Failed to lock the codebase index: ${e}`);
@@ -829,15 +830,20 @@ export class CodebaseIndexer {
       if (indexLockTimestampUpdateInterval) {
         clearInterval(indexLockTimestampUpdateInterval);
       }
-      if (locked && this.indexingCancellationController === localController) {
+      if (this.indexingCancellationController === localController) {
         this.indexingCancellationController.abort();
       }
+      await this.drainPendingFiles();
     }
   }
 
   public async refreshCodebaseIndexFiles(files: string[]) {
-    // Can be cancelled by codebase index but not vice versa
+    // Can be cancelled by codebase index but not vice versa. A file saved
+    // during a running refresh is queued and indexed when that refresh ends.
     if (!this.indexingCancellationController.signal.aborted) {
+      for (const file of files) {
+        this.pendingFiles.add(file);
+      }
       return;
     }
     const localController = new AbortController();
@@ -864,6 +870,42 @@ export class CodebaseIndexer {
     }
     if (this.indexingCancellationController === localController) {
       this.indexingCancellationController.abort();
+    }
+    await this.drainPendingFiles();
+  }
+
+  /** Indexes the files saved during the refresh that just ended. */
+  private async drainPendingFiles(): Promise<void> {
+    if (this.drainingPendingFiles || this.pendingFiles.size === 0) {
+      return;
+    }
+    this.drainingPendingFiles = true;
+    try {
+      // Stops while another refresh holds the controller, which drains the
+      // queue when it ends: a call here would only queue the files again
+      while (
+        this.pendingFiles.size > 0 &&
+        this.indexingCancellationController.signal.aborted
+      ) {
+        const queued = [...this.pendingFiles];
+        this.pendingFiles.clear();
+        // An ignore file may have changed since the save was queued
+        const files: string[] = [];
+        for (const file of queued) {
+          try {
+            if (!(await shouldIgnore(file, this.ide))) {
+              files.push(file);
+            }
+          } catch (e) {
+            console.log(`Skipping ${file} while indexing saved files: ${e}`);
+          }
+        }
+        if (files.length > 0) {
+          await this.refreshCodebaseIndexFiles(files);
+        }
+      }
+    } finally {
+      this.drainingPendingFiles = false;
     }
   }
 
