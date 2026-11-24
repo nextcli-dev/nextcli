@@ -1,3 +1,4 @@
+import { EditAggregator } from "core/nextEdit/context/aggregateEdits";
 import * as NextEditLoggingServiceModule from "core/nextEdit/NextEditLoggingService";
 import * as PrefetchQueueModule from "core/nextEdit/NextEditPrefetchQueue";
 import * as NextEditProviderModule from "core/nextEdit/NextEditProvider";
@@ -5,7 +6,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
 import * as JumpManagerModule from "../../activation/JumpManager";
+import {
+  getPreEditContent,
+  stopEditTracking,
+  trackDocumentEdit,
+} from "../../util/editLoggingUtils";
 import { ContinueCompletionProvider } from "../completionProvider";
+
+import type { Core } from "core/core";
 
 type MockNextEditProvider = ReturnType<typeof createMockNextEditProvider>;
 type MockPrefetchQueue = ReturnType<typeof createMockPrefetchQueue>;
@@ -248,6 +256,161 @@ describe("ContinueCompletionProvider in autocomplete mode", () => {
   });
 });
 
+// Edit tracking (files/smallEdit, the pre-edit cache, core's edit clusters)
+// follows the provider's Next Edit state
+describe("ContinueCompletionProvider Next Edit state and edit tracking", () => {
+  const uri = "file:///workspace/a.ts";
+  let core: { invoke: ReturnType<typeof vi.fn> };
+  let configHandler: { loadConfig: ReturnType<typeof vi.fn> };
+
+  beforeEach(() => {
+    stopEditTracking();
+    core = { invoke: vi.fn() };
+    configHandler = { loadConfig: vi.fn() };
+    (vscode.workspace as any).textDocuments = [];
+    (vscode.window as any).activeTextEditor = {
+      selection: { active: { line: 0, character: 11 } },
+    };
+  });
+
+  // The onDidChangeTextDocument path in VsCodeExtension
+  const track = (
+    provider: ContinueCompletionProvider,
+    document: vscode.TextDocument,
+  ) =>
+    trackDocumentEdit(
+      editEvent(document),
+      configHandler as any,
+      {} as any,
+      provider,
+      vi.fn(async () => []),
+      core as unknown as Core,
+    );
+
+  const sentEdit = (call = 0) => core.invoke.mock.calls[call][1].actions[0];
+
+  // What core's files/smallEdit handler does with a sent edit
+  const coreReceives = (call = 0) =>
+    EditAggregator.getInstance().processEdits(
+      core.invoke.mock.calls[call][1].actions,
+    );
+
+  it("inactive: sends nothing, copies no document text and loads no config", async () => {
+    const provider = buildProvider({ nextEdit: false });
+    const document = textDocument(uri, "let a = 1;x");
+    const getText = vi.spyOn(document, "getText");
+
+    await track(provider, document);
+
+    expect(core.invoke).not.toHaveBeenCalled();
+    expect(getText).not.toHaveBeenCalled();
+    expect(configHandler.loadConfig).not.toHaveBeenCalled();
+    expect(getPreEditContent(document)).toBe("");
+  });
+
+  it("turning on snapshots the open documents as the next edit's pre-edit content", async () => {
+    (vscode.workspace as any).textDocuments = [textDocument(uri, "let a = 1;")];
+    const provider = buildProvider();
+
+    await track(provider, textDocument(uri, "let a = 1;x"));
+
+    expect(core.invoke).toHaveBeenCalledTimes(1);
+    expect(core.invoke.mock.calls[0][0]).toBe("files/smallEdit");
+    expect(sentEdit().fileContentsBefore).toBe("let a = 1;");
+    expect(sentEdit().fileContents).toBe("let a = 1;x");
+  });
+
+  it("a config reload while on keeps the pre-edit snapshot", async () => {
+    let text = "let a = 1;";
+    const document = textDocument(uri, () => text);
+    (vscode.workspace as any).textDocuments = [document];
+    const provider = buildProvider();
+
+    // The buffer has the keystroke, its change event isn't handled yet
+    text = "let a = 1;x";
+    provider.activateNextEdit(); // onConfigUpdate -> updateNextEditState
+    await track(provider, document);
+
+    expect(sentEdit().fileContentsBefore).toBe("let a = 1;");
+  });
+
+  it("turning off drops the open edit cluster, so the next session's diff leaves out the typing done while off", async () => {
+    (vscode.workspace as any).textDocuments = [textDocument(uri, "let a = 1;")];
+    const provider = buildProvider();
+    await track(provider, textDocument(uri, "let a = 1;x"));
+    await coreReceives(0);
+    expect(EditAggregator.getInstance().getActiveClusterCount()).toBe(1);
+
+    provider.deactivateNextEdit();
+    expect(EditAggregator.getInstance().getActiveClusterCount()).toBe(0);
+
+    // Typed while off, then the next edit on the same line once back on
+    const gap = "let a = 1;x\nlet b = 2;";
+    (vscode.workspace as any).textDocuments = [textDocument(uri, gap)];
+    provider.activateNextEdit();
+    await track(provider, textDocument(uri, "let a = 1;xy\nlet b = 2;"));
+    await coreReceives(1);
+
+    const diff = EditAggregator.getInstance().getInProgressDiff(uri);
+    expect(diff).toContain("+let a = 1;xy");
+    expect(diff).not.toContain("+let b = 2;");
+  });
+
+  it("turning on drops a cluster from an edit core received as Next Edit turned off", async () => {
+    (vscode.workspace as any).textDocuments = [textDocument(uri, "let a = 1;")];
+    const provider = buildProvider();
+    await track(provider, textDocument(uri, "let a = 1;x"));
+
+    provider.deactivateNextEdit();
+    await coreReceives(0); // core handled the edit after the turn-off
+    expect(EditAggregator.getInstance().getActiveClusterCount()).toBe(1);
+
+    provider.activateNextEdit();
+    expect(EditAggregator.getInstance().getActiveClusterCount()).toBe(0);
+  });
+
+  it("an edit in flight when Next Edit turns off is not sent and doesn't refill the cache", async () => {
+    (vscode.workspace as any).textDocuments = [textDocument(uri, "let a = 1;")];
+    const provider = buildProvider();
+    const document = textDocument(uri, "let a = 1;x");
+
+    const inFlight = track(provider, document);
+    provider.deactivateNextEdit();
+    await inFlight;
+
+    expect(core.invoke).not.toHaveBeenCalled();
+    expect(getPreEditContent(document)).toBe("");
+  });
+});
+
+function textDocument(
+  uri: string,
+  text: string | (() => string),
+): vscode.TextDocument {
+  return {
+    uri: { toString: () => uri },
+    getText: () => (typeof text === "string" ? text : text()),
+  } as unknown as vscode.TextDocument;
+}
+
+// One keystroke at the end of line 0
+function editEvent(
+  document: vscode.TextDocument,
+): vscode.TextDocumentChangeEvent {
+  return {
+    document,
+    contentChanges: [
+      {
+        range: {
+          start: { line: 0, character: 10 },
+          end: { line: 0, character: 10 },
+        },
+        text: "x",
+      },
+    ],
+  } as unknown as vscode.TextDocumentChangeEvent;
+}
+
 function buildProvider(
   options: { usingFullFileDiff?: boolean; nextEdit?: boolean } = {},
 ) {
@@ -441,7 +604,12 @@ vi.mock("vscode", () => {
 
   const workspace = {
     notebookDocuments: [] as any[],
+    textDocuments: [] as any[],
     getConfiguration: vi.fn(() => ({ get: vi.fn() })),
+    getWorkspaceFolder: (uri: any) =>
+      String(uri).startsWith("file:///workspace")
+        ? { uri: { toString: () => "file:///workspace" } }
+        : undefined,
   };
 
   return {

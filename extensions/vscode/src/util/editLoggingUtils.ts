@@ -2,10 +2,12 @@ import { IDE, Position, Range, RangeInFileWithNextEditInfo } from "core";
 import { AutocompleteCodeSnippet } from "core/autocomplete/snippets/types";
 import { GetLspDefinitionsFunction } from "core/autocomplete/types";
 import { ConfigHandler } from "core/config/ConfigHandler";
+import { EditAggregator } from "core/nextEdit/context/aggregateEdits";
 import { RecentlyEditedRange } from "core/nextEdit/types";
 import * as vscode from "vscode";
 
-import { ContinueCompletionProvider } from "../autocomplete/completionProvider";
+import type { ContinueCompletionProvider } from "../autocomplete/completionProvider";
+import type { Core } from "core/core";
 
 // Cache to store the last known content for each file (before edits)
 const documentContentCache = new Map<string, string>();
@@ -53,11 +55,27 @@ export const clearDocumentContentCache = (uri: string): void => {
 };
 
 /**
- * Drops every cached document, e.g. when Next Edit is deactivated and
- * edit tracking stops.
+ * Starts edit tracking when Next Edit turns on: the open documents become the
+ * pre-edit content. Also drops edit clusters left in core, such as one from an
+ * edit that reached core as Next Edit turned off.
  */
-export const clearAllDocumentContentCache = (): void => {
+export const startEditTracking = (
+  documents: readonly vscode.TextDocument[],
+): void => {
+  EditAggregator.getInstance().resetState();
+  for (const document of documents) {
+    initDocumentContentCache(document);
+  }
+};
+
+/**
+ * Stops edit tracking when Next Edit turns off. Drops the pre-edit content and
+ * the open edit clusters: a cluster kept open would absorb the typing done
+ * while Next Edit is off into the next session's first diff.
+ */
+export const stopEditTracking = (): void => {
   documentContentCache.clear();
+  EditAggregator.getInstance().resetState();
 };
 
 export const getBeforeCursorPos = (range: Range, activePos: Position) => {
@@ -72,7 +90,7 @@ export const getBeforeCursorPos = (range: Range, activePos: Position) => {
   }
 };
 
-const getWorkspaceDirUri = async (event: vscode.TextDocumentChangeEvent) => {
+const getWorkspaceDirUri = (event: vscode.TextDocumentChangeEvent) => {
   const workspaceFolder = vscode.workspace.getWorkspaceFolder(
     event.document.uri,
   );
@@ -102,7 +120,7 @@ export const handleTextDocumentChange = async (
   }
 
   // Ensure that logging will only happen in the open-source continue repo
-  const workspaceDirUri = await getWorkspaceDirUri(event);
+  const workspaceDirUri = getWorkspaceDirUri(event);
   if (!workspaceDirUri) {
     return;
   }
@@ -148,9 +166,9 @@ export const handleTextDocumentChange = async (
 };
 
 /**
- * Tracks a document edit for Next Edit, but only while Next Edit is active.
- * While it is inactive nothing reads the edit history or the autocomplete
- * context this feeds, so no config is loaded and no document text is copied.
+ * Sends a document edit to core (files/smallEdit), only while Next Edit is
+ * active: nothing else reads the edit history or the autocomplete context it
+ * feeds. While it is inactive no document text is copied.
  */
 export const trackDocumentEdit = async (
   event: vscode.TextDocumentChangeEvent,
@@ -158,15 +176,23 @@ export const trackDocumentEdit = async (
   ide: IDE,
   completionProvider: ContinueCompletionProvider,
   getDefinitionsFromLsp: GetLspDefinitionsFunction,
-) => {
-  if (!completionProvider?.nextEditActive) {
+  core: Core,
+): Promise<void> => {
+  // handleTextDocumentChange reads and updates the pre-edit cache before its
+  // first await, so turning Next Edit off can't land between this check and
+  // the cache update
+  if (!completionProvider.nextEditActive) {
     return;
   }
-  return handleTextDocumentChange(
+  const editInfo = await handleTextDocumentChange(
     event,
     configHandler,
     ide,
     completionProvider,
     getDefinitionsFromLsp,
   );
+  // Next Edit may have turned off while the recent ranges loaded
+  if (editInfo && completionProvider.nextEditActive) {
+    core.invoke("files/smallEdit", editInfo);
+  }
 };

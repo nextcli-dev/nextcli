@@ -47,7 +47,6 @@ import { QuickEdit } from "../quickEdit/QuickEditQuickPick";
 import { UriEventHandler } from "../stubs/uriHandler";
 import { Battery } from "../util/battery";
 import {
-  clearAllDocumentContentCache,
   clearDocumentContentCache,
   initDocumentContentCache,
   trackDocumentEdit,
@@ -466,7 +465,8 @@ export class VsCodeExtension {
     }
 
     // Pre-edit content for edit tracking, only while Next Edit is active.
-    // activateNextEdit fills the cache from the open documents.
+    // The completion provider's activateNextEdit fills the cache from the
+    // documents already open.
     vscode.workspace.onDidOpenTextDocument((document) => {
       if (this.completionProvider.nextEditActive) {
         initDocumentContentCache(document);
@@ -478,17 +478,14 @@ export class VsCodeExtension {
         selectionManager.documentChanged();
       }
 
-      const editInfo = await trackDocumentEdit(
+      await trackDocumentEdit(
         event,
         this.configHandler,
         this.ide,
         this.completionProvider,
         getDefinitionsFromLsp,
+        this.core,
       );
-
-      if (editInfo) {
-        this.core.invoke("files/smallEdit", editInfo);
-      }
     });
 
     vscode.workspace.onDidSaveTextDocument(async (event) => {
@@ -659,15 +656,9 @@ export class VsCodeExtension {
 
   public activateNextEdit() {
     this.completionProvider.activateNextEdit();
-    // Fill the pre-edit content cache from the open documents, so the first
-    // edit after activation has its before state
-    for (const document of vscode.workspace.textDocuments) {
-      initDocumentContentCache(document);
-    }
   }
 
   public deactivateNextEdit() {
     this.completionProvider.deactivateNextEdit();
-    clearAllDocumentContentCache();
   }
 }

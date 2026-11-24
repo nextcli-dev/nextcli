@@ -16,6 +16,7 @@ import * as vscode from "vscode";
 
 import { JumpManager } from "../activation/JumpManager";
 import { NextEditWindowManager } from "../activation/NextEditWindowManager";
+import { startEditTracking, stopEditTracking } from "../util/editLoggingUtils";
 import { fireAndForget, handleLLMError } from "../util/errorHandling";
 import { VsCodeIde } from "../VsCodeIde";
 import { VsCodeWebviewProtocol } from "../webviewProtocol";
@@ -79,11 +80,19 @@ export class ContinueCompletionProvider
   }
 
   public activateNextEdit() {
+    // Snapshot the open documents only when Next Edit turns on. Config
+    // reloads call this while it is already on, and by then each edit keeps
+    // the pre-edit content current.
+    if (this.isNextEditActive) {
+      return;
+    }
     this.isNextEditActive = true;
+    startEditTracking(vscode.workspace.textDocuments);
   }
 
   public deactivateNextEdit() {
     this.isNextEditActive = false;
+    stopEditTracking();
   }
 
   constructor(

@@ -1,11 +1,18 @@
+import fs from "fs";
+
+import { fetchwithRequestOptions } from "@nextcli/fetch";
 import type { MockInstance } from "vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DataLogger } from "../../data/log";
+import { Core } from "../../core";
+import { DataLogger, LOCAL_DEV_DATA_VERSION } from "../../data/log";
+import { getDevDataFilePath } from "../../util/paths";
 import { NextEditProvider } from "../NextEditProvider";
 import { getAutocompleteContext } from "./autocompleteContextFetching";
 import { processNextEditData } from "./processNextEditData";
-import { getPrevEditsDescending, prevEditLruCache } from "./prevEditLruCache";
+import { prevEditLruCache } from "./prevEditLruCache";
+
+vi.mock("@nextcli/fetch");
 
 vi.mock("./autocompleteContextFetching", () => ({
   getAutocompleteContext: vi.fn(async () => "rendered context"),
@@ -20,6 +27,8 @@ vi.mock("../NextEditProvider", () => {
     NextEditProvider: { getInstance: () => instance },
   };
 });
+
+const DESTINATION = "https://example.com/next-edit";
 
 const baseParams = () =>
   ({
@@ -37,24 +46,41 @@ const baseParams = () =>
   }) as Parameters<typeof processNextEditData>[0];
 
 describe("processNextEditData", () => {
+  const dataLogger = DataLogger.getInstance();
+  let savedCore: Core | undefined;
   let logDevData: MockInstance<DataLogger["logDevData"]>;
 
   beforeEach(() => {
     vi.clearAllMocks();
     prevEditLruCache.clear();
     delete process.env.NEXTCLI_TRACE;
-    logDevData = vi
-      .spyOn(DataLogger.getInstance(), "logDevData")
-      .mockResolvedValue();
+    savedCore = dataLogger.core;
+    // A data destination with the default level (all) and event list
+    dataLogger.core = {
+      configHandler: {
+        loadConfig: vi.fn().mockResolvedValue({
+          config: {
+            data: [
+              { destination: DESTINATION, schema: LOCAL_DEV_DATA_VERSION },
+            ],
+          },
+        }),
+      },
+    } as unknown as Core;
+    vi.mocked(fetchwithRequestOptions).mockResolvedValue({
+      ok: true,
+    } as Awaited<ReturnType<typeof fetchwithRequestOptions>>);
+    // Calls through: the test awaits the promise processNextEditData drops
+    logDevData = vi.spyOn(dataLogger, "logDevData");
   });
 
   afterEach(() => {
-    delete process.env.NEXTCLI_TRACE;
-    prevEditLruCache.clear();
     logDevData.mockRestore();
+    dataLogger.core = savedCore;
+    prevEditLruCache.clear();
   });
 
-  it("still feeds Instinct's autocomplete context with tracing off", async () => {
+  it("feeds the autocomplete context Instinct's prompt reads", async () => {
     await processNextEditData(baseParams());
 
     expect(getAutocompleteContext).toHaveBeenCalledTimes(1);
@@ -63,40 +89,8 @@ describe("processNextEditData", () => {
     ).toHaveBeenCalledWith("rendered context");
   });
 
-  it("writes no nextEditWithHistory line and keeps no prev-edit history when unset", async () => {
-    await processNextEditData(baseParams());
-    await processNextEditData({
-      ...baseParams(),
-      afterContent: "let a = 3;",
-    });
-
-    expect(logDevData).not.toHaveBeenCalled();
-    expect(getPrevEditsDescending()).toHaveLength(0);
-  });
-
-  it("logs nextEditWithHistory with previous edits when basic", async () => {
-    process.env.NEXTCLI_TRACE = "basic";
-
-    await processNextEditData(baseParams());
-    expect(logDevData).not.toHaveBeenCalled(); // first edit: no history yet
-    expect(getPrevEditsDescending()).toHaveLength(1);
-
-    await processNextEditData({
-      ...baseParams(),
-      beforeContent: "let a = 2;",
-      afterContent: "let a = 3;",
-    });
-
-    expect(logDevData).toHaveBeenCalledTimes(1);
-    const event = logDevData.mock.calls[0][0] as any;
-    expect(event.name).toBe("nextEditWithHistory");
-    expect(event.data.previousEdits).toHaveLength(1);
-    expect(getPrevEditsDescending()).toHaveLength(2);
-  });
-
-  it("logs with full as well", async () => {
-    process.env.NEXTCLI_TRACE = "full";
-
+  // NEXTCLI_TRACE gates only the local file (#216), not configured destinations
+  it("sends nextEditWithHistory to a configured destination with NEXTCLI_TRACE unset", async () => {
     await processNextEditData(baseParams());
     await processNextEditData({
       ...baseParams(),
@@ -105,18 +99,19 @@ describe("processNextEditData", () => {
     });
 
     expect(logDevData).toHaveBeenCalledTimes(1);
-  });
+    await logDevData.mock.results[0].value;
 
-  it("an unknown level keeps logging and history off", async () => {
-    process.env.NEXTCLI_TRACE = "loud";
-
-    await processNextEditData(baseParams());
-    await processNextEditData({
-      ...baseParams(),
-      afterContent: "let a = 3;",
-    });
-
-    expect(logDevData).not.toHaveBeenCalled();
-    expect(getPrevEditsDescending()).toHaveLength(0);
+    expect(fetchwithRequestOptions).toHaveBeenCalledTimes(1);
+    const [url, init] = vi.mocked(fetchwithRequestOptions).mock.calls[0];
+    expect(String(url)).toBe(DESTINATION);
+    const body = JSON.parse(String(init?.body));
+    expect(body.name).toBe("nextEditWithHistory");
+    expect(body.data.previousEdits).toHaveLength(1);
+    expect(body.data.beforeContent).toBe("let a = 2;");
+    expect(
+      fs.existsSync(
+        getDevDataFilePath("nextEditWithHistory", LOCAL_DEV_DATA_VERSION),
+      ),
+    ).toBe(false);
   });
 });
