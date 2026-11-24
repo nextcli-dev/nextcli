@@ -830,8 +830,6 @@ export class CodebaseIndexer {
       if (indexLockTimestampUpdateInterval) {
         clearInterval(indexLockTimestampUpdateInterval);
       }
-      // Also when the lock failed: a controller left live would queue every
-      // later save, with nothing left to drain them
       if (this.indexingCancellationController === localController) {
         this.indexingCancellationController.abort();
       }
