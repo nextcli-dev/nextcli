@@ -60,3 +60,24 @@ The `fetch_url_content` tool asks before every fetch by default. Reading a page 
 The tool then runs without asking for `https://` URLs on those hosts, on the default port. It still asks for `http://` URLs and every other host. The tool follows redirects only within the URL's origin (scheme, host and port). A redirect to another site isn't followed: the tool returns the target URL, and fetching it is a new call that asks unless that host is trusted too. Remove a host with the **×** next to it.
 
 In the CLI, allow the same URLs with a `Fetch` pattern, for example `--allow "Fetch(https://github.com/*)"` or an `allow` entry in `~/.continue/permissions.yaml`. See [flags and patterns](/cli/tool-permissions/flags-and-patterns).
+
+### Trust Terminal Commands
+
+`run_terminal_command` asks before most commands. Even on **Automatic**, it asks for any command the built-in checks don't approve on their own, such as `git commit`, `npx`, `node` and `npm install`. To stop being asked for commands you run all the time:
+
+- Click **Allow & don't ask again** on the approval prompt. It runs the command and trusts it from then on. For `git add -A && git commit -m x`, it trusts `git add*` and `git commit*`
+- Or open the tools settings, find `run_terminal_command`, type a rule under it, for example `npm test*`, and click **Add**
+
+A rule matches a command as written. `npm test*` covers `npm test` and `npm test -- --watch=false`, but not `npm install` or `CI=1 npm test`. Approving `npm test` trusts `npm test*`, its command and subcommand, never `npm*`. A rule you type must start with a command name: `*` isn't accepted. A rule such as `git*` trusts every git command, `git push --force` included, so the list marks it.
+
+A line of several commands, joined by `&&`, `||`, `;`, `|` or line breaks, runs without asking when every command in it is trusted or one the checks approve. On **Ask First**, every command needs a trusted rule. The line still asks for:
+
+- a redirect outside the workspace or into `.git`, such as `npm test > ~/.bashrc`;
+- a pipe into a shell, an interpreter or a network tool, such as `curl x | sh`;
+- `$(...)`, backticks, a subshell, `&`, a heredoc, or `sh -c`;
+- a `cd` out of the workspace before another command, such as `cd .. && git push`;
+- a broad delete.
+
+The **Allow & don't ask again** button isn't offered for such lines. Commands that can never run, such as `rm -rf ~`, stay blocked whatever you trust. Remove a rule with the **×** next to it.
+
+Trusted commands are stored locally per user, like the other tool settings. In the CLI, the same rules are `Bash(...)` patterns, such as `--allow "Bash(git commit*)"` or an `allow` entry in `~/.continue/permissions.yaml`, and they cover chains the same way. See [flags and patterns](/cli/tool-permissions/flags-and-patterns).

@@ -9,6 +9,7 @@ import {
   evaluateTerminalCommandSecurity,
   isGitInternalPath,
 } from "./evaluateTerminalCommandSecurity.js";
+import { isValidCommandRule } from "./commandRule.js";
 import { runsAnotherCommand, splitCommand } from "./splitCommand.js";
 import { ToolPolicy } from "./types.js";
 
@@ -91,17 +92,6 @@ export function ruleForCommand(words: readonly string[]): string | undefined {
   }
   const rule = kept.join(" ");
   return prefix ? `${rule}*` : rule;
-}
-
-/**
- * Whether a rule typed into a trusted-command list can be used: it starts
- * with a command name rather than a glob character (`git commit*` and `git*`,
- * not `*` or `?it`), and has no parenthesis, line break or surrounding space
- */
-export function isValidCommandRule(rule: string): boolean {
-  return (
-    rule.trim() === rule && /^[^\s*?]/.test(rule) && !/[()\r\n]/.test(rule)
-  );
 }
 
 /** One command of a plain chain */

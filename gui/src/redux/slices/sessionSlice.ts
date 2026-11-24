@@ -1132,6 +1132,21 @@ export const sessionSlice = createSlice({
         toolCallState.status = "canceled";
       }
     },
+    setToolCallRememberRules: (
+      state,
+      action: PayloadAction<{
+        toolCallId: string;
+        rememberRules: string[] | undefined;
+      }>,
+    ) => {
+      const toolCallState = findToolCallById(
+        state.history,
+        action.payload.toolCallId,
+      );
+      if (toolCallState) {
+        toolCallState.rememberRules = action.payload.rememberRules;
+      }
+    },
     errorToolCall: (
       state,
       action: PayloadAction<{
@@ -1310,6 +1325,7 @@ export const {
   setToolCallCalling,
   cancelToolCall,
   errorToolCall,
+  setToolCallRememberRules,
   acceptToolCall,
   setToolGenerated,
   updateToolCallOutput,

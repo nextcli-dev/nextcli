@@ -375,6 +375,7 @@ export const streamNormalInput = createAsyncThunk<
       generatedCalls3,
       toolPolicies,
       state3.ui.trustedFetchHosts,
+      state3.ui.trustedCommands,
     );
     const autoApprovedPolicies = policies.filter(
       ({ policy }) => policy === "allowedWithoutPermission",

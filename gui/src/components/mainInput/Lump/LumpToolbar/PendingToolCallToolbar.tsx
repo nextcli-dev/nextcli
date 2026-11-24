@@ -1,5 +1,7 @@
+import { BuiltInToolNames } from "core/tools/builtIn";
 import { useAppDispatch, useAppSelector } from "../../../../redux/hooks";
 import { selectPendingToolCalls } from "../../../../redux/selectors/selectToolCalls";
+import { addTrustedCommands } from "../../../../redux/slices/uiSlice";
 import { callToolById } from "../../../../redux/thunks/callToolById";
 import { cancelToolCallThunk } from "../../../../redux/thunks/cancelToolCall";
 import { getMetaKeyLabel } from "../../../../util";
@@ -8,7 +10,7 @@ import { useMainEditor } from "../../TipTapEditor/MainEditorProvider";
 import { focusChatInput } from "../../focusChatInput";
 
 export const generateToolCallButtonTestId = (
-  action: "accept" | "reject",
+  action: "accept" | "reject" | "trust",
   toolCallId: string,
 ) => {
   return `${action}-tool-call-button-${toolCallId}`;
@@ -24,6 +26,12 @@ export function PendingToolCallToolbar() {
   }
 
   const handleAccept = (toolCallId: string) => {
+    void dispatch(callToolById({ toolCallId }));
+  };
+
+  // Trusts the rules core offered for this command, then runs it
+  const handleTrust = (toolCallId: string, rules: string[]) => {
+    dispatch(addTrustedCommands(rules));
     void dispatch(callToolById({ toolCallId }));
   };
 
@@ -62,6 +70,29 @@ export function PendingToolCallToolbar() {
               )}
               <span>Reject</span>
             </Button>
+
+            {toolCall.toolCall.function.name ===
+              BuiltInToolNames.RunTerminalCommand &&
+              !!toolCall.rememberRules?.length && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="my-1 font-medium"
+                  title={`Trust ${toolCall.rememberRules.join(", ")} and don't ask again`}
+                  onClick={() =>
+                    handleTrust(
+                      toolCall.toolCallId,
+                      toolCall.rememberRules ?? [],
+                    )
+                  }
+                  data-testid={generateToolCallButtonTestId(
+                    "trust",
+                    toolCall.toolCallId,
+                  )}
+                >
+                  Allow & don't ask again
+                </Button>
+              )}
 
             <Button
               variant="primary"

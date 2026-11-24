@@ -1,4 +1,6 @@
 import { ToolPolicy } from "@continuedev/terminal-security";
+// The rule check alone: the package index loads node:path
+import { isValidCommandRule } from "@continuedev/terminal-security/dist/commandRule.js";
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import { RuleWithSource, Tool } from "core";
 import { BUILT_IN_GROUP_NAME } from "core/tools/builtIn";
@@ -33,6 +35,8 @@ type UIState = {
   reasoningSettings: ReasoningSettings;
   /** Hosts whose https URLs Read URL fetches without asking */
   trustedFetchHosts: string[];
+  /** Rules (`git commit*`) for terminal commands that run without asking */
+  trustedCommands: string[];
   ttsActive: boolean;
 };
 
@@ -55,6 +59,7 @@ export const DEFAULT_UI_SLICE: UIState = {
   ruleSettings: {},
   reasoningSettings: {},
   trustedFetchHosts: [],
+  trustedCommands: [],
 };
 
 export const uiSlice = createSlice({
@@ -109,6 +114,19 @@ export const uiSlice = createSlice({
     removeTrustedFetchHost: (state, action: PayloadAction<string>) => {
       state.trustedFetchHosts = state.trustedFetchHosts.filter(
         (host) => host !== action.payload,
+      );
+    },
+    /** Ignores rules that don't start with a command (see isValidCommandRule) */
+    addTrustedCommands: (state, action: PayloadAction<string[]>) => {
+      for (const rule of action.payload) {
+        if (isValidCommandRule(rule) && !state.trustedCommands.includes(rule)) {
+          state.trustedCommands.push(rule);
+        }
+      }
+    },
+    removeTrustedCommand: (state, action: PayloadAction<string>) => {
+      state.trustedCommands = state.trustedCommands.filter(
+        (rule) => rule !== action.payload,
       );
     },
     toggleToolSetting: (state, action: PayloadAction<string>) => {
@@ -197,6 +215,8 @@ export const {
   clearToolPolicy,
   addTrustedFetchHost,
   removeTrustedFetchHost,
+  addTrustedCommands,
+  removeTrustedCommand,
   toggleToolGroupSetting,
   addTool,
   addRule,

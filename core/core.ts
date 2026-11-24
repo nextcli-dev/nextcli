@@ -20,6 +20,7 @@ import Ollama from "./llm/llms/Ollama";
 import { EditAggregator } from "./nextEdit/context/aggregateEdits";
 import { createNewPromptFileV2 } from "./promptFiles/createNewPromptFile";
 import { callTool } from "./tools/callTool";
+import { terminalCommandTrust } from "./tools/policies/terminalAccess";
 import { ChatDescriber } from "./util/chatDescriber";
 import { resolveEditableFileUri } from "./util/ideUtils";
 import { resolveNewFilePath } from "./util/pathResolver";
@@ -1093,7 +1094,15 @@ export class Core {
 
     on(
       "tools/evaluatePolicy",
-      async ({ data: { toolName, basePolicy, parsedArgs, processedArgs } }) => {
+      async ({
+        data: {
+          toolName,
+          basePolicy,
+          parsedArgs,
+          processedArgs,
+          trustedCommands,
+        },
+      }) => {
         const { config } = await this.configHandler.loadConfig();
         if (!config) {
           throw new Error("Config not loaded");
@@ -1110,15 +1119,25 @@ export class Core {
           displayValue = parsedArgs.command as string;
         }
 
+        // A terminal command the user trusts (Allow & don't ask again, or the
+        // trusted list under Run Terminal Command), and the rules that would
+        // make it trusted. The webview applies `trusted` after its own checks.
+        const trust = terminalCommandTrust(
+          toolName,
+          parsedArgs,
+          trustedCommands ?? [],
+          basePolicy,
+        );
+
         if (tool.evaluateToolCallPolicy) {
           const evaluatedPolicy = tool.evaluateToolCallPolicy(
             basePolicy,
             parsedArgs,
             processedArgs,
           );
-          return { policy: evaluatedPolicy, displayValue };
+          return { policy: evaluatedPolicy, displayValue, ...trust };
         }
-        return { policy: basePolicy, displayValue };
+        return { policy: basePolicy, displayValue, ...trust };
       },
     );
 
