@@ -19,9 +19,9 @@ export interface SplitCommand {
   /**
    * Part of what the line runs can't be read from it: a command named by a
    * variable or substitution (`$CMD`), inline code (`python -c`, `node -e`,
-   * also glued to its flag: `python -c'...'`), a shell reading stdin
-   * (`curl x | sh`) or given `-c` with no command, or a line that doesn't
-   * parse. A script file (`bash deploy.sh`, `python x.py`, `source env.sh`)
+   * also glued to its flag: `python -c'...'`), a shell or interpreter
+   * reading stdin (`curl x | sh`, `cat x | python3`), a shell given `-c` with
+   * no command, or a line that doesn't parse. A script file (`bash deploy.sh`, `python x.py`, `source env.sh`)
    * is a command like any other: its contents are not read.
    */
   opaque: boolean;
@@ -33,21 +33,13 @@ const MAX_DEPTH = 8;
 
 const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh", "fish"]);
 
-/** Interpreters and the flags that make them run code given on the line */
-const INLINE_CODE_FLAGS: Array<[RegExp, string[]]> = [
-  [/^python[\d.]*$/, ["-c"]],
-  [/^(node|nodejs|bun)$/, ["-e", "--eval", "-p", "--print"]],
-  [/^deno$/, ["eval"]],
-  [/^(ruby|lua)$/, ["-e"]],
-  [/^perl$/, ["-e", "-E"]],
-  [/^php$/, ["-r"]],
-  [/^osascript$/, ["-e"]],
-  [/^(pwsh|powershell)$/, ["-c", "-command", "-Command"]],
-];
-
-/** An interpreter that reads code from stdin when no script is named */
-interface StdinInterpreter {
+/**
+ * An interpreter runs code given on the line with one of its inline-code
+ * flags (`python -c`), and code from stdin when it names no script
+ */
+interface Interpreter {
   name: RegExp;
+  inlineCode: string[];
   /** Options that take the next word as a value (`python -W ignore`) */
   valueOptions: string[];
   /** Options that name what runs instead of a script (`python -m pytest`) */
@@ -56,15 +48,20 @@ interface StdinInterpreter {
   scripts: RegExp;
 }
 
-const STDIN_INTERPRETERS: StdinInterpreter[] = [
+const JS_SCRIPTS = /\.[cm]?[jt]sx?$/i;
+
+const INTERPRETERS: Interpreter[] = [
   {
     name: /^python[\d.]*$/,
+    inlineCode: ["-c"],
     valueOptions: ["-W", "-X", "-Q", "--check-hash-based-pycs"],
     codeOptions: ["-m"],
     scripts: /\.(py|pyw|pyz|pyc)$/i,
   },
   {
-    name: /^(node|nodejs)$/,
+    // `bun install` and `bun x.ts` name what runs like a script does
+    name: /^(node|nodejs|bun)$/,
+    inlineCode: ["-e", "--eval", "-p", "--print"],
     valueOptions: [
       "-r",
       "--require",
@@ -77,33 +74,57 @@ const STDIN_INTERPRETERS: StdinInterpreter[] = [
       "--input-type",
     ],
     codeOptions: [],
-    scripts: /\.[cm]?[jt]sx?$/i,
+    scripts: JS_SCRIPTS,
+  },
+  {
+    name: /^deno$/,
+    inlineCode: ["eval"],
+    valueOptions: [],
+    codeOptions: [],
+    scripts: JS_SCRIPTS,
   },
   {
     name: /^ruby$/,
+    inlineCode: ["-e"],
     valueOptions: ["-I", "-r", "-C", "-E", "-F"],
     codeOptions: [],
     scripts: /\.rb$/i,
   },
   {
+    name: /^lua$/,
+    inlineCode: ["-e"],
+    valueOptions: ["-l"],
+    codeOptions: [],
+    scripts: /\.lua$/i,
+  },
+  {
     name: /^perl$/,
+    inlineCode: ["-e", "-E"],
     valueOptions: ["-I", "-M", "-m"],
     codeOptions: [],
     scripts: /\.(pl|pm|t)$/i,
   },
   {
     name: /^php$/,
+    inlineCode: ["-r"],
     valueOptions: ["-c", "-d", "-z"],
     // The built-in web server
     codeOptions: ["-S"],
     scripts: /\.(php|phar)$/i,
   },
-  { name: /^lua$/, valueOptions: ["-l"], codeOptions: [], scripts: /\.lua$/i },
   {
     name: /^osascript$/,
+    inlineCode: ["-e"],
     valueOptions: ["-l", "-s"],
     codeOptions: [],
     scripts: /\.(scpt|applescript|js)$/i,
+  },
+  {
+    name: /^(pwsh|powershell)$/,
+    inlineCode: ["-c", "-command", "-Command"],
+    valueOptions: [],
+    codeOptions: [],
+    scripts: /\.ps1$/i,
   },
 ];
 
@@ -422,20 +443,13 @@ function runsMore(name: string, argv: string[], result: State, depth: number) {
     }
     return;
   }
-  for (const [pattern, flags] of INLINE_CODE_FLAGS) {
-    if (
-      pattern.test(name) &&
-      argv.slice(1).some((arg) => runsInlineCode(arg, flags))
-    ) {
-      result.opaque = true;
-      return;
-    }
-  }
-  for (const interpreter of STDIN_INTERPRETERS) {
-    if (interpreter.name.test(name) && readsCodeFromStdin(argv, interpreter)) {
-      result.opaque = true;
-      return;
-    }
+  const interpreter = INTERPRETERS.find((entry) => entry.name.test(name));
+  if (
+    interpreter &&
+    (argv.slice(1).some((arg) => runsInlineCode(arg, interpreter.inlineCode)) ||
+      readsCodeFromStdin(argv, interpreter))
+  ) {
+    result.opaque = true;
   }
 }
 
@@ -447,10 +461,7 @@ function runsMore(name: string, argv: string[], result: State, depth: number) {
  * `ruby --encoding UTF-8`), so that word counts as the script only when it
  * looks like one.
  */
-function readsCodeFromStdin(
-  argv: string[],
-  interpreter: StdinInterpreter,
-): boolean {
+function readsCodeFromStdin(argv: string[], interpreter: Interpreter): boolean {
   for (let i = 1; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "-") {

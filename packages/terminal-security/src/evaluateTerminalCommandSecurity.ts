@@ -392,61 +392,6 @@ function getMostRestrictive(...policies: ToolPolicy[]): ToolPolicy {
   return "allowedWithoutPermission";
 }
 
-const PIPE_CODE_READERS = [
-  "sh",
-  "bash",
-  "zsh",
-  "dash",
-  "ksh",
-  "csh",
-  "tcsh",
-  "fish",
-  "perl",
-  "ruby",
-  "node",
-  "nodejs",
-  "bun",
-  "deno",
-  "php",
-  "lua",
-  "osascript",
-  "pwsh",
-  "powershell",
-  "source",
-  ".",
-];
-
-const PIPE_NETWORK_TOOLS = [
-  "curl",
-  "wget",
-  "nc",
-  "netcat",
-  "ncat",
-  "socat",
-  "telnet",
-  "ssh",
-  "scp",
-  "sftp",
-  "ftp",
-];
-
-const PIPE_WRAPPERS = [
-  "env",
-  "xargs",
-  "nice",
-  "nohup",
-  "timeout",
-  "stdbuf",
-  "command",
-  "builtin",
-  "exec",
-  "eval",
-  "time",
-  "parallel",
-  "busybox",
-  "toybox",
-];
-
 /**
  * Evaluates a pipe chain for dangerous patterns
  */
@@ -487,24 +432,20 @@ function evaluatePipeChain(
   }
 
   if (nextCommand.length > 0) {
-    // `/usr/bin/python3` and `python3.12` are python too
-    const command = normalizeCommandName(nextCommand[0].toLowerCase()).replace(
-      /\.exe$/,
-      "",
-    );
-
-    // A shell or interpreter runs what it reads from the pipe as code
-    if (PIPE_CODE_READERS.includes(command) || /^python[\d.]*$/.test(command)) {
-      return "allowedWithPermission";
-    }
-
-    // A network tool can send what it reads somewhere else
-    if (PIPE_NETWORK_TOOLS.includes(command)) {
-      return "allowedWithPermission";
-    }
-
-    // A wrapper (env, xargs, timeout...) runs another command on the input
-    if (PIPE_WRAPPERS.includes(command)) {
+    // `/usr/bin/python3`, `python3.12` and `PYTHON3.EXE` are python3 too
+    const command = normalizeCommandName(nextCommand[0].toLowerCase())
+      .replace(/\.exe$/, "")
+      .replace(/^(python\d*)(\.\d+)+$/, "$1");
+    // The same lists as for any command. What follows the pipe reads it: an
+    // interpreter runs it as code and a wrapper hands it to a command, even
+    // with no arguments of their own (`-` stands for the pipe), and a network
+    // tool can send it elsewhere.
+    const args = nextCommand.length > 1 ? nextCommand.slice(1) : ["-"];
+    if (
+      isHighRiskScriptInterpreter(command, args) ||
+      isHighRiskNetworkTool(command) ||
+      isHighRiskCommandWrapper(command, args)
+    ) {
       return "allowedWithPermission";
     }
   }

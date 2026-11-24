@@ -32,12 +32,25 @@ export function parseShellLine(
     if (text[hash] !== "#") {
       throw new Error("Can't locate the comment in a shell line");
     }
-    if (hash === 0 || WORD_START.test(text[hash - 1])) {
+    // `ls a\ #` keeps the escaped space in the word, so `#` is literal there
+    if (
+      hash === 0 ||
+      (WORD_START.test(text[hash - 1]) && !isEscaped(text, hash - 1))
+    ) {
       return tokens;
     }
     text = `${text.slice(0, hash)}\\${text.slice(hash)}`;
   }
   throw new Error("Too many comments in a shell line");
+}
+
+/** Whether an odd run of backslashes escapes the character at `index` */
+function isEscaped(text: string, index: number): boolean {
+  let backslashes = 0;
+  for (let i = index - 1; i >= 0 && text[i] === "\\"; i--) {
+    backslashes++;
+  }
+  return backslashes % 2 === 1;
 }
 
 /**

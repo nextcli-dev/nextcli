@@ -276,6 +276,23 @@ describe("splitCommand reads a line the way bash runs it", () => {
     },
   );
 
+  // `\ ` keeps the space in the word, so bash runs `ls 'a #'` and then rm
+  it.each(["ls a\\ #; rm -rf ~", "ls a\\;#; rm -rf ~", "ls a\\|#; rm -rf ~"])(
+    "doesn't start a comment at a # after an escaped separator: %s",
+    (line) => {
+      expect(
+        splitCommand(line).commands.map((argv) => argv.join(" ")),
+      ).toContain("rm -rf ~");
+    },
+  );
+
+  // `\\` is a backslash, so the space ends the word and `#` starts a comment
+  it("starts a comment after an escaped backslash and a space", () => {
+    const split = splitCommand("echo a\\\\ #; rm -rf ~");
+    expect(split.commands).toHaveLength(1);
+    expect(split.single).toBe(true);
+  });
+
   it("starts a comment at a # after a tab, as bash does", () => {
     expect(commands("ls a\t# rm -rf ~")).toEqual(["ls a"]);
   });
@@ -325,6 +342,10 @@ describe("splitCommand reads a line the way bash runs it", () => {
     "python3.exe",
     "PYTHON",
     "cat x | Node.EXE",
+    // They run the code they read from stdin too
+    "cat x | bun",
+    "cat x | deno",
+    "cat x | pwsh",
   ])("%s is opaque", (line) => {
     expect(splitCommand(line).opaque).toBe(true);
   });
@@ -342,6 +363,10 @@ describe("splitCommand reads a line the way bash runs it", () => {
     "python -u x.py",
     "PYTHON3.EXE scripts/check.py",
     "php -S localhost:8000",
+    "bun install",
+    "bun run build",
+    "deno run main.ts",
+    "pwsh -NoProfile -File build.ps1",
   ])("%s names its script, so it isn't opaque", (line) => {
     expect(splitCommand(line).opaque).toBe(false);
   });

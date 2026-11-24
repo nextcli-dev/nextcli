@@ -33,6 +33,6 @@ In any mode and whatever the rules say:
 
 Broad deletes (a top-level directory such as `/tmp`, or a path `cn` can't resolve such as `rm -rf $DIR`) always need a person, even under `--allow Bash` or `--auto`. The TUI asks; an unattended run refuses them.
 
-The checks read a line the way bash does: `#` starts a comment only at the beginning of a word, after a space, a tab or one of `|&;()<>`. So `ls a#; rm -rf ~` is two commands, and so is the same line with a form feed or a non-breaking space before the `#`; the second never runs. A backslash at the end of a comment doesn't continue it onto the next line.
+The checks read a line the way bash does: `#` starts a comment only at the beginning of a word, after an unescaped space, tab or one of `|&;()<>`. So `ls a#; rm -rf ~` is two commands, and so is the same line with `\ `, a form feed or a non-breaking space before the `#`; the second never runs. A backslash at the end of a comment doesn't continue it onto the next line.
 
 These checks are best-effort. They read one command line, so they can't follow a `cd`, a symlink created earlier, or what a script file does. For untrusted prompts or repositories, run `cn -p` in a container, and prefer `--readonly`.
