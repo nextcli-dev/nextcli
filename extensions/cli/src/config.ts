@@ -11,6 +11,7 @@ import {
 
 import { AuthConfig } from "./auth/workos.js";
 import { env } from "./env.js";
+import { traceModelRequests } from "./trace/trace.js";
 import { getUniqueId } from "./util/uniqueId.js";
 import { getVersion } from "./version.js";
 
@@ -101,6 +102,7 @@ export function createLlmApi(
     env: model.env,
   };
 
+  traceModelRequests(model);
   return constructLlmApi(config) ?? null;
 }
 

@@ -57,6 +57,7 @@ export class AskSageApi implements BaseLlmApi {
   private sessionTokenPromise: Promise<string> | null = null;
   private tokenTimestamp: number = 0;
   private fetchFn: typeof fetch;
+  private tokenFetchFn: typeof fetch;
 
   constructor(private config: AskSageConfig) {
     this.apiBase = config.apiBase ?? DEFAULT_API_URL;
@@ -64,6 +65,9 @@ export class AskSageApi implements BaseLlmApi {
     this.apiKey = config.apiKey;
     this.email = config.env?.email;
     this.fetchFn = customFetch(config.requestOptions);
+    this.tokenFetchFn = customFetch(config.requestOptions, {
+      tokenExchange: true,
+    });
   }
 
   /**
@@ -82,7 +86,7 @@ export class AskSageApi implements BaseLlmApi {
     }
 
     const url = this.userApiUrl.replace(/\/$/, "") + "/get-token-with-api-key";
-    const res = await this.fetchFn(url, {
+    const res = await this.tokenFetchFn(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: this.email, api_key: this.apiKey }),

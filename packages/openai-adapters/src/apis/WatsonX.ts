@@ -39,7 +39,7 @@ export class WatsonXApi implements BaseLlmApi {
     if (this.apiBase?.includes("cloud.ibm.com")) {
       // watsonx SaaS
       const wxToken = (await (
-        await customFetch(this.config.requestOptions)(
+        await customFetch(this.config.requestOptions, { tokenExchange: true })(
           `https://iam.cloud.ibm.com/identity/token?apikey=${this.config.apiKey}&grant_type=urn:ibm:params:oauth:grant-type:apikey`,
           {
             method: "POST",
@@ -68,7 +68,7 @@ export class WatsonXApi implements BaseLlmApi {
       const [username, api_key] = base64Decoded.split(":");
 
       const wxToken = (await (
-        await customFetch(this.config.requestOptions)(
+        await customFetch(this.config.requestOptions, { tokenExchange: true })(
           new URL("icp4d-api/v1/authorize", this.apiBase),
           {
             method: "POST",

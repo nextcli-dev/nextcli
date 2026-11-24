@@ -155,8 +155,50 @@ export function model(options: { id: string; owned_by?: string }): Model {
   };
 }
 
+/** A request an adapter sends: its URL and the body as posted. */
+export interface AdapterRequest {
+  method: string;
+  url: string;
+  body: string;
+}
+
+let requestObserver: ((request: AdapterRequest) => void) | undefined;
+
+/**
+ * Sees each request with a string body that an adapter sends through
+ * customFetch, after the adapter has converted it to the provider's format.
+ * cn's NEXTCLI_TRACE=full sets it; undefined removes it. Not seen: token
+ * exchanges, which post credentials rather than a model request, and requests
+ * an SDK sends itself: Bedrock (AWS SDK) and Gemini models (@google/genai,
+ * which the gemini provider and Vertex AI's Gemini streaming use).
+ */
+export function observeAdapterRequests(
+  observer: ((request: AdapterRequest) => void) | undefined,
+): void {
+  requestObserver = observer;
+}
+
+/** fetchwithRequestOptions merges extraBodyProperties into a JSON body */
+function bodyAsPosted(
+  body: string,
+  requestOptions: RequestOptions | undefined,
+): string {
+  if (!requestOptions?.extraBodyProperties) {
+    return body;
+  }
+  try {
+    return JSON.stringify({
+      ...JSON.parse(body),
+      ...requestOptions.extraBodyProperties,
+    });
+  } catch {
+    return body;
+  }
+}
+
 export function customFetch(
   requestOptions: RequestOptions | undefined,
+  { tokenExchange = false }: { tokenExchange?: boolean } = {},
 ): typeof patchedFetch {
   if (process.env.FEATURE_FLAG_DISABLE_CUSTOM_FETCH) {
     return patchedFetch;
@@ -207,11 +249,15 @@ export function customFetch(
 
   return (req: URL | string | Request, init?: any) => {
     init = letRequestOptionsOverrideAuthHeaders(init);
-    if (typeof req === "string" || req instanceof URL) {
-      return fetchwithRequestOptions(req, init, requestOptions);
-    } else {
-      return fetchwithRequestOptions(req.url, init, requestOptions);
+    const url = typeof req === "string" || req instanceof URL ? req : req.url;
+    if (requestObserver && !tokenExchange && typeof init?.body === "string") {
+      requestObserver({
+        method: init.method ?? "GET",
+        url: url.toString(),
+        body: bodyAsPosted(init.body, requestOptions),
+      });
     }
+    return fetchwithRequestOptions(url, init, requestOptions);
   };
 }
 

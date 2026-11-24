@@ -5,9 +5,10 @@ import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const warn = vi.hoisted(() => vi.fn());
+const session = vi.hoisted(() => ({ sessionId: "s1" }));
 
 vi.mock("../session.js", () => ({
-  getCurrentSession: () => ({ sessionId: "s1" }),
+  getCurrentSession: () => ({ sessionId: session.sessionId }),
 }));
 const warnBadEnv = vi.hoisted(() => vi.fn());
 
@@ -31,9 +32,9 @@ describe("traceEvent", () => {
     return (await import("./trace.js")).traceEvent;
   }
 
-  function readLines(): any[] {
+  function readLines(name = "s1-r1.jsonl"): any[] {
     return fs
-      .readFileSync(path.join(dir, "s1-r1.jsonl"), "utf-8")
+      .readFileSync(path.join(dir, name), "utf-8")
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line));
@@ -42,6 +43,7 @@ describe("traceEvent", () => {
   beforeEach(() => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), "cn-trace-"));
     dir = path.join(root, "traces");
+    session.sessionId = "s1";
     warn.mockClear();
     warnBadEnv.mockClear();
   });
@@ -91,6 +93,28 @@ describe("traceEvent", () => {
     ]);
   });
 
+  // The TUI's new chat and session resume replace the session in-process
+  it("writes each session's events to that session's file", async () => {
+    const traceEvent = await loadTrace("basic");
+
+    traceEvent("llm.request", { model: "m" }, { ts: 1000 });
+    session.sessionId = "s2";
+    traceEvent("llm.request", { model: "m" }, { ts: 2000 });
+    session.sessionId = "s1";
+    traceEvent("llm.request", { model: "m" }, { ts: 3000 });
+
+    const first = readLines("s1-r1.jsonl");
+    expect(first.map((line) => line.name)).toEqual([
+      "header",
+      "llm.request",
+      "llm.request",
+    ]);
+    expect(first.slice(1).map((line) => line.ts)).toEqual([1000, 3000]);
+    const [header, event] = readLines("s2-r1.jsonl");
+    expect(header.attrs.sessionId).toBe("s2");
+    expect(event.ts).toBe(2000);
+  });
+
   it("accepts the value in any case and with spaces", async () => {
     const traceEvent = await loadTrace(" Basic ");
 
@@ -99,9 +123,9 @@ describe("traceEvent", () => {
     expect(readLines()).toHaveLength(2);
   });
 
-  // Shared with core's dev-data logging: full traces as basic until cn's
-  // full mode lands, so one shell export works for both
-  it("traces full as basic, without a warning", async () => {
+  // full writes the same event lines as basic (plus request files, covered
+  // in trace.full.test.ts), so one shell export works for both products
+  it("traces full without a warning", async () => {
     const traceEvent = await loadTrace("full");
 
     traceEvent("llm.request", { model: "m" }, { ts: 1000 });
