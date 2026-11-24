@@ -53,7 +53,7 @@ describe("E2E: NEXTCLI_TRACE=full request files", () => {
     });
   }
 
-  it("full writes the request payload next to the trace", async () => {
+  it("full writes each provider request next to the trace", async () => {
     const traceDir = path.join(context.testDir, "traces");
 
     const result = await runWithTrace("full", traceDir);
@@ -76,9 +76,14 @@ describe("E2E: NEXTCLI_TRACE=full request files", () => {
         "utf-8",
       ),
     );
-    expect(request.model).toBeDefined();
+    // The body as the provider received it
+    expect(request.method).toBe("POST");
+    expect(request.url).toContain("/chat/completions");
+    expect(request.body.model).toBeDefined();
     expect(
-      request.messages.some((m: any) => JSON.stringify(m).includes("Say ok")),
+      request.body.messages.some((m: any) =>
+        JSON.stringify(m).includes("Say ok"),
+      ),
     ).toBe(true);
   });
 

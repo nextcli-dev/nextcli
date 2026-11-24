@@ -144,7 +144,14 @@ The first line is a header with the `cn` version, Node version, platform and ids
 
 Apart from that error text, the `basic` trace holds token counts, timings and tool names, not prompt or file text. When tracing is on, each `llm.request` also has a `context` object: the estimated tokens in the system prompt, the tools and the history, the compaction threshold, and the largest tool results. It names rules and tools. It does not include their text. Tracing is off unless the variable is set.
 
-`NEXTCLI_TRACE=full` writes the same lines and, in addition, one file per request attempt to `~/.continue/traces/<sessionId>-<runId>/request-<n>.json` (or under `NEXTCLI_TRACE_DIR`): the exact messages, tools and completion options sent to the provider. Values of secret-like environment variables (`*API_KEY*`, `*SECRET*`, `*TOKEN*`, `*PASSWORD*` and the other rules the Bash tool's environment filter uses) and the model's configured `apiKey` are replaced with `[redacted]`.
+`NEXTCLI_TRACE=full` writes the same lines and, in addition, one file for each HTTP request `cn` sends to a model provider, to `~/.continue/traces/<sessionId>-<runId>/request-<n>.json` (or under `NEXTCLI_TRACE_DIR`). Each file holds the method, the URL and the body as the provider received it, in that provider's format: for example Anthropic's message shape and cache markers, and any `extraBodyProperties`. Request headers aren't written. Every attempt gets its own file, retries included, and so do title generation, compaction and subagents. Bedrock requests go through the AWS SDK and aren't written.
+
+Credentials are replaced with `[redacted]` wherever they appear:
+
+- each configured model's `apiKey`, credential headers in `requestOptions.headers` (`Authorization`, `Cookie` and names such as `X-Api-Key`), and the client certificate's key and passphrase, whatever their length;
+- values of 8 characters or more of secret-like variables, in your environment or a model's `env`: `*API_KEY*`, `*SECRET*`, `*TOKEN*`, `*PASSWORD*` and the other rules the Bash tool's environment filter uses.
+
+On macOS and Linux, only your user can read the request folder and its files.
 
 <Warning>
   These request files hold the exact prompts: pull-request text, source code and tool output. Keep them private and delete them when you no longer need them.

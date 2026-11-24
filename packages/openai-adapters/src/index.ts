@@ -261,3 +261,5 @@ export { resolveModelProfile } from "./modelProfile.js";
 export type { ModelProfile } from "./modelProfile.js";
 export { OPENROUTER_HEADERS } from "./apis/OpenRouter.js";
 export { extractBase64FromDataUrl, parseDataUrl } from "./util/url.js";
+export { observeAdapterRequests } from "./util.js";
+export type { AdapterRequest } from "./util.js";

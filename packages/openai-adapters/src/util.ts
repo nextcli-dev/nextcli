@@ -155,6 +155,45 @@ export function model(options: { id: string; owned_by?: string }): Model {
   };
 }
 
+/** A request an adapter sends: its URL and the body as posted. */
+export interface AdapterRequest {
+  method: string;
+  url: string;
+  body: string;
+}
+
+let requestObserver: ((request: AdapterRequest) => void) | undefined;
+
+/**
+ * Sees each request with a body that an adapter sends through customFetch,
+ * after the adapter has converted it to the provider's format. cn's
+ * NEXTCLI_TRACE=full sets it; undefined removes it. Bedrock posts through the
+ * AWS SDK and is not seen.
+ */
+export function observeAdapterRequests(
+  observer: ((request: AdapterRequest) => void) | undefined,
+): void {
+  requestObserver = observer;
+}
+
+/** fetchwithRequestOptions merges extraBodyProperties into a JSON body */
+function bodyAsPosted(
+  body: string,
+  requestOptions: RequestOptions | undefined,
+): string {
+  if (!requestOptions?.extraBodyProperties) {
+    return body;
+  }
+  try {
+    return JSON.stringify({
+      ...JSON.parse(body),
+      ...requestOptions.extraBodyProperties,
+    });
+  } catch {
+    return body;
+  }
+}
+
 export function customFetch(
   requestOptions: RequestOptions | undefined,
 ): typeof patchedFetch {
@@ -207,11 +246,15 @@ export function customFetch(
 
   return (req: URL | string | Request, init?: any) => {
     init = letRequestOptionsOverrideAuthHeaders(init);
-    if (typeof req === "string" || req instanceof URL) {
-      return fetchwithRequestOptions(req, init, requestOptions);
-    } else {
-      return fetchwithRequestOptions(req.url, init, requestOptions);
+    const url = typeof req === "string" || req instanceof URL ? req : req.url;
+    if (requestObserver && typeof init?.body === "string") {
+      requestObserver({
+        method: init.method ?? "GET",
+        url: url.toString(),
+        body: bodyAsPosted(init.body, requestOptions),
+      });
     }
+    return fetchwithRequestOptions(url, init, requestOptions);
   };
 }
 

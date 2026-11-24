@@ -87,7 +87,7 @@ export type DataLogLevel = z.infer<typeof dataLevel>;
  * The shared parser for NEXTCLI_TRACE, used by cn's trace and core's local
  * dev-data logging. `basic` means timings, counts and names without content;
  * `full` adds content (prompts, completions, file text) where the caller
- * records it, and cn traces it as basic for now. Unset or unknown is off.
+ * records it; cn writes each model request. Unset or unknown is off.
  */
 export type TraceLevel = "basic" | "full";
 
