@@ -83,6 +83,7 @@ describe("policyWriter", () => {
       // Substitutions and lines whose structure isn't safe
       "echo $(whoami)",
       "npm test > out.txt",
+      "npm test | tee out.txt",
       "npm test > ~/.bashrc",
       "cd .. && git push",
       "npm test & git push",

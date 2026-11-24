@@ -343,9 +343,10 @@ function evaluateTokens(
         continue;
       }
 
-      // Handle pipe operator specially - check if piping to dangerous command
-      if ((token as ShellOperator).op === "|") {
-        const pipePolicy = evaluatePipeChain(tokens, i);
+      // Handle pipe operator specially - check if piping to dangerous command.
+      // `|&` pipes stderr too.
+      if (op === "|" || op === "|&") {
+        const pipePolicy = evaluatePipeChain(tokens, i, mode.strict);
         mostRestrictivePolicy = getMostRestrictive(
           mostRestrictivePolicy,
           pipePolicy,
@@ -425,11 +426,13 @@ function getMostRestrictive(...policies: ToolPolicy[]): ToolPolicy {
 }
 
 /**
- * Evaluates a pipe chain for dangerous patterns
+ * Evaluates a pipe chain for dangerous patterns. In strict mode, a command
+ * that writes the pipe to a file (`| tee out.txt`) asks, as a redirect does.
  */
 function evaluatePipeChain(
   tokens: ParsedToken[],
   startIdx: number,
+  strict: boolean,
 ): ToolPolicy {
   // Look at what comes after the pipe
   let nextCommandStart = startIdx + 1;
@@ -476,7 +479,8 @@ function evaluatePipeChain(
     if (
       isHighRiskScriptInterpreter(command, args) ||
       isHighRiskNetworkTool(command) ||
-      isHighRiskCommandWrapper(command, args)
+      isHighRiskCommandWrapper(command, args) ||
+      (strict && writesInputToFile(command, nextCommand.slice(1)))
     ) {
       return "allowedWithPermission";
     }
@@ -1379,6 +1383,36 @@ function isHarmlessRedirectTarget(op: string, target: string): boolean {
 }
 
 const HARMLESS_WRITE_TARGETS = ["/dev/null", "/dev/stdout", "/dev/stderr"];
+
+/**
+ * Whether a command writes what it reads to a file: `tee out.txt`,
+ * `sponge out.txt`, `dd of=out.txt`, or PowerShell's Tee-Object, Out-File,
+ * Set-Content and Add-Content with an argument. /dev/null and the standard
+ * streams write no file.
+ */
+function writesInputToFile(command: string, args: string[]): boolean {
+  if (
+    ["tee-object", "out-file", "set-content", "add-content"].includes(command)
+  ) {
+    return args.length > 0;
+  }
+  let files: string[] = [];
+  if (command === "dd") {
+    files = args
+      .filter((arg) => arg.startsWith("of="))
+      .map((arg) => arg.slice(3));
+  } else if (command === "tee" || command === "sponge") {
+    // Every word after `--` is a file, as is `-`
+    const end = args.indexOf("--");
+    files = [
+      ...(end === -1 ? args : args.slice(0, end)).filter(
+        (arg) => arg === "-" || !arg.startsWith("-"),
+      ),
+      ...(end === -1 ? [] : args.slice(end + 1)),
+    ];
+  }
+  return files.some((file) => !HARMLESS_WRITE_TARGETS.includes(file));
+}
 
 /**
  * Checks if a path is absolute, in the home directory, or climbs out of the

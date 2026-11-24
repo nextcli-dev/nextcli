@@ -104,8 +104,8 @@ A `Bash(...)` pattern is matched against the **commands** in the line, not the r
 
 An allow covers one command, exactly as written. A line runs when every command in it is allowed, by this pattern or by another rule, and nothing between the commands is risky. Commands can be joined by `&&`, `||`, `;`, `|` and line breaks. These make a line ask instead:
 
-- a redirect that writes a file (`> out.txt`, `&> log.txt`), wherever it points, because the file may be a symlink to `~/.bashrc` or a git hook. `> /dev/null` and `2>&1` write no file;
-- a pipe into a shell, an interpreter or a network tool;
+- a redirect that writes a file (`> out.txt`, `&> log.txt`), or a pipe into `tee`, `sponge` or `dd of=` that does, wherever it points, because the file may be a symlink to `~/.bashrc` or a git hook. `> /dev/null` and `2>&1` write no file;
+- a pipe (`|` or `|&`) into a shell, an interpreter or a network tool;
 - `$(...)`, backticks, a subshell, `&`, a heredoc or `sh -c`;
 - `export` or `source` before another command;
 - a `cd` or `pushd` before another command, unless it comes first and enters an existing folder inside the working directory, with symlinks followed and `.git` excluded (`cd packages/app && npm test`).

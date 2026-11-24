@@ -99,8 +99,8 @@ Paths are resolved from the working directory, with symlinks followed, and match
 
 An allow matches one command, as written. A line the rules don't allow as a whole runs when `allowsCommandChain` (`terminal-security`) accepts it: a plain chain (commands joined by `&&`, `||`, `;`, `|` and line breaks) where each command would be allowed as a call of its own, under the same first match, strictness, `--readonly` ceiling and human-approval check. What joins the commands is checked too. These ask:
 
-- a redirect that writes a file, wherever it points, because the file may be a symlink; `/dev/null` and `2>&1` don't count;
-- a pipe into an interpreter or a network tool, a substitution, a subshell, `&`, a heredoc, `sh -c`, a keyword or a variable expansion;
+- a redirect that writes a file, or a pipe into `tee`, `sponge` or `dd of=` that does, wherever it points, because the file may be a symlink; `/dev/null` and `2>&1` don't count;
+- a pipe (`|` or `|&`) into an interpreter or a network tool, a substitution, a subshell, `&`, a heredoc, `sh -c`, a keyword or a variable expansion;
 - `export`, `source` and the like before another command;
 - a `cd` or `pushd` before another command, unless it is the line's first command and its operand resolves, with symlinks followed from `process.cwd()`, to an existing folder inside it and outside `.git`. The shell runs with `CDPATH` unset (`secureShellCommand`), so `cd sub` means `./sub`.
 
