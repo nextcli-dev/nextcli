@@ -48,8 +48,8 @@ import { UriEventHandler } from "../stubs/uriHandler";
 import { Battery } from "../util/battery";
 import {
   clearDocumentContentCache,
-  handleTextDocumentChange,
   initDocumentContentCache,
+  trackDocumentEdit,
 } from "../util/editLoggingUtils";
 import { fireAndForget } from "../util/errorHandling";
 import { FileSearch } from "../util/FileSearch";
@@ -464,32 +464,28 @@ export class VsCodeExtension {
       });
     }
 
-    // Initialize document content cache for tracking pre-edit content
+    // Pre-edit content for edit tracking, only while Next Edit is active.
+    // The completion provider's activateNextEdit fills the cache from the
+    // documents already open.
     vscode.workspace.onDidOpenTextDocument((document) => {
-      initDocumentContentCache(document);
+      if (this.completionProvider.nextEditActive) {
+        initDocumentContentCache(document);
+      }
     });
-
-    // Initialize cache for all currently open documents
-    for (const document of vscode.workspace.textDocuments) {
-      initDocumentContentCache(document);
-    }
 
     vscode.workspace.onDidChangeTextDocument(async (event) => {
       if (event.contentChanges.length > 0) {
         selectionManager.documentChanged();
       }
 
-      const editInfo = await handleTextDocumentChange(
+      await trackDocumentEdit(
         event,
         this.configHandler,
         this.ide,
         this.completionProvider,
         getDefinitionsFromLsp,
+        this.core,
       );
-
-      if (editInfo) {
-        this.core.invoke("files/smallEdit", editInfo);
-      }
     });
 
     vscode.workspace.onDidSaveTextDocument(async (event) => {
