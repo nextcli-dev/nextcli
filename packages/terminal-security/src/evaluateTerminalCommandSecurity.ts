@@ -1384,8 +1384,10 @@ function isHighRiskOutsideWorkspacePath(
  * that git runs later (hooks, config aliases)
  */
 function isGitInternalPath(path: string): boolean {
-  // Case-insensitive: `.Git/hooks` is `.git/hooks` on macOS and Windows
-  return /(^|[\\/])\.git([\\/]|$)/i.test(path);
+  // The names Windows resolves to `.git`, as Git's core.protectNTFS reads
+  // them: any case (`.Git`, also on macOS), trailing dots and spaces
+  // (`.git.`, `.git `), the 8.3 short name `git~1`, and a stream (`.git::$x`)
+  return /(^|[\\/])(\.git|git~1)[. ]*([\\/:]|$)/i.test(path);
 }
 
 const REDIRECT_OPERATORS = [">", ">>", ">&", "<", "<&"];

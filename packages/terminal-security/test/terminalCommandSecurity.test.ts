@@ -2046,9 +2046,25 @@ describe("the evaluator reads a line the way bash runs it", () => {
       }
     });
 
+    it.each(["\f", "\v", "\u00a0", "\u2028"])(
+      "sees the command after a # that follows %j",
+      (space) => {
+        for (const options of [undefined, strict]) {
+          expect(
+            evaluateTerminalCommandSecurity(
+              AUTO,
+              `ls a${space}#; rm -rf ~`,
+              options,
+            ),
+          ).toBe("disabled");
+        }
+      },
+    );
+
     it("still reads a comment at the start of a word", () => {
       for (const command of [
         "git status # what changed",
+        "ls a\t# rm -rf ~",
         "ls;# list",
         "echo 'a#b'",
         "echo a\\#b",
@@ -2113,6 +2129,30 @@ describe("the evaluator reads a line the way bash runs it", () => {
     expect(
       evaluateTerminalCommandSecurity(AUTO, "echo x > .github/notes.txt"),
     ).toBe(AUTO);
+  });
+
+  // Git's core.protectNTFS reads these as .git: Win32 drops trailing dots
+  // and spaces, GIT~1 is the 8.3 short name, and ::$INDEX_ALLOCATION names
+  // the directory's stream
+  it("treats the names Windows resolves to .git as .git", () => {
+    for (const command of [
+      "echo x > .git./hooks/pre-commit",
+      'echo x > ".git /hooks/pre-commit"',
+      "echo x > .GIT../hooks/pre-commit",
+      "cp a .git./hooks/pre-commit",
+      "echo x > GIT~1/hooks/pre-commit",
+      "echo x > '.git::$INDEX_ALLOCATION/hooks/pre-commit'",
+    ]) {
+      expect(evaluateTerminalCommandSecurity(AUTO, command)).toBe(ASK);
+    }
+    for (const command of [
+      "echo x >> .gitignore",
+      "echo x > .gitattributes",
+      "cp a .git-blame-ignore-revs",
+      "echo x > docs/.gitkeep",
+    ]) {
+      expect(evaluateTerminalCommandSecurity(AUTO, command)).toBe(AUTO);
+    }
   });
 
   it("asks for cd without a directory, or back to the previous one", () => {

@@ -1,7 +1,11 @@
 import { parse, type ParseEntry } from "shell-quote";
 
-/** Characters after which a word starts, so a `#` there begins a comment */
-const WORD_START = /[\s;&|()<>]/;
+/**
+ * Characters after which a word starts, so a `#` there begins a comment:
+ * bash's metacharacters only. `\s` would also take form feed, vertical tab
+ * and Unicode spaces, which bash keeps inside a word.
+ */
+const WORD_START = /[ \t\n;&|()<>]/;
 
 /**
  * Parses one line of shell with comments read the way bash reads them.

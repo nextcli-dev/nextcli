@@ -45,15 +45,27 @@ const INLINE_CODE_FLAGS: Array<[RegExp, string[]]> = [
   [/^(pwsh|powershell)$/, ["-c", "-command", "-Command"]],
 ];
 
-/**
- * Interpreters that read code from stdin when no script is named, and their
- * options that take the next word as a value (`python -W ignore`)
- */
-const STDIN_INTERPRETERS: Array<[RegExp, string[]]> = [
-  [/^python[\d.]*$/, ["-W", "-X", "-Q", "--check-hash-based-pycs"]],
-  [
-    /^(node|nodejs)$/,
-    [
+/** An interpreter that reads code from stdin when no script is named */
+interface StdinInterpreter {
+  name: RegExp;
+  /** Options that take the next word as a value (`python -W ignore`) */
+  valueOptions: string[];
+  /** Options that name what runs instead of a script (`python -m pytest`) */
+  codeOptions: string[];
+  /** Its scripts: after an option it doesn't list, a word that isn't one may be that option's value */
+  scripts: RegExp;
+}
+
+const STDIN_INTERPRETERS: StdinInterpreter[] = [
+  {
+    name: /^python[\d.]*$/,
+    valueOptions: ["-W", "-X", "-Q", "--check-hash-based-pycs"],
+    codeOptions: ["-m"],
+    scripts: /\.(py|pyw|pyz|pyc)$/i,
+  },
+  {
+    name: /^(node|nodejs)$/,
+    valueOptions: [
       "-r",
       "--require",
       "--import",
@@ -64,12 +76,35 @@ const STDIN_INTERPRETERS: Array<[RegExp, string[]]> = [
       "--env-file",
       "--input-type",
     ],
-  ],
-  [/^ruby$/, ["-I", "-r", "-C", "-E", "-F"]],
-  [/^perl$/, ["-I", "-M", "-m"]],
-  [/^php$/, ["-c", "-d", "-z"]],
-  [/^lua$/, ["-l"]],
-  [/^osascript$/, ["-l", "-s"]],
+    codeOptions: [],
+    scripts: /\.[cm]?[jt]sx?$/i,
+  },
+  {
+    name: /^ruby$/,
+    valueOptions: ["-I", "-r", "-C", "-E", "-F"],
+    codeOptions: [],
+    scripts: /\.rb$/i,
+  },
+  {
+    name: /^perl$/,
+    valueOptions: ["-I", "-M", "-m"],
+    codeOptions: [],
+    scripts: /\.(pl|pm|t)$/i,
+  },
+  {
+    name: /^php$/,
+    valueOptions: ["-c", "-d", "-z"],
+    // The built-in web server
+    codeOptions: ["-S"],
+    scripts: /\.(php|phar)$/i,
+  },
+  { name: /^lua$/, valueOptions: ["-l"], codeOptions: [], scripts: /\.lua$/i },
+  {
+    name: /^osascript$/,
+    valueOptions: ["-l", "-s"],
+    codeOptions: [],
+    scripts: /\.(scpt|applescript|js)$/i,
+  },
 ];
 
 interface WrapperGrammar {
@@ -167,10 +202,7 @@ function splitInto(command: string, result: State, depth: number) {
     result.opaque = true;
     return;
   }
-  // A backslash before a line break joins the lines
-  const lines = command
-    .replace(/\\\r?\n/g, "")
-    .split(/\r?\n|\r/)
+  const lines = logicalLines(command)
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
   if (lines.length > 1) {
@@ -178,6 +210,39 @@ function splitInto(command: string, result: State, depth: number) {
   }
   for (const line of lines) {
     splitLine(line, result, depth);
+  }
+}
+
+/**
+ * The lines bash runs: a backslash before a line break joins the lines,
+ * except one that is escaped itself (`\\`) or inside a comment, which bash
+ * leaves alone, so `git status # x \` and the next line are two commands.
+ */
+function logicalLines(command: string): string[] {
+  const lines: string[] = [];
+  let joined = "";
+  for (const physical of command.split(/\r?\n|\r/)) {
+    const line = joined + physical;
+    const backslashes = /\\*$/.exec(line)![0].length;
+    if (backslashes % 2 === 1 && !endsInComment(line)) {
+      joined = line.slice(0, -1);
+    } else {
+      lines.push(line);
+      joined = "";
+    }
+  }
+  if (joined) {
+    lines.push(joined);
+  }
+  return lines;
+}
+
+function endsInComment(line: string): boolean {
+  try {
+    const last = parseShellLine(line).at(-1);
+    return typeof last === "object" && "comment" in last;
+  } catch {
+    return false;
   }
 }
 
@@ -301,7 +366,10 @@ function addSimpleCommand(words: string[], result: State, depth: number) {
       result.opaque = true;
       return;
     }
-    const name = normalizeCommandName(argv[0]);
+    // Case and `.exe` don't change the program on Windows and macOS
+    const name = normalizeCommandName(argv[0])
+      .toLowerCase()
+      .replace(/\.exe$/, "");
     const grammar = WRAPPERS[name];
     if (!grammar) {
       if (argv !== words) {
@@ -363,8 +431,8 @@ function runsMore(name: string, argv: string[], result: State, depth: number) {
       return;
     }
   }
-  for (const [pattern, valueOptions] of STDIN_INTERPRETERS) {
-    if (pattern.test(name) && readsCodeFromStdin(argv, valueOptions)) {
+  for (const interpreter of STDIN_INTERPRETERS) {
+    if (interpreter.name.test(name) && readsCodeFromStdin(argv, interpreter)) {
       result.opaque = true;
       return;
     }
@@ -374,9 +442,15 @@ function runsMore(name: string, argv: string[], result: State, depth: number) {
 /**
  * Whether an interpreter runs code from stdin: it names no script (`cat x |
  * python3`, `python <<EOF`) or names `-`. `python -m pytest` names a module,
- * which counts as a script.
+ * which counts as a script. An option the interpreter's list doesn't know
+ * may take the next word as its value (`node --max-http-header-size 80000`,
+ * `ruby --encoding UTF-8`), so that word counts as the script only when it
+ * looks like one.
  */
-function readsCodeFromStdin(argv: string[], valueOptions: string[]): boolean {
+function readsCodeFromStdin(
+  argv: string[],
+  interpreter: StdinInterpreter,
+): boolean {
   for (let i = 1; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "-") {
@@ -388,10 +462,17 @@ function readsCodeFromStdin(argv: string[], valueOptions: string[]): boolean {
     if (arg === "--version" || arg === "--help") {
       return false;
     }
-    if (!arg.startsWith("-")) {
+    if (!arg.startsWith("-") || interpreter.codeOptions.includes(arg)) {
       return false;
     }
-    if (valueOptions.includes(arg)) {
+    const next = argv[i + 1];
+    if (
+      interpreter.valueOptions.includes(arg) ||
+      (!arg.includes("=") &&
+        next !== undefined &&
+        !next.startsWith("-") &&
+        !interpreter.scripts.test(next))
+    ) {
       i++;
     }
   }

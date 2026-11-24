@@ -272,7 +272,18 @@ describe("destructive command tiers (#13001)", () => {
 });
 
 describe("bash's reading of comments and quoting", () => {
-  expectTier(["ls a#; rm -rf ~", "echo a#;rm -rf /"], "catastrophic");
+  expectTier(
+    [
+      "ls a#; rm -rf ~",
+      "echo a#;rm -rf /",
+      // Not a word boundary for bash, so not a comment either
+      "ls a\f#; rm -rf ~",
+      "ls a\v#; rm -rf ~",
+      "ls a\u00a0#; rm -rf ~",
+      "ls a\u2028#; rm -rf ~",
+    ],
+    "catastrophic",
+  );
   // shell-quote can't read $'...', so a person approves the line
   expectTier(["echo $'hi'"], "destructive");
   it("doesn't let $'...' hide a delete", () => {
