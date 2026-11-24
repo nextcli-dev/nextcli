@@ -48,6 +48,7 @@ function getDecodedOutput(data: Buffer): string {
 
 import { fileURLToPath } from "node:url";
 import { ToolImpl } from ".";
+import { IDE } from "../..";
 import {
   isProcessBackgrounded,
   markProcessAsRunning,
@@ -118,6 +119,21 @@ const getColorEnv = (passEnv: string[]) => ({
 // All remote types delegate to ide.runCommand() which routes through VS Code's
 // integrated terminal and executes in the correct remote environment.
 const LOCAL_ONLY = ["", "local"];
+
+/**
+ * The folder a command starts in when this tool runs it here, through
+ * secureShellCommand. Undefined in a remote window, where VS Code's
+ * integrated terminal picks the folder and the shell. The trusted-command
+ * check reads a leading `cd` from this folder (terminalAccess.ts).
+ */
+export async function localTerminalDirectory(
+  ide: IDE,
+): Promise<string | undefined> {
+  const { remoteName } = await ide.getIdeInfo();
+  return LOCAL_ONLY.includes(remoteName)
+    ? resolveWorkingDirectory(await ide.getWorkspaceDirs())
+    : undefined;
+}
 
 export const runTerminalCommandImpl: ToolImpl = async (args, extras) => {
   const command = getStringArg(args, "command");

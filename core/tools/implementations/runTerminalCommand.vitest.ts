@@ -2,7 +2,7 @@ import * as childProcess from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   afterAll,
   afterEach,
@@ -17,6 +17,7 @@ import * as processTerminalStates from "../../util/processTerminalStates";
 import { runTerminalCommandTool } from "../definitions/runTerminalCommand";
 import {
   appendTerminalOutput,
+  localTerminalDirectory,
   runTerminalCommandImpl,
 } from "./runTerminalCommand";
 
@@ -918,5 +919,27 @@ describe("appendTerminalOutput", () => {
     expect(output.match(/Earlier output truncated/g)).toHaveLength(1);
     expect(output.length).toBe(50_000 + "[Earlier output truncated]\n".length);
     expect(output.endsWith("19")).toBe(true);
+  });
+});
+
+describe("localTerminalDirectory", () => {
+  const folder = os.tmpdir();
+  const ide = (remoteName: string) =>
+    ({
+      getIdeInfo: async () => ({ remoteName }),
+      getWorkspaceDirs: async () => [
+        pathToFileURL(folder).href,
+        "vscode-remote://ssh-remote+box/work/app",
+      ],
+    }) as unknown as IDE;
+
+  it("is the folder a local command runs in", async () => {
+    expect(await localTerminalDirectory(ide("local"))).toBe(
+      fileURLToPath(pathToFileURL(folder)),
+    );
+  });
+
+  it("is unknown in a remote window", async () => {
+    expect(await localTerminalDirectory(ide("ssh-remote"))).toBeUndefined();
   });
 });

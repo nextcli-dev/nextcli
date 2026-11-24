@@ -72,10 +72,10 @@ A rule matches a command as written. `npm test*` covers `npm test` and `npm test
 
 A line of several commands, joined by `&&`, `||`, `;`, `|` or line breaks, runs without asking when every command in it is trusted or one the checks approve. On **Ask First**, every command needs a trusted rule. The line still asks for:
 
-- a redirect outside the workspace or into `.git`, such as `npm test > ~/.bashrc`;
+- a redirect that writes a file, such as `npm test > out.txt`, because the file may be a symlink to `~/.bashrc` or a git hook. `> /dev/null` and `2>&1` are fine;
 - a pipe into a shell, an interpreter or a network tool, such as `curl x | sh`;
 - `$(...)`, backticks, a subshell, `&`, a heredoc, or `sh -c`;
-- a `cd` out of the workspace before another command, such as `cd .. && git push`;
+- a `cd` before another command, such as `cd .. && git push`, unless it comes first and enters a folder inside the workspace, with symlinks followed and `.git` excluded (`cd packages/app && npm test`). In a remote window (SSH, WSL, Dev Containers), any `cd` before another command asks;
 - a broad delete.
 
 The **Allow & don't ask again** button isn't offered for such lines. Commands that can never run, such as `rm -rf ~`, stay blocked whatever you trust. Remove a rule with the **×** next to it.

@@ -1,9 +1,18 @@
-import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+import { afterAll, describe, expect, it } from "vitest";
 
 import { BuiltInToolNames } from "../builtIn";
 import { terminalCommandTrust } from "./terminalAccess";
 
 const RUN = BuiltInToolNames.RunTerminalCommand;
+
+// The folder the command runs in, with a subfolder to cd into
+const CWD = fs.mkdtempSync(path.join(os.tmpdir(), "terminal-access-"));
+fs.mkdirSync(path.join(CWD, "core"));
+afterAll(() => fs.rmSync(CWD, { recursive: true, force: true }));
 
 describe("terminalCommandTrust", () => {
   it("trusts a chain of trusted commands under Ask First", () => {
@@ -35,8 +44,21 @@ describe("terminalCommandTrust", () => {
         { command: "cd core && npx vitest run" },
         ["npx vitest*"],
         "allowedWithoutPermission",
+        CWD,
       ).trusted,
     ).toBe(true);
+  });
+
+  it("asks for a cd before another command when the folder isn't known", () => {
+    // A remote window runs commands in VS Code's terminal (localTerminalDirectory)
+    expect(
+      terminalCommandTrust(
+        RUN,
+        { command: "cd core && npx vitest run" },
+        ["cd*", "npx vitest*"],
+        "allowedWithPermission",
+      ),
+    ).toEqual({ trusted: false, rememberRules: undefined });
   });
 
   it("never trusts what the evaluator refuses or the user excluded", () => {

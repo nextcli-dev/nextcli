@@ -18,13 +18,15 @@ export interface TerminalCommandTrust {
  * trusts, under the tool's policy, and which rules would cover it. Empty for
  * any other tool or a call without a command. The webview turns an ask into
  * a run when `trusted` is set; it never relaxes an excluded tool or a command
- * the evaluator disables.
+ * the evaluator disables. `cwd` is the folder the command runs in
+ * (localTerminalDirectory); without it, a `cd` before another command asks.
  */
 export function terminalCommandTrust(
   toolName: string,
   parsedArgs: Record<string, unknown>,
   trustedCommands: readonly string[],
   basePolicy: ToolPolicy,
+  cwd?: string,
 ): TerminalCommandTrust {
   const command = parsedArgs.command;
   if (
@@ -34,11 +36,14 @@ export function terminalCommandTrust(
     return {};
   }
   return {
-    trusted: isTrustedTerminalCommand(command, trustedCommands, basePolicy),
+    trusted: isTrustedTerminalCommand(command, trustedCommands, basePolicy, {
+      cwd,
+    }),
     rememberRules: trustedCommandRulesToRemember(
       command,
       trustedCommands,
       basePolicy,
+      { cwd },
     ),
   };
 }
