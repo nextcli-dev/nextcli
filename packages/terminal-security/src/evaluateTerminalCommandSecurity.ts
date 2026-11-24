@@ -34,6 +34,12 @@ export interface EvaluateOptions {
   strict?: boolean;
 }
 
+interface Mode {
+  strict: boolean;
+  /** Check only the line around its commands; see evaluateLineStructure */
+  structureOnly?: boolean;
+}
+
 /**
  * Evaluates the security policy for a terminal command.
  *
@@ -57,7 +63,34 @@ export function evaluateTerminalCommandSecurity(
   command: string | null | undefined,
   options?: EvaluateOptions,
 ): ToolPolicy {
-  const strict = options?.strict === true;
+  return evaluate(basePolicy, command, { strict: options?.strict === true });
+}
+
+/**
+ * Checks what a line does around its simple commands, taking each command as
+ * approved: catastrophic and destructive commands, critical commands
+ * anywhere, a command named by a variable, a dangerous `NAME=value` prefix,
+ * redirects, pipes into an interpreter or network tool, substitutions,
+ * variable expansion and obfuscation. Used to decide a chain whose commands
+ * are each approved separately (commandChain.ts). Not exported from the
+ * package: on its own it approves every command.
+ *
+ * A redirect that writes a file asks, as in strict mode, wherever it points:
+ * `> out.txt` follows a symlink the line can't show, or one an earlier
+ * command of the line creates. `/dev/null` and `2>&1` write no file.
+ */
+export function evaluateLineStructure(command: string): ToolPolicy {
+  return evaluate("allowedWithoutPermission", command, {
+    strict: true,
+    structureOnly: true,
+  });
+}
+
+function evaluate(
+  basePolicy: ToolPolicy,
+  command: string | null | undefined,
+  mode: Mode,
+): ToolPolicy {
   // If tool is already disabled, keep it disabled
   if (basePolicy === "disabled") {
     return "disabled";
@@ -82,7 +115,7 @@ export function evaluateTerminalCommandSecurity(
   if (destructiveRisk === "catastrophic") {
     return "disabled";
   }
-  const policy = evaluateCommandPolicy(basePolicy, normalizedCommand, strict);
+  const policy = evaluateCommandPolicy(basePolicy, normalizedCommand, mode);
   return destructiveRisk
     ? getMostRestrictive(policy, "allowedWithPermission")
     : policy;
@@ -91,7 +124,7 @@ export function evaluateTerminalCommandSecurity(
 function evaluateCommandPolicy(
   basePolicy: ToolPolicy,
   normalizedCommand: string,
-  strict: boolean,
+  mode: Mode,
 ): ToolPolicy {
   try {
     // Split on line breaks to handle multi-line commands
@@ -116,7 +149,7 @@ function evaluateCommandPolicy(
           tokens,
           basePolicy,
           trimmedLine,
-          strict,
+          mode,
         );
 
         // Track the most restrictive policy
@@ -138,12 +171,7 @@ function evaluateCommandPolicy(
     const tokens = parseShellLine(normalizedCommand) as ParsedToken[];
 
     // Evaluate security of the parsed tokens
-    return evaluateTokensSecurity(
-      tokens,
-      basePolicy,
-      normalizedCommand,
-      strict,
-    );
+    return evaluateTokensSecurity(tokens, basePolicy, normalizedCommand, mode);
   } catch (error) {
     // If parsing fails, be conservative and require permission
     console.error("Failed to parse command:", error);
@@ -179,7 +207,7 @@ function evaluateTokensSecurity(
   tokens: ParsedToken[],
   basePolicy: ToolPolicy,
   originalCommand: string,
-  strict: boolean,
+  mode: Mode,
 ): ToolPolicy {
   // Check for empty strings that might indicate variable expansion
   const hasEmptyStrings = tokens.some((t) => typeof t === "string" && t === "");
@@ -199,7 +227,7 @@ function evaluateTokensSecurity(
         tokens,
         basePolicy,
         originalCommand,
-        strict,
+        mode,
       );
 
       // 2. Evaluate without empty strings
@@ -210,7 +238,7 @@ function evaluateTokensSecurity(
               tokensWithoutEmpty,
               basePolicy,
               originalCommand,
-              strict,
+              mode,
             )
           : basePolicy;
 
@@ -224,7 +252,7 @@ function evaluateTokensSecurity(
   }
 
   // Normal evaluation for commands without variable expansion
-  return evaluateTokens(tokens, basePolicy, originalCommand, strict);
+  return evaluateTokens(tokens, basePolicy, originalCommand, mode);
 }
 
 /**
@@ -234,7 +262,7 @@ function evaluateTokens(
   tokens: ParsedToken[],
   basePolicy: ToolPolicy,
   originalCommand: string,
-  strict: boolean,
+  mode: Mode,
 ): ToolPolicy {
   let mostRestrictivePolicy = basePolicy;
   let currentCommand: string[] = [];
@@ -255,7 +283,7 @@ function evaluateTokens(
           currentCommand,
           originalCommand,
           basePolicy,
-          strict,
+          mode,
         );
         mostRestrictivePolicy = getMostRestrictive(
           mostRestrictivePolicy,
@@ -285,7 +313,7 @@ function evaluateTokens(
         // Strict mode: a redirect that writes a file (echo x > notes.txt) is a
         // file change like cp or tee, even inside the workspace
         if (
-          strict &&
+          mode.strict &&
           op !== "<" &&
           op !== "<&" &&
           !(typeof target === "string" && isHarmlessRedirectTarget(op, target))
@@ -299,7 +327,11 @@ function evaluateTokens(
           if (
             op !== "<" &&
             op !== "<&" &&
-            (isOutsideWorkspacePath(target) || isGitInternalPath(target))
+            // An empty target is a variable that expanded to nothing here
+            // (`> $F`), so it could be any file
+            (target === "" ||
+              isOutsideWorkspacePath(target) ||
+              isGitInternalPath(target))
           ) {
             mostRestrictivePolicy = getMostRestrictive(
               mostRestrictivePolicy,
@@ -311,9 +343,10 @@ function evaluateTokens(
         continue;
       }
 
-      // Handle pipe operator specially - check if piping to dangerous command
-      if ((token as ShellOperator).op === "|") {
-        const pipePolicy = evaluatePipeChain(tokens, i);
+      // Handle pipe operator specially - check if piping to dangerous command.
+      // `|&` pipes stderr too.
+      if (op === "|" || op === "|&") {
+        const pipePolicy = evaluatePipeChain(tokens, i, mode.strict);
         mostRestrictivePolicy = getMostRestrictive(
           mostRestrictivePolicy,
           pipePolicy,
@@ -336,7 +369,7 @@ function evaluateTokens(
       currentCommand,
       originalCommand,
       basePolicy,
-      strict,
+      mode,
     );
     mostRestrictivePolicy = getMostRestrictive(
       mostRestrictivePolicy,
@@ -352,7 +385,7 @@ function evaluateTokens(
       const nestedPolicy = evaluateTerminalCommandSecurity(
         basePolicy,
         subCmd,
-        strict ? { strict: true } : undefined,
+        mode.strict ? { strict: true } : undefined,
       );
       mostRestrictivePolicy = getMostRestrictive(
         mostRestrictivePolicy,
@@ -393,11 +426,13 @@ function getMostRestrictive(...policies: ToolPolicy[]): ToolPolicy {
 }
 
 /**
- * Evaluates a pipe chain for dangerous patterns
+ * Evaluates a pipe chain for dangerous patterns. In strict mode, a command
+ * that writes the pipe to a file (`| tee out.txt`) asks, as a redirect does.
  */
 function evaluatePipeChain(
   tokens: ParsedToken[],
   startIdx: number,
+  strict: boolean,
 ): ToolPolicy {
   // Look at what comes after the pipe
   let nextCommandStart = startIdx + 1;
@@ -444,7 +479,8 @@ function evaluatePipeChain(
     if (
       isHighRiskScriptInterpreter(command, args) ||
       isHighRiskNetworkTool(command) ||
-      isHighRiskCommandWrapper(command, args)
+      isHighRiskCommandWrapper(command, args) ||
+      (strict && writesInputToFile(command, nextCommand.slice(1)))
     ) {
       return "allowedWithPermission";
     }
@@ -460,7 +496,7 @@ function evaluateSingleCommand(
   commandTokens: string[],
   originalCommand: string,
   basePolicy: ToolPolicy,
-  strict: boolean,
+  mode: Mode,
 ): ToolPolicy {
   if (commandTokens.length === 0) {
     return "allowedWithoutPermission";
@@ -505,6 +541,11 @@ function evaluateSingleCommand(
     return "allowedWithPermission";
   }
 
+  // The command itself is decided by the caller (evaluateLineStructure)
+  if (mode.structureOnly) {
+    return "allowedWithoutPermission";
+  }
+
   // A program named by its path (./build.sh, bin/app, /tmp/x, .\app.exe)
   // is not a command the checks below know, so it requires permission
   if (/[\\/]/.test(commandName.replace(/^\\/, ""))) {
@@ -523,7 +564,7 @@ function evaluateSingleCommand(
   // but that run repo code or write files (npm run, make, cargo, tar, git
   // branch, git log --output=) need permission. Read-only ones stay approved.
   if (isSafeCommand(baseCommand, args)) {
-    if (strict && strictSafeCommandNeedsPermission(baseCommand, args)) {
+    if (mode.strict && strictSafeCommandNeedsPermission(baseCommand, args)) {
       return "allowedWithPermission";
     }
     return "allowedWithoutPermission";
@@ -532,7 +573,7 @@ function evaluateSingleCommand(
   // Build, test and file commands follow the base policy, except in strict
   // mode (unattended runs), where they require permission (#10512)
   if (isPolicyFollowingCommand(baseCommand, args)) {
-    return strict ? "allowedWithPermission" : basePolicy;
+    return mode.strict ? "allowedWithPermission" : basePolicy;
   }
 
   // Anything else (argument-checked commands in a risky form such as git push
@@ -1324,7 +1365,7 @@ function isHighRiskOutsideWorkspacePath(
  * Checks if a path is inside a `.git` directory, where writes can plant code
  * that git runs later (hooks, config aliases)
  */
-function isGitInternalPath(path: string): boolean {
+export function isGitInternalPath(path: string): boolean {
   // The names Windows resolves to `.git`, as Git's core.protectNTFS reads
   // them: any case (`.Git`, also on macOS), trailing dots and spaces
   // (`.git.`, `.git `), the 8.3 short name `git~1`, and a stream (`.git::$x`)
@@ -1342,6 +1383,36 @@ function isHarmlessRedirectTarget(op: string, target: string): boolean {
 }
 
 const HARMLESS_WRITE_TARGETS = ["/dev/null", "/dev/stdout", "/dev/stderr"];
+
+/**
+ * Whether a command writes what it reads to a file: `tee out.txt`,
+ * `sponge out.txt`, `dd of=out.txt`, or PowerShell's Tee-Object, Out-File,
+ * Set-Content and Add-Content with an argument. /dev/null and the standard
+ * streams write no file.
+ */
+function writesInputToFile(command: string, args: string[]): boolean {
+  if (
+    ["tee-object", "out-file", "set-content", "add-content"].includes(command)
+  ) {
+    return args.length > 0;
+  }
+  let files: string[] = [];
+  if (command === "dd") {
+    files = args
+      .filter((arg) => arg.startsWith("of="))
+      .map((arg) => arg.slice(3));
+  } else if (command === "tee" || command === "sponge") {
+    // Every word after `--` is a file, as is `-`
+    const end = args.indexOf("--");
+    files = [
+      ...(end === -1 ? args : args.slice(0, end)).filter(
+        (arg) => arg === "-" || !arg.startsWith("-"),
+      ),
+      ...(end === -1 ? [] : args.slice(end + 1)),
+    ];
+  }
+  return files.some((file) => !HARMLESS_WRITE_TARGETS.includes(file));
+}
 
 /**
  * Checks if a path is absolute, in the home directory, or climbs out of the

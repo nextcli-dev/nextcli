@@ -1,25 +1,27 @@
-import { generatePolicyRule } from "./policyWriter.js";
+import { generatePolicyRules } from "./policyWriter.js";
 
 describe("policyWriter verification", () => {
   it("should return display names for all tools", () => {
-    // Test Edit tool
-    expect(generatePolicyRule("Edit", { filepath: "test.txt" })).toBe("Edit");
-
-    // Test Write tool
-    expect(generatePolicyRule("Write", { filepath: "test.txt" })).toBe("Write");
-
-    // Test Read tool
-    expect(generatePolicyRule("Read", { filepath: "test.txt" })).toBe("Read");
-
-    // Test Bash tool with commands
-    expect(generatePolicyRule("Bash", { command: "ls -la" })).toBe(
+    expect(generatePolicyRules("Edit", { filepath: "test.txt" })).toEqual([
+      "Edit",
+    ]);
+    expect(generatePolicyRules("Write", { filepath: "test.txt" })).toEqual([
+      "Write",
+    ]);
+    expect(generatePolicyRules("Read", { filepath: "test.txt" })).toEqual([
+      "Read",
+    ]);
+    expect(generatePolicyRules("Bash", { command: "ls -la" })).toEqual([
       "Bash(ls -la)",
-    );
+    ]);
   });
 
   it("should use exact tool names without case normalization", () => {
-    expect(generatePolicyRule("edit", { filepath: "test.txt" })).toBe("edit");
-    expect(generatePolicyRule("EDIT", { filepath: "test.txt" })).toBe("EDIT");
-    expect(generatePolicyRule("Edit", { filepath: "test.txt" })).toBe("Edit");
+    expect(generatePolicyRules("edit", { filepath: "test.txt" })).toEqual([
+      "edit",
+    ]);
+    expect(generatePolicyRules("EDIT", { filepath: "test.txt" })).toEqual([
+      "EDIT",
+    ]);
   });
 });

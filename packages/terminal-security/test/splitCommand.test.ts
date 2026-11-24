@@ -32,6 +32,7 @@ describe("splitCommand", () => {
         commands: [],
         single: false,
         opaque: false,
+        nested: false,
       });
     });
   });
@@ -377,5 +378,55 @@ describe("splitCommand reads a line the way bash runs it", () => {
     "pwsh -NoProfile -File build.ps1",
   ])("%s names its script, so it isn't opaque", (line) => {
     expect(splitCommand(line).opaque).toBe(false);
+  });
+});
+
+describe("splitCommand nested", () => {
+  it.each([
+    "echo $(date)",
+    "echo `date`",
+    'git commit -m "$(cat msg)"',
+    "diff <(ls a) <(ls b)",
+    "(cd sub && npm test)",
+    "sh -c 'npm test'",
+    "eval ls",
+    "find . -exec rm {} \;",
+    "npm test & git push",
+    // `& >` is a background job, then a redirect on its own
+    "npm test & > out.txt",
+    "npm test \\&& > out.txt",
+    "cat > notes.txt <<EOF\nhi\nEOF",
+    "if true; then ls; fi",
+    "for f in a b; do echo $f; done",
+    "{ ls; }",
+    "! git diff --quiet",
+  ])("%j is nested", (line) => {
+    expect(splitCommand(line).nested).toBe(true);
+  });
+
+  it.each([
+    "npm test",
+    "git add -A && git commit -m x",
+    "git add -A\ngit commit -m x",
+    "git log | head -5",
+    "npm test > out.txt 2>&1",
+    "npm test || echo failed",
+    "timeout 60 npm test",
+    "bash deploy.sh",
+    "cat < input.txt",
+    "grep -c x <<< 'a x'",
+    // `&>` and `&>>` redirect both streams
+    "npm test &> out.txt",
+    "npm test &>> out.txt && git status",
+    "echo 'a & b' &> /dev/null",
+    "npm test |& tee out.txt",
+  ])("%j is a plain chain", (line) => {
+    expect(splitCommand(line).nested).toBe(false);
+  });
+
+  it("keeps the words after `&>` in the command", () => {
+    expect(splitCommand("npm test &> out.txt --watch").commands).toEqual([
+      ["npm", "test", "--watch"],
+    ]);
   });
 });

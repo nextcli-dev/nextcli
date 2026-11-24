@@ -493,6 +493,70 @@ describe("Permission Checker", () => {
       });
     });
 
+    describe("Bash chains read the filesystem", () => {
+      let dir: string;
+
+      beforeEach(() => {
+        dir = fs.realpathSync(
+          fs.mkdtempSync(path.join(os.tmpdir(), "permission-chains-")),
+        );
+        const repo = path.join(dir, "repo");
+        fs.mkdirSync(path.join(repo, "sub"), { recursive: true });
+        fs.mkdirSync(path.join(repo, ".git", "hooks"), { recursive: true });
+        fs.mkdirSync(path.join(dir, "other"));
+        const dirLink = process.platform === "win32" ? "junction" : "dir";
+        fs.symlinkSync(
+          path.join(dir, "other"),
+          path.join(repo, "out"),
+          dirLink,
+        );
+        fs.symlinkSync(
+          path.join(repo, ".git"),
+          path.join(repo, "git"),
+          dirLink,
+        );
+        fs.symlinkSync(
+          path.join(repo, ".git", "hooks", "pre-commit"),
+          path.join(repo, "hook"),
+        );
+        vi.spyOn(process, "cwd").mockReturnValue(repo);
+        mockEvaluateToolCallPolicy.mockImplementation((policy) => policy);
+      });
+
+      afterEach(() => {
+        vi.mocked(process.cwd).mockRestore();
+        fs.rmSync(dir, { recursive: true, force: true });
+      });
+
+      const bash = (command: string) =>
+        checkToolPermission(
+          { name: "Bash", arguments: { command } },
+          {
+            policies: [
+              parseToolPattern("Bash(cd*)", "allow"),
+              parseToolPattern("Bash(git push*)", "allow"),
+              parseToolPattern("Bash(npm test*)", "allow"),
+              { tool: "*", permission: "ask" },
+            ],
+          },
+        ).permission;
+
+      it("runs a cd into a subdirectory before an allowed command", () => {
+        expect(bash("cd sub && git push")).toBe("allow");
+        expect(bash("npm test > /dev/null 2>&1")).toBe("allow");
+      });
+
+      it.each([
+        "cd out && git push",
+        "cd -P out && git push",
+        "cd git && git push",
+        "npm test > hook",
+        "npm test > sub/out.txt",
+      ])("asks for %j", (command) => {
+        expect(bash(command)).toBe("ask");
+      });
+    });
+
     describe("file path rules", () => {
       let dir: string;
       let cwd: string;

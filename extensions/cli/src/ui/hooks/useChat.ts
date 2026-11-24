@@ -901,13 +901,14 @@ export function useChat({
           "../../permissions/policyWriter.js"
         );
 
-        const policyRule = await rememberToolApproval(
+        const policyRules = await rememberToolApproval(
           currentRequest.toolName,
           currentRequest.toolArgs,
+          services.toolPermissions.getPermissions(),
         );
 
-        if (policyRule) {
-          logger.debug(`Policy created: ${policyRule}`);
+        if (policyRules) {
+          logger.debug(`Policies created: ${policyRules.join(", ")}`);
 
           // Reload permissions to pick up the new policy without requiring restart
           await services.toolPermissions.reloadPermissions();

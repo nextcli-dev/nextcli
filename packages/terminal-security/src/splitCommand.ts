@@ -1,6 +1,10 @@
 import { normalizeCommandName } from "./destructiveCommands.js";
 import { extractSubstitutedCommands } from "./evaluateTerminalCommandSecurity.js";
-import { hasDollarQuote, parseShellLine } from "./parseShell.js";
+import {
+  hasBackgroundJob,
+  hasDollarQuote,
+  parseShellLine,
+} from "./parseShell.js";
 
 export interface SplitCommand {
   /**
@@ -25,7 +29,39 @@ export interface SplitCommand {
    * is a command like any other: its contents are not read.
    */
   opaque: boolean;
+  /**
+   * A command runs inside another or behind syntax beyond a plain chain: a
+   * substitution (`$()`, backticks, `<()`), a subshell, `sh -c`, `eval`,
+   * `find -exec`, a background job (`&`), a heredoc, a group (`{ }`) or a
+   * keyword (`if`, `for`, `while`...). Without these the line is a plain
+   * chain: commands joined by `&&`, `||`, `;`, `|` and line breaks, with
+   * redirects.
+   */
+  nested: boolean;
 }
+
+/** Words that start shell syntax rather than a simple command */
+const SHELL_KEYWORDS = new Set([
+  "if",
+  "then",
+  "else",
+  "elif",
+  "fi",
+  "for",
+  "while",
+  "until",
+  "do",
+  "done",
+  "case",
+  "esac",
+  "select",
+  "function",
+  "coproc",
+  "{",
+  "}",
+  "!",
+  "[[",
+]);
 
 type Token = string | { op: string; pattern?: string } | { comment: string };
 
@@ -190,6 +226,18 @@ const WRAPPERS: Record<string, WrapperGrammar> = {
 const VARIABLE_ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
 
 /**
+ * Whether a command runs another one that splitCommand also lists: a wrapper
+ * (`env`, `timeout`, `xargs`...) or a `NAME=value` prefix
+ */
+export function runsAnotherCommand(words: readonly string[]): boolean {
+  return (
+    words.length > 0 &&
+    (VARIABLE_ASSIGNMENT.test(words[0]) ||
+      Object.hasOwn(WRAPPERS, normalizeCommandName(words[0])))
+  );
+}
+
+/**
  * Splits a shell command line into the simple commands it runs, so a rule
  * written for one command (`npm install*`) can be checked against each of
  * them. The result is a superset: it may list words that never run (a
@@ -203,6 +251,7 @@ export function splitCommand(command: string): SplitCommand {
     commands: [],
     single: true,
     opaque: false,
+    nested: false,
     written: 0,
   };
   splitInto(command, state, 0);
@@ -210,6 +259,7 @@ export function splitCommand(command: string): SplitCommand {
     commands: state.commands,
     single: state.single && state.written === 1,
     opaque: state.opaque,
+    nested: state.nested,
   };
 }
 
@@ -283,6 +333,7 @@ function splitLine(line: string, result: State, depth: number) {
   // Unquoted backticks are not tokens; read them from the text
   if (line.includes("`")) {
     result.single = false;
+    result.nested = true;
     for (const inner of extractSubstitutedCommands(line)) {
       splitInto(inner, result, depth + 1);
     }
@@ -310,6 +361,7 @@ function splitLine(line: string, result: State, depth: number) {
       // command (`$(which rm) -rf x`) is seen as a variable command.
       if (token === "$" && isOp(next, "(")) {
         result.single = false;
+        result.nested = true;
         current.push("$()");
         suspended.push(current);
         current = [];
@@ -332,6 +384,7 @@ function splitLine(line: string, result: State, depth: number) {
     }
     result.single = false;
     if (token.op === "<(" || (token.op === ">" && isOp(next, "("))) {
+      result.nested = true;
       suspended.push(current);
       current = [];
       if (token.op === ">") i++;
@@ -343,16 +396,29 @@ function splitLine(line: string, result: State, depth: number) {
       continue;
     }
     if (isRedirectOp(token.op)) {
+      // A heredoc's body is on the lines that follow, which are read as
+      // commands too
+      if (token.op === "<" && isOp(next, "<")) {
+        result.nested = true;
+      }
       // `<<` is two `<` and `>|` is `>` then `|`; the next word is the
       // file, delimiter or string
       while (isRedirect(tokens[i + 1]) || isOp(tokens[i + 1], "|")) i++;
       if (typeof tokens[i + 1] === "string") i++;
       continue;
     }
+    // `&>` and `&>>` redirect both streams; the redirect is read next
+    if (token.op === "&" && isRedirect(next) && !hasBackgroundJob(line)) {
+      continue;
+    }
     // Control operators and a subshell's `(`: the command ends here
     finish();
     if (token.op === "(") {
+      result.nested = true;
       suspended.push(null);
+    }
+    if (token.op === "&") {
+      result.nested = true;
     }
   }
   finish();
@@ -364,10 +430,14 @@ function splitLine(line: string, result: State, depth: number) {
 
 function addSimpleCommand(words: string[], result: State, depth: number) {
   result.commands.push(words);
+  if (depth > 0 || SHELL_KEYWORDS.has(words[0])) {
+    result.nested = true;
+  }
   // Substitutions inside quoted words: echo "$(npm install)"
   for (const word of words) {
     if (word.includes("$(") || word.includes("`")) {
       result.single = false;
+      result.nested = true;
       for (const inner of extractSubstitutedCommands(word)) {
         splitInto(inner, result, depth + 1);
       }

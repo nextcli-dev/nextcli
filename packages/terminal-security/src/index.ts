@@ -20,3 +20,17 @@ export {
   SECRET_VALUE_GLOBS,
 } from "./secretEnv.js";
 export { secureShellCommand } from "./shellCommand.js";
+export {
+  allowsCommandChain,
+  chainCommands,
+  commandMatchesAllowRule,
+  commandMatchesDenyRule,
+  globToRegExp,
+  isTrustedTerminalCommand,
+  isValidCommandRule,
+  ruleForCommand,
+  rulesToRemember,
+  trustedCommandRulesToRemember,
+  type ChainCommand,
+  type ChainOptions,
+} from "./commandChain.js";

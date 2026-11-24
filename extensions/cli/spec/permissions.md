@@ -90,12 +90,19 @@ The defaults are one table in `defaultPolicies.ts`, with a column for each kind 
 | --------------------------------------------------------------- | ------------------------------------------------ | ---------------------------------- |
 | Tool name                                                       | the name matches (`*`, `?`, case-sensitive)      | same                               |
 | File path: `Read`, `Write`, `Edit`, `MultiEdit`, `Diff`, `List` | both the path as written and its real path match | either path matches                |
-| `Bash` command                                                  | the line is one plain command that matches       | any command in the line matches    |
+| `Bash` command                                                  | each command of a plain chain matches            | any command in the line matches    |
 | `Fetch` URL, `Search` pattern                                   | the text matches the glob                        | same                               |
 
 Paths are resolved from the working directory, with symlinks followed, and matched with `minimatch`.
 
 `Bash` lines are split into commands with `splitCommand` from `terminal-security`. An exclude or ask also looks inside `&&`, pipes, `sh -c`, `$(...)` and wrappers like `env` or `timeout`, ignores the command's directory, and matches the pattern's words in order. A line it can't read (`python -c '...'`, `$CMD`) matches no `Bash(...)` rule and falls to the next rule.
+
+An allow matches one command, as written. A line the rules don't allow as a whole runs when `allowsCommandChain` (`terminal-security`) accepts it: a plain chain (commands joined by `&&`, `||`, `;`, `|` and line breaks) where each command would be allowed as a call of its own, under the same first match, strictness, `--readonly` ceiling and human-approval check. What joins the commands is checked too. These ask:
+
+- a redirect that writes a file, or a pipe into `tee`, `sponge` or `dd of=` that does, wherever it points, because the file may be a symlink; `/dev/null` and `2>&1` don't count;
+- a pipe (`|` or `|&`) into an interpreter or a network tool, a substitution, a subshell, `&`, a heredoc, `sh -c`, a keyword or a variable expansion;
+- `export`, `source` and the like before another command;
+- a `cd` or `pushd` before another command, unless it is the line's first command and its operand resolves, with symlinks followed from `process.cwd()`, to an existing folder inside it and outside `.git`. The shell runs with `CDPATH` unset (`secureShellCommand`), so `cd sub` means `./sub`.
 
 ## Kinds of run
 
@@ -116,7 +123,7 @@ A refused call in a headless run gets `Blocked by security policy: this tool cal
 ## `~/.continue/permissions.yaml`
 
 - **Format.** Three optional lists, `allow`, `ask` and `exclude`, in the same pattern syntax. `CONTINUE_GLOBAL_DIR` moves the directory. The file is created on first start.
-- **Saving.** "Continue + don't ask again" appends a rule to `allow`. `generatePolicyRule` decides the rule: a non-Bash tool by name; a Bash command by command and subcommand (`Bash(npm test*)`), or exactly if the first argument is an option (`Bash(ls -la)`). A chained, redirected, wrapped or unreadable line saves nothing and is approved once.
+- **Saving.** "Continue + don't ask again" appends rules to `allow`, in one write. `generatePolicyRules` decides them: a non-Bash tool by name; a Bash command by command and subcommand (`Bash(npm test*)`), or exactly if the first argument is an option (`Bash(ls -la)`). A chain gets one rule for each command not yet allowed (`git add -A && git commit -m x` saves `Bash(git add*)` and `Bash(git commit*)`), and only when the saved rules would let the whole line run. A line that `allowsCommandChain` refuses, or that has a wrapper, a `NAME=value` prefix or code it can't read, saves nothing and is approved once.
 - **Reading.** The file is re-read on every rebuild of the rules, so a saved rule applies to the next call.
 - **Errors.** A bad structure (an unknown key, a value that isn't a list) makes `cn` ignore the file with a warning. A bad pattern stops `cn`, and the message names the file.
 

@@ -30,7 +30,10 @@ function posixShell(userShell: string | undefined): string {
  * so the profile sets up PATH, and PowerShell on Windows. The profile can
  * export secret-like variables that the caller already removed from the
  * environment, so a prelude removes them inside the shell before the command
- * runs. `keep` names variables to leave alone (--pass-env).
+ * runs. `keep` names variables to leave alone (--pass-env). The profile's
+ * CDPATH is unset too: it would send `cd sub` to another project's `sub`,
+ * and a chain starting with `cd` is approved for the workspace's own
+ * (commandChain.ts).
  */
 export function secureShellCommand(
   command: string,
@@ -51,6 +54,6 @@ export function secureShellCommand(
   }
   return {
     shell: posixShell(shell),
-    args: ["-l", "-c", `${posixUnsetPrelude(keep)}\n${command}`],
+    args: ["-l", "-c", `${posixUnsetPrelude(keep)}\nunset CDPATH\n${command}`],
   };
 }

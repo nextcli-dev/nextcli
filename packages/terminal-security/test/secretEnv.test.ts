@@ -183,8 +183,34 @@ describe("secureShellCommand", () => {
     });
     expect(shell).toBe("/bin/zsh");
     expect(args.slice(0, 2)).toEqual(["-l", "-c"]);
-    expect(args[2]).toBe(`${posixUnsetPrelude(["GH_TOKEN"])}\nls`);
+    expect(args[2]).toBe(
+      `${posixUnsetPrelude(["GH_TOKEN"])}\nunset CDPATH\nls`,
+    );
   });
+
+  it.skipIf(!posixShells.includes("bash"))(
+    "reads cd from the working directory, whatever CDPATH the profile sets",
+    () => {
+      const home = path.join(tmpDir, "home");
+      const workspace = fs.realpathSync(tmpDir);
+      for (const dir of [home, path.join(home, "sub"), "sub"]) {
+        fs.mkdirSync(path.resolve(workspace, dir), { recursive: true });
+      }
+      fs.writeFileSync(
+        path.join(home, ".bash_profile"),
+        `export CDPATH=${home}\n`,
+      );
+      const { args } = secureShellCommand("cd sub && pwd", [], {
+        platform: "linux",
+        shell: "/bin/bash",
+      });
+      const result = spawnSync("bash", args, {
+        cwd: workspace,
+        env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: home },
+      });
+      expect(result.stdout.toString().trim()).toBe(path.join(workspace, "sub"));
+    },
+  );
 
   it("uses a POSIX shell when $SHELL isn't one", () => {
     const { shell } = secureShellCommand("ls", [], {
