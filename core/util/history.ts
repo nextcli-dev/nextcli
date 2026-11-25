@@ -52,12 +52,14 @@ function withoutPrompts(history: Session["history"]): Session["history"] {
   );
 }
 
-let warnedTranscript = false;
+/** Transcripts whose last write failed, so each failure is reported once */
+const failingTranscripts = new Set<string>();
 
 /**
  * Appends what changed to the session's transcript, which keeps every turn:
  * compaction and undo shorten the session file, never the transcript. A
- * failure is reported once and never stops the save.
+ * failure never stops the save: the next save writes what this one missed.
+ * It is reported once per transcript until a write succeeds again.
  */
 function writeTranscript(
   session: Session,
@@ -73,9 +75,10 @@ function writeTranscript(
       sessionFile,
       workspace: session.workspaceDirectory,
     });
+    failingTranscripts.delete(journal);
   } catch (e) {
-    if (!warnedTranscript) {
-      warnedTranscript = true;
+    if (!failingTranscripts.has(journal)) {
+      failingTranscripts.add(journal);
       console.warn(`Couldn't write the session transcript ${journal}: ${e}`);
     }
   }

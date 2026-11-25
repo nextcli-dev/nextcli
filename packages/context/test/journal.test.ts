@@ -168,6 +168,81 @@ describe("syncJournal", () => {
     expect(replayed().live).toHaveLength(2);
   });
 
+  it("doesn't take an edit of a summarized message for a compaction", () => {
+    const turns = (text: string) => [
+      user("a"),
+      { ...reply(text), conversationSummary: "Summary" },
+      user("c"),
+      reply("d"),
+    ];
+    syncJournal(journal, turns("b"));
+    syncJournal(journal, turns("b, edited"));
+
+    expect(lines().some((l) => l.t === "fold")).toBe(false);
+    expect(replayed().live).toEqual(turns("b, edited").map(itemHash));
+  });
+
+  it("folds for a new summary even when its message matches an earlier turn", () => {
+    syncJournal(journal, [reply("x"), user("c"), reply("d")]);
+    syncJournal(journal, [
+      reply("x"),
+      { ...reply("x"), conversationSummary: "Summary of c and d" },
+    ]);
+
+    expect(lines().find((l) => l.t === "fold")).toMatchObject({
+      from: 1,
+      n: 3,
+    });
+  });
+
+  it("records a replaced image, without keeping the image", () => {
+    const shot = (url: string): JournalSourceItem => ({
+      message: {
+        role: "user",
+        content: [
+          { type: "text", text: "see " },
+          { type: "imageUrl", imageUrl: { url } },
+        ],
+      },
+      contextItems: [],
+    });
+    syncJournal(journal, [shot("data:image/png;base64,FIRSTPICTURE")]);
+    syncJournal(journal, [shot("data:image/png;base64,SECONDPICTURE")]);
+
+    expect(putContents()).toEqual(["see [image]", "see [image]"]);
+    expect(fs.readFileSync(journal, "utf8")).not.toContain("PICTURE");
+  });
+
+  // A read-only file stands in for a full disk; root and Windows ignore it
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "writes on the next save what a failed append missed",
+    () => {
+      syncJournal(journal, [user("a")]);
+      fs.chmodSync(journal, 0o444);
+      expect(() => syncJournal(journal, [user("a"), reply("b")])).toThrow();
+      fs.chmodSync(journal, 0o644);
+
+      syncJournal(journal, [user("a"), reply("b")]);
+
+      expect(putContents()).toEqual(["a", "b"]);
+    },
+  );
+
+  it("catches up with another writer when its own history is unchanged", () => {
+    const turns = [user("a"), reply("b"), user("c"), reply("d")];
+    syncJournal(journal, turns);
+    // The other process undid the last turn
+    fs.appendFileSync(
+      journal,
+      JSON.stringify({ t: "cut", n: 2, ts: 1 }) + "\n",
+    );
+
+    // This process saves its history, and writes it to the session file
+    syncJournal(journal, turns);
+
+    expect(replayed().live).toEqual(turns.map(itemHash));
+  });
+
   it("journals a session's earlier turns first when its first save compacts", () => {
     const sessionFile = path.join(dir, "s1.json");
     fs.writeFileSync(

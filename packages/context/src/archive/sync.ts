@@ -117,10 +117,13 @@ export function syncJournal(
   options: SyncJournalOptions = {},
 ): void {
   const now = Date.now();
+  const size = fs.statSync(path, { throwIfNoEntry: false })?.size ?? 0;
   const known = states.get(path);
-  if (known) {
+  // The file is as this process left it: no other writer (cn and VS Code on
+  // one session) added a turn, a cut or a fold this history would undo
+  if (known && known.size === size) {
     // Most saves change nothing settled (cn saves on every tool status and
-    // Bash chunk): compare hashes before touching the file
+    // Bash chunk): compare hashes before reading the file
     const settled = history.slice(0, settledLength(history));
     const { live, summaries } = known.replay;
     if (
@@ -134,8 +137,24 @@ export function syncJournal(
       return;
     }
   }
+  try {
+    append(path, size, history, now, options);
+  } catch (e) {
+    // The replay may now hold lines the file doesn't (a full disk, a lost
+    // permission): read the file again next time, so the next save writes
+    // them instead of finding nothing changed
+    states.delete(path);
+    throw e;
+  }
+}
 
-  const size = fs.existsSync(path) ? fs.statSync(path).size : 0;
+function append(
+  path: string,
+  size: number,
+  history: JournalSourceItem[],
+  now: number,
+  options: SyncJournalOptions,
+): void {
   const state = caughtUp(path, size);
   const lines: JournalLine[] = [];
   if (size === 0) {

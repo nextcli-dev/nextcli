@@ -42,7 +42,10 @@ export interface StoredToolCall {
  */
 export interface StoredItem {
   role: string;
+  /** Text parts joined; each image is "[image]" */
   content: string;
+  /** A digest of each image's URL, in order: the images aren't kept */
+  images?: string[];
   reasoning?: string;
   context?: { name?: string; content: string }[];
   toolCalls?: StoredToolCall[];
@@ -58,6 +61,22 @@ export type JournalLine =
   | { t: "summary"; i: number; text: string | null; ts: number };
 
 const UNFINISHED = new Set(["generating", "generated", "calling"]);
+
+const digest = (text: string) =>
+  createHash("sha256").update(text).digest("base64url").slice(0, 22);
+
+/**
+ * A digest of each image's URL. The images themselves aren't kept (a data
+ * URL can be megabytes); the digest makes replacing one a change.
+ */
+function imageDigests(content: unknown): string[] {
+  if (!Array.isArray(content)) {
+    return [];
+  }
+  return content
+    .filter((part) => part?.type === "imageUrl")
+    .map((part) => digest(String(part.imageUrl?.url ?? "")));
+}
 
 function contentText(content: unknown): string {
   if (typeof content === "string") {
@@ -88,6 +107,10 @@ function project(item: JournalSourceItem): StoredItem {
     role: message.role,
     content: contentText(message.content),
   };
+  const images = imageDigests(message.content);
+  if (images.length) {
+    stored.images = images;
+  }
   if (item.reasoning?.text) {
     stored.reasoning = item.reasoning.text;
   }
@@ -151,10 +174,7 @@ export function itemHash(item: JournalSourceItem): string {
     return cached.h;
   }
   hashing.count++;
-  const h = createHash("sha256")
-    .update(JSON.stringify(project(item)))
-    .digest("base64url")
-    .slice(0, 22);
+  const h = digest(JSON.stringify(project(item)));
   hashCache.set(item.message, {
     toolCallStates: item.toolCallStates,
     contextItems: item.contextItems,
@@ -257,15 +277,13 @@ export function diffLines(
     }
   }
   if (k < live.length) {
-    // A summary item the journal hasn't seen, where the live view goes on:
-    // cn's compaction, which replaces the turns it covers. They stay
-    // history, outside the context. A summary item already live (VS Code,
-    // after a delete before it) is a plain cut.
-    if (
-      k < settled.length &&
-      settled[k].conversationSummary &&
-      !live.includes(hashes[k])
-    ) {
+    // A summary the live view doesn't hold, where the live view goes on:
+    // cn's compaction, which replaces the turns it covers with an item
+    // carrying a new summary. They stay history, outside the context. A
+    // summary already live from k on is a plain cut: VS Code after a delete
+    // before it, or an edit of a message that carries it.
+    const summary = settled[k]?.conversationSummary;
+    if (summary && !replay.summaries.includes(summary, k)) {
       lines.push({ t: "fold", from: k, n: live.length, ts: now });
     } else if (k === settled.length) {
       lines.push({ t: "cut", n: k, ts: now });

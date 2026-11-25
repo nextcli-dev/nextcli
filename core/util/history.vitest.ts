@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 
 import { v4 as uuidv4 } from "uuid";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { Session } from "..";
 import historyManager from "./history";
@@ -230,6 +230,48 @@ describe("HistoryManager and the session transcript", () => {
 
     expect(transcript(sessionId)).toContain("an early requirement");
   });
+
+  // A read-only file stands in for a full disk; root and Windows ignore it
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "writes the turns a failed transcript write missed on the next save",
+    () => {
+      const sessionId = uuidv4();
+      const journal = getSessionFilePath(sessionId) + "l";
+      const turns = [
+        item("user", "hi"),
+        item("assistant", "the turn the failed write missed"),
+      ] as Session["history"];
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        historyManager.save(session(sessionId, turns.slice(0, 1)));
+        fs.chmodSync(journal, 0o444);
+
+        historyManager.save(session(sessionId, turns));
+        historyManager.save(session(sessionId, turns));
+        // The session itself is saved, and the failure reported once
+        expect(
+          fs.readFileSync(getSessionFilePath(sessionId), "utf8"),
+        ).toContain("the turn the failed write missed");
+        expect(warn).toHaveBeenCalledTimes(1);
+
+        fs.chmodSync(journal, 0o644);
+        historyManager.save(session(sessionId, turns));
+        expect(transcript(sessionId)).toContain(
+          "the turn the failed write missed",
+        );
+
+        // A later failure is reported again
+        fs.chmodSync(journal, 0o444);
+        historyManager.save(
+          session(sessionId, [...turns, item("user", "more")]),
+        );
+        expect(warn).toHaveBeenCalledTimes(2);
+      } finally {
+        fs.chmodSync(journal, 0o644);
+        warn.mockRestore();
+      }
+    },
+  );
 
   it("deletes the transcript with the session, even when its file is gone", () => {
     const sessionId = uuidv4();
