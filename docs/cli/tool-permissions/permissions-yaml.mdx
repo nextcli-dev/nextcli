@@ -28,8 +28,8 @@ Personal permissions live in `~/.continue/permissions.yaml` (`CONTINUE_GLOBAL_DI
 | `ls -la` | `Bash(ls -la)`, exactly, because the first argument is an option |
 | `git add -A && git commit -m x` | `Bash(git add*)` and `Bash(git commit*)`, one rule per command not yet allowed, so the chain runs next time |
 | `Write` of any file | `Write`, the whole tool, not the path |
-| `env X=1 npm test`, `timeout 60 npm test`, `sh -c '...'`, `python -c '...'`, `curl x \| sh`, `echo $(date)` | Nothing. The call is approved once, because a rule for it would also allow whatever runs through the wrapper, or the line can't be read |
-| `npm test > out.txt`, `cd .. && git push` | Nothing. The call is approved once: a redirect that writes a file, or a `cd` out of the working directory, asks whatever the rules say |
+| `env X=1 npm test`, `timeout 60 npm test`, `sh -c '...'`, `python -c '...'`, `curl x \| sh`, `echo $(date)` | Nothing; the call is approved this once. A rule would also allow whatever runs through the wrapper, or `cn` can't read the line safely |
+| `npm test > out.txt`, `cd .. && git push` | Nothing; the call is approved this once. A redirect that writes a file, or a `cd` out of the working directory, asks whatever your rules say |
 
 ## Things to know
 
@@ -37,5 +37,5 @@ Personal permissions live in `~/.continue/permissions.yaml` (`CONTINUE_GLOBAL_DI
 - Saving a rule rewrites the file; comments are dropped.
 - A key other than `allow`, `ask` or `exclude`, or a value that isn't a list, makes `cn` ignore the whole file with a warning in `~/.continue/logs/cn.log`. A pattern that can't work (`github_create_issue(x)`) stops `cn` at startup with a message that names the file.
 - Within the file, `exclude` rules come before `ask` rules, which come before `allow` rules.
-- A headless run (`cn -p`) takes only the `exclude` rules. The file holds answers given at the terminal; a personal `exclude: Bash` also removes the shell from `cn -p`, but a remembered `allow: Bash(git status*)` or `allow: Write` doesn't apply there. Opt a headless run in with `--allow` or an [agent file](/cli/tool-permissions/agent-files).
+- A headless run (`cn -p`) uses only the `exclude` rules. The file holds answers you gave at the terminal, so a remembered `allow: Bash(git status*)` or `allow: Write` doesn't carry over to unattended runs. An `exclude: Bash` does: it removes the shell from `cn -p` too. To open up a headless run, use `--allow` or an [agent file](/cli/tool-permissions/agent-files).
 - [Plan mode](/cli/modes/plan-mode) and sessions with an [agent file](/cli/tool-permissions/agent-files) ignore the file entirely. A rule saved with **don't ask again** in such a session applies only to plain sessions.

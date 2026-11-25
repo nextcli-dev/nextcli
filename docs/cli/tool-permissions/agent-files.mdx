@@ -29,9 +29,12 @@ The line is a comma-separated list of:
 - A listed tool is **allowed**, not asked. In the TUI, an agent file that lists `Bash` runs `curl` without a prompt.
 - A built-in tool that isn't listed is excluded, once the list names any built-in or any MCP server.
 - When the list names a specific tool of a server, that server's other tools are excluded.
-- Tools the list says nothing about fall back to the run's default: in the TUI that is `allow`, so **MCP tools from servers the file doesn't mention are allowed without asking**; in `cn -p` it is the closed headless defaults, so they are excluded.
+- Tools the list doesn't mention get the run's fallback:
+  - In the TUI, the fallback is `allow`, so **MCP tools from servers the file doesn't mention run without asking**.
+  - In `cn -p`, the fallback is the closed headless defaults, so those tools are excluded.
 - `--allow`, `--ask` and `--exclude` apply before the file: `cn --agent my-org/pr-triage --exclude Bash` removes the shell the file grants.
 - `permissions.yaml` is ignored while an agent file is loaded. `--readonly` ignores the agent file.
-- In `cn -p`, the file's `Bash` is evaluated strictly ([read-only commands](/cli/tool-permissions/read-only-commands) only), while its `Write` is a plain allow. `--allow Bash` opens the shell. A server named in the list that isn't connected is skipped with a warning in the log, and its tools fall back to the default.
+- In `cn -p`, the file's `Bash` runs only [read-only commands](/cli/tool-permissions/read-only-commands), but its `Write` is a full allow. `--allow Bash` opens the shell.
+- If a server in the list isn't connected, `cn` skips it with a warning in the log, and its tools get the fallback.
 
 With [auto mode](/cli/modes/auto-mode), the flags and the file's tool list still apply.

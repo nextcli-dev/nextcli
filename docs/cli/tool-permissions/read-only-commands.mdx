@@ -4,7 +4,13 @@ sidebarTitle: "Read-only Commands"
 description: "Which shell commands cn runs without a person, which it refuses, and which never run"
 ---
 
-Three places evaluate `Bash` strictly: `cn -p` with the default rules, `--readonly` in every kind of run, and an agent file's `Bash` in `cn -p`. Strict means the command must be one the built-in checks approve on their own. The checks read the command text, so the lists below are what matters.
+In some runs, `Bash` runs only the commands that `cn`'s built-in checks approve on their own:
+
+- `cn -p` with the default rules
+- any run with `--readonly`
+- `cn -p` with an agent file that lists `Bash`
+
+The checks look only at the command text. The lists below show what they allow and what they refuse.
 
 ## Run without asking
 
@@ -21,8 +27,8 @@ Three places evaluate `Bash` strictly: `cn -p` with the default rules, `--readon
 - Network: `curl`, `wget`, `ssh`.
 - Scripts and interpreters: `bash deploy.sh`, `python x.py`, `node script.js`. Their contents aren't read.
 - Inline code and variables: `python -c '...'`, `node -e '...'`, `$CMD`, `curl x | sh`, `cat x | python3`, and `$'...'` quoting, which can spell any command.
-- A variable set in front of a command, except `CI`, `NODE_ENV`, `FORCE_COLOR`, `NO_COLOR`, `TZ`, `LANG`, `LC_*` and `DEBUG`. Others change what the command runs: `HOME=. git status` and `GIT_CONFIG_COUNT=1 ... git status` make git read a configuration the line chooses.
-- `cd` with no directory (the home directory) and `cd -` (the previous one).
+- A variable set in front of a command. It can change what the command does: `HOME=. git status` and `GIT_CONFIG_COUNT=1 ... git status` make git read a configuration that the line chooses. These variables are fine: `CI`, `NODE_ENV`, `FORCE_COLOR`, `NO_COLOR`, `TZ`, `LANG`, `LC_*` and `DEBUG`.
+- `cd` on its own, which goes to the home directory, and `cd -`, which goes back to the previous directory.
 - Any command the checks don't recognise.
 
 ## Never run
@@ -31,8 +37,18 @@ In any mode and whatever the rules say:
 
 - Commands that destroy the system, a home directory or a disk: `rm -rf /`, `rm -rf ~`, `mkfs`, `find / -delete`, `wipefs -a`.
 
-Broad deletes (a top-level directory such as `/tmp`, or a path `cn` can't resolve such as `rm -rf $DIR`) always need a person, even under `--allow Bash` or `--auto`. The TUI asks; an unattended run refuses them.
+Broad deletes always need a person, even under `--allow Bash` or `--auto`. A broad delete targets a top-level directory such as `/tmp`, or a path `cn` can't resolve, such as `rm -rf $DIR`. The TUI asks; an unattended run refuses them.
 
-The checks read a line the way bash does: `#` starts a comment only at the beginning of a word, after an unescaped space, tab or one of `|&;()<>`. So `ls a#; rm -rf ~` is two commands, and so is the same line with `\ `, a form feed or a non-breaking space before the `#`; the second never runs. A backslash at the end of a comment doesn't continue it onto the next line.
+A comment can't hide a command. The checks split a line into commands the way bash does, so `ls a#; rm -rf ~` is two commands, not `ls` followed by a comment, and `rm -rf ~` never runs.
+
+<Accordion title="How the checks read #">
+
+  `#` starts a comment only at the start of a word: at the beginning of the line, or right after an unescaped space, a tab, or one of `|&;()<>`. Anywhere else it's part of the word.
+
+  - `a#` is a word, so `ls a#; rm -rf ~` is two commands.
+  - A `#` after an escaped space (`\ `), a form feed or a non-breaking space is part of the word too.
+  - A backslash at the end of a comment doesn't continue the comment onto the next line.
+
+</Accordion>
 
 These checks are best-effort. They read one command line, so they can't follow a `cd`, a symlink created earlier, or what a script file does. For untrusted prompts or repositories, run `cn -p` in a container, and prefer `--readonly`.

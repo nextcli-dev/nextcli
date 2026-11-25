@@ -18,9 +18,21 @@ description: "The permission each cn tool gets by default in the TUI, in headles
 
 The `--readonly` columns are [plan mode](/cli/modes/plan-mode).
 
-`Fetch`, `UploadArtifact` and `Subagent` can send data off the machine or start work nobody reviews, so they are closed when nobody is watching. Some tools exist only in some runs: `Exit` in `cn -p`, `AskQuestion` only in the TUI and never in a subagent, since nobody can answer a question in `cn -p` or `cn serve`, `ReportFailure` with `--id`, `UploadArtifact` with `--id` and `--beta-upload-artifact-tool`, `Subagent` with `--beta-subagent-tool`. A capable model gets `MultiEdit` and others get `Edit`; the two have the same permissions.
+`Fetch`, `UploadArtifact` and `Subagent` can send data off the machine or start work nobody reviews, so they are closed when nobody is watching.
 
-The headless `Bash` allow is not an ordinary allow. It runs only commands `cn` can tell are read-only; every other command asks, and so is refused. This keeps a run that reads untrusted code, such as a pull request in CI, from running arbitrary commands or sending data out while it holds a provider key. Opt in to more with `--allow`.
+Some tools exist only in some runs:
+
+| Tool | Available |
+|------|-----------|
+| `Exit` | in `cn -p` |
+| `AskQuestion` | only in the TUI, and never in a subagent. Nobody can answer a question in `cn -p` or `cn serve` |
+| `ReportFailure` | with `--id` |
+| `UploadArtifact` | with `--id` and `--beta-upload-artifact-tool` |
+| `Subagent` | with `--beta-subagent-tool` |
+
+A capable model gets `MultiEdit`, and other models get `Edit`. Both have the same permissions.
+
+In a headless run (`cn -p` and `cn review`), the `Bash` allow is limited: it runs only commands `cn` can tell are read-only. Every other command asks, and with nobody to answer, it is refused. This keeps a run that reads untrusted code, such as a pull request in CI, from running arbitrary commands or sending data out while it holds a provider key. Opt in to more with `--allow`.
 
 In every kind of run, `Bash` runs without secret-like environment variables (`--pass-env NAME` keeps one), and `Fetch` refuses private and cloud metadata addresses (`--allow-private-fetch` lifts the block for private ones). See [secrets and private addresses](/cli/headless-mode#secrets-and-private-addresses).
 
@@ -29,7 +41,7 @@ In every kind of run, `Bash` runs without secret-like environment variables (`--
 | Run | Who approves an `ask` | Rules |
 |-----|------------------------|-------|
 | `cn` | you, at the prompt | flags, `permissions.yaml`, defaults; or the agent file |
-| `cn -p` | nobody, so `ask` is refused | flags, the excludes from `permissions.yaml`, the closed defaults; or the agent file over the closed defaults |
-| `cn -p --readonly` | nobody | flags over the plan defaults; writes never, `Bash` read-only. What `nextcli-checks` runs on a pull request |
+| `cn -p` | nobody, so `ask` is refused | flags, the excludes from `permissions.yaml`, the closed defaults. With an agent file: flags, the agent file, then the closed defaults |
+| `cn -p --readonly` | nobody | flags, then the plan-mode defaults. Never writes; `Bash` read-only. This is what `nextcli-checks` runs on a pull request |
 | `cn review` | nobody | the closed headless defaults plus `Edit`, `MultiEdit` and `Write`, so the worker can fix the files in its worktree. `--allow`, `--pass-env` and `--allow-private-fetch` are not passed to the worker |
 | `Subagent` (`--beta-subagent-tool`) | nobody | the session's rules, minus `Subagent`. A subagent can't prompt you, so a call that would ask is refused |

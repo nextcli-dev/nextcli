@@ -1,5 +1,6 @@
 ---
 title: "Headless Mode"
+description: "Run cn -p for one task without the TUI: piping, output formats, which tools a headless run may use, and how secrets stay out of the shell's reach."
 ---
 
 Run `cn -p "your prompt"` to execute a single task without an interactive session. The agent runs to completion and prints its response to stdout.
@@ -36,7 +37,17 @@ cn -p "List all TODO comments in src/" --silent > todos.txt
 
 ## Tool permissions
 
-Nobody is there to approve a tool, so a headless run is closed by default. With no flags it can read, search and list files, and run shell commands `cn` can tell are read-only (`ls`, `cat`, `grep`, `git status`, `git diff`, `git log`). File writes, `Fetch`, MCP tools and every other shell command are refused. Rules saved in the TUI with "don't ask again" don't apply; only the excludes in `permissions.yaml` do. Opt in to what a run needs with `--allow`:
+Nobody is there to approve a tool, so a headless run is closed by default. With no flags:
+
+| Runs | Refused |
+|------|---------|
+| Reading, searching and listing files | Writing and editing files |
+| Shell commands `cn` can tell are read-only, such as `ls`, `cat`, `grep`, `git status`, `git diff` and `git log` | Every other shell command |
+| | `Fetch` and MCP tools |
+
+Rules you saved in the TUI with "don't ask again" don't apply here. Only the `exclude` rules in `permissions.yaml` do.
+
+Turn on what a run needs with `--allow`:
 
 ```bash
 # Fix code and run the tests, nothing else
@@ -59,47 +70,102 @@ cn -p "Set up the project" --allow "*"
 ```
 
 <Warning>
-Scripts that ran `cn -p` with Bash, `Fetch` or MCP tools and no flags need `--allow` for each of them now.
+
+  Scripts that ran `cn -p` with Bash, `Fetch` or MCP tools and no flags now need an `--allow` for each of them.
+
 </Warning>
 
-For untrusted input, such as a pull request in CI, add `--readonly` ([plan mode](/cli/modes/plan-mode)). It never writes, and `Bash` runs only read-only commands even when `--allow` turns it on: `cn -p --readonly --allow "Bash(git log*)"` adds `git log`, but `--allow Bash` or `--allow "Bash(git *)"` still can't run `git push`, `cp` or `curl`. `--allow Fetch` and `--allow "github_*"` work as in a normal run.
+### When a tool is refused
 
-A headless run doesn't load the folder's `.env` or `.continue/.env` unless you trusted the folder; see [workspace trust](/cli/workspace-trust).
+The model gets the result `Blocked by security policy: this tool call isn't allowed in an unattended run`. The run ends there, and `cn` prints the answer so far. If your script needs that tool, add the `--allow` for it.
 
-`cn -p --auto` ([auto mode](/cli/modes/auto-mode)) is not "allow everything": it allows writes, `Fetch` and MCP tools, but `Bash` stays read-only and auto mode ignores `--allow`. Use `--allow "*"` instead.
+### Review untrusted input with `--readonly`
 
-When the model calls a tool the rules refuse, the call gets the result `Blocked by security policy: this tool call isn't allowed in an unattended run`, the run ends, and `cn` prints the answer so far. If a script needs that tool, pass the `--allow` for it.
+For untrusted input, such as a pull request in CI, add `--readonly` ([plan mode](/cli/modes/plan-mode)):
 
-`cn review` runs its workers headless with the same closed defaults plus `Edit`, `MultiEdit` and `Write`, so a review can fix the files in its worktree. Without `--review-agents`, it runs the checks in `.continue/agents`, `.continue/checks` and `.claude/checks`. A check whose frontmatter lists `paths` runs only when a changed file matches one of them, as in [nextcli-checks](https://github.com/nextcli-dev/nextcli-checks), and its `name` is the name shown.
+- It never writes files.
+- `Bash` runs only read-only commands, even when `--allow` turns it on. `--allow "Bash(git log*)"` adds `git log`, but `--allow Bash` or `--allow "Bash(git *)"` still can't run `git push`, `cp` or `curl`.
+- `--allow Fetch` and `--allow "github_*"` work as in a normal run.
 
-See [tool permissions](/cli/tool-permissions) for the full precedence, [flags & patterns](/cli/tool-permissions/flags-and-patterns) for the rule syntax, [read-only commands](/cli/tool-permissions/read-only-commands) for the list of commands a headless run allows, and [agent files](/cli/tool-permissions/agent-files).
+### `--auto` is not "allow everything"
+
+`cn -p --auto` ([auto mode](/cli/modes/auto-mode)) allows writes, `Fetch` and MCP tools. But `Bash` stays read-only, and auto mode ignores `--allow`. To allow everything, use `--allow "*"` instead.
+
+### `.env` files
+
+A headless run loads the folder's `.env` and `.continue/.env` only if you trusted the folder. See [workspace trust](/cli/workspace-trust).
+
+### `cn review`
+
+`cn review` runs its workers headless. They get the same closed defaults plus `Edit`, `MultiEdit` and `Write`, so a worker can fix the files in its worktree.
+
+Without `--review-agents`, `cn review` runs the checks in `.continue/agents`, `.continue/checks` and `.claude/checks`:
+
+- If a check's frontmatter lists `paths`, the check runs only when a changed file matches one of them, as in [nextcli-checks](https://github.com/nextcli-dev/nextcli-checks).
+- The check's `name` is the name `cn review` shows.
+
+### More about permissions
+
+- [Tool permissions](/cli/tool-permissions): the order in which rules apply.
+- [Flags & patterns](/cli/tool-permissions/flags-and-patterns): the rule syntax.
+- [Read-only commands](/cli/tool-permissions/read-only-commands): the shell commands a headless run allows.
+- [Agent files](/cli/tool-permissions/agent-files): a `tools:` line that replaces the defaults.
 
 ## Secrets and private addresses
 
-These two guards apply in every run, interactive or headless. They stop a prompt injection, for example text in a pull request, from making the agent read your provider key or CI token.
+These two guards apply in every run, interactive or headless. They stop a prompt injection, such as instructions hidden in a pull request, from making the agent read your provider key or CI token.
 
-**Shell commands run without secret-like environment variables.** `Bash` and background jobs don't get a variable whose name contains `API_KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `PRIVATE_KEY`, `CREDENTIAL` or `ACCESS_KEY`, or ends in `_KEY` or `_PAT`. That includes the GitHub Actions OIDC variables (`ACTIONS_ID_TOKEN_REQUEST_TOKEN` and `_URL`). A variable is dropped whatever its name if its value looks like a key (`sk-…`, `ghp_…`, `AKIA…`, a private key) or like a URL with a password in it, such as `HTTPS_PROXY=http://user:pass@proxy:3128`. A variable that holds the path to a file, such as `GOOGLE_APPLICATION_CREDENTIALS`, is kept: the shell could read the file anyway, and tools like `gcloud` need the path. `SSH_AUTH_SOCK` is kept too, so `git push` over SSH works.
+### Shell commands don't get secrets
 
-The shell still runs your profile (`~/.zprofile`, `~/.bash_profile`), so `PATH` from nvm or Homebrew works. A key the profile exports is removed after the profile runs and before the command, and the command starts in the working directory even if the profile changes folder. That step needs `awk`; without it, only keys the profile adds get through. Hooks and MCP servers come from your own config and still get the full environment. The VS Code extension's terminal tool removes the same variables; list the ones it should keep in the `continue.terminalPassEnv` user setting. A workspace's `.vscode/settings.json` can't set it, so a repository can't choose which secrets its commands see. In a remote workspace, VS Code runs commands in its own terminal, which doesn't remove them.
+`Bash` and background jobs run without environment variables that look like secrets. A variable is removed when:
 
-If a command needs one of these variables, pass it back by name:
+- its name contains `API_KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `PRIVATE_KEY`, `CREDENTIAL` or `ACCESS_KEY`, or ends in `_KEY` or `_PAT`. This includes the GitHub Actions OIDC variables (`ACTIONS_ID_TOKEN_REQUEST_TOKEN` and `_URL`);
+- its value looks like a key (`sk-…`, `ghp_…`, `AKIA…`, a private key) or like a URL with a password in it, such as `HTTPS_PROXY=http://user:pass@proxy:3128`, whatever the variable's name.
+
+Two kinds of variable are kept on purpose:
+
+- A variable that holds the path to a file, such as `GOOGLE_APPLICATION_CREDENTIALS`. The shell could read the file anyway, and tools like `gcloud` need the path.
+- `SSH_AUTH_SOCK`, so `git push` over SSH works.
+
+If a command needs one of the removed variables, pass it back by name:
 
 ```bash
 cn -p "Publish the package" --allow "Bash(npm publish*)" --pass-env NPM_TOKEN
 ```
 
-**`Fetch` reaches only public addresses.** It refuses `localhost` and loopback, private networks (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7` and others), and cloud metadata addresses (`169.254.169.254`, `fd00:ec2::254`, `100.100.100.200`). It checks the address of every connection it opens, including each redirect (up to 10, all within the URL's origin), so neither a DNS name that points inside nor a redirect gets around the block. To read docs from a local server, pass `--allow-private-fetch`. Cloud metadata stays blocked even then.
+Your shell profile (`~/.zprofile`, `~/.bash_profile`) still runs, so `PATH` from nvm or Homebrew works:
+
+- If the profile exports a key, `cn` removes it after the profile runs and before your command. This step needs `awk`. Without `awk`, keys the profile exports get through.
+- The command starts in the working directory, even if the profile changes folder.
+
+Hooks and MCP servers come from your own config, so they still get the full environment.
+
+The VS Code extension's terminal tool removes the same variables. List the ones it should keep in the `continue.terminalPassEnv` user setting. A workspace's `.vscode/settings.json` can't set it, so a repository can't choose which secrets its commands see. In a remote workspace, VS Code runs commands in its own terminal, which doesn't remove them.
+
+### `Fetch` reaches only public addresses
+
+`Fetch` refuses:
+
+- `localhost` and other loopback addresses
+- private networks: `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7` and others
+- cloud metadata addresses: `169.254.169.254`, `fd00:ec2::254`, `100.100.100.200`
+
+It checks the address of every connection it opens, including each redirect (up to 10, all within the URL's origin). So neither a DNS name that points inside your network nor a redirect gets around the block.
+
+To read docs from a local server, pass `--allow-private-fetch`. Cloud metadata stays blocked even then.
 
 ```bash
 cn -p "Summarize http://localhost:3000/docs" --allow Fetch --allow-private-fetch
 ```
 
 <Warning>
-These guards close the easy paths, not every path. A shell that runs as your user can still read files your user can read. If you give an unattended run `--allow Bash` on untrusted input:
 
-- On Linux, `/proc/<pid>/environ` shows the environment `cn` started with, and the shell can read `~/.continue/config.yaml` too. Wherever the provider key comes from, only a container or a separate user keeps it out of the shell's reach.
-- `actions/checkout` keeps the job token in `.git/config` unless you set `persist-credentials: false`.
-- Give the job a token with the fewest permissions it needs.
+  These guards close the easy paths, not every path. A shell that runs as your user can still read the files your user can read. If you give an unattended run `--allow Bash` on untrusted input:
+
+  - On Linux, `/proc/<pid>/environ` shows the environment `cn` started with, and the shell can read `~/.continue/config.yaml` too. Wherever the provider key comes from, only a container or a separate user keeps it out of the shell's reach.
+  - `actions/checkout` keeps the job token in `.git/config` unless you set `persist-credentials: false`.
+  - Give the job a token with the fewest permissions it needs.
+
 </Warning>
 
 ## Resume in headless mode

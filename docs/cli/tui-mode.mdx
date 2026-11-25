@@ -52,9 +52,14 @@ When you're connected to a remote environment, NextCLI also adds remote-only sla
 
 ## Context window
 
-The status bar shows how full the window is, for example `Context 23% · 46K/200K`. The percentage is of the window. The numbers are the estimate the auto-compaction trigger compares: the system prompt, the tool schemas, and the history. The bar turns amber at 80% of the compaction threshold.
+The status bar shows how full the model's context window is, for example `Context 23% · 46K/200K`: about 46K tokens used in a 200K window. The count covers the system prompt, the tool definitions and the chat history. It's the same estimate `cn` uses to decide when to compact the chat automatically. The bar turns amber at 80% of the compaction threshold.
 
-`/context` prints the same estimate as a tree. Each row is labelled `estimated`, `measured`, or `configured`. Tool results are listed by the five largest. The threshold line is the window minus the output reserve minus the buffer. The last response's provider usage, when there is one, is labelled measured: prompt, output, cache read, cache write, and the cache-hit ratio.
+`/context` prints the same estimate as a tree:
+
+- Each row is labelled `estimated`, `measured` or `configured`.
+- Tool results show the five largest.
+- The threshold line is the window, minus the space reserved for the model's reply, minus a safety buffer.
+- When the last response reported usage, the provider's numbers are labelled `measured`: prompt, output, cache read, cache write and the cache-hit ratio.
 
 ## Resume previous sessions
 
