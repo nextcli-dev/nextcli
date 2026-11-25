@@ -108,7 +108,7 @@ An allow covers one command, exactly as written. A line runs when every command 
 - a pipe (`|` or `|&`) into a shell, an interpreter or a network tool;
 - `$(...)`, backticks, a subshell, `&`, a heredoc or `sh -c`;
 - `export` or `source` before another command;
-- a `cd` or `pushd` before another command, unless it comes first and enters an existing folder inside the working directory, with symlinks followed and `.git` excluded (`cd packages/app && npm test`).
+- a `cd` or `pushd` before another command, unless it comes first and enters an existing folder inside the working directory, written with `/` and a plain name, with symlinks followed and `.git` excluded (`cd packages/app && npm test`). PowerShell's `Set-Location`, `sl` and `Push-Location` count as `cd`.
 
 When the line doesn't run, the next rule decides. In a headless run that usually means refused.
 

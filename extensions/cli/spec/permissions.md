@@ -102,7 +102,7 @@ An allow matches one command, as written. A line the rules don't allow as a whol
 - a redirect that writes a file, or a pipe into `tee`, `sponge` or `dd of=` that does, wherever it points, because the file may be a symlink; `/dev/null` and `2>&1` don't count;
 - a pipe (`|` or `|&`) into an interpreter or a network tool, a substitution, a subshell, `&`, a heredoc, `sh -c`, a keyword or a variable expansion;
 - `export`, `source` and the like before another command;
-- a `cd` or `pushd` before another command, unless it is the line's first command and its operand resolves, with symlinks followed from `process.cwd()`, to an existing folder inside it and outside `.git`. The shell runs with `CDPATH` unset (`secureShellCommand`), so `cd sub` means `./sub`.
+- a `cd`, `pushd` or PowerShell `Set-Location` (`sl`, `chdir`, `Push-Location`, any case) before another command, unless it is the line's first command, the line has no `\`, and its operand is a plain name (letters, digits, `_`, `.`, `-`, spaces and `/`, not starting with `-` or `//`) that resolves, with symlinks followed from `process.cwd()`, to an existing folder inside it and outside `.git`. The shell starts in `process.cwd()` after the profile, with `CDPATH` unset (`secureShellCommand`), so `cd sub` means `./sub`.
 
 ## Kinds of run
 

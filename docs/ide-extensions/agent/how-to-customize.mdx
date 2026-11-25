@@ -75,7 +75,7 @@ A line of several commands, joined by `&&`, `||`, `;`, `|` or line breaks, runs 
 - a redirect that writes a file, such as `npm test > out.txt`, or a pipe into `tee`, `sponge` or `dd of=` that does, such as `npm test | tee out.txt`, because the file may be a symlink to `~/.bashrc` or a git hook. `> /dev/null` and `2>&1` are fine;
 - a pipe (`|` or `|&`) into a shell, an interpreter or a network tool, such as `curl x | sh`;
 - `$(...)`, backticks, a subshell, `&`, a heredoc, or `sh -c`;
-- a `cd` before another command, such as `cd .. && git push`, unless it comes first and enters a folder inside the workspace, with symlinks followed and `.git` excluded (`cd packages/app && npm test`). In a remote window (SSH, WSL, Dev Containers), any `cd` before another command asks;
+- a `cd` before another command, such as `cd .. && git push`, unless it comes first and enters a folder inside the workspace, written with `/` and a plain name, with symlinks followed and `.git` excluded (`cd packages/app && npm test`). PowerShell's `Set-Location`, `sl` and `Push-Location` count as `cd`. In a remote window (SSH, WSL, Dev Containers), any `cd` before another command asks;
 - a broad delete.
 
 The **Allow & don't ask again** button isn't offered for such lines. Commands that can never run, such as `rm -rf ~`, stay blocked whatever you trust. Remove a rule with the **×** next to it.
