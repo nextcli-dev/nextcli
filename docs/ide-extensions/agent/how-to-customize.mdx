@@ -87,7 +87,7 @@ These make a line ask anyway:
 - a redirect that writes a file, such as `npm test > out.txt`, or a pipe into `tee`, `sponge` or `dd of=` that writes one, such as `npm test | tee out.txt`. The file could be a symlink to `~/.bashrc` or a git hook. `> /dev/null` and `2>&1` are fine;
 - a pipe (`|` or `|&`) into a shell, an interpreter or a network tool, such as `curl x | sh`;
 - `$(...)`, backticks, a subshell, `&`, a heredoc, or `sh -c`;
-- a `cd` followed by another command, such as `cd .. && git push`. One exception: a `cd` at the start of the line into a folder inside the workspace, such as `cd packages/app && npm test`. The path must be plain folder names joined with `/`, it must stay inside the workspace after following symlinks, and it can't be inside `.git`. PowerShell's `Set-Location`, `sl` and `Push-Location` count as `cd`. In a remote window (SSH, WSL, Dev Containers), any `cd` followed by another command asks;
+- `cd`, `pushd` or `chdir` followed by another command, such as `cd .. && git push`. One exception: the line starts with one of them, and it enters an existing folder inside the workspace, such as `cd packages/app && npm test`. The path must be plain folder names joined with `/` (no `..`, `~` or `$`), it must stay inside the workspace after following symlinks, and it can't be inside `.git`. PowerShell's `Set-Location`, `sl` and `Push-Location` follow the same rule. In a remote window (SSH, WSL, Dev Containers), any of these followed by another command asks;
 - a broad delete.
 
 **Allow & don't ask again** isn't offered for those lines. Commands that can never run, such as `rm -rf ~`, stay blocked whatever you trust. Remove a rule with the **×** next to it.

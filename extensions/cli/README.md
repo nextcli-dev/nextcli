@@ -115,7 +115,7 @@ The review worker gets the closed headless defaults plus `Edit`, `MultiEdit` and
 
 `--max-turns`, `--max-session-tokens`, `--max-cost` and `--max-time` cap one run. Before a run hits a limit, the CLI makes one last model call without tools and asks for a final answer from what the model has found so far. So the run still ends with a result.
 
-- **Turns, tokens and cost:** the last call is made when it is the last one allowed, or when the budget left is less than twice the last call. At least 10% of the limit is always kept for it.
+- **Turns, tokens and cost:** the last call is made when it is the last one allowed, or when the budget left falls below the reserve kept for the final answer. The reserve is at least 10% of the limit and at least twice the last call. For `--max-cost`, it is also at least the last call plus the estimated cost of the final answer, which can be more than twice the last call, so a run can wrap up earlier.
 - **`--max-time <seconds>`:** the clock starts when `cn` starts. The last call is made when the time left is less than the last turn (its model call, tools and any compaction) plus 10% of the limit.
 - **`--max-time` can run over.** The final call is still made past the deadline, and one slow call can run past the limit. If your script kills `cn` at a timeout, pass a `--max-time` about a minute shorter.
 - **Exit code 3.** In headless mode, a run ended by a limit exits with code 3, and the answer is still on stdout. A run that is already over its turn, token or cost limit makes no more model calls, and also exits with code 3.

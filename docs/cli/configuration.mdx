@@ -177,9 +177,11 @@ Credentials are replaced with `[redacted]` wherever they appear. These are alway
 These are redacted when they are 8 characters or longer:
 
 - parts of those credentials: the `user:password` inside a `Basic` token or a base64 `apiKey` (on-prem WatsonX), the password on its own, and cookie values;
-- values of secret-like environment variables, from your environment or a model's `env`: `*API_KEY*`, `*SECRET*`, `*TOKEN*`, `*PASSWORD*` and the other names [shell commands don't get](/cli/headless-mode#secrets-and-private-addresses).
+- values of the environment variables that [shell commands don't get](/cli/headless-mode#secrets-and-private-addresses) by default, from your environment or a model's `env`. That is a variable whose name looks secret (`*API_KEY*`, `*SECRET*`, `*TOKEN*`, `*PASSWORD*` and the others), or whose value looks like a key or a URL with a password, whatever its name.
 
-Shorter values are left alone, because redacting a value like `a` would hit every word that contains it. Each value is also redacted in its URL-encoded form, the way a key appears in a query string.
+Shorter values in this second list are left alone, because redacting a value like `a` would hit every word that contains it.
+
+Every redacted value, from either list, is also redacted in its URL-encoded form, the way it would appear in a query string.
 
 <Warning>
 
