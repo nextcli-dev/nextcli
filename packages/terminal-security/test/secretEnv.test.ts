@@ -176,15 +176,16 @@ describe.skipIf(process.platform !== "win32")("powershellUnsetPrelude", () => {
 });
 
 describe("secureShellCommand", () => {
-  it("runs the prelude in a login shell before the command", () => {
+  it("runs the prelude in a login shell, then returns to cwd", () => {
     const { shell, args } = secureShellCommand("ls", ["GH_TOKEN"], {
+      cwd: "/work/it's",
       platform: "linux",
       shell: "/bin/zsh",
     });
     expect(shell).toBe("/bin/zsh");
     expect(args.slice(0, 2)).toEqual(["-l", "-c"]);
     expect(args[2]).toBe(
-      `${posixUnsetPrelude(["GH_TOKEN"])}\nunset CDPATH\nls`,
+      `${posixUnsetPrelude(["GH_TOKEN"])}\nunset CDPATH\ncd -- '/work/it'\\''s' || exit 1\nls`,
     );
   });
 
@@ -201,6 +202,7 @@ describe("secureShellCommand", () => {
         `export CDPATH=${home}\n`,
       );
       const { args } = secureShellCommand("cd sub && pwd", [], {
+        cwd: workspace,
         platform: "linux",
         shell: "/bin/bash",
       });
@@ -212,19 +214,49 @@ describe("secureShellCommand", () => {
     },
   );
 
+  // A profile that changes folder would run `cd sub` from there
+  describe.each(
+    [
+      ["bash", ".bash_profile"],
+      ["zsh", ".zprofile"],
+    ].filter(([shell]) => posixShells.includes(shell)),
+  )("in %s", (shell, profile) => {
+    it("starts the command in cwd after a profile that changes folder", () => {
+      const home = fs.mkdtempSync(path.join(tmpDir, `${shell}-home-`));
+      const workspace = path.join(fs.realpathSync(tmpDir), `${shell} it's`);
+      fs.mkdirSync(path.join(workspace, "sub"), { recursive: true });
+      fs.mkdirSync(path.join(home, "sub"));
+      fs.writeFileSync(path.join(home, profile), `cd "$HOME"\n`);
+      const { args } = secureShellCommand("cd sub && pwd", [], {
+        cwd: workspace,
+        platform: "linux",
+        shell: `/bin/${shell}`,
+      });
+      const result = spawnSync(shell, args, {
+        cwd: workspace,
+        env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: home },
+      });
+      expect(result.stdout.toString().trim()).toBe(path.join(workspace, "sub"));
+    });
+  });
+
   it("uses a POSIX shell when $SHELL isn't one", () => {
     const { shell } = secureShellCommand("ls", [], {
+      cwd: "/",
       platform: "darwin",
       shell: "/opt/homebrew/bin/fish",
     });
     expect(["/bin/bash", "/bin/sh"]).toContain(shell);
   });
 
-  it("puts the PowerShell prelude before the command on Windows", () => {
+  it("puts the prelude and the folder before the command on Windows", () => {
     const { shell, args } = secureShellCommand("dir", [], {
+      cwd: "C:\\Users\\Bob’s 'x'",
       platform: "win32",
     });
     expect(shell).toBe("powershell.exe");
-    expect(args.at(-1)).toBe(`${powershellUnsetPrelude()}; dir`);
+    expect(args.at(-1)).toBe(
+      `${powershellUnsetPrelude()}; Set-Location -LiteralPath 'C:\\Users\\Bob’’s ''x''' -ErrorAction Stop; dir`,
+    );
   });
 });

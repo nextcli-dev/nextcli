@@ -177,7 +177,7 @@ export const runTerminalCommandImpl: ToolImpl = async (args, extras) => {
           }
 
           // Use spawn with color environment
-          const { shell, args } = secureShellCommand(command, passEnv);
+          const { shell, args } = secureShellCommand(command, passEnv, { cwd });
           const childProc = childProcess.spawn(shell, args, {
             cwd,
             env: getColorEnv(passEnv), // Add enhanced environment for colors
@@ -410,7 +410,7 @@ export const runTerminalCommandImpl: ToolImpl = async (args, extras) => {
         try {
           // Use spawn approach for consistency with streaming version
           const { shell: nonStreamingShell, args: nonStreamingArgs } =
-            secureShellCommand(command, passEnv);
+            secureShellCommand(command, passEnv, { cwd });
           const output = await new Promise<{ stdout: string; stderr: string }>(
             (resolve, reject) => {
               let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -538,7 +538,7 @@ export const runTerminalCommandImpl: ToolImpl = async (args, extras) => {
         try {
           // Use spawn with color environment
           const { shell: detachedShell, args: detachedArgs } =
-            secureShellCommand(command, passEnv);
+            secureShellCommand(command, passEnv, { cwd });
           const childProc = childProcess.spawn(detachedShell, detachedArgs, {
             cwd,
             env: getColorEnv(passEnv), // Add color environment
