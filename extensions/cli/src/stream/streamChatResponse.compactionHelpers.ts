@@ -42,6 +42,8 @@ const NEXT_AFTER_SUMMARY: ChatHistoryItem[] = [
 /**
  * Makes a compacted history the conversation: writes it to the history
  * service when there is one, then adds the user turn the next call answers.
+ * The notices the compaction added to the service (starting, done) follow
+ * the summary; requests leave them out.
  */
 function commitCompacted(compacted: ChatHistoryItem[]): ChatHistoryItem[] {
   const chatHistorySvc = services.chatHistory;
@@ -50,7 +52,12 @@ function commitCompacted(compacted: ChatHistoryItem[]): ChatHistoryItem[] {
     typeof chatHistorySvc?.isReady === "function" &&
     chatHistorySvc.isReady()
   ) {
-    chatHistorySvc.setHistory(compacted);
+    const current = chatHistorySvc.getHistory();
+    let noticesStart = current.length;
+    while (current[noticesStart - 1]?.message.role === "system") {
+      noticesStart--;
+    }
+    chatHistorySvc.setHistory([...compacted, ...current.slice(noticesStart)]);
     base = chatHistorySvc.getHistory();
   }
   return resumeAfterCompaction(base);
