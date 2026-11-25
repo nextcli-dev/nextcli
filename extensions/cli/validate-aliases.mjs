@@ -1,5 +1,5 @@
-#!/usr/bin/env node
-
+// Run with node (package.json build:validate). No hashbang: with CRLF line
+// endings (a Windows checkout) vitest can't strip it when a test imports this.
 import { existsSync, readFileSync } from "fs";
 import { dirname, resolve } from "path";
 import { fileURLToPath } from "url";
