@@ -1106,7 +1106,10 @@ export abstract class BaseLLM implements ILLM {
   ) {
     let completion = "";
     for await (const message of this.streamChat(messages, signal, options)) {
-      completion += renderChatMessage(message);
+      // The answer only: callers store or parse it (summaries, titles, edits)
+      if (message.role !== "thinking") {
+        completion += renderChatMessage(message);
+      }
     }
     return { role: "assistant" as const, content: completion };
   }
