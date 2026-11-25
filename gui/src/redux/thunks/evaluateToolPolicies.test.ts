@@ -83,7 +83,11 @@ describe("evaluateToolPolicies with trusted fetch hosts", () => {
 });
 
 describe("evaluateToolPolicies with trusted commands", () => {
-  /** A messenger that answers tools/evaluatePolicy the way core does */
+  /**
+   * A messenger that answers tools/evaluatePolicy the way core does in a
+   * local window, where the terminal starts in the workspace (here,
+   * process.cwd())
+   */
   function coreLikeMessenger() {
     const messenger = new MockIdeMessenger();
     messenger.responseHandlers["tools/evaluatePolicy"] = async (data) => ({
@@ -98,6 +102,7 @@ describe("evaluateToolPolicies with trusted commands", () => {
         data.parsedArgs,
         data.trustedCommands ?? [],
         data.basePolicy,
+        process.cwd(),
       ),
     });
     return messenger;
@@ -153,6 +158,15 @@ describe("evaluateToolPolicies with trusted commands", () => {
         rememberRules: ["git commit*"],
       }),
     );
+  });
+
+  it("runs a trusted cd into a workspace folder before other commands", async () => {
+    const { policy } = await evaluate(
+      terminalCall("cd src && git commit -m x"),
+      ["cd*", "git commit*"],
+      ASK_FIRST,
+    );
+    expect(policy).toBe("allowedWithoutPermission");
   });
 
   it("keeps asking for what a trusted rule can't cover", async () => {

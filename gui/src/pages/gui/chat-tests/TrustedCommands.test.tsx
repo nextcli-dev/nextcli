@@ -44,7 +44,8 @@ async function renderChat() {
       }),
     );
   });
-  // Answer the way core.ts does: the evaluator, then the trusted rules
+  // Answer the way core.ts does in a local window: the evaluator, then the
+  // trusted rules, with the terminal starting in the workspace (process.cwd())
   ideMessenger.responseHandlers["tools/evaluatePolicy"] = async (data) => ({
     policy:
       runTerminalCommandTool.evaluateToolCallPolicy?.(
@@ -57,6 +58,7 @@ async function renderChat() {
       data.parsedArgs,
       data.trustedCommands ?? [],
       data.basePolicy,
+      process.cwd(),
     ),
   });
   ideMessenger.responses["tools/call"] = {
