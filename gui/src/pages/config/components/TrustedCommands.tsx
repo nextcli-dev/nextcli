@@ -35,10 +35,10 @@ export function TrustedCommands() {
       <span className="text-description text-2xs">
         Runs these commands without asking: <code>git commit*</code> covers{" "}
         <code>git commit -m x</code>. A line of several commands runs only when
-        every command in it is trusted or safe, and it still asks for redirects
-        outside the workspace, pipes into a shell and broad deletes.{" "}
-        <code>git*</code> trusts every git command,{" "}
-        <code>git push --force</code> included.
+        every command in it is trusted, or on Automatic approved by the checks,
+        and it still asks for a redirect or <code>tee</code> that writes a file,
+        a pipe into a shell and broad deletes. <code>git*</code> trusts every
+        git command, <code>git push --force</code> included.
       </span>
       {rules.length > 0 && (
         <div className="flex flex-wrap gap-1">
