@@ -107,6 +107,18 @@ describe("summarizeTrace", () => {
     expect(summary.calls).toMatchObject({ toolCalls: 2, reads: 2 });
   });
 
+  it("counts requests larger than the window under test", () => {
+    fs.writeFileSync(
+      path.join(dir, "eval-t1-run1.jsonl"),
+      [
+        line("llm.request", { usage: { prompt_tokens: 60_000 } }),
+        line("llm.request", { usage: { prompt_tokens: 74_135 } }),
+      ].join("\n") + "\n",
+    );
+
+    expect(summarizeTrace(dir, "eval-t1", dir, 64_000).overWindow).toBe(1);
+  });
+
   it("skips a request file cut short by a killed run", () => {
     request("eval-t1", 1, ["call_1"]);
     fs.writeFileSync(

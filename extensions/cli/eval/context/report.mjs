@@ -31,6 +31,7 @@ const COLUMNS = [
     0,
   ],
   ["re-reads", (r) => r.rereads, 1],
+  ["over window", (r) => r.overWindow, 1],
 ];
 
 function cell(runs, pick, digits) {

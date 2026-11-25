@@ -161,7 +161,11 @@ export function analyzeToolCalls(traceDir, sessionId, workDir, compactions) {
   };
 }
 
-export function summarizeTrace(traceDir, sessionId, workDir) {
+/**
+ * `window` is the contextLength under test. The provider's own window is
+ * usually larger, so a request over it still succeeds: overWindow counts them.
+ */
+export function summarizeTrace(traceDir, sessionId, workDir, window) {
   const lines = readTrace(traceDir, sessionId);
   const llm = lines.filter((l) => l.name === "llm.request");
   const compactions = lines.filter((l) => l.name === "context.compaction");
@@ -185,6 +189,9 @@ export function summarizeTrace(traceDir, sessionId, workDir) {
     cachedTokens: sum(llm, (l) => usageOf(l.attrs).cached),
     outputTokens: sum(llm, (l) => usageOf(l.attrs).output),
     peakInputTokens: Math.max(0, ...llm.map((l) => usageOf(l.attrs).input)),
+    overWindow: window
+      ? llm.filter((l) => usageOf(l.attrs).input > window).length
+      : null,
     costUsd: sum(llm, (l) => l.attrs.costUsd ?? 0),
     compactions: outcomes("compacted").length,
     compactionsFailed: outcomes("failed").length,

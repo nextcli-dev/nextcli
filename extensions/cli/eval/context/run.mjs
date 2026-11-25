@@ -274,7 +274,6 @@ async function runOne({
       "-p",
       "--format",
       "json",
-      "--auto",
       "--no-snapshots",
       "--config",
       configPath,
@@ -285,7 +284,15 @@ async function runOne({
     const timeoutMs = opts.timeoutMin * 60_000;
 
     // The task run
-    const main = await exec("node", cnArgs([task.prompt(facts)]), {
+    // The tasks edit files and run node and tsc. A headless run refuses
+    // edits and approves only commands it can tell are read-only, unless a
+    // flag allows them. Not --auto: auto mode drops every --allow and
+    // --exclude flag (the probes' excludes too) and still checks Bash strictly
+    const allow = ["Bash", "Write", "Edit", "MultiEdit"].flatMap((tool) => [
+      "--allow",
+      tool,
+    ]);
+    const main = await exec("node", cnArgs([...allow, task.prompt(facts)]), {
       cwd: workDir,
       env,
       timeoutMs,
@@ -325,6 +332,7 @@ async function runOne({
       path.join(runDir, "trace"),
       sessionId,
       workDir,
+      window,
     );
 
     // Recall probes: each one resumes the session as the task left it, and

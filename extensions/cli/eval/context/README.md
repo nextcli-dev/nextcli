@@ -83,6 +83,7 @@ The fake reads task 5's three logs and one of them again, writes a canned summar
 
 ## Limits
 
+- The task run passes `--allow` for Bash, Write, Edit and MultiEdit: the tasks edit files and run `node` and `tsc`, which headless `cn` refuses otherwise. So the model can run any shell command in the generated project, with your user's rights (`cn` still strips secret-like environment variables). Run it where that is acceptable, or in a container.
 - The fixture is small and synthetic. It stresses context by size (about 50K to 75K tokens of reads per task), not by difficulty.
 - The compaction summary request is found by the time window of its `context.compaction` event. A strategy that compacts without a summary request will show compactions but no compaction cost.
 - Cost uses cn's own price table (`priced` in the trace); a model with an estimated price gives an estimated cost.
