@@ -140,29 +140,33 @@ export const StaticChatContent: React.FC<StaticChatContentProps> = ({
   // <Static> prints each item once, so an item goes there only when it can't
   // change: the last one stays live while the turn runs or a tool in it runs.
   // <Static> also prints only past the count it has seen, so the count never
-  // goes down unless the history itself got shorter (compaction, edit, undo,
-  // /clear, Escape dropping the live reply).
+  // goes down unless the history got shorter (edit, undo, /clear, Escape
+  // dropping the live reply) or was replaced (a compaction).
   const committedCount = useRef(0);
   const previousLength = useRef(0);
+  const firstItem = useRef<ChatHistoryItem | undefined>(undefined);
+  const printedLength = useRef(0);
   const total = processedChatHistory.length;
-  const shrank = total < previousLength.current;
-  if (shrank) {
+  // A compaction replaces the history with one that starts with its summary,
+  // shorter or not (a short history with one long tool output gets longer)
+  const replaced =
+    firstItem.current !== undefined &&
+    total > 0 &&
+    !sameItem(processedChatHistory[0], firstItem.current);
+  if (total < previousLength.current || replaced) {
     committedCount.current = 0;
   }
   previousLength.current = total;
+  firstItem.current = processedChatHistory[0];
 
-  // A compaction replaces the printed history with a shorter one that starts
-  // with its summary. Nothing is cleared: the new history prints below the
-  // turns already on screen, after as many empty slots as <Static> printed,
-  // since it only prints past that count. Edit, undo and /clear redraw the
-  // screen themselves (refreshTrigger); a shrink that keeps the first item
-  // (Escape dropping the live reply) has nothing to print again.
-  const firstItem = useRef<ChatHistoryItem | undefined>(undefined);
-  const printedLength = useRef(0);
-  if (shrank && !sameItem(processedChatHistory[0], firstItem.current)) {
+  // Nothing is cleared for a compaction: <Static> prints only past the count
+  // it has seen, so it gets empty slots for what it printed before (the intro
+  // included) and prints the new history below them. Edit, undo and /clear
+  // redraw the screen themselves (refreshTrigger); a shrink that keeps the
+  // first item (Escape dropping the live reply) has nothing to print again.
+  if (replaced) {
     printedSlots.current = printedLength.current;
   }
-  firstItem.current = processedChatHistory[0];
   const slots = printedSlots.current;
   const keepLastLive =
     isTurnRunning || hasUnfinishedTools(processedChatHistory[total - 1]);

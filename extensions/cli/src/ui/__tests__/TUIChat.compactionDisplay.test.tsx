@@ -111,6 +111,78 @@ describe("TUIChat after a compaction", () => {
     );
   });
 
+  it("prints each of two compactions once, below the one before", async () => {
+    const turns = (prefix: string, count: number) =>
+      Array.from({ length: count }, (_, i) =>
+        item(i % 2 ? "assistant" : "user", `${prefix} ${i}`),
+      );
+    const compacted = (n: number, after: ChatHistoryItem[]) => [
+      {
+        ...item("assistant", `summary ${n}`),
+        conversationSummary: `summary ${n}`,
+      },
+      item("system", `compacted ${n}`),
+      ...after,
+    ];
+    setChat({ chatHistory: turns("first", 10) });
+    const rendered = renderInTty(app(), { rows: 40 });
+    unmountApp = rendered.unmount;
+    const { stdout, rerender } = rendered;
+    await vi.waitFor(() => expect(stdout.outputSince(0)).toContain("first 9"));
+
+    // The first compaction, then turns after it, then a second compaction
+    setChat({ chatHistory: compacted(1, turns("second", 8)) });
+    rerender(app());
+    await vi.waitFor(() => expect(stdout.outputSince(0)).toContain("second 7"));
+    setChat({ chatHistory: compacted(2, turns("third", 2)) });
+    rerender(app());
+    await vi.waitFor(() => expect(stdout.outputSince(0)).toContain("third 1"));
+
+    const output = stdout.outputSince(0);
+    for (const text of ["compacted 1", "second 0", "compacted 2", "third 0"]) {
+      expect(output.split(text).length - 1).toBe(1);
+    }
+    expect(output.indexOf("compacted 2")).toBeGreaterThan(
+      output.lastIndexOf("second 7"),
+    );
+    expect(stdout.screenClearsSince(0)).toBe(0);
+  });
+
+  it("prints the whole compacted history when it is longer than before", async () => {
+    // One long tool output: two items, compacted into four
+    setChat({
+      chatHistory: [
+        item("user", "read the log"),
+        item("assistant", "log read"),
+      ],
+    });
+    const rendered = renderInTty(app(), { rows: 40 });
+    unmountApp = rendered.unmount;
+    const { stdout, rerender } = rendered;
+    await vi.waitFor(() => expect(stdout.outputSince(0)).toContain("log read"));
+
+    const mark = stdout.writes.length;
+    setChat({
+      chatHistory: [
+        {
+          ...item("assistant", "the summary"),
+          conversationSummary: "the summary",
+        },
+        item("system", "Approaching context limit"),
+        item("system", "Chat history auto-compacted successfully."),
+        item("user", "Continue from where the summary above leaves off."),
+      ],
+    });
+    rerender(app());
+
+    await vi.waitFor(() =>
+      expect(stdout.outputSince(mark)).toContain("Continue from where"),
+    );
+    expect(stdout.outputSince(mark)).toContain("Approaching context limit");
+    expect(stdout.outputSince(mark)).toContain("auto-compacted successfully");
+    expect(stdout.screenClearsSince(mark)).toBe(0);
+  });
+
   it("drops the live reply on Escape without clearing the screen", async () => {
     setChat({
       chatHistory: [item("user", "question"), item("assistant", "partial")],
