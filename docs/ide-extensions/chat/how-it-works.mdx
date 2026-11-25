@@ -37,6 +37,7 @@ Each code section in the AI response includes action buttons:
 - Use `Cmd/Ctrl + L` to start a new session
 - Clears all previous context for a fresh start
 - Helpful for switching between different tasks
+- Each session also keeps a transcript that only grows, `~/.continue/sessions/<id>.jsonl`, with the full text of every turn. Compacting or deleting messages doesn't remove anything from it. Deleting the session deletes it
 
 ## Compact the Conversation
 

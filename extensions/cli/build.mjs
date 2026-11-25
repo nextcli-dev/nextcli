@@ -94,6 +94,10 @@ try {
         __dirname,
         "../../packages/context/dist/sqlite.js",
       ),
+      "@nextcli/context/archive": resolve(
+        __dirname,
+        "../../packages/context/dist/archive/index.js",
+      ),
       "@nextcli/snapshot": resolve(
         __dirname,
         "../../packages/snapshot/dist/index.js",

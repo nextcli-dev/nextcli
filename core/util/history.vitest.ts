@@ -1,4 +1,5 @@
 import fs from "fs";
+import path from "path";
 
 import { v4 as uuidv4 } from "uuid";
 import { describe, expect, it } from "vitest";
@@ -169,5 +170,91 @@ describe("HistoryManager and model-call prompts", () => {
       expect(loaded.title).toBe("No history");
       expect(loaded.history).toEqual([]);
     });
+  });
+});
+
+describe("HistoryManager and the session transcript", () => {
+  const item = (role: "user" | "assistant", content: string) => ({
+    message: { role, content },
+    contextItems: [],
+  });
+  const session = (sessionId: string, history: Session["history"]): Session =>
+    ({
+      sessionId,
+      title: "Transcript",
+      workspaceDirectory: "/workspace",
+      history,
+    }) as Session;
+  const transcript = (sessionId: string) =>
+    fs.readFileSync(getSessionFilePath(sessionId) + "l", "utf8");
+
+  it("keeps the turns a compaction replaced, while the session file drops them", () => {
+    const sessionId = uuidv4();
+    historyManager.save(
+      session(sessionId, [
+        item("user", "REQUIREMENT: keep the public API"),
+        item("assistant", "ENOENT in loadConfig, fixed"),
+      ] as Session["history"]),
+    );
+    historyManager.save(
+      session(sessionId, [
+        { ...item("assistant", "Summary"), conversationSummary: "Summary" },
+        item("user", "Continue"),
+      ] as Session["history"]),
+    );
+
+    expect(
+      fs.readFileSync(getSessionFilePath(sessionId), "utf8"),
+    ).not.toContain("ENOENT");
+    expect(transcript(sessionId)).toContain("REQUIREMENT: keep the public API");
+    expect(transcript(sessionId)).toContain("ENOENT in loadConfig, fixed");
+    expect(transcript(sessionId)).toContain('"t":"fold"');
+  });
+
+  it("journals a session saved before transcripts existed before compacting it", () => {
+    const sessionId = uuidv4();
+    fs.writeFileSync(
+      getSessionFilePath(sessionId),
+      JSON.stringify(
+        session(sessionId, [
+          item("user", "an early requirement"),
+        ] as Session["history"]),
+      ),
+    );
+
+    historyManager.save(
+      session(sessionId, [
+        { ...item("assistant", "Summary"), conversationSummary: "Summary" },
+      ] as Session["history"]),
+    );
+
+    expect(transcript(sessionId)).toContain("an early requirement");
+  });
+
+  it("deletes the transcript with the session, even when its file is gone", () => {
+    const sessionId = uuidv4();
+    historyManager.save(
+      session(sessionId, [item("user", "hi")] as Session["history"]),
+    );
+    fs.unlinkSync(getSessionFilePath(sessionId));
+
+    expect(() => historyManager.delete(sessionId)).toThrow();
+    expect(fs.existsSync(getSessionFilePath(sessionId) + "l")).toBe(false);
+  });
+
+  it("writes no transcript for an id that isn't a file name", () => {
+    const outside = path.join(
+      path.dirname(getSessionFilePath("x")),
+      "..",
+      "escaped",
+    );
+
+    // /import takes the id from a file
+    historyManager.save(
+      session("../escaped", [item("user", "hi")] as Session["history"]),
+    );
+
+    expect(fs.existsSync(`${outside}.jsonl`)).toBe(false);
+    fs.rmSync(`${outside}.json`, { force: true });
   });
 });
