@@ -25,12 +25,13 @@ export {
   chainCommands,
   commandMatchesAllowRule,
   commandMatchesDenyRule,
+  evaluateTerminalLinePolicy,
   globToRegExp,
   isTrustedTerminalCommand,
-  isValidCommandRule,
   ruleForCommand,
   rulesToRemember,
   trustedCommandRulesToRemember,
   type ChainCommand,
   type ChainOptions,
 } from "./commandChain.js";
+export { isValidCommandRule } from "./commandRule.js";

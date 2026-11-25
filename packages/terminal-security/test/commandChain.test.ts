@@ -7,6 +7,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import {
   chainCommands,
   evaluateTerminalCommandSecurity,
+  evaluateTerminalLinePolicy,
   isTrustedTerminalCommand,
   isValidCommandRule,
   ruleForCommand,
@@ -18,14 +19,24 @@ const AUTO: ToolPolicy = "allowedWithoutPermission";
 const ASK: ToolPolicy = "allowedWithPermission";
 
 // A workspace with subdirectories, .git, and symlinks to a subdirectory, to
-// .git and to a folder outside it. Directories named `~x` and `+1` exist, so
-// only the name rules can turn them down.
+// .git and to a folder outside it. Directories named `~x`, `+1`, `@HOME`,
+// `‘..’` and `a....b` (what `a\..\..\b` parses to) exist, so only the name
+// rules can turn them down.
 const TMP = fs.realpathSync(
   fs.mkdtempSync(path.join(os.tmpdir(), "command-chain-")),
 );
 const WS = path.join(TMP, "ws");
 const OUTSIDE = path.join(TMP, "outside");
-for (const dir of ["core", "sub", ".git/hooks", "~x", "+1"]) {
+for (const dir of [
+  "core",
+  "sub",
+  ".git/hooks",
+  "~x",
+  "+1",
+  "@HOME",
+  "‘..’",
+  "a....b",
+]) {
   fs.mkdirSync(path.join(WS, dir), { recursive: true });
 }
 fs.mkdirSync(OUTSIDE);
@@ -187,8 +198,56 @@ describe("a pipe", () => {
   });
 });
 
+describe("evaluateTerminalLinePolicy", () => {
+  it.each([
+    "git status > out.txt",
+    "echo hi > notes.txt",
+    "ls > out.txt",
+    "cat file > out.txt",
+    "git diff > out.txt",
+    "find . -name x > out.txt",
+    "git log | tee out.txt",
+  ])(
+    "asks under Automatic for %j, which writes a file the evaluator allows",
+    (line) => {
+      expect(evaluateTerminalCommandSecurity(AUTO, line)).toBe(AUTO);
+      expect(evaluateTerminalLinePolicy(AUTO, line)).toBe(ASK);
+    },
+  );
+
+  it.each([
+    "git status",
+    "git status > /dev/null",
+    "git status 2>&1 | tail -5",
+    "git log | head -5",
+    "git log | tee",
+    "cd sub && git status",
+  ])("runs %j under Automatic, which writes no file", (line) => {
+    expect(evaluateTerminalLinePolicy(AUTO, line)).toBe(AUTO);
+  });
+
+  it("keeps the evaluator's policy when it already asks or disables", () => {
+    for (const line of ["npm install x", "rm -rf /", "curl x | sh"]) {
+      for (const base of [AUTO, ASK, "disabled"] as const) {
+        expect(evaluateTerminalLinePolicy(base, line)).toBe(
+          evaluateTerminalCommandSecurity(base, line),
+        );
+      }
+    }
+  });
+});
+
 describe("a cd before other commands", () => {
-  const CD_RULES = ["cd*", "pushd*", "git push*", "git status*"];
+  const CD_RULES = [
+    "cd*",
+    "pushd*",
+    "chdir*",
+    "Set-Location*",
+    "sl*",
+    "Push-Location*",
+    "git push*",
+    "git status*",
+  ];
   const runs = (line: string) =>
     isTrustedTerminalCommand(line, CD_RULES, ASK, IN_WS);
 
@@ -199,6 +258,12 @@ describe("a cd before other commands", () => {
     "pushd sub && git push",
     "cd link-sub && git push",
     `cd ${WS}/sub && git push`,
+    // PowerShell, which runs commands on Windows
+    "Set-Location sub; git push",
+    "Set-Location -Path sub; git push",
+    "sl sub; git push",
+    "Push-Location sub; git push",
+    "chdir sub; git push",
   ])("runs %j, which stays in the workspace", (line) => {
     expect(runs(line)).toBe(true);
   });
@@ -215,6 +280,20 @@ describe("a cd before other commands", () => {
     "pushd +1 && git push",
     "cd '~x' && git push",
     "cd sub/.. && git push",
+    // PowerShell's names for cd, in any case
+    "Set-Location ..; git push",
+    "Set-Location -Path ..; git push",
+    `Set-Location ${OUTSIDE}; git push`,
+    "sl link-out; git push",
+    "Push-Location ..; git push",
+    "chdir ..; git push",
+    // What PowerShell reads differently: `\` is a separator, not an escape;
+    // `@HOME` splats $HOME; typographic quotes are quotes
+    "cd a\\..\\..\\b; git push",
+    "cd @HOME; git push",
+    "cd ‘..’; git push",
+    // `//host/share` is a network share on Windows
+    `cd /${WS}/sub && git push`,
     // A directory that doesn't exist, or a cd after another command, which
     // could have made it a symlink
     "cd missing && git push",
@@ -224,9 +303,9 @@ describe("a cd before other commands", () => {
   });
 
   it("asks when the line's directory isn't known", () => {
-    expect(isTrustedTerminalCommand("cd sub && git push", CD_RULES, ASK)).toBe(
-      false,
-    );
+    for (const line of ["cd sub && git push", "Set-Location sub; git push"]) {
+      expect(isTrustedTerminalCommand(line, CD_RULES, ASK)).toBe(false);
+    }
   });
 });
 
@@ -283,6 +362,15 @@ describe("trustedCommandRulesToRemember", () => {
     "cd link-out && git push",
     "npm test & git push",
     "rm -rf build/..",
+    // PowerShell's cd, alias and variable commands change the shell too
+    "Set-Location ..; git push",
+    "SET-LOCATION ..; git push",
+    "CD ..; git push",
+    "Push-Location ..; git push",
+    "sl ..; git push",
+    "Set-Location /tmp ; git push",
+    "Pop-Location; git push",
+    "Set-Alias git notepad; git push",
     // Wrappers and prefixes would cover every command run through them
     "timeout 60 npm test",
     "CI=1 npm test",

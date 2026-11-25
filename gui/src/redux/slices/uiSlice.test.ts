@@ -1,11 +1,46 @@
 import { RuleWithSource } from "core";
 import { describe, expect, it } from "vitest";
 import reducer, {
+  addTrustedCommands,
   addTrustedFetchHost,
   carryOverLegacyRuleSettings,
   DEFAULT_UI_SLICE,
+  removeTrustedCommand,
   removeTrustedFetchHost,
 } from "./uiSlice";
+
+describe("trusted commands", () => {
+  it("starts empty, so every command the evaluator doesn't approve asks", () => {
+    expect(DEFAULT_UI_SLICE.trustedCommands).toEqual([]);
+  });
+
+  it("stores each rule once", () => {
+    let state = reducer(
+      DEFAULT_UI_SLICE,
+      addTrustedCommands(["git add*", "git commit*"]),
+    );
+    state = reducer(state, addTrustedCommands(["git commit*", "npm test*"]));
+    expect(state.trustedCommands).toEqual([
+      "git add*",
+      "git commit*",
+      "npm test*",
+    ]);
+  });
+
+  it("ignores rules that don't start with a command", () => {
+    const state = reducer(
+      DEFAULT_UI_SLICE,
+      addTrustedCommands(["*", "?it", " git*", "Bash(git*)", "git*"]),
+    );
+    expect(state.trustedCommands).toEqual(["git*"]);
+  });
+
+  it("removes a rule", () => {
+    let state = reducer(DEFAULT_UI_SLICE, addTrustedCommands(["git push*"]));
+    state = reducer(state, removeTrustedCommand("git push*"));
+    expect(state.trustedCommands).toEqual([]);
+  });
+});
 
 describe("trusted fetch hosts", () => {
   it("starts empty, so Read URL asks for every URL", () => {

@@ -345,8 +345,20 @@ export type ToCoreFromIdeOrWebviewProtocol = {
       basePolicy: ToolPolicy;
       parsedArgs: Record<string, unknown>;
       processedArgs?: Record<string, unknown>;
+      /** Rules (`git commit*`) for terminal commands the user trusts */
+      trustedCommands?: string[];
     },
-    { policy: ToolPolicy; displayValue?: string },
+    {
+      policy: ToolPolicy;
+      displayValue?: string;
+      /**
+       * isTrustedTerminalCommand accepts the terminal command: every command
+       * in it is trusted or approved by the evaluator on its own
+       */
+      trusted?: boolean;
+      /** Rules that would let this terminal command run without asking */
+      rememberRules?: string[];
+    },
   ];
   "tools/preprocessArgs": [
     { toolName: string; args: Record<string, unknown> },

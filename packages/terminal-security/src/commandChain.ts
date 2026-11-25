@@ -9,6 +9,7 @@ import {
   evaluateTerminalCommandSecurity,
   isGitInternalPath,
 } from "./evaluateTerminalCommandSecurity.js";
+import { isValidCommandRule } from "./commandRule.js";
 import { runsAnotherCommand, splitCommand } from "./splitCommand.js";
 import { ToolPolicy } from "./types.js";
 
@@ -93,17 +94,6 @@ export function ruleForCommand(words: readonly string[]): string | undefined {
   return prefix ? `${rule}*` : rule;
 }
 
-/**
- * Whether a rule typed into a trusted-command list can be used: it starts
- * with a command name rather than a glob character (`git commit*` and `git*`,
- * not `*` or `?it`), and has no parenthesis, line break or surrounding space
- */
-export function isValidCommandRule(rule: string): boolean {
-  return (
-    rule.trim() === rule && /^[^\s*?]/.test(rule) && !/[()\r\n]/.test(rule)
-  );
-}
-
 /** One command of a plain chain */
 export interface ChainCommand {
   /** The command's words, as splitCommand reads them */
@@ -112,7 +102,11 @@ export interface ChainCommand {
   text: string;
 }
 
-/** Commands that change the shell for the commands after them */
+/**
+ * Commands that change the shell for the commands after them, in lower case.
+ * Windows runs commands in PowerShell (secureShellCommand), which ignores
+ * case and has its own names for the same.
+ */
 const SHELL_STATE_COMMANDS = new Set([
   "export",
   "declare",
@@ -136,6 +130,29 @@ const SHELL_STATE_COMMANDS = new Set([
   "read",
   "mapfile",
   "readarray",
+  "pop-location",
+  "set-alias",
+  "sal",
+  "new-alias",
+  "nal",
+  "set-variable",
+  "sv",
+  "new-variable",
+  "nv",
+  "set-item",
+  "si",
+  "import-module",
+  "ipmo",
+]);
+
+/** `cd`, `pushd`, zsh's `chdir` and PowerShell's names for them */
+const DIRECTORY_COMMANDS = new Set([
+  "cd",
+  "pushd",
+  "chdir",
+  "set-location",
+  "sl",
+  "push-location",
 ]);
 
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
@@ -144,18 +161,21 @@ const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
  * Whether `cd dir` or `pushd dir` names an existing path inside `cwd` and
  * outside `.git` (a file makes `cd` fail, which leaves the shell in `cwd`),
  * read the way the shell will: symlinks followed, and a relative name taken
- * from `cwd` (the shell runs without CDPATH, see secureShellCommand). A name
- * the shell would expand (`~`, `$`, a glob or a
- * brace), a stack entry (`-`, `+1`) and `..` (which `cd` reads before
- * symlinks, and `cd -P` after) don't qualify.
+ * from `cwd` (the shell starts there without CDPATH, see
+ * secureShellCommand). Only a name of letters, digits, `_`, `.`, `-`, spaces
+ * and `/` that starts with none of `-`, a space or `//` qualifies: bash or
+ * PowerShell reads anything else as more than a name (`~`, `$`, a glob, a
+ * brace, the stack entries `-` and `+1`, PowerShell's `@HOME` splat and
+ * typographic quotes), and `//host/share` is a network share on Windows,
+ * which resolving it here would connect to. `..` doesn't either: `cd` reads
+ * it before symlinks, and `cd -P` after.
  */
 function entersSubdirectory(args: readonly string[], cwd: string): boolean {
   const operands = args.filter((word) => word === "-" || !word.startsWith("-"));
   const dir = operands[0];
   if (
     operands.length !== 1 ||
-    dir === "" ||
-    /^[-+~]|[$*?[{]/.test(dir) ||
+    !/^(?!\/\/)[\p{L}\p{N}_./][\p{L}\p{N}_. /-]*$/u.test(dir) ||
     dir.split(/[\\/]/).includes("..")
   ) {
     return false;
@@ -176,10 +196,11 @@ function entersSubdirectory(args: readonly string[], cwd: string): boolean {
 
 /**
  * Whether a command changes what the commands after it do: an assignment on
- * its own, `export`, `source`, `alias`..., or a `cd` or `pushd` other than
- * into a subdirectory at the start of the line (`cd .. && git push` pushes
- * another repository). Later in the line, an earlier command could have made
- * the directory a symlink. Without `cwd`, every `cd` counts.
+ * its own, `export`, `source`, `alias`, `Set-Alias`..., or a `cd`, `pushd` or
+ * `Set-Location` other than into a subdirectory at the start of the line
+ * (`cd .. && git push` pushes another repository). Later in the line, an
+ * earlier command could have made the directory a symlink. Without `cwd`,
+ * every `cd` counts.
  */
 function changesShellState(
   words: readonly string[],
@@ -189,11 +210,11 @@ function changesShellState(
   if (words.every((word) => ASSIGNMENT.test(word))) {
     return true;
   }
-  const name = normalizeCommandName(words[0]);
+  const name = normalizeCommandName(words[0]).toLowerCase();
   if (SHELL_STATE_COMMANDS.has(name)) {
     return true;
   }
-  if (name === "cd" || name === "pushd") {
+  if (DIRECTORY_COMMANDS.has(name)) {
     return index > 0 || !cwd || !entersSubdirectory(words.slice(1), cwd);
   }
   return false;
@@ -231,11 +252,12 @@ export function chainCommands(
   if (split.opaque || split.nested || split.commands.length === 0) {
     return undefined;
   }
+  // splitCommand reads `\` as bash does, an escape, and PowerShell keeps it
+  // as a folder separator (`cd a\..\..\b`), so a `cd` can't be read then
+  const cwd = line.includes("\\") ? undefined : options?.cwd;
   if (
     !split.single &&
-    split.commands.some((words, index) =>
-      changesShellState(words, index, options?.cwd),
-    )
+    split.commands.some((words, index) => changesShellState(words, index, cwd))
   ) {
     return undefined;
   }
@@ -244,8 +266,9 @@ export function chainCommands(
 
 export interface ChainOptions {
   /**
-   * The directory the line runs in. With it, a line may start with a `cd`
-   * or `pushd` into one of its subdirectories (`cd sub && npm test`).
+   * The directory the line runs in. With it, a line may start with a `cd`,
+   * `pushd` or `Set-Location` into one of its subdirectories
+   * (`cd sub && npm test`).
    */
   cwd?: string;
 }
@@ -333,6 +356,25 @@ export function isTrustedTerminalCommand(
       options,
     )
   );
+}
+
+/**
+ * The extension's policy for a terminal line: the evaluator's, except that a
+ * line it would run without asking asks when the line fails the check
+ * isTrustedTerminalCommand holds a chain to (evaluateLineStructure). That
+ * check catches a redirect or a pipe into `tee` that writes a file:
+ * `git status > notes.txt` follows a symlink the line can't show.
+ */
+export function evaluateTerminalLinePolicy(
+  basePolicy: ToolPolicy,
+  line: string | null | undefined,
+): ToolPolicy {
+  const policy = evaluateTerminalCommandSecurity(basePolicy, line);
+  return policy === "allowedWithoutPermission" &&
+    typeof line === "string" &&
+    evaluateLineStructure(line) !== "allowedWithoutPermission"
+    ? "allowedWithPermission"
+    : policy;
 }
 
 /**

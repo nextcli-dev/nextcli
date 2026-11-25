@@ -19,6 +19,7 @@ import {
 import { useFontSize } from "../../../components/ui/font";
 import { useAppSelector } from "../../../redux/hooks";
 import { addTool, setToolPolicy } from "../../../redux/slices/uiSlice";
+import { TrustedCommands } from "./TrustedCommands";
 import { TrustedFetchHosts } from "./TrustedFetchHosts";
 
 interface ToolPolicyItemProps {
@@ -173,6 +174,8 @@ export function ToolPolicyItem(props: ToolPolicyItemProps) {
       </div>
       {props.tool.function.name === BuiltInToolNames.FetchUrlContent &&
         policy === "allowedWithPermission" && <TrustedFetchHosts />}
+      {props.tool.function.name === BuiltInToolNames.RunTerminalCommand &&
+        policy !== "disabled" && <TrustedCommands />}
       <div
         className={`flex flex-col overflow-hidden ${isExpanded ? "h-min" : "h-0 opacity-0"} gap-x-1 gap-y-2 pl-2 transition-all`}
       >

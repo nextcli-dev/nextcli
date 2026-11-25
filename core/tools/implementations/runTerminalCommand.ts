@@ -48,6 +48,7 @@ function getDecodedOutput(data: Buffer): string {
 
 import { fileURLToPath } from "node:url";
 import { ToolImpl } from ".";
+import { IDE } from "../..";
 import {
   isProcessBackgrounded,
   markProcessAsRunning,
@@ -119,6 +120,21 @@ const getColorEnv = (passEnv: string[]) => ({
 // integrated terminal and executes in the correct remote environment.
 const LOCAL_ONLY = ["", "local"];
 
+/**
+ * The folder a command starts in when this tool runs it here, through
+ * secureShellCommand. Undefined in a remote window, where VS Code's
+ * integrated terminal picks the folder and the shell. The trusted-command
+ * check reads a leading `cd` from this folder (terminalAccess.ts).
+ */
+export async function localTerminalDirectory(
+  ide: IDE,
+): Promise<string | undefined> {
+  const { remoteName } = await ide.getIdeInfo();
+  return LOCAL_ONLY.includes(remoteName)
+    ? resolveWorkingDirectory(await ide.getWorkspaceDirs())
+    : undefined;
+}
+
 export const runTerminalCommandImpl: ToolImpl = async (args, extras) => {
   const command = getStringArg(args, "command");
   // Default to waiting for completion if not specified
@@ -161,7 +177,7 @@ export const runTerminalCommandImpl: ToolImpl = async (args, extras) => {
           }
 
           // Use spawn with color environment
-          const { shell, args } = secureShellCommand(command, passEnv);
+          const { shell, args } = secureShellCommand(command, passEnv, { cwd });
           const childProc = childProcess.spawn(shell, args, {
             cwd,
             env: getColorEnv(passEnv), // Add enhanced environment for colors
@@ -394,7 +410,7 @@ export const runTerminalCommandImpl: ToolImpl = async (args, extras) => {
         try {
           // Use spawn approach for consistency with streaming version
           const { shell: nonStreamingShell, args: nonStreamingArgs } =
-            secureShellCommand(command, passEnv);
+            secureShellCommand(command, passEnv, { cwd });
           const output = await new Promise<{ stdout: string; stderr: string }>(
             (resolve, reject) => {
               let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -522,7 +538,7 @@ export const runTerminalCommandImpl: ToolImpl = async (args, extras) => {
         try {
           // Use spawn with color environment
           const { shell: detachedShell, args: detachedArgs } =
-            secureShellCommand(command, passEnv);
+            secureShellCommand(command, passEnv, { cwd });
           const childProc = childProcess.spawn(detachedShell, detachedArgs, {
             cwd,
             env: getColorEnv(passEnv), // Add color environment

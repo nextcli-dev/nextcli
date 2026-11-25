@@ -68,9 +68,14 @@ function getBashMaxLines(): number {
   );
 }
 
-/** A login shell (PowerShell on Windows) that removes secrets the profile sets */
+/**
+ * A login shell (PowerShell on Windows) that removes secrets the profile sets
+ * and starts the command in the working directory, where it is spawned
+ */
 function getShellCommand(command: string): { shell: string; args: string[] } {
-  return secureShellCommand(command, getRunSafetyOptions().passEnv);
+  return secureShellCommand(command, getRunSafetyOptions().passEnv, {
+    cwd: process.cwd(),
+  });
 }
 
 export function runCommandInBackground(command: string): {

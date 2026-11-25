@@ -30,17 +30,24 @@ function posixShell(userShell: string | undefined): string {
  * so the profile sets up PATH, and PowerShell on Windows. The profile can
  * export secret-like variables that the caller already removed from the
  * environment, so a prelude removes them inside the shell before the command
- * runs. `keep` names variables to leave alone (--pass-env). The profile's
- * CDPATH is unset too: it would send `cd sub` to another project's `sub`,
- * and a chain starting with `cd` is approved for the workspace's own
- * (commandChain.ts).
+ * runs. `keep` names variables to leave alone (--pass-env). A chain starting
+ * with `cd` is approved for a subdirectory of `cwd` (commandChain.ts), so the
+ * command also starts in `cwd`, the folder the process is spawned in, even if
+ * the profile changed folder, and without the profile's CDPATH, which would
+ * send `cd sub` to another project's `sub`.
  */
 export function secureShellCommand(
   command: string,
-  keep: readonly string[] = [],
-  { platform = process.platform, shell = process.env.SHELL } = {},
+  keep: readonly string[],
+  {
+    cwd,
+    platform = process.platform,
+    shell = process.env.SHELL,
+  }: { cwd: string; platform?: NodeJS.Platform; shell?: string },
 ): { shell: string; args: string[] } {
   if (platform === "win32") {
+    // PowerShell also reads typographic single quotes as quotes
+    const folder = `'${cwd.replace(/['‘’‚‛]/g, "$&$&")}'`;
     return {
       shell: "powershell.exe",
       args: [
@@ -48,12 +55,17 @@ export function secureShellCommand(
         "-ExecutionPolicy",
         "Bypass",
         "-Command",
-        `${powershellUnsetPrelude(keep)}; ${command}`,
+        `${powershellUnsetPrelude(keep)}; Set-Location -LiteralPath ${folder} -ErrorAction Stop; ${command}`,
       ],
     };
   }
+  const folder = `'${cwd.replace(/'/g, "'\\''")}'`;
   return {
     shell: posixShell(shell),
-    args: ["-l", "-c", `${posixUnsetPrelude(keep)}\nunset CDPATH\n${command}`],
+    args: [
+      "-l",
+      "-c",
+      `${posixUnsetPrelude(keep)}\nunset CDPATH\ncd -- ${folder} || exit 1\n${command}`,
+    ],
   };
 }

@@ -4,7 +4,11 @@ import { BuiltInToolNames } from "core/tools/builtIn";
 import { isTrustedFetchUrl } from "core/tools/policies/fetchAccess";
 import { IIdeMessenger } from "../../context/IdeMessenger";
 import { isEditTool } from "../../util/toolCallState";
-import { errorToolCall, updateToolCallOutput } from "../slices/sessionSlice";
+import {
+  errorToolCall,
+  setToolCallRememberRules,
+  updateToolCallOutput,
+} from "../slices/sessionSlice";
 import { DEFAULT_TOOL_SETTING, ToolPolicies } from "../slices/uiSlice";
 import { AppThunkDispatch } from "../store";
 
@@ -12,6 +16,13 @@ interface EvaluatedPolicy {
   policy: ToolPolicy;
   displayValue?: string;
   toolCallState: ToolCallState;
+  /**
+   * A terminal command whose every command is trusted or approved by the
+   * evaluator on its own (isTrustedTerminalCommand in core)
+   */
+  trusted?: boolean;
+  /** Rules that would let this terminal command run without asking */
+  rememberRules?: string[];
 }
 
 /**
@@ -23,6 +34,7 @@ async function evaluateToolPolicy(
   activeTools: Tool[],
   toolCallState: ToolCallState,
   toolPolicies: ToolPolicies,
+  trustedCommands: readonly string[],
 ): Promise<EvaluatedPolicy> {
   // allow edit tool calls without permission
   if (isEditTool(toolCallState.toolCall.function.name)) {
@@ -42,6 +54,7 @@ async function evaluateToolPolicy(
     basePolicy,
     parsedArgs: toolCallState.parsedArgs,
     processedArgs: toolCallState.processedArgs,
+    trustedCommands: [...trustedCommands],
   });
 
   // Evaluate the policy dynamically
@@ -51,7 +64,8 @@ async function evaluateToolPolicy(
   }
 
   const dynamicPolicy = result.content.policy;
-  const displayValue = result.content.displayValue;
+  const { displayValue, trusted, rememberRules } = result.content;
+  const trust = { trusted, rememberRules };
 
   // Ensure dynamic policy cannot be more lenient than base policy
   // Policy hierarchy (most restrictive to least): disabled > allowedWithPermission > allowedWithoutPermission
@@ -62,10 +76,32 @@ async function evaluateToolPolicy(
     basePolicy === "allowedWithPermission" &&
     dynamicPolicy === "allowedWithoutPermission"
   ) {
-    return { policy: "allowedWithPermission", displayValue, toolCallState }; // Cannot make more lenient
+    return {
+      policy: "allowedWithPermission",
+      displayValue,
+      toolCallState,
+      ...trust,
+    }; // Cannot make more lenient
   }
 
-  return { policy: dynamicPolicy, displayValue, toolCallState };
+  return { policy: dynamicPolicy, displayValue, toolCallState, ...trust };
+}
+
+/**
+ * A Run Terminal Command call that would ask runs without asking when core
+ * found every command in it trusted (see terminalCommandTrust). Nothing else
+ * changes: an excluded tool and a disabled command stay as they are.
+ */
+function trustTerminalCommand(evaluated: EvaluatedPolicy): EvaluatedPolicy {
+  if (
+    evaluated.policy === "allowedWithPermission" &&
+    evaluated.trusted === true &&
+    evaluated.toolCallState.toolCall.function.name ===
+      BuiltInToolNames.RunTerminalCommand
+  ) {
+    return { ...evaluated, policy: "allowedWithoutPermission" };
+  }
+  return evaluated;
 }
 
 /**
@@ -102,21 +138,37 @@ export async function evaluateToolPolicies(
   generatedToolCalls: ToolCallState[],
   toolPolicies: ToolPolicies,
   trustedFetchHosts: readonly string[] = [],
+  trustedCommands: readonly string[] = [],
 ): Promise<EvaluatedPolicy[]> {
   // Check if ALL tool calls are auto-approved using dynamic evaluation
   const policyResults = await Promise.all(
     generatedToolCalls.map(async (toolCallState) =>
-      trustFetchUrl(
-        await evaluateToolPolicy(
-          ideMessenger,
-          activeTools,
-          toolCallState,
-          toolPolicies,
+      trustTerminalCommand(
+        trustFetchUrl(
+          await evaluateToolPolicy(
+            ideMessenger,
+            activeTools,
+            toolCallState,
+            toolPolicies,
+            trustedCommands,
+          ),
+          trustedFetchHosts,
         ),
-        trustedFetchHosts,
       ),
     ),
   );
+
+  // A call that still asks offers "Allow & don't ask again" with these rules
+  for (const { policy, rememberRules, toolCallState } of policyResults) {
+    if (policy === "allowedWithPermission" && rememberRules?.length) {
+      dispatch(
+        setToolCallRememberRules({
+          toolCallId: toolCallState.toolCallId,
+          rememberRules,
+        }),
+      );
+    }
+  }
 
   const disabledResults = policyResults.filter(
     ({ policy }) => policy === "disabled",

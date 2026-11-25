@@ -524,6 +524,8 @@ interface ToolCallState {
   output?: ContextItem[];
   tool?: Tool;
   mcpUiState?: McpUiState;
+  /** Rules that would let this terminal command run without asking next time */
+  rememberRules?: string[];
 }
 
 /**

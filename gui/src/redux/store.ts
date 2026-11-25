@@ -93,6 +93,7 @@ const saveSubsetFilters = [
     "ruleSettings",
     "reasoningSettings",
     "trustedFetchHosts",
+    "trustedCommands",
   ]),
   // Saved on the host (shared with the CLI), so never persisted here
   createFilter("modelSettings", []),
