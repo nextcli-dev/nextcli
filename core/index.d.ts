@@ -1181,6 +1181,8 @@ export interface ToolExtras {
   fetch: FetchFunction;
   tool: Tool;
   toolCallId?: string;
+  /** The session the call belongs to, when the client sends it */
+  sessionId?: string;
   onPartialOutput?: (params: {
     toolCallId: string;
     contextItems: ContextItem[];

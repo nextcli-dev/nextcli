@@ -43,6 +43,8 @@ In Plan mode, only these read-only tools are available:
 - **View subdirectory** (`view_subdirectory`)
 - **Codebase tool** (`codebase_tool`)
 - **Ask question** (`ask_question`)
+- **Search history** (`search_history`)
+- **Read history** (`read_history`)
 
 ### What Tools Are Available in Agent Mode (All Tools)
 
@@ -53,6 +55,15 @@ In Agent mode, all tools are available including the read-only tools above plus:
 - **Run terminal command** (`run_terminal_command`): Run commands from the workspace root. Commands run without secret-like environment variables (API keys, tokens, passwords), including ones your shell profile exports. List the ones a command needs in the `continue.terminalPassEnv` setting. Only your user settings count: a workspace's `.vscode/settings.json` can't change it.
 - **Create Rule Block** (`create_rule_block`): Create a new rule block in `.continue/rules`
 - All other write/execute tools for modifying the codebase
+
+### Recalling Earlier Conversation
+
+When a long conversation is compacted, the model keeps only a summary of the earlier turns. `search_history` and `read_history` let it look the details up again.
+
+- `search_history` searches the full transcript of the conversation, including turns that were compacted out of the context. It searches this conversation by default, or earlier conversations in this workspace with `scope: "workspace"`. Undone turns are not searched.
+- `read_history` reads the items it found verbatim, by position.
+- Searching all your conversations (`scope: "all"`), and reading a conversation other than the current one, ask for your approval each time.
+- Secrets that look like API keys or tokens are redacted from everything these tools return.
 
 ### Questions From the Agent
 

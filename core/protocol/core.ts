@@ -331,7 +331,11 @@ export type ToCoreFromIdeOrWebviewProtocol = {
 
   "auth/getAuthUrl": [{ useOnboarding: boolean }, { url: string }];
   "tools/call": [
-    { toolCall: ToolCall },
+    {
+      toolCall: ToolCall;
+      /** The open session, for tools that read its history */
+      sessionId?: string;
+    },
     {
       contextItems: ContextItem[];
       errorMessage?: string;
