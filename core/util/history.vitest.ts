@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { Session } from "..";
 import historyManager from "./history";
-import { getSessionFilePath } from "./paths";
+import { getSessionFilePath, getSessionJournalPath } from "./paths";
 
 const PROMPT_TEXT = "the whole rendered conversation sent to the model";
 
@@ -186,7 +186,7 @@ describe("HistoryManager and the session transcript", () => {
       history,
     }) as Session;
   const transcript = (sessionId: string) =>
-    fs.readFileSync(getSessionFilePath(sessionId) + "l", "utf8");
+    fs.readFileSync(getSessionJournalPath(sessionId)!, "utf8");
 
   it("keeps the turns a compaction replaced, while the session file drops them", () => {
     const sessionId = uuidv4();
@@ -236,7 +236,7 @@ describe("HistoryManager and the session transcript", () => {
     "writes the turns a failed transcript write missed on the next save",
     () => {
       const sessionId = uuidv4();
-      const journal = getSessionFilePath(sessionId) + "l";
+      const journal = getSessionJournalPath(sessionId)!;
       const turns = [
         item("user", "hi"),
         item("assistant", "the turn the failed write missed"),
@@ -281,7 +281,7 @@ describe("HistoryManager and the session transcript", () => {
     fs.unlinkSync(getSessionFilePath(sessionId));
 
     expect(() => historyManager.delete(sessionId)).toThrow();
-    expect(fs.existsSync(getSessionFilePath(sessionId) + "l")).toBe(false);
+    expect(fs.existsSync(getSessionJournalPath(sessionId)!)).toBe(false);
   });
 
   it("writes no transcript for an id that isn't a file name", () => {

@@ -19,7 +19,7 @@ interface JournalState {
 
 const states = new Map<string, JournalState>();
 
-/** Complete lines of a journal chunk, with what's left of a partial one */
+/** The complete lines of a journal chunk; a trailing partial line is dropped */
 function parseLines(text: string): JournalLine[] {
   const end = text.lastIndexOf("\n");
   const lines: JournalLine[] = [];
@@ -77,10 +77,6 @@ function caughtUp(path: string, size: number): JournalState {
     states.set(path, state);
   }
   return state;
-}
-
-function endsWithNewline(path: string, size: number): boolean {
-  return size === 0 || readFrom(path, size - 1, size) === "\n";
 }
 
 function backfill(path: string): JournalSourceItem[] {
@@ -186,7 +182,9 @@ function append(
   if (!lines.length) {
     return;
   }
-  const prefix = endsWithNewline(path, size) ? "" : "\n";
+  // After a line torn by a crash, start on a new line
+  const prefix =
+    size > 0 && readFrom(path, size - 1, size) !== "\n" ? "\n" : "";
   const text = prefix + lines.map((l) => JSON.stringify(l)).join("\n") + "\n";
   fs.appendFileSync(path, text);
   state.size = size + Buffer.byteLength(text);

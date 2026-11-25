@@ -2,16 +2,24 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
+
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { forgetJournal, syncJournal } from "../src/archive/index.js";
 import {
-  hashing,
   itemHash,
   JournalLine,
   JournalReplay,
   JournalSourceItem,
 } from "../src/archive/journal.js";
+
+// Counts hashing, to check unchanged items aren't hashed again
+vi.mock("node:crypto", async (importOriginal) => {
+  const crypto = await importOriginal<typeof import("node:crypto")>();
+  return { ...crypto, createHash: vi.fn(crypto.createHash) };
+});
+const hashes = () => vi.mocked(createHash).mock.calls.length;
 
 let dir: string;
 let journal: string;
@@ -356,14 +364,14 @@ describe("syncJournal", () => {
   it("hashes nothing again when cn saves an unchanged history", () => {
     const turns = [user("a"), reply("b"), toolStep(["Bash", "calling"])];
     syncJournal(journal, turns);
-    const hashed = hashing.count;
+    const hashed = hashes();
     const size = fs.statSync(journal).size;
 
     // A Bash output chunk: the running step changes, nothing settled does
     syncJournal(journal, [...turns.slice(0, 2), toolStep(["Bash", "calling"])]);
     syncJournal(journal, turns);
 
-    expect(hashing.count - hashed).toBe(0);
+    expect(hashes() - hashed).toBe(0);
     expect(fs.statSync(journal).size).toBe(size);
   });
 });

@@ -160,9 +160,6 @@ interface CachedHash {
 // serialized again. Core gets fresh objects over IPC and always misses.
 const hashCache = new WeakMap<object, CachedHash>();
 
-/** Exposed for tests that check unchanged items aren't hashed again */
-export const hashing = { count: 0 };
-
 export function itemHash(item: JournalSourceItem): string {
   const cached = hashCache.get(item.message);
   if (
@@ -173,7 +170,6 @@ export function itemHash(item: JournalSourceItem): string {
   ) {
     return cached.h;
   }
-  hashing.count++;
   const h = digest(JSON.stringify(project(item)));
   hashCache.set(item.message, {
     toolCallStates: item.toolCallStates,
@@ -195,8 +191,9 @@ export function storedItem(item: JournalSourceItem): StoredItem {
 /**
  * How many items of a history are settled. Everything before the last user
  * message is; from it on, items up to the first with a tool call still
- * generating, waiting or running. Decided per turn, not per item: VS Code
- * saves a finished call's tool item while its sibling calls still run.
+ * `generating`, `generated` (awaiting approval) or `calling`. Decided per
+ * turn, not per item: VS Code saves a finished call's tool item while its
+ * sibling calls still run.
  */
 export function settledLength(history: JournalSourceItem[]): number {
   let start = 0;
