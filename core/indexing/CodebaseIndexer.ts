@@ -87,8 +87,9 @@ export class CodebaseIndexer {
 
   // Note that we exclude certain Sqlite errors that we do not want to clear the indexes on,
   // e.g. a `SQLITE_BUSY` error.
-  // Matched against the error message, which core/util/sqlite.ts starts with
-  // the SQLite code (`SQLITE_CORRUPT: ...`), as sqlite3 did.
+  // Matched against the error message, which the node:sqlite wrapper
+  // (@nextcli/context/sqlite) starts with the SQLite code
+  // (`SQLITE_CORRUPT: ...`), as sqlite3 did.
   errorsRegexesToClearIndexesOn = [
     /SQLITE_CONSTRAINT/,
     /SQLITE_ERROR/,

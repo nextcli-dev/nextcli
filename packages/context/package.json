@@ -1,15 +1,32 @@
 {
   "name": "@nextcli/context",
   "version": "1.0.0",
-  "description": "Context-window snapshot shared by the NextCLI VS Code extension and cn: tool-schema token counts and a labelled breakdown",
+  "description": "Context-window snapshot shared by the NextCLI VS Code extension and cn: tool-schema token counts and a labelled breakdown, plus the node:sqlite wrapper (Node only, at @nextcli/context/sqlite)",
   "private": true,
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./sqlite": {
+      "types": "./dist/sqlite.d.ts",
+      "default": "./dist/sqlite.js"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "sqlite": [
+        "dist/sqlite.d.ts"
+      ]
+    }
+  },
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest watch",
-    "build": "tsc",
+    "build": "tsc -p tsconfig.browser.json && tsc",
     "clean": "rm -rf dist"
   },
   "license": "Apache-2.0",
@@ -19,6 +36,7 @@
     "directory": "packages/context"
   },
   "devDependencies": {
+    "@types/node": "^22.15.0",
     "typescript": "^5.5.2",
     "vitest": "^3.2.4"
   }

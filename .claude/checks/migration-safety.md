@@ -2,7 +2,7 @@
 name: Migration Safety
 description: Catch SQLite schema changes that break or lose data in existing user databases
 paths:
-  - "core/util/sqlite.ts"
+  - "packages/context/src/sqlite.ts"
   - "core/indexing/**"
   - "core/autocomplete/util/AutocompleteLruCache.ts"
   - "**/*.sql"

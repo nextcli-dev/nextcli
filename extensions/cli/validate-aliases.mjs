@@ -167,7 +167,12 @@ function validateAliases() {
   // Check for unnecessary aliases (defined but not used)
   const unnecessaryAliases = [];
   for (const alias of definedAliases) {
-    if (!localPackages.has(alias)) {
+    // A subpath of a local package ("@scope/pkg/sub") is needed as well
+    const packageName = alias
+      .split("/")
+      .slice(0, alias.startsWith("@") ? 2 : 1)
+      .join("/");
+    if (!localPackages.has(alias) && !localPackages.has(packageName)) {
       unnecessaryAliases.push(alias);
     }
   }

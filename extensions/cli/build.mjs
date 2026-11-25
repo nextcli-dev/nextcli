@@ -89,6 +89,11 @@ try {
         __dirname,
         "../../packages/context/dist/index.js",
       ),
+      // An alias ignores the package's exports map, so each subpath needs one
+      "@nextcli/context/sqlite": resolve(
+        __dirname,
+        "../../packages/context/dist/sqlite.js",
+      ),
       "@nextcli/snapshot": resolve(
         __dirname,
         "../../packages/snapshot/dist/index.js",
