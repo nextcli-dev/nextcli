@@ -19,7 +19,7 @@ describe("validate-aliases: subpath exports", () => {
   it("requires an alias for each subpath a local package exports", () => {
     // esbuild would send @nextcli/context/sqlite to dist/index.js/sqlite
     const without = build.replace(
-      /"@nextcli\/context\/sqlite": resolve\([^)]*\),\n/,
+      /"@nextcli\/context\/sqlite": resolve\([^)]*\),\r?\n/,
       "",
     );
     expect(without).not.toBe(build);
