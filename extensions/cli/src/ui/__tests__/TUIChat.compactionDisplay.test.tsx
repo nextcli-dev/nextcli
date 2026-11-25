@@ -101,26 +101,46 @@ describe("TUIChat after a compaction", () => {
       after.split("Chat history auto-compacted successfully.").length - 1,
     ).toBe(1);
     expect(after).toContain("Continue from where the summary above");
-    // The turns before the compaction stay in the scrollback
-    expect(after).not.toContain("\u001b[3J");
+    // Nothing is erased: a 2J alone wipes the screen in xterm.js (VS Code,
+    // Cursor) without saving it to the scrollback. The compacted history
+    // prints below the earlier turns, which aren't printed again.
+    expect(stdout.screenClearsSince(mark)).toBe(0);
+    expect(stdout.outputSince(0).split("turn 0").length - 1).toBe(1);
+    expect(stdout.outputSince(0).indexOf("next step")).toBeGreaterThan(
+      stdout.outputSince(0).lastIndexOf("turn 10"),
+    );
   });
 
-  it("leaves an emptied history to the redraw /clear does itself", async () => {
-    setChat({ chatHistory: [item("user", "hello"), item("assistant", "hi")] });
+  it("drops the live reply on Escape without clearing the screen", async () => {
+    setChat({
+      chatHistory: [item("user", "question"), item("assistant", "partial")],
+      isWaitingForResponse: true,
+      responseStartTime: Date.now(),
+    });
     const rendered = renderInTty(app(), { rows: 40 });
     unmountApp = rendered.unmount;
     const { stdout, rerender } = rendered;
-    await vi.waitFor(() => expect(stdout.outputSince(0)).toContain("hi"));
+    await vi.waitFor(() => expect(stdout.outputSince(0)).toContain("partial"));
 
+    // handleInterrupt removes a last assistant message with no tool calls
     const mark = stdout.writes.length;
-    setChat({ chatHistory: [] });
+    setChat({
+      chatHistory: [item("user", "question")],
+      isWaitingForResponse: false,
+    });
     rerender(app());
-    setChat({ chatHistory: [item("user", "after clear")] });
+    setChat({
+      chatHistory: [item("user", "question"), item("user", "next question")],
+    });
     rerender(app());
 
     await vi.waitFor(() =>
-      expect(stdout.outputSince(mark)).toContain("after clear"),
+      expect(stdout.outputSince(mark)).toContain("next question"),
     );
     expect(stdout.screenClearsSince(mark)).toBe(0);
+    // The question before it isn't printed again
+    expect(
+      stdout.outputSince(mark).replace(/next question/g, ""),
+    ).not.toContain("question");
   });
 });

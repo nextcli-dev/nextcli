@@ -16,6 +16,21 @@ const FINISHED_TOOL_STATUSES = new Set<ToolStatus>([
   "canceled",
 ]);
 
+/** The same message, even when the history was rebuilt with new objects */
+function sameItem(
+  a: ChatHistoryItem | undefined,
+  b: ChatHistoryItem | undefined,
+): boolean {
+  return (
+    a === b ||
+    (a !== undefined &&
+      b !== undefined &&
+      a.message.role === b.message.role &&
+      a.conversationSummary === b.conversationSummary &&
+      JSON.stringify(a.message.content) === JSON.stringify(b.message.content))
+  );
+}
+
 /** A tool call in the item hasn't finished, so its state can still change */
 function hasUnfinishedTools(item: ChatHistoryItem | undefined): boolean {
   return !!item?.toolCallStates?.some(
@@ -62,6 +77,8 @@ export const StaticChatContent: React.FC<StaticChatContentProps> = ({
   // State for managing static refresh with key-based remounting
   const [staticKey, setStaticKey] = useState(0);
   const isInitialMount = useRef(true);
+  // <Static> items printed before a compaction replaced the history
+  const printedSlots = useRef(0);
 
   // Refresh function that clears terminal and remounts Static component.
   // A resize or /clear also erases the scrollback (3J), where the old copy
@@ -69,6 +86,8 @@ export const StaticChatContent: React.FC<StaticChatContentProps> = ({
   const refreshStatic = useCallback(
     (keepScrollback = false) => {
       stdout.write("\x1b[2J\x1b[H");
+      // The remounted <Static> prints the whole history again
+      printedSlots.current = 0;
       setStaticKey((prev) => prev + 1);
       if (!keepScrollback) {
         stdout.write("\x1b[3J");
@@ -122,7 +141,7 @@ export const StaticChatContent: React.FC<StaticChatContentProps> = ({
   // change: the last one stays live while the turn runs or a tool in it runs.
   // <Static> also prints only past the count it has seen, so the count never
   // goes down unless the history itself got shorter (compaction, edit, undo,
-  // /clear).
+  // /clear, Escape dropping the live reply).
   const committedCount = useRef(0);
   const previousLength = useRef(0);
   const total = processedChatHistory.length;
@@ -132,15 +151,19 @@ export const StaticChatContent: React.FC<StaticChatContentProps> = ({
   }
   previousLength.current = total;
 
-  // <Static> keeps its own printed count, so a shorter history prints nothing
-  // until it grows past the old length. Remount it to print the new history,
-  // keeping the old copy in the scrollback as Ctrl+L does. An emptied history
-  // (/clear, a reload) has nothing to print and redraws through refreshTrigger.
-  useEffect(() => {
-    if (shrank && total > 0) {
-      refreshStatic(true);
-    }
-  });
+  // A compaction replaces the printed history with a shorter one that starts
+  // with its summary. Nothing is cleared: the new history prints below the
+  // turns already on screen, after as many empty slots as <Static> printed,
+  // since it only prints past that count. Edit, undo and /clear redraw the
+  // screen themselves (refreshTrigger); a shrink that keeps the first item
+  // (Escape dropping the live reply) has nothing to print again.
+  const firstItem = useRef<ChatHistoryItem | undefined>(undefined);
+  const printedLength = useRef(0);
+  if (shrank && !sameItem(processedChatHistory[0], firstItem.current)) {
+    printedSlots.current = printedLength.current;
+  }
+  firstItem.current = processedChatHistory[0];
+  const slots = printedSlots.current;
   const keepLastLive =
     isTurnRunning || hasUnfinishedTools(processedChatHistory[total - 1]);
   const stableCount = Math.max(
@@ -150,9 +173,13 @@ export const StaticChatContent: React.FC<StaticChatContentProps> = ({
   committedCount.current = stableCount;
 
   const { staticItems, pendingItems } = React.useMemo(() => {
-    // Add intro message as first item if it should be shown
-    const staticItems: React.ReactElement[] = [];
-    if (showIntroMessage) {
+    // After a compaction, empty slots for what <Static> already printed (the
+    // intro included); otherwise the intro, if it should be shown
+    const staticItems: React.ReactElement[] = Array.from(
+      { length: slots },
+      (_, i) => <React.Fragment key={`printed-${i}`} />,
+    );
+    if (slots === 0 && showIntroMessage) {
       staticItems.push(
         <IntroMessage
           key="intro"
@@ -190,7 +217,9 @@ export const StaticChatContent: React.FC<StaticChatContentProps> = ({
     processedChatHistory,
     renderMessage,
     stableCount,
+    slots,
   ]);
+  printedLength.current = staticItems.length;
 
   return (
     <Box flexDirection="column">
