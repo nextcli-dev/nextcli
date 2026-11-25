@@ -13,7 +13,6 @@ import {
   shouldAutoCompact,
 } from "../compaction.js";
 import { safeStderr } from "../init.js";
-import { updateSessionHistory } from "../session.js";
 import { formatError } from "../util/formatError.js";
 import { logger } from "../util/logger.js";
 
@@ -201,9 +200,8 @@ export async function handleAutoCompaction(
       abortController,
     });
 
-    // Written only after compactChatHistory returns: it throws, and nothing is
-    // written, if the summary wouldn't fit the next request
-    updateSessionHistory(result.compactedHistory);
+    // Callers write the result through the history service once this
+    // returns; a subagent's compaction must not reach the main session's file
 
     // Handle success notification
     handleCompactionSuccess(result, isHeadless, callbacks);
