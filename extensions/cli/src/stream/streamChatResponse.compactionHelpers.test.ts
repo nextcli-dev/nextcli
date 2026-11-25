@@ -30,6 +30,9 @@ const summary = convertToUnifiedHistory([
 ]);
 
 vi.mock("../compaction.js", () => ({
+  // The request's defaults, when the caller passes none
+  currentSystemMessage: vi.fn(async () => "Current system message"),
+  currentRequestTools: vi.fn(async () => []),
   compactionDoneMessage: vi.fn(() => "Chat history auto-compacted."),
   shouldAutoCompact: vi.fn(({ chatHistory }) => isOverLimit(chatHistory)),
   compactChatHistory: vi.fn(() =>

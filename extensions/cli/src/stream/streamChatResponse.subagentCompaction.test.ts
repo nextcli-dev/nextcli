@@ -21,6 +21,9 @@ const item = (
 
 vi.mock("../compaction.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../compaction.js")>()),
+  // The request's defaults, when the caller passes none
+  currentSystemMessage: vi.fn(async () => "Current system message"),
+  currentRequestTools: vi.fn(async () => []),
   shouldAutoCompact: vi.fn(() => true),
   compactChatHistory: vi.fn(async () => ({
     compactedHistory: [

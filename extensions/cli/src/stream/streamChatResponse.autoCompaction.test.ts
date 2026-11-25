@@ -6,6 +6,9 @@ import { handleAutoCompaction } from "./streamChatResponse.autoCompaction.js";
 
 // Mock dependencies
 vi.mock("../compaction.js", async (importOriginal) => ({
+  // The request's defaults, when the caller passes none
+  currentSystemMessage: vi.fn(async () => "Current system message"),
+  currentRequestTools: vi.fn(async () => []),
   compactionDoneMessage: (
     await importOriginal<typeof import("../compaction.js")>()
   ).compactionDoneMessage,
@@ -89,6 +92,32 @@ describe("handleAutoCompaction", () => {
     vi.clearAllMocks();
   });
 
+  it("counts the system prompt and tools the caller passes, as the agent loop does", async () => {
+    const { shouldAutoCompact, currentSystemMessage, currentRequestTools } =
+      await import("../compaction.js");
+    vi.mocked(shouldAutoCompact).mockReturnValue(false);
+    const tools = [
+      {
+        type: "function" as const,
+        function: { name: "Read", parameters: {} },
+      },
+    ];
+
+    await handleAutoCompaction(mockChatHistory, mockModel, mockLlmApi, {
+      systemMessage: "Loop system message",
+      tools,
+    });
+
+    expect(shouldAutoCompact).toHaveBeenCalledWith({
+      chatHistory: mockChatHistory,
+      model: mockModel,
+      systemMessage: "Loop system message",
+      tools,
+    });
+    expect(currentSystemMessage).not.toHaveBeenCalled();
+    expect(currentRequestTools).not.toHaveBeenCalled();
+  });
+
   it("should return original history when auto-compaction is not needed", async () => {
     const { shouldAutoCompact } = await import("../compaction.js");
     const mockedShouldAutoCompact = shouldAutoCompact as any;
@@ -107,11 +136,13 @@ describe("handleAutoCompaction", () => {
       wasCompacted: false,
     });
 
+    // Called with no system prompt or tools (as before a user message), the
+    // trigger counts the ones the request will carry
     expect(shouldAutoCompact).toHaveBeenCalledWith({
       chatHistory: mockChatHistory,
       model: mockModel,
-      systemMessage: undefined,
-      tools: undefined,
+      systemMessage: "Current system message",
+      tools: [],
     });
   });
 
@@ -155,11 +186,13 @@ describe("handleAutoCompaction", () => {
       },
     );
 
+    // Called with no system prompt or tools (as before a user message), the
+    // trigger counts the ones the request will carry
     expect(shouldAutoCompact).toHaveBeenCalledWith({
       chatHistory: mockChatHistory,
       model: mockModel,
-      systemMessage: undefined,
-      tools: undefined,
+      systemMessage: "Current system message",
+      tools: [],
     });
     expect(getAutoCompactMessage).toHaveBeenCalledWith(mockModel);
     expect(compactChatHistory).toHaveBeenCalledWith(

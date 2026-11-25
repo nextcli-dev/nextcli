@@ -8,6 +8,8 @@ import {
   compactChatHistory,
   type CompactionResult,
   compactionDoneMessage,
+  currentRequestTools,
+  currentSystemMessage,
   getAutoCompactMessage,
   isCompactionAborted,
   shouldAutoCompact,
@@ -159,22 +161,20 @@ export async function handleAutoCompaction(
   const {
     isHeadless = false,
     callbacks,
-    systemMessage: providedSystemMessage,
-    tools,
     abortController,
     followedBy,
   } = options;
 
-  if (
-    !model ||
-    abortController?.signal.aborted ||
-    !shouldAutoCompact({
-      chatHistory,
-      model,
-      systemMessage: providedSystemMessage,
-      tools,
-    })
-  ) {
+  if (!model || abortController?.signal.aborted) {
+    return { chatHistory, compactionIndex: null, wasCompacted: false };
+  }
+  // The trigger counts the request the summary call fills in: the caller's
+  // system prompt and tools, else the current ones. Before a user message
+  // (the TUI's send, headless before its first turn) callers pass neither,
+  // and history alone would come in under the threshold.
+  const systemMessage = options.systemMessage ?? (await currentSystemMessage());
+  const tools = options.tools ?? (await currentRequestTools(model));
+  if (!shouldAutoCompact({ chatHistory, model, systemMessage, tools })) {
     return { chatHistory, compactionIndex: null, wasCompacted: false };
   }
 
@@ -194,10 +194,11 @@ export async function handleAutoCompaction(
             onStreamContent: callbacks?.onContent,
             onStreamComplete: () => {},
           },
-      systemMessage: providedSystemMessage,
+      systemMessage,
       tools,
       followedBy,
       abortController,
+      trigger: "auto",
     });
 
     // Callers write the result through the history service once this
