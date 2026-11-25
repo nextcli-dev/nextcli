@@ -246,7 +246,18 @@ describe("compaction helpers", () => {
       });
       const service = new ChatHistoryService();
       await service.initialize();
-      service.setHistory(longHistory);
+      // A notice from before the compaction, as cn serve adds when a tool
+      // needs permission; it goes with the turns the summary replaces
+      service.setHistory([
+        ...longHistory,
+        {
+          message: {
+            role: "system",
+            content: "WARNING: Tool Read requires permission",
+          },
+          contextItems: [],
+        },
+      ]);
       historyService.current = service;
       // The TUI and cn serve show a notice by adding it to the service
       const result = await compact(service.getHistory(), {
@@ -264,7 +275,7 @@ describe("compaction helpers", () => {
       return { result, shown };
     }
 
-    it("keeps the notices it showed after the summary", async () => {
+    it("keeps only the notices it showed after the summary", async () => {
       const { result, shown } = await compactInService(false);
 
       expect(shown).toEqual([

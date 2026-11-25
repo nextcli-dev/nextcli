@@ -39,28 +39,42 @@ const NEXT_AFTER_SUMMARY: ChatHistoryItem[] = [
   },
 ];
 
+/** The history service, when the current run has one */
+function historyService() {
+  const chatHistorySvc = services.chatHistory;
+  return typeof chatHistorySvc?.isReady === "function" &&
+    chatHistorySvc.isReady()
+    ? chatHistorySvc
+    : undefined;
+}
+
 /**
  * Makes a compacted history the conversation: writes it to the history
  * service when there is one, then adds the user turn the next call answers.
- * The notices the compaction added to the service (starting, done) follow
- * the summary; requests leave them out.
+ * The notices the compaction added to the service (starting, done), the
+ * system items past `noticesFrom`, follow the summary; requests leave them
+ * out. Earlier notices go with the turns the summary replaced.
  */
-function commitCompacted(compacted: ChatHistoryItem[]): ChatHistoryItem[] {
-  const chatHistorySvc = services.chatHistory;
+function commitCompacted(
+  compacted: ChatHistoryItem[],
+  noticesFrom: number,
+): ChatHistoryItem[] {
+  const chatHistorySvc = historyService();
   let base = compacted;
-  if (
-    typeof chatHistorySvc?.isReady === "function" &&
-    chatHistorySvc.isReady()
-  ) {
-    const current = chatHistorySvc.getHistory();
-    let noticesStart = current.length;
-    while (current[noticesStart - 1]?.message.role === "system") {
-      noticesStart--;
-    }
-    chatHistorySvc.setHistory([...compacted, ...current.slice(noticesStart)]);
+  if (chatHistorySvc) {
+    const notices = chatHistorySvc
+      .getHistory()
+      .slice(noticesFrom)
+      .filter((item) => item.message.role === "system");
+    chatHistorySvc.setHistory([...compacted, ...notices]);
     base = chatHistorySvc.getHistory();
   }
   return resumeAfterCompaction(base);
+}
+
+/** Where the notices a compaction is about to add will start */
+function historyLength(): number {
+  return historyService()?.getHistory().length ?? 0;
 }
 
 /**
@@ -85,6 +99,7 @@ export async function handlePreApiCompaction(
     return { chatHistory, wasCompacted: false };
   }
 
+  const noticesFrom = historyLength();
   const { wasCompacted, chatHistory: preCompactHistory } =
     await handleAutoCompaction(chatHistory, model, llmApi, {
       isHeadless,
@@ -101,7 +116,7 @@ export async function handlePreApiCompaction(
   if (wasCompacted) {
     logger.debug("Pre-API compaction occurred, updating chat history");
     return {
-      chatHistory: commitCompacted(preCompactHistory),
+      chatHistory: commitCompacted(preCompactHistory, noticesFrom),
       wasCompacted: true,
     };
   }
@@ -159,6 +174,7 @@ export async function handlePostToolValidation(
     });
 
     // Force compaction (compaction now accounts for system message during pruning)
+    const noticesFrom = historyLength();
     const {
       wasCompacted,
       chatHistory: compactedHistory,
@@ -191,7 +207,7 @@ export async function handlePostToolValidation(
     // compactChatHistory already checked that this request fits
     logger.info("Compacted after tool overflow");
     return {
-      chatHistory: commitCompacted(compactedHistory),
+      chatHistory: commitCompacted(compactedHistory, noticesFrom),
       wasCompacted: true,
     };
   }
@@ -231,6 +247,7 @@ export async function handleNormalAutoCompaction(
     chatHistory = chatHistorySvc.getHistory();
   }
 
+  const noticesFrom = historyLength();
   const { wasCompacted, chatHistory: updatedChatHistory } =
     await handleAutoCompaction(chatHistory, model, llmApi, {
       isHeadless,
@@ -246,7 +263,7 @@ export async function handleNormalAutoCompaction(
 
   if (wasCompacted) {
     return {
-      chatHistory: commitCompacted(updatedChatHistory),
+      chatHistory: commitCompacted(updatedChatHistory, noticesFrom),
       wasCompacted: true,
     };
   }
