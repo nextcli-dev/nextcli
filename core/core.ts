@@ -19,7 +19,6 @@ import { fetchModels } from "./llm/fetchModels";
 import Ollama from "./llm/llms/Ollama";
 import { EditAggregator } from "./nextEdit/context/aggregateEdits";
 import { createNewPromptFileV2 } from "./promptFiles/createNewPromptFile";
-import { BuiltInToolNames } from "./tools/builtIn";
 import { callTool } from "./tools/callTool";
 import { localTerminalDirectory } from "./tools/implementations/runTerminalCommand";
 import { terminalCommandTrust } from "./tools/policies/terminalAccess";
@@ -1129,9 +1128,7 @@ export class Core {
           parsedArgs,
           trustedCommands ?? [],
           basePolicy,
-          toolName === BuiltInToolNames.RunTerminalCommand
-            ? await localTerminalDirectory(this.ide)
-            : undefined,
+          await localTerminalDirectory(this.ide),
         );
 
         if (tool.evaluateToolCallPolicy) {
