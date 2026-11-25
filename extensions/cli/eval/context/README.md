@@ -79,10 +79,12 @@ The report then has a table per window and label. (`NEXTCLI_COMPACTION` does not
 node eval/context/run.mjs --mock --tasks 5 --windows 64000 --reps 1 --out /tmp/eval-smoke
 ```
 
-The fake reads the three logs and one of them again, writes a canned summary when asked to compact, and gives a canned reply to every probe. So the task fails its check and recall is low. It only proves the pipeline: generate, run, check, probes, metrics, report. The numbers mean nothing.
+The fake reads task 5's three logs and one of them again, writes a canned summary when asked to compact, and gives a canned reply to every probe. Its script fits task 5 only, and starts over for each run. So the task fails its check and recall is low. It only proves the pipeline: generate, run, check, probes, metrics, report. The numbers mean nothing.
 
 ## Limits
 
 - The fixture is small and synthetic. It stresses context by size (about 50K to 75K tokens of reads per task), not by difficulty.
 - The compaction summary request is found by the time window of its `context.compaction` event. A strategy that compacts without a summary request will show compactions but no compaction cost.
 - Cost uses cn's own price table (`priced` in the trace); a model with an estimated price gives an estimated cost.
+- Re-reads and loops come from the request files of `NEXTCLI_TRACE=full`. Bedrock, the `gemini` provider and streaming Gemini on Vertex send requests through their own SDKs and write none, so both columns are `n/a` for them.
+- A run that hits `--timeout-min` is stopped with every command cn started. A command the agent leaves running in the background after cn exits normally is not stopped.

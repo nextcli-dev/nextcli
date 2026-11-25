@@ -17,12 +17,16 @@ function readLines(file) {
     });
 }
 
-/** The JSON lines of every trace file in a folder (not its request folders) */
-export function readTrace(dir) {
+// cn names each trace file and request folder <sessionId>-<runId>: the
+// run's own session is the one whose id the runner pinned
+const ofSession = (name, sessionId) => name.startsWith(`${sessionId}-`);
+
+/** The JSON lines of a session's trace files in a folder */
+export function readTrace(dir, sessionId) {
   if (!fs.existsSync(dir)) return [];
   return fs
     .readdirSync(dir)
-    .filter((name) => name.endsWith(".jsonl"))
+    .filter((name) => name.endsWith(".jsonl") && ofSession(name, sessionId))
     .flatMap((name) => readLines(path.join(dir, name)));
 }
 
@@ -43,12 +47,15 @@ function usageOf(attrs) {
   };
 }
 
-/** Request files NEXTCLI_TRACE=full wrote, in the order they were sent */
-function readRequestFiles(dir) {
+/**
+ * Request files NEXTCLI_TRACE=full wrote for a session, in the order they
+ * were sent. A file cut short (a killed run) is skipped.
+ */
+function readRequestFiles(dir, sessionId) {
   if (!fs.existsSync(dir)) return [];
   const files = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
+    if (!entry.isDirectory() || !ofSession(entry.name, sessionId)) continue;
     for (const name of fs.readdirSync(path.join(dir, entry.name))) {
       const m = /^request-(\d+)\.json$/.exec(name);
       if (m)
@@ -57,7 +64,13 @@ function readRequestFiles(dir) {
   }
   return files
     .sort((a, b) => a.n - b.n)
-    .map(({ file }) => JSON.parse(fs.readFileSync(file, "utf8")));
+    .flatMap(({ file }) => {
+      try {
+        return [JSON.parse(fs.readFileSync(file, "utf8"))];
+      } catch {
+        return [];
+      }
+    });
 }
 
 /**
@@ -105,8 +118,8 @@ function toolCallsOf(requests) {
  * NEXTCLI_TRACE=full writes: a basic trace has tool names but no arguments,
  * so this returns null for it.
  */
-export function analyzeToolCalls(traceDir, workDir, compactions) {
-  const requests = readRequestFiles(traceDir);
+export function analyzeToolCalls(traceDir, sessionId, workDir, compactions) {
+  const requests = readRequestFiles(traceDir, sessionId);
   if (requests.length === 0) return null;
   const calls = toolCallsOf(requests);
   const rel = (p) =>
@@ -148,8 +161,8 @@ export function analyzeToolCalls(traceDir, workDir, compactions) {
   };
 }
 
-export function summarizeTrace(traceDir, workDir) {
-  const lines = readTrace(traceDir);
+export function summarizeTrace(traceDir, sessionId, workDir) {
+  const lines = readTrace(traceDir, sessionId);
   const llm = lines.filter((l) => l.name === "llm.request");
   const compactions = lines.filter((l) => l.name === "context.compaction");
   const sum = (items, pick) => items.reduce((total, i) => total + pick(i), 0);
@@ -189,6 +202,7 @@ export function summarizeTrace(traceDir, workDir) {
     tools,
     calls: analyzeToolCalls(
       traceDir,
+      sessionId,
       workDir,
       compactions.map((c) => ({ ts: c.ts, dur: c.dur })),
     ),
@@ -219,11 +233,24 @@ export function answerOf(stdout) {
   }
 }
 
-const normalize = (text) =>
-  String(text)
+/**
+ * The words of a reply, lower-cased: runs of letters, digits and _ . @ / -,
+ * with the punctuation that ends a sentence trimmed. A path also counts by
+ * its file name. So "42" is a word of "the delay is 42." but not of "142".
+ */
+function wordsOf(text) {
+  const words = new Set();
+  for (const raw of String(text)
     .toLowerCase()
-    .replace(/[`'"*_\s]+/g, " ")
-    .trim();
+    .split(/[^a-z0-9_.@/-]+/)) {
+    const word = raw.replace(/^[./-]+|[./-]+$/g, "");
+    if (word) {
+      words.add(word);
+      words.add(path.posix.basename(word));
+    }
+  }
+  return words;
+}
 
 const names = (text) =>
   new Set(
@@ -232,19 +259,29 @@ const names = (text) =>
     ),
   );
 
-/** Grades one reply: { ok, score }. Sets score by overlap, the rest 0 or 1. */
+/**
+ * Grades one reply: { ok, score }, or { na: true } when the probe has no
+ * answer to recall. "edited" scores the overlap of file names with the files
+ * the run changed; a run that changed nothing can't be graded on it. Every
+ * other probe needs each space-separated part of the expected answer as a
+ * whole word of the reply.
+ */
 export function gradeProbe(probe, reply, editedFiles) {
   if (probe.grader === "edited") {
     const want = new Set(editedFiles.map((f) => path.basename(f)));
+    if (want.size === 0) {
+      return { ok: false, score: 0, na: true };
+    }
     const got = names(reply);
     const both = [...want].filter((f) => got.has(f)).length;
-    const union = new Set([...want, ...got]).size;
-    const score = union === 0 ? 1 : both / union;
+    const score = both / new Set([...want, ...got]).size;
     return { ok: score === 1, score };
   }
-  const answer = normalize(reply);
-  const ok = normalize(probe.expected)
-    .split(" ")
-    .every((part) => answer.includes(part));
+  const words = wordsOf(reply);
+  const ok = String(probe.expected)
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .every((part) => words.has(part));
   return { ok, score: ok ? 1 : 0 };
 }

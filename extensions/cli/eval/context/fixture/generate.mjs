@@ -292,7 +292,7 @@ function layerLogs({ rng, files, hidden, facts }) {
   files["logs/app-1.log"] = lines(1, [
     [
       rng.int(100, 500),
-      `2026-03-02T04:11:09.000Z WARN req=${facts.slowRequest} route=/export/all status=E200 ms=${rng.int(9000, 9900)} node=slow`,
+      `2026-03-02T04:11:09.000Z WARN req=${facts.slowRequest} route=/export/all status=E200 ms=${rng.int(9001, 9900)} node=slow`,
     ],
   ]);
   files["logs/app-2.log"] = lines(2, [

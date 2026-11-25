@@ -25,7 +25,11 @@ const COLUMNS = [
   ["output", (r) => r.outputTokens, 0],
   ["cost $", (r) => r.costUsd, 3],
   ["wall s", (r) => r.wallMs / 1000, 0],
-  ["recall /5", (r) => r.recallCorrect, 1],
+  [
+    "recall %",
+    (r) => (r.recallTotal ? (100 * r.recallCorrect) / r.recallTotal : null),
+    0,
+  ],
   ["re-reads", (r) => r.rereads, 1],
 ];
 
@@ -48,12 +52,17 @@ function table(runs) {
   const byTask = Map.groupBy(runs, (r) => r.task);
   for (const [task, group] of [...byTask].sort((a, b) => a[0] - b[0])) {
     const count = (pred) => group.filter(pred).length;
+    const errors = count((r) => r.error);
     rows.push([
       `${task} ${group[0].taskName}`,
-      group.length,
+      errors ? `${group.length} (${errors} failed to run)` : group.length,
       `${count((r) => r.success)}/${group.length}`,
       count((r) => r.limitReached),
-      count((r) => r.loop),
+      // Loops need the request files (NEXTCLI_TRACE=full, adapters that
+      // write them); without them a run has no loop count
+      group.some((r) => typeof r.loop === "boolean")
+        ? count((r) => r.loop === true)
+        : "n/a",
       ...COLUMNS.map(([, pick, digits]) => cell(group, pick, digits)),
     ]);
   }

@@ -2,7 +2,6 @@
 // Hand-run context eval: runs long agent tasks through `cn -p`, then asks
 // recall probes in the resumed session. It spends the API key in --config
 // (unless --mock). See README.md.
-import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import { createRequire } from "node:module";
@@ -18,6 +17,7 @@ import {
   summarizeTrace,
 } from "./metrics.mjs";
 import { startMockServer } from "./mock-server.mjs";
+import { exec, killAll } from "./proc.mjs";
 import { writeReport } from "./report.mjs";
 import { tasks } from "./tasks.mjs";
 
@@ -128,49 +128,6 @@ function fail(message) {
   process.exit(2);
 }
 
-/** Runs a command, capturing output; never rejects */
-function exec(cmd, args, { cwd, env, timeoutMs }) {
-  return new Promise((resolve) => {
-    const started = Date.now();
-    const child = spawn(cmd, args, {
-      cwd,
-      env,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    let stdout = "";
-    let stderr = "";
-    let timedOut = false;
-    child.stdout.on("data", (d) => (stdout += d));
-    child.stderr.on("data", (d) => (stderr += d));
-    const timer = timeoutMs
-      ? setTimeout(() => {
-          timedOut = true;
-          child.kill("SIGKILL");
-        }, timeoutMs)
-      : null;
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      resolve({
-        code: timedOut ? null : code,
-        stdout,
-        stderr,
-        timedOut,
-        ms: Date.now() - started,
-      });
-    });
-    child.on("error", (error) => {
-      clearTimeout(timer);
-      resolve({
-        code: null,
-        stdout,
-        stderr: String(error),
-        timedOut,
-        ms: Date.now() - started,
-      });
-    });
-  });
-}
-
 function hashTree(dir) {
   const out = new Map();
   const walk = (current) => {
@@ -198,6 +155,7 @@ function cleanupAll() {
 }
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, () => {
+    killAll();
     cleanupAll();
     process.exit(130);
   });
@@ -261,6 +219,8 @@ function secretValues(file) {
     .filter((value) => value.length >= 8);
 }
 
+const runIdOf = (task, window, rep) => `t${task.id}-w${window}-r${rep}`;
+
 async function runOne({
   task,
   window,
@@ -271,7 +231,7 @@ async function runOne({
   tsc,
   secrets,
 }) {
-  const runId = `t${task.id}-w${window}-r${rep}`;
+  const runId = runIdOf(task, window, rep);
   const runDir = path.join(outDir, runId);
   fs.mkdirSync(runDir, { recursive: true });
   const workDir = fs.mkdtempSync(path.join(os.tmpdir(), `eval-work-${runId}-`));
@@ -361,17 +321,25 @@ async function runOne({
       (f) => before.get(f) !== after.get(f),
     );
     const keepIntact = before.get(keepFile) === after.get(keepFile);
-    const trace = summarizeTrace(path.join(runDir, "trace"), workDir);
+    const trace = summarizeTrace(
+      path.join(runDir, "trace"),
+      sessionId,
+      workDir,
+    );
 
     // Recall probes: each one resumes the session as the task left it, and
     // the session file is put back afterwards, so a probe sees neither the
     // others nor leaves anything in the metrics (they trace elsewhere)
     const sessionsDir = path.join(globalDir, "sessions");
     const snapshot = path.join(globalDir, "sessions.snapshot");
-    fs.cpSync(sessionsDir, snapshot, { recursive: true });
+    // cn can exit before it saved a session: then there is nothing to recall
+    const resumable = fs.existsSync(sessionsDir);
+    if (resumable) {
+      fs.cpSync(sessionsDir, snapshot, { recursive: true });
+    }
     const probes = [];
     let probeCostUsd = 0;
-    for (const probe of task.probes(facts)) {
+    for (const probe of resumable ? task.probes(facts) : []) {
       fs.rmSync(sessionsDir, { recursive: true, force: true });
       fs.cpSync(snapshot, sessionsDir, { recursive: true });
       const probeTraceDir = path.join(runDir, "probe-trace", probe.id);
@@ -401,7 +369,7 @@ async function runOne({
       );
       const reply = redact(answerOf(result.stdout));
       const grade = gradeProbe(probe, reply, edited);
-      probeCostUsd += summarizeTrace(probeTraceDir, workDir).costUsd;
+      probeCostUsd += summarizeTrace(probeTraceDir, sessionId, workDir).costUsd;
       probes.push({
         id: probe.id,
         expected: probe.expected ?? edited,
@@ -413,6 +381,7 @@ async function runOne({
 
     const summary = parseSummaryLine(main.stderr);
     const calls = trace.calls;
+    const graded = probes.filter((p) => !p.na);
     const record = {
       runId,
       task: task.id,
@@ -434,11 +403,15 @@ async function runOne({
       ...trace,
       rereads: calls?.rereads ?? null,
       repeatedMax: calls?.repeatedMax ?? null,
-      loop: (calls?.repeatedMax ?? 0) >= 4,
+      // Both need the request files; without them they are unknown, not 0
+      loop: calls ? calls.repeatedMax >= 4 : null,
       editedFiles: edited,
-      recallCorrect: probes.filter((p) => p.ok).length,
-      recallTotal: probes.length,
-      recallScore: probes.reduce((s, p) => s + p.score, 0) / probes.length,
+      // A probe with nothing to recall (no file edited) isn't counted
+      recallCorrect: graded.filter((p) => p.ok).length,
+      recallTotal: graded.length,
+      recallScore: graded.length
+        ? graded.reduce((s, p) => s + p.score, 0) / graded.length
+        : null,
       probeCostUsd,
       probes,
     };
@@ -530,18 +503,38 @@ async function main() {
             );
             return;
           }
-          const record = await runOne({
-            task,
-            window,
-            rep,
-            opts,
-            outDir,
-            mockUrl: mock?.url,
-            tsc,
-            secrets,
-          });
+          let record;
+          mock?.reset();
+          try {
+            record = await runOne({
+              task,
+              window,
+              rep,
+              opts,
+              outDir,
+              mockUrl: mock?.url,
+              tsc,
+              secrets,
+            });
+          } catch (error) {
+            // One broken run is a row, not the end of the matrix
+            record = {
+              runId: runIdOf(task, window, rep),
+              task: task.id,
+              taskName: task.name,
+              window,
+              rep,
+              model: opts.model,
+              label: opts.label,
+              success: false,
+              error: String(error?.stack ?? error).split("\n")[0],
+              wallMs: 0,
+            };
+            console.error(`${record.runId}: failed to run: ${record.error}`);
+          }
           fs.appendFileSync(results, JSON.stringify(record) + "\n");
           spent += (record.costUsd ?? 0) + (record.probeCostUsd ?? 0);
+          if (record.error) continue;
           console.log(
             `${record.runId}: ${record.success ? "ok" : "FAIL"} exit=${record.exitCode} compactions=${record.compactions} recall=${record.recallCorrect}/${record.recallTotal} cost=$${(record.costUsd ?? 0).toFixed(3)} ${(record.wallMs / 1000).toFixed(0)}s`,
           );

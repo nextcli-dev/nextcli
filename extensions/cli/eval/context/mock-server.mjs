@@ -4,7 +4,8 @@
 // happens and a file is re-read after it), writes a
 // canned summary when asked to compact, and answers every recall probe with a
 // canned reply. Its step counter lives here, not in the history, so a
-// compaction does not make it start over.
+// compaction does not make it start over; the runner resets it before each
+// run. The script reads task 5's logs: smoke-test with --tasks 5.
 import http from "node:http";
 
 const SUMMARY_MARKER = "concise summary of our conversation";
@@ -92,6 +93,10 @@ export async function startMockServer() {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   return {
     url: `http://127.0.0.1:${server.address().port}`,
+    /** Starts the script over, for the next run */
+    reset: () => {
+      step = 0;
+    },
     close: () =>
       new Promise((resolve) => {
         server.closeAllConnections?.();
