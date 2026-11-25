@@ -12,7 +12,7 @@ on:
       - "core/context/providers/database/**"
       - "core/context/providers/DatabaseContextProvider.ts"
       - "core/test/fixtures/regression/database/**"
-      - "core/util/sqlite.ts"
+      - "packages/context/src/sqlite.ts"
       - "scripts/regression/database/**"
       - ".github/workflows/database-regression.yml"
   workflow_dispatch:

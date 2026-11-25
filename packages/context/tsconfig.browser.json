@@ -1,0 +1,10 @@
+{
+  // The root entry is imported by the VS Code webview: compiled without Node
+  // types, so the build fails if it reaches process, Buffer or node:*
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": [],
+    "noEmit": true
+  },
+  "include": ["src/index.ts"]
+}
