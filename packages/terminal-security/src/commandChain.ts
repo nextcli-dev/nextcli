@@ -359,6 +359,25 @@ export function isTrustedTerminalCommand(
 }
 
 /**
+ * The extension's policy for a terminal line: the evaluator's, except that a
+ * line it would run without asking asks when the line fails the check
+ * isTrustedTerminalCommand holds a chain to (evaluateLineStructure). That
+ * check catches a redirect or a pipe into `tee` that writes a file:
+ * `git status > notes.txt` follows a symlink the line can't show.
+ */
+export function evaluateTerminalLinePolicy(
+  basePolicy: ToolPolicy,
+  line: string | null | undefined,
+): ToolPolicy {
+  const policy = evaluateTerminalCommandSecurity(basePolicy, line);
+  return policy === "allowedWithoutPermission" &&
+    typeof line === "string" &&
+    evaluateLineStructure(line) !== "allowedWithoutPermission"
+    ? "allowedWithPermission"
+    : policy;
+}
+
+/**
  * The rules to add to the trusted list so this line runs without asking next
  * time, or undefined (see rulesToRemember)
  */

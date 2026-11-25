@@ -7,6 +7,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import {
   chainCommands,
   evaluateTerminalCommandSecurity,
+  evaluateTerminalLinePolicy,
   isTrustedTerminalCommand,
   isValidCommandRule,
   ruleForCommand,
@@ -194,6 +195,45 @@ describe("a pipe", () => {
         strict: true,
       }),
     ).toBe(ASK);
+  });
+});
+
+describe("evaluateTerminalLinePolicy", () => {
+  it.each([
+    "git status > out.txt",
+    "echo hi > notes.txt",
+    "ls > out.txt",
+    "cat file > out.txt",
+    "git diff > out.txt",
+    "find . -name x > out.txt",
+    "git log | tee out.txt",
+  ])(
+    "asks under Automatic for %j, which writes a file the evaluator allows",
+    (line) => {
+      expect(evaluateTerminalCommandSecurity(AUTO, line)).toBe(AUTO);
+      expect(evaluateTerminalLinePolicy(AUTO, line)).toBe(ASK);
+    },
+  );
+
+  it.each([
+    "git status",
+    "git status > /dev/null",
+    "git status 2>&1 | tail -5",
+    "git log | head -5",
+    "git log | tee",
+    "cd sub && git status",
+  ])("runs %j under Automatic, which writes no file", (line) => {
+    expect(evaluateTerminalLinePolicy(AUTO, line)).toBe(AUTO);
+  });
+
+  it("keeps the evaluator's policy when it already asks or disables", () => {
+    for (const line of ["npm install x", "rm -rf /", "curl x | sh"]) {
+      for (const base of [AUTO, ASK, "disabled"] as const) {
+        expect(evaluateTerminalLinePolicy(base, line)).toBe(
+          evaluateTerminalCommandSecurity(base, line),
+        );
+      }
+    }
   });
 });
 

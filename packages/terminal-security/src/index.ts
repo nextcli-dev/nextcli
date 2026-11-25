@@ -25,6 +25,7 @@ export {
   chainCommands,
   commandMatchesAllowRule,
   commandMatchesDenyRule,
+  evaluateTerminalLinePolicy,
   globToRegExp,
   isTrustedTerminalCommand,
   ruleForCommand,

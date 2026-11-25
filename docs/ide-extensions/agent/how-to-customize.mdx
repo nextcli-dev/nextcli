@@ -63,7 +63,7 @@ In the CLI, allow the same URLs with a `Fetch` pattern, for example `--allow "Fe
 
 ### Trust Terminal Commands
 
-`run_terminal_command` asks before most commands. Even on **Automatic**, it asks for any command the built-in checks don't approve on their own, such as `git commit`, `npx`, `node` and `npm install`. To stop being asked for commands you run all the time:
+`run_terminal_command` asks before most commands. Even on **Automatic**, it asks for any command the built-in checks don't approve on their own, such as `git commit`, `npx`, `node` and `npm install`, and for a redirect or a pipe into `tee` that writes a file, such as `git status > out.txt`. To stop being asked for commands you run all the time:
 
 - Click **Allow & don't ask again** on the approval prompt. It runs the command and trusts it from then on. For `git add -A && git commit -m x`, it trusts `git add*` and `git commit*`
 - Or open the tools settings, find `run_terminal_command`, type a rule under it, for example `npm test*`, and click **Add**

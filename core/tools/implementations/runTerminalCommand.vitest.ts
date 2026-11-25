@@ -902,6 +902,31 @@ describe("runTerminalCommandTool.evaluateToolCallPolicy", () => {
 
     expect(result).toBe("allowedWithPermission");
   });
+
+  // The file may be a symlink to ~/.bashrc or a git hook
+  it.each(["git status > out.txt", "echo hi > notes.txt", "git log | tee x"])(
+    "asks under Automatic for %j, which writes a file",
+    (command) => {
+      expect(
+        runTerminalCommandTool.evaluateToolCallPolicy!(
+          "allowedWithoutPermission",
+          { command },
+        ),
+      ).toBe("allowedWithPermission");
+    },
+  );
+
+  it.each(["git status > /dev/null", "git status 2>&1 | tail -5"])(
+    "runs %j under Automatic, which writes no file",
+    (command) => {
+      expect(
+        runTerminalCommandTool.evaluateToolCallPolicy!(
+          "allowedWithoutPermission",
+          { command },
+        ),
+      ).toBe("allowedWithoutPermission");
+    },
+  );
 });
 
 // #12700

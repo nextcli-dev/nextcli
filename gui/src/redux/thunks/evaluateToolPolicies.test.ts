@@ -171,6 +171,27 @@ describe("evaluateToolPolicies with trusted commands", () => {
     }
   });
 
+  it("asks under Automatic for a safe command that writes a file", async () => {
+    // The file may be a symlink to ~/.bashrc or a git hook
+    for (const command of [
+      "git status > out.txt",
+      "echo hi > notes.txt",
+      "git log | tee out.txt",
+    ]) {
+      const { policy, dispatch } = await evaluate(
+        terminalCall(command),
+        ["git status*", "echo*", "git log*", "tee*"],
+        AUTOMATIC,
+      );
+      expect(policy).toBe("allowedWithPermission");
+      expect(dispatch).not.toHaveBeenCalled();
+    }
+    expect(
+      (await evaluate(terminalCall("git status > /dev/null"), [], AUTOMATIC))
+        .policy,
+    ).toBe("allowedWithoutPermission");
+  });
+
   it("never relaxes an excluded tool or a disabled command", async () => {
     expect(
       (

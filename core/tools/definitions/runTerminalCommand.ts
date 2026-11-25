@@ -2,7 +2,7 @@ import os from "os";
 import { Tool } from "../..";
 import { BUILT_IN_GROUP_NAME, BuiltInToolNames } from "../builtIn";
 import {
-  evaluateTerminalCommandSecurity,
+  evaluateTerminalLinePolicy,
   ToolPolicy,
 } from "@continuedev/terminal-security";
 
@@ -65,10 +65,7 @@ export const runTerminalCommandTool: Tool = {
     basePolicy: ToolPolicy,
     parsedArgs: Record<string, unknown>,
   ): ToolPolicy => {
-    return evaluateTerminalCommandSecurity(
-      basePolicy,
-      parsedArgs.command as string,
-    );
+    return evaluateTerminalLinePolicy(basePolicy, parsedArgs.command as string);
   },
   systemMessageDescription: {
     prefix: `To run a terminal command, use the ${BuiltInToolNames.RunTerminalCommand} tool
