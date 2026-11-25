@@ -5,10 +5,12 @@ import { convertToUnifiedHistory } from "core/util/messageConversion.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { compactChatHistory } from "../compaction.js";
+import { ChatHistoryService } from "../services/ChatHistoryService.js";
 import { updateSessionHistory } from "../session.js";
 import { ToolCall } from "../tools/index.js";
 
 import {
+  type CompactionHelperOptions,
   handleNormalAutoCompaction,
   handlePostToolValidation,
   handlePreApiCompaction,
@@ -59,12 +61,18 @@ vi.mock("../util/tokenizer.js", () => ({
 
 vi.mock("../session.js", () => ({
   updateSessionHistory: vi.fn(),
+  loadSessionById: vi.fn(),
+}));
+
+// No history service unless a test sets one
+const historyService = vi.hoisted(() => ({
+  current: undefined as ChatHistoryService | undefined,
 }));
 
 vi.mock("../services/index.js", () => ({
   services: {
-    chatHistory: {
-      isReady: vi.fn(() => false),
+    get chatHistory() {
+      return historyService.current ?? { isReady: () => false };
     },
   },
 }));
@@ -126,6 +134,7 @@ describe("compaction helpers", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    historyService.current = undefined;
   });
 
   it("do not compact inside a compaction, even over the limit", async () => {
@@ -208,6 +217,76 @@ describe("compaction helpers", () => {
       "Context limit exceeded and compaction failed: The summary (12,000 tokens) doesn't fit",
     );
     expect(updateSessionHistory).not.toHaveBeenCalled();
+  });
+
+  describe.each([
+    [
+      "before a call",
+      (history: ChatHistoryItem[], opts: CompactionHelperOptions) =>
+        handlePreApiCompaction(history, opts),
+    ],
+    [
+      "after a tool",
+      (history: ChatHistoryItem[], opts: CompactionHelperOptions) =>
+        handlePostToolValidation(toolCalls, history, opts),
+    ],
+    [
+      "at the end of a turn",
+      (history: ChatHistoryItem[], opts: CompactionHelperOptions) =>
+        handleNormalAutoCompaction(history, true, opts),
+    ],
+  ])("with the history service, compacting %s", (_, compact) => {
+    async function compactInService(isHeadless: boolean) {
+      vi.mocked(compactChatHistory).mockResolvedValue({
+        compactedHistory: summary,
+        compactionIndex: 0,
+        compactionContent: "Summary",
+        omittedMessages: 0,
+        shortenedOutputs: 0,
+      });
+      const service = new ChatHistoryService();
+      await service.initialize();
+      service.setHistory(longHistory);
+      historyService.current = service;
+      // The TUI and cn serve show a notice by adding it to the service
+      const result = await compact(service.getHistory(), {
+        ...options(false),
+        isHeadless,
+        callbacks: {
+          onSystemMessage: (message: string) => {
+            service.addSystemMessage(message);
+          },
+        },
+      });
+      const shown = service
+        .getHistory()
+        .map((item) => [item.message.role, item.message.content]);
+      return { result, shown };
+    }
+
+    it("keeps the notices it showed after the summary", async () => {
+      const { result, shown } = await compactInService(false);
+
+      expect(shown).toEqual([
+        ["assistant", "Summary"],
+        ["system", "Compacting"],
+        ["system", "Chat history auto-compacted."],
+        ["user", COMPACTION_NEXT_PROMPT],
+      ]);
+      expect(result.wasCompacted).toBe(true);
+      expect(result.chatHistory.at(-1)?.message.content).toBe(
+        COMPACTION_NEXT_PROMPT,
+      );
+    });
+
+    it("adds no notice to a headless run", async () => {
+      const { shown } = await compactInService(true);
+
+      expect(shown).toEqual([
+        ["assistant", "Summary"],
+        ["user", COMPACTION_NEXT_PROMPT],
+      ]);
+    });
   });
 
   it("size the summary for the user turn that follows it", async () => {

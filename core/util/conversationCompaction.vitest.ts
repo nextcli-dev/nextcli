@@ -177,6 +177,45 @@ describe("compactConversation", () => {
     ).resolves.toEqual({ summary: "Summary", shortenedOutputs: 0 });
   });
 
+  it("keeps a reasoning model's thinking out of the summary", async () => {
+    class ThinkingModel extends SummaryModel {
+      protected async *_streamChat(): AsyncGenerator<ChatMessage> {
+        yield { role: "thinking", content: "The user wants a summary. " };
+        yield { role: "thinking", content: "Let me write it." };
+        yield { role: "assistant", content: "# Conversation Summary\n\n" };
+        yield { role: "assistant", content: "The token check was fixed." };
+      }
+    }
+
+    await expect(
+      compactConversation({
+        messages,
+        currentModel: new ThinkingModel(32_000),
+        signal: new AbortController().signal,
+      }),
+    ).resolves.toEqual({
+      summary: "# Conversation Summary\n\nThe token check was fixed.",
+      shortenedOutputs: 0,
+    });
+  });
+
+  it("fails when the model only thinks, so nothing replaces the conversation", async () => {
+    // A reply cut off by max_tokens before the answer
+    class ThinkingOnlyModel extends SummaryModel {
+      protected async *_streamChat(): AsyncGenerator<ChatMessage> {
+        yield { role: "thinking", content: "The user wants a summary." };
+      }
+    }
+
+    await expect(
+      compactConversation({
+        messages,
+        currentModel: new ThinkingOnlyModel(32_000),
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toThrow("empty summary");
+  });
+
   it("fails on an empty summary, so nothing replaces the conversation", async () => {
     const model = new SummaryModel(32_000);
     vi.spyOn(model, "chat").mockResolvedValue({

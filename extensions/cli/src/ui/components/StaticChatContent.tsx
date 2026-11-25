@@ -121,14 +121,26 @@ export const StaticChatContent: React.FC<StaticChatContentProps> = ({
   // <Static> prints each item once, so an item goes there only when it can't
   // change: the last one stays live while the turn runs or a tool in it runs.
   // <Static> also prints only past the count it has seen, so the count never
-  // goes down unless the history itself got shorter (edit, undo, /clear).
+  // goes down unless the history itself got shorter (compaction, edit, undo,
+  // /clear).
   const committedCount = useRef(0);
   const previousLength = useRef(0);
   const total = processedChatHistory.length;
-  if (total < previousLength.current) {
+  const shrank = total < previousLength.current;
+  if (shrank) {
     committedCount.current = 0;
   }
   previousLength.current = total;
+
+  // <Static> keeps its own printed count, so a shorter history prints nothing
+  // until it grows past the old length. Remount it to print the new history,
+  // keeping the old copy in the scrollback as Ctrl+L does. An emptied history
+  // (/clear, a reload) has nothing to print and redraws through refreshTrigger.
+  useEffect(() => {
+    if (shrank && total > 0) {
+      refreshStatic(true);
+    }
+  });
   const keepLastLive =
     isTurnRunning || hasUnfinishedTools(processedChatHistory[total - 1]);
   const stableCount = Math.max(
