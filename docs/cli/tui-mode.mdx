@@ -54,7 +54,7 @@ When you're connected to a remote environment, NextCLI also adds remote-only sla
 
 The status bar shows how full the model's context window is, for example `Context 23% · 46K/200K`: about 46K tokens used in a 200K window. The count covers the system prompt, the tool definitions and the chat history. It's the same estimate `cn` uses to decide when to compact the chat automatically. The bar turns amber at 80% of the compaction threshold.
 
-When the history is compacted, automatically or with `/compact`, the screen is redrawn from the summary: a divider, a notice that the history was compacted (with anything the summary had no room for), and the turns after it. Editing a message or undoing a turn redraws the screen the same way. The earlier turns stay in your terminal's scrollback.
+When the history is compacted, automatically or with `/compact`, `cn` prints a divider, a notice that the history was compacted (with anything the summary had no room for), and the turns after it, below the earlier turns. Nothing on screen is cleared, so the earlier turns stay where they were. Editing a message or undoing a turn is different: it clears the screen and its scrollback and prints the conversation again.
 
 `/context` prints the same estimate as a tree:
 

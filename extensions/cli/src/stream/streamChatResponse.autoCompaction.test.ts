@@ -170,9 +170,9 @@ describe("handleAutoCompaction", () => {
         callbacks: expect.any(Object),
       }),
     );
-    expect(updateSessionHistory).toHaveBeenCalledWith(
-      mockCompactionResult.compactedHistory,
-    );
+    // The caller writes the result through the history service
+    expect(updateSessionHistory).not.toHaveBeenCalled();
+    expect(result.chatHistory).toEqual(mockCompactionResult.compactedHistory);
 
     expect(mockCallbacks.onSystemMessage).toHaveBeenCalledWith(
       "Auto-compacting...",

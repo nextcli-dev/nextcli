@@ -50,7 +50,7 @@ interface TUIChatProps {
 }
 
 // Helper function to load and set session
-async function loadAndSetSession(
+export async function loadAndSetSession(
   sessionId: string,
   closeCurrentScreen: () => void,
   setChatHistory: (history: any) => void,
@@ -60,21 +60,9 @@ async function loadAndSetSession(
     // Close the session selector
     closeCurrentScreen();
 
-    // Import session functions
-    const { loadSessionById } = await import("../session.js");
-
-    // Load the session
-    const session = loadSessionById(sessionId);
-    if (!session) {
-      logger.error(`Session ${sessionId} could not be loaded.`);
-      return;
-    }
-
-    // Set the session ID so future operations use this session
-    process.env.CONTINUE_CLI_TEST_SESSION_ID = sessionId.replace(
-      "continue-cli-",
-      "",
-    );
+    // Makes it the current session, so later saves go to its file
+    const { loadOrCreateSessionById } = await import("../session.js");
+    const session = loadOrCreateSessionById(sessionId);
 
     // The previous call's usage belongs to the chat we just left
     clearLastResponseUsage();
