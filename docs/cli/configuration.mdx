@@ -148,9 +148,16 @@ The first line is a header with the `cn` version, Node version, platform and ids
 - An attempt that streamed and then failed is written once, with `"discarded": true`, its `"error"` and what it produced up to then. A call that failed before streaming has `"error"` only.
 - `"error"` is the provider's error message: its first line, at most 200 characters, with the HTTP `"status"` when there is one.
 
+Each attempt to compact the conversation, automatic or from `/compact`, is one more line, named `context.compaction`. Its summary request is also an `llm.request` line. The `attrs` hold:
+
+- `trigger`: `auto` or `manual`;
+- `outcome`: `compacted`, `failed` or `cancelled`;
+- `tokensBefore`: the estimated tokens of the system prompt, the tools and the history, which the automatic trigger compares to the compaction threshold;
+- `tokensAfter`, `omittedMessages` and `shortenedOutputs`, when it compacted: the estimate after it, the earlier messages the summary request had no room for, and the tool outputs it cut to their start. `dur` is how long it took.
+
 A `basic` trace holds no prompt or file text. Besides the provider's error message, it holds:
 
-- token counts, timings and tool names;
+- token counts, timings and tool names (a `context.compaction` line has counts only);
 - a `context` object on each `llm.request`: the estimated tokens in the system prompt, the tools and the history, the compaction threshold, and the largest tool results. It names rules and tools, but doesn't include their text.
 
 ### Full request files

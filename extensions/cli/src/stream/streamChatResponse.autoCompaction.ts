@@ -198,6 +198,7 @@ export async function handleAutoCompaction(
       tools,
       followedBy,
       abortController,
+      trigger: "auto",
     });
 
     // Callers write the result through the history service once this

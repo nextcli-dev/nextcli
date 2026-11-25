@@ -13,6 +13,7 @@ import {
   streamChatResponse,
 } from "./stream/streamChatResponse.js";
 import { StreamCallbacks } from "./stream/streamChatResponse.types.js";
+import { traceEnabled, traceEvent } from "./trace/trace.js";
 import { logger } from "./util/logger.js";
 import {
   countChatHistoryTokens,
@@ -57,6 +58,8 @@ export interface CompactionOptions {
    * agent loop, or the person's message before a TUI send. None by default.
    */
   followedBy?: ChatHistoryItem[];
+  /** What started it, for the trace; the /compact command by default */
+  trigger?: "auto" | "manual";
 }
 
 // A summary shorter than this can't carry the work forward
@@ -193,8 +196,47 @@ export async function compactChatHistory(
     tools: options?.tools ?? (await currentRequestTools(model)),
     followedBy: options?.followedBy ?? [],
   };
+  // NEXTCLI_TRACE: one context.compaction event per attempt, counts only. The
+  // before count is the one the auto trigger compares to its threshold.
+  const startedAt = Date.now();
+  const tokensBefore = traceEnabled()
+    ? countTotalInputTokens({
+        chatHistory,
+        systemMessage: next.systemMessage,
+        tools: next.tools,
+        model,
+      })
+    : undefined;
+  const traceCompaction = (
+    outcome: "compacted" | "failed" | "cancelled",
+    result?: CompactionResult,
+  ) => {
+    if (tokensBefore === undefined) {
+      return;
+    }
+    traceEvent(
+      "context.compaction",
+      {
+        trigger: options?.trigger ?? "manual",
+        outcome,
+        tokensBefore,
+        ...(result && {
+          tokensAfter: countTotalInputTokens({
+            chatHistory: result.compactedHistory,
+            systemMessage: next.systemMessage,
+            tools: next.tools,
+            model,
+          }),
+          omittedMessages: result.omittedMessages,
+          shortenedOutputs: result.shortenedOutputs,
+        }),
+      },
+      { ts: startedAt, dur: Date.now() - startedAt },
+    );
+  };
   const fail = (message: string): never => {
     const error = new Error(message);
+    traceCompaction("failed");
     logger.error("Compaction failed", error);
     callbacks?.onError?.(error);
     throw error;
@@ -311,14 +353,17 @@ export async function compactChatHistory(
       );
     }
 
-    return {
+    const result = {
       compactedHistory: [compactionMessage],
       compactionContent,
       compactionIndex: 0,
       omittedMessages: fitted.removed,
       shortenedOutputs: fitted.shortened,
     };
+    traceCompaction("compacted", result);
+    return result;
   } catch (error) {
+    traceCompaction(isCompactionAborted(error) ? "cancelled" : "failed");
     if (!isCompactionAborted(error)) {
       logger.error("Compaction failed", error);
       callbacks?.onError?.(error as Error);
