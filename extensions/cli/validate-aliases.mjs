@@ -80,8 +80,9 @@ function getDefinedAliases() {
 /**
  * Find all local packages referenced with file: in package.json files
  */
-function findLocalPackages(startPath, visited = new Set()) {
-  const localPackages = new Set();
+export function findLocalPackages(startPath, visited = new Set()) {
+  // Package name -> its folder
+  const localPackages = new Map();
 
   function scanPackageJson(packageJsonPath, depth = 0) {
     // Avoid infinite recursion
@@ -107,10 +108,10 @@ function findLocalPackages(startPath, visited = new Set()) {
       for (const [depName, depVersion] of Object.entries(allDeps)) {
         if (typeof depVersion === "string" && depVersion.startsWith("file:")) {
           // This is a local package
-          localPackages.add(depName);
+          const depPath = resolve(packageDir, depVersion.replace("file:", ""));
+          localPackages.set(depName, depPath);
 
           // Recursively check this package's dependencies
-          const depPath = resolve(packageDir, depVersion.replace("file:", ""));
           const depPackageJson = resolve(depPath, "package.json");
 
           if (existsSync(depPackageJson)) {
@@ -129,6 +130,49 @@ function findLocalPackages(startPath, visited = new Set()) {
   scanPackageJson(startPath);
 
   return localPackages;
+}
+
+/**
+ * The alias each subpath a local package exports needs, and the file it must
+ * point at. esbuild aliases match by prefix, so the package's own alias would
+ * send "<package>/<subpath>" to "<package>/dist/index.js/<subpath>".
+ */
+function subpathAliases(localPackages) {
+  const required = new Map();
+  for (const [name, dir] of localPackages) {
+    let exportsMap;
+    try {
+      exportsMap = JSON.parse(
+        readFileSync(resolve(dir, "package.json"), "utf8"),
+      ).exports;
+    } catch {
+      continue;
+    }
+    for (const [subpath, target] of Object.entries(exportsMap ?? {})) {
+      const file = typeof target === "string" ? target : target?.default;
+      if (subpath.startsWith("./") && typeof file === "string") {
+        required.set(`${name}${subpath.slice(1)}`, resolve(dir, file));
+      }
+    }
+  }
+  return required;
+}
+
+/**
+ * Subpath aliases that build.mjs lacks or points at another file. Reads the
+ * aliases written as resolve(__dirname, "<path>").
+ */
+export function wrongSubpathAliases(buildContent, localPackages) {
+  const targets = new Map(
+    [
+      ...buildContent.matchAll(
+        /"([^"]+)":\s*resolve\(\s*__dirname,\s*"([^"]+)",?\s*\)/g,
+      ),
+    ].map(([, alias, path]) => [alias, resolve(__dirname, path)]),
+  );
+  return [...subpathAliases(localPackages)]
+    .filter(([alias, file]) => targets.get(alias) !== file)
+    .map(([alias, file]) => ({ alias, file }));
 }
 
 /**
@@ -158,7 +202,7 @@ function validateAliases() {
 
   // Check for missing aliases
   const missingAliases = [];
-  for (const pkg of localPackages) {
+  for (const pkg of localPackages.keys()) {
     if (!definedAliases.has(pkg)) {
       missingAliases.push(pkg);
     }
@@ -166,13 +210,10 @@ function validateAliases() {
 
   // Check for unnecessary aliases (defined but not used)
   const unnecessaryAliases = [];
+  // A subpath a local package exports ("@scope/pkg/sub") needs one as well
+  const exportedSubpaths = subpathAliases(localPackages);
   for (const alias of definedAliases) {
-    // A subpath of a local package ("@scope/pkg/sub") is needed as well
-    const packageName = alias
-      .split("/")
-      .slice(0, alias.startsWith("@") ? 2 : 1)
-      .join("/");
-    if (!localPackages.has(alias) && !localPackages.has(packageName)) {
+    if (!localPackages.has(alias) && !exportedSubpaths.has(alias)) {
       unnecessaryAliases.push(alias);
     }
   }
@@ -208,8 +249,27 @@ function validateAliases() {
     logger.warn("");
   }
 
+  const wrongSubpaths = wrongSubpathAliases(
+    readFileSync(resolve(__dirname, "build.mjs"), "utf8"),
+    localPackages,
+  );
+  if (wrongSubpaths.length > 0) {
+    logger.error(
+      `${colors.red}❌ Subpath aliases missing or pointing at another file:${colors.reset}`,
+    );
+    wrongSubpaths.forEach(({ alias, file }) => {
+      logger.error(`  ✗ ${alias} must point at ${file}`);
+    });
+    logger.error("");
+  }
+
   // Exit with appropriate code
-  if (missingAliases.length > 0) {
+  if (wrongSubpaths.length > 0) {
+    logger.error(
+      `${colors.red}✗ Validation failed! ${wrongSubpaths.length} subpath alias(es) wrong.${colors.reset}`,
+    );
+    process.exit(1);
+  } else if (missingAliases.length > 0) {
     logger.error(
       `${colors.red}✗ Validation failed! Missing ${missingAliases.length} required alias(es).${colors.reset}`,
     );
@@ -230,5 +290,7 @@ function validateAliases() {
   }
 }
 
-// Run validation
-validateAliases();
+// Run validation when run as a script (the build), not when a test imports it
+if (resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
+  validateAliases();
+}
