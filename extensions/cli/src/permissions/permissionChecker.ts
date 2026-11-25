@@ -395,27 +395,21 @@ function decide(
     ) {
       return { permission: "ask", matchedPolicy };
     }
+  }
 
-    // An allow policy can't approve a call that needs a person: ask instead.
-    // Headless mode refuses "ask", so these never run unattended.
-    if (
-      basePermission === "allow" &&
-      tool.requiresHumanApproval?.(toolCall.arguments)
-    ) {
-      return {
-        permission: "ask",
-        matchedPolicy,
-      };
-    }
-
-    // Otherwise, user preference wins - return the original base permission
+  // An allow policy can't approve a call that needs a person: ask instead.
+  // Headless mode refuses "ask", so these never run unattended.
+  if (
+    basePermission === "allow" &&
+    tool?.requiresHumanApproval?.(toolCall.arguments)
+  ) {
     return {
-      permission: basePermission,
+      permission: "ask",
       matchedPolicy,
     };
   }
 
-  // No dynamic evaluation, return static result
+  // Otherwise, user preference wins - return the original base permission
   return {
     permission: basePermission,
     matchedPolicy,
