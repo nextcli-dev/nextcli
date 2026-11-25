@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.20.0](https://github.com/nextcli-dev/nextcli/compare/cli-v0.19.0...cli-v0.20.0) (2026-11-25)
+
+
+### Features
+
+* **cli:** allow rules cover command chains ([#228](https://github.com/nextcli-dev/nextcli/issues/228)) ([4d5e1a2](https://github.com/nextcli-dev/nextcli/commit/4d5e1a2f63bc5b1be4909ee625bcf2c821bf5b96))
+* **cli:** NEXTCLI_TRACE=full writes each provider request, credentials redacted ([#226](https://github.com/nextcli-dev/nextcli/issues/226)) ([faf7ef5](https://github.com/nextcli-dev/nextcli/commit/faf7ef5ff7fb1f06ca32ca15d9492393838a6a44))
+* **vscode:** trusted terminal commands ([#229](https://github.com/nextcli-dev/nextcli/issues/229)) ([c55efcc](https://github.com/nextcli-dev/nextcli/commit/c55efcc64ad56cdb3f1230e724dfa4a8d66881a8))
+
+
+### Bug Fixes
+
+* **core:** keep sessions slim on every save and append dev data in turn ([#219](https://github.com/nextcli-dev/nextcli/issues/219)) ([ba0ee7b](https://github.com/nextcli-dev/nextcli/commit/ba0ee7be9557b90c565d020cd0dda5e8cbf3a4aa))
+* **core:** re-index files saved during a running refresh ([#224](https://github.com/nextcli-dev/nextcli/issues/224)) ([81ff5a2](https://github.com/nextcli-dev/nextcli/commit/81ff5a27228ab83abf6670a8fcaa39dfd6a38898))
+* **terminal-security:** close evaluator bypasses ([#227](https://github.com/nextcli-dev/nextcli/issues/227)) ([df78e86](https://github.com/nextcli-dev/nextcli/commit/df78e86913e3ceba6be47d63b2c1baf761e6b7f4))
+* **vscode:** track edits only while Next Edit is active ([#223](https://github.com/nextcli-dev/nextcli/issues/223)) ([b7c3cfc](https://github.com/nextcli-dev/nextcli/commit/b7c3cfc6846507961a27a7d4006dffac1165d9d8))
+
 ## [0.19.0](https://github.com/nextcli-dev/nextcli/compare/cli-v0.18.0...cli-v0.19.0) (2026-11-23)
 
 
