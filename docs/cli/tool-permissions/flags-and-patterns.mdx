@@ -31,12 +31,16 @@ cn -p "Set up the project" --allow "*"
 
 What flags do:
 
-- **Flags come before `permissions.yaml` and the defaults.** `--allow Edit` wins over an `exclude: [Edit]` saved in `permissions.yaml`.
-- **Inside the flags, excludes come first, then asks, then allows,** whatever order you write them in. `--exclude Bash --allow "Bash(git log*)"` denies `git log`: the exclude for the whole tool matches first. To narrow a tool, exclude the pattern you don't want and let the default or a broader allow handle the rest: `--allow Bash --exclude "Bash(npm install*)"`.
-- **An `--allow` is the operator's opt-in and is taken as given.** `cn -p --allow Bash` runs `curl` or `npm install`; only the commands that [never run](/cli/tool-permissions/read-only-commands#never-run) are still blocked. The exception is `--readonly`, which clamps every allow (see [Plan mode](/cli/modes/plan-mode)).
-- **`--ask` in a headless run means refused,** and the tool isn't offered.
-- **Two flags loosen guards that no pattern can open.** `--pass-env NAME` (repeatable) gives shell commands a secret-like environment variable they don't get by default. `--allow-private-fetch` lets `Fetch` reach `localhost` and private networks, but never cloud metadata. See [secrets and private addresses](/cli/headless-mode#secrets-and-private-addresses).
-- **A pattern that can't work stops `cn` at startup** with a message that names the pattern: a pattern on a tool that has no argument to match (`--allow "github_create_issue(x)"`), an unclosed one (`--allow "Write(src"`), or an empty value.
+- **Flags win over `permissions.yaml` and the defaults.** `--allow Edit` beats an `exclude: [Edit]` saved in `permissions.yaml`.
+- **Among the flags, `--exclude` wins, then `--ask`, then `--allow`,** whatever order you write them in. So `--exclude Bash --allow "Bash(git log*)"` blocks `git log`: the exclude covers the whole tool. To block part of a tool, exclude that part and let a broader allow or the default handle the rest: `--allow Bash --exclude "Bash(npm install*)"`.
+- **An `--allow` is taken as given.** You chose it, so `cn -p --allow Bash` runs `curl` and `npm install`. Only the commands that [never run](/cli/tool-permissions/read-only-commands#never-run) stay blocked. The exception is `--readonly`, which limits every allow (see [Plan mode](/cli/modes/plan-mode)).
+- **In a headless run, `--ask` means refused,** and the tool isn't offered to the model.
+- **Two flags open guards that no pattern can:**
+  - `--pass-env NAME` gives shell commands a secret-like environment variable they don't get by default. Repeat it for each variable.
+  - `--allow-private-fetch` lets `Fetch` reach `localhost` and private networks, but never cloud metadata.
+
+  See [secrets and private addresses](/cli/headless-mode#secrets-and-private-addresses).
+- **A pattern that can't work stops `cn` at startup,** with a message that names the pattern. For example: a pattern on a tool that takes no argument (`--allow "github_create_issue(x)"`), an unclosed parenthesis (`--allow "Write(src"`), or an empty value.
 
 ## Tool matching patterns
 
@@ -47,9 +51,9 @@ The same syntax is used by the flags, by `permissions.yaml` and in the messages 
 - `github_*` matches every tool whose name starts with `github_`. `*` matches any characters and `?` one character. Names are case-sensitive.
 - `*` matches every tool.
 
-An MCP tool keeps the name its server gives it, with no server prefix, so `github_*` covers a server whose tools are called `github_create_issue` and so on, and nothing on a server that calls the same tool `create_issue`. Check the names with `/mcp` in the TUI. To allow a whole server by name, list it in an [agent file](/cli/tool-permissions/agent-files) instead.
+MCP tools keep the names their server gives them, with no server prefix. So `github_*` covers a server whose tools are named `github_create_issue` and so on, but not a server that names the same tool `create_issue`. Check the names with `/mcp` in the TUI. To allow every tool of a server by the server's name, list it in an [agent file](/cli/tool-permissions/agent-files) instead.
 
-Only these tools take a pattern. It is matched against one argument:
+Only these tools take a pattern in parentheses. The pattern is matched against one argument of the call:
 
 | Tool | Argument the pattern matches |
 |------|------------------------------|
@@ -93,22 +97,24 @@ Whatever the pattern, `Fetch` refuses private and cloud metadata addresses, redi
 
 A `Bash(...)` pattern is matched against the **commands** in the line, not the raw text, so quoting and extra spaces don't matter: `"npm" install` and `npm  install` both match `Bash(npm install*)`.
 
-`--allow` and `--exclude` read the same pattern differently, and each one is cautious in its own direction:
+`--allow` and `--exclude` read the same pattern differently. Each one plays safe in its own direction:
 
 | | `--allow` | `--exclude` and `--ask` |
 |---|---|---|
-| Matches | each command of a plain chain, exactly as written | any command anywhere in the line |
-| When in doubt | doesn't match, so the command is not allowed | matches, so the command is blocked |
+| What it checks | each command in the line, exactly as written | every command anywhere in the line, including nested ones |
+| When unsure | doesn't match, so the command isn't allowed | matches, so the command is blocked |
 
-#### `--allow`: each command of a plain chain
+#### `--allow`: every command in the line must be allowed
 
-An allow covers one command, exactly as written. A line runs when every command in it is allowed, by this pattern or by another rule, and nothing between the commands is risky. Commands can be joined by `&&`, `||`, `;`, `|` and line breaks. These make a line ask instead:
+An allow pattern covers one command, exactly as written. A line can join several commands with `&&`, `||`, `;`, `|` or line breaks. It runs only when every command in it is allowed, by this pattern or by another rule.
 
-- a redirect that writes a file (`> out.txt`, `&> log.txt`), or a pipe into `tee`, `sponge` or `dd of=` that does, wherever it points, because the file may be a symlink to `~/.bashrc` or a git hook. `> /dev/null` and `2>&1` write no file;
+These make the line ask instead:
+
+- a redirect that writes a file (`> out.txt`, `&> log.txt`), or a pipe into `tee`, `sponge` or `dd of=` that writes one, wherever it points. The file could be a symlink to `~/.bashrc` or a git hook. `> /dev/null` and `2>&1` write no file, so they're fine;
 - a pipe (`|` or `|&`) into a shell, an interpreter or a network tool;
 - `$(...)`, backticks, a subshell, `&`, a heredoc or `sh -c`;
-- `export` or `source` before another command;
-- a `cd` or `pushd` before another command, unless it comes first and enters an existing folder inside the working directory, written with `/` and a plain name, with symlinks followed and `.git` excluded (`cd packages/app && npm test`). PowerShell's `Set-Location`, `sl` and `Push-Location` count as `cd`.
+- `export` or `source` followed by another command;
+- `cd` or `pushd` followed by another command. One exception: a `cd` at the start of the line into an existing folder inside the working directory, such as `cd packages/app && npm test`. The path must be plain folder names joined with `/` (no `..`, `~` or `$`), it must stay inside the working directory after following symlinks, and it can't be inside `.git`. PowerShell's `Set-Location`, `sl` and `Push-Location` count as `cd`.
 
 When the line doesn't run, the next rule decides. In a headless run that usually means refused.
 
@@ -145,7 +151,10 @@ Things to know:
 
 #### `--exclude` and `--ask`: any command in the line
 
-An exclude (or ask) looks inside the line and covers it if **any** command in it matches. It also ignores the command's directory, and the words in the pattern only have to appear in order, with anything in between.
+An exclude (or ask) looks inside the whole line and covers it if **any** command in it matches. It is loose on purpose:
+
+- It ignores the directory in front of a command, so `/usr/bin/npm` counts as `npm`.
+- The words in the pattern only have to appear in order, with anything in between.
 
 With `--exclude "Bash(npm install*)"`, all of these are blocked:
 

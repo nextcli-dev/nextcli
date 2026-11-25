@@ -45,7 +45,8 @@ A long session fills the model's context window. Once it's full, the oldest mess
 ### Start a Compaction
 
 - Click the compact icon (arrows pointing inward) under a response. It summarizes the conversation up to and including that response.
-- Once the window is 60% full, or the oldest messages are already left out, the icon under the last response gets a **Compact conversation** label. A context ring also appears next to the input once the chat has history. Hover or click it for the breakdown, then choose **Compact now** or **View report**. The ring is amber at 80% of the pruning point and red once messages are pruned.
+- Once the window is 60% full, or the oldest messages are already left out, the icon under the last response gets a **Compact conversation** label.
+- Use the context ring next to the input. It appears once the chat has history. Hover or click it to see what fills the window, then choose **Compact now** or **View report**. The ring turns amber at 80% of the pruning point, and red once older messages are left out.
 - A last response that ends with tool calls has no icon under it. Use the context ring, or the icon under an earlier response.
 - You can't compact while a response streams or tools run, or while that response is already being summarized.
 
@@ -69,7 +70,7 @@ The summary appears under the response it covers. The latest one comes after a *
 ### Cancel or Remove a Summary
 
 - **Cancel** stops the summary. Nothing is saved.
-- The trash icon on **Conversation Summary** removes that summary. Later requests then use the summary before it, if there is one, with the turns after it. With no summary left, they send the full conversation again. Removing the summary in use, without leaving the session that made it, brings back the context ring's measure from before it.
+- The trash icon on **Conversation Summary** removes that summary. Later requests then use the summary before it, if there is one, with the turns after it. With no summary left, they send the full conversation again. If you remove the summary in use while you're still in the session that made it, the context ring goes back to the size it showed before that summary.
 - If compaction fails, a notification gives the reason. If the response is deleted before the summary is saved, a notification says the summary wasn't saved. Deleting the session stops its compaction.
 
 ### See What Fills the Context

@@ -12,7 +12,10 @@ Every tool has one of three permission levels:
 | `ask` | Asks before running. With nobody to answer, the call is refused |
 | `exclude` | Not offered to the model |
 
-Permissions are applied twice. Before each model request, `cn` decides which tools to offer: a tool is offered when a call can run, or when someone is present to approve it. A tool that is allowed only for some arguments, such as `Write(src/*)`, is offered too. Then every call the model makes is checked against the rules and the limits of the run, so a tool that is offered can still be refused for a given call.
+`cn` checks permissions twice:
+
+1. **Before each model request,** it picks which tools to offer the model. A tool is offered if a call to it could run, or if someone is there to approve it. A tool allowed only for some arguments, such as `Write(src/*)`, is offered too.
+2. **On every call the model makes,** it checks that call against the rules and the run's limits. So a tool that was offered can still be refused for a particular call.
 
 "Nobody to answer" means a run without a person at the terminal: `cn -p` and `cn review`. There, `ask` means refused. See [Kinds of run](/cli/tool-permissions/defaults#kinds-of-run).
 
@@ -30,7 +33,7 @@ Permissions are applied twice. Before each model request, `cn` decides which too
 
 The first rule that matches a call decides it. The rules come from, in order:
 
-1. **Mode** — `--readonly` applies its two limits on every call; `--auto` without an agent file replaces every other source with `*: allow`. See [Modes](/cli/modes).
+1. **Mode** — `--readonly` blocks writes and keeps `Bash` read-only on every call. `--auto` without an agent file replaces all the sources below with one rule, `*: allow`. See [Modes](/cli/modes).
 2. **Flags** — `--exclude`, then `--ask`, then `--allow`.
 3. **Agent file** — its tool list, when one is loaded. It replaces `permissions.yaml` and the defaults.
 4. **`permissions.yaml`** — in a headless run, only its excludes.
