@@ -16,7 +16,10 @@ interface EvaluatedPolicy {
   policy: ToolPolicy;
   displayValue?: string;
   toolCallState: ToolCallState;
-  /** A terminal command the trusted rules cover */
+  /**
+   * A terminal command whose every command is trusted or approved by the
+   * evaluator on its own (isTrustedTerminalCommand in core)
+   */
   trusted?: boolean;
   /** Rules that would let this terminal command run without asking */
   rememberRules?: string[];

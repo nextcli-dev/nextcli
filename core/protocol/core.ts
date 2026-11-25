@@ -351,7 +351,10 @@ export type ToCoreFromIdeOrWebviewProtocol = {
     {
       policy: ToolPolicy;
       displayValue?: string;
-      /** A terminal command the trusted rules cover (isTrustedTerminalCommand) */
+      /**
+       * isTrustedTerminalCommand accepts the terminal command: every command
+       * in it is trusted or approved by the evaluator on its own
+       */
       trusted?: boolean;
       /** Rules that would let this terminal command run without asking */
       rememberRules?: string[];

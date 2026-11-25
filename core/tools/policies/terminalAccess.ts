@@ -7,7 +7,10 @@ import {
 import { BuiltInToolNames } from "../builtIn";
 
 export interface TerminalCommandTrust {
-  /** The trusted rules cover the command (isTrustedTerminalCommand) */
+  /**
+   * isTrustedTerminalCommand accepts the command: every command in it is
+   * trusted or approved by the evaluator on its own
+   */
   trusted?: boolean;
   /** Rules that would let the command run without asking next time */
   rememberRules?: string[];
