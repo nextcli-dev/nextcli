@@ -32,6 +32,16 @@ const interactive: Defaults = {
   plan: "allow",
   planHeadless: "exclude",
 };
+/**
+ * Recalls earlier turns: offered with someone present, until headless runs
+ * get compaction that points the model to them
+ */
+const recall: Defaults = {
+  normal: "allow",
+  headless: "exclude",
+  plan: "allow",
+  planHeadless: "exclude",
+};
 /** Sends data off the machine: closed when nobody is watching */
 const network: Defaults = {
   normal: "allow",
@@ -62,6 +72,8 @@ const TOOL_DEFAULTS: Record<string, Defaults> = {
   Read: allow,
   ReportFailure: allow,
   Search: allow,
+  SearchHistory: recall,
+  ReadHistory: recall,
   Skills: allow,
   Status: allow,
   Fetch: network,

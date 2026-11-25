@@ -82,6 +82,9 @@ export async function executeSubAgent(
         policies: [
           { tool: "Subagent", permission: "exclude" },
           { tool: CLI_ASK_QUESTION_TOOL_NAME, permission: "exclude" },
+          // A delegated task has no conversation of its own to recall
+          { tool: "SearchHistory", permission: "exclude" },
+          { tool: "ReadHistory", permission: "exclude" },
           ...parent.policies,
         ],
       };

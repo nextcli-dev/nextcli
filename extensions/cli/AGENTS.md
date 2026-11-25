@@ -8,7 +8,8 @@ The `cn` CLI. Read the [root AGENTS.md](../../AGENTS.md) first for goals, rules 
 - `src/index.ts`: entry point and commands. `-p/--print` runs headless. With no flag it starts the Ink TUI (`src/ui/`).
 - `src/commands/`: `chat`, `review` (and `review/`), `checks`, `ls`, `cleanup`. Shared flags are in `BaseCommandOptions.ts` and `src/shared-options.ts`.
 - `src/stream/`: the agent loop (`streamChatResponse.ts`, `handleToolCalls.ts`) and the turn, token and cost limits (`agentLoopLimits.ts`).
-- `src/tools/`: built-in tools. A new tool goes in `builtInToolNames.ts`, `allBuiltIns.ts` and `src/permissions/defaultPolicies.ts`.
+- `src/tools/`: built-in tools. A new tool goes in `builtInToolNames.ts`, `allBuiltIns.ts`, `getAllAvailableTools` in `index.tsx` (what a run is offered) and `src/permissions/defaultPolicies.ts`. `history.ts` holds `SearchHistory` and `ReadHistory`, over the session transcripts that core's `HistoryManager` writes.
+- `src/context/`: the context-window snapshot behind `/context`, the status bar and the trace.
 - `src/permissions/`: tool policies, with defaults and `--readonly` (plan mode) in `defaultPolicies.ts`.
 - `src/services/`: config, models, MCP, permissions and the rest, wired through `ServiceContainer.ts`.
 - `src/systemMessage.ts`: builds the system prompt. It loads the first of `AGENTS.md`, `AGENT.md`, `CLAUDE.md` or `CODEX.md` from the working directory.
