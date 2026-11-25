@@ -81,7 +81,7 @@ const COMPACTION_PROMPT =
   "Please provide a concise summary of our conversation so far, capturing the key context, decisions made, and current state. Format this as a single comprehensive message that preserves all important information needed to continue our work. You do not need to recap the system message, as this will remain. Make sure it is clear what the current stream of work was at the very end prior to compaction so that you can continue exactly where you left off without missing any information.";
 
 /** The system prompt for the current mode */
-async function currentSystemMessage(): Promise<string> {
+export async function currentSystemMessage(): Promise<string> {
   // Imported here: services import this module
   const { services } = await import("./services/index.js");
   return services.systemMessage.getSystemMessage(
@@ -90,7 +90,7 @@ async function currentSystemMessage(): Promise<string> {
 }
 
 /** The tools a normal request would carry now */
-async function currentRequestTools(
+export async function currentRequestTools(
   model: ModelConfig,
 ): Promise<ChatCompletionTool[]> {
   const { services } = await import("./services/index.js");

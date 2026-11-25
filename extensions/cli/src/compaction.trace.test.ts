@@ -121,6 +121,23 @@ describe("the context.compaction trace event", () => {
     expect(JSON.stringify(attrs)).not.toContain(summary);
   });
 
+  it("records a failure that never reached the model", async () => {
+    // What follows the summary leaves it no room in the window
+    await expect(
+      compactChatHistory(history, model, llmApi, {
+        followedBy: [user(" next".repeat(20_000))],
+      }),
+    ).rejects.toThrow();
+
+    expect(llmApi.chatCompletionStream).not.toHaveBeenCalled();
+    expect(trace.events).toHaveLength(1);
+    expect(trace.events[0].attrs).toEqual({
+      trigger: "manual",
+      outcome: "failed",
+      tokensBefore: expect.any(Number),
+    });
+  });
+
   it("marks an auto compaction and counts what the summary request cut", async () => {
     const big = [
       user(" hello".repeat(9_000)),
