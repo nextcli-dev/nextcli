@@ -1,7 +1,7 @@
 {
   "name": "@nextcli/context",
   "version": "1.0.0",
-  "description": "Shared by the NextCLI VS Code extension and cn: the context-window snapshot and tool-schema token counts, plus Node-only subpaths: the node:sqlite wrapper (@nextcli/context/sqlite) and the append-only session journal (@nextcli/context/archive)",
+  "description": "Shared by the NextCLI VS Code extension and cn: the context-window snapshot and tool-schema token counts, plus Node-only subpaths: the node:sqlite wrapper (@nextcli/context/sqlite) the append-only session journal (@nextcli/context/archive) and its full-text index (@nextcli/context/history-store)",
   "private": true,
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -18,6 +18,10 @@
     "./archive": {
       "types": "./dist/archive/index.d.ts",
       "default": "./dist/archive/index.js"
+    },
+    "./history-store": {
+      "types": "./dist/historyStore/index.d.ts",
+      "default": "./dist/historyStore/index.js"
     }
   },
   "typesVersions": {
@@ -27,6 +31,9 @@
       ],
       "archive": [
         "dist/archive/index.d.ts"
+      ],
+      "history-store": [
+        "dist/historyStore/index.d.ts"
       ]
     }
   },

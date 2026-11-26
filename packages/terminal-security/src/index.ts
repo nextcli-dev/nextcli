@@ -19,6 +19,7 @@ export {
   SECRET_NAME_GLOBS,
   SECRET_VALUE_GLOBS,
 } from "./secretEnv.js";
+export { redactSecretText } from "./secretText.js";
 export { secureShellCommand } from "./shellCommand.js";
 export {
   allowsCommandChain,

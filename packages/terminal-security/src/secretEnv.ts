@@ -85,17 +85,30 @@ function isPathToFile(value: string): boolean {
   }
 }
 
+/**
+ * Whether a name and value look like a secret, by the rules alone. Pure: no
+ * file system check, so it is safe to run over text (redactSecretText).
+ */
+export function looksLikeSecret(
+  name: string,
+  value: string | undefined,
+): boolean {
+  if (keptNames.has(name.toUpperCase())) return false;
+  return (
+    nameRegExps.some((pattern) => pattern.test(name)) ||
+    (value !== undefined && valueRegExps.some((pattern) => pattern.test(value)))
+  );
+}
+
 /** Whether an environment variable holds a secret the shell shouldn't see */
 export function isSecretEnvVar(
   name: string,
   value: string | undefined,
 ): boolean {
-  if (keptNames.has(name.toUpperCase())) return false;
-  const matches =
-    nameRegExps.some((pattern) => pattern.test(name)) ||
-    (value !== undefined &&
-      valueRegExps.some((pattern) => pattern.test(value)));
-  return matches && !(value !== undefined && isPathToFile(value));
+  return (
+    looksLikeSecret(name, value) &&
+    !(value !== undefined && isPathToFile(value))
+  );
 }
 
 /** Names a caller asked to keep, upper-cased; invalid names are dropped */

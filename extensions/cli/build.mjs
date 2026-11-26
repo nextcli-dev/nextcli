@@ -98,6 +98,10 @@ try {
         __dirname,
         "../../packages/context/dist/archive/index.js",
       ),
+      "@nextcli/context/history-store": resolve(
+        __dirname,
+        "../../packages/context/dist/historyStore/index.js",
+      ),
       "@nextcli/snapshot": resolve(
         __dirname,
         "../../packages/snapshot/dist/index.js",

@@ -7,6 +7,7 @@ import {
   JournalLine,
   JournalReplay,
   JournalSourceItem,
+  parseJournalLines,
   settledLength,
   storedItem,
 } from "./journal.js";
@@ -19,30 +20,12 @@ interface JournalState {
 
 const states = new Map<string, JournalState>();
 
-/** The complete lines of a journal chunk; a trailing partial line is dropped */
-function parseLines(text: string): JournalLine[] {
-  const end = text.lastIndexOf("\n");
-  const lines: JournalLine[] = [];
-  for (const raw of text.slice(0, end + 1).split("\n")) {
-    if (!raw) {
-      continue;
-    }
-    try {
-      lines.push(JSON.parse(raw) as JournalLine);
-    } catch {
-      // A line torn by a crash mid-append: the writer after it starts on a
-      // new line, so only this one is lost
-    }
-  }
-  return lines;
-}
-
-function readFrom(path: string, offset: number, size: number): string {
+function readFrom(path: string, offset: number, size: number): Buffer {
   const fd = fs.openSync(path, "r");
   try {
     const buffer = Buffer.alloc(size - offset);
     fs.readSync(fd, buffer, 0, buffer.length, offset);
-    return buffer.toString("utf8");
+    return buffer;
   } finally {
     fs.closeSync(fd);
   }
@@ -53,12 +36,12 @@ function caughtUp(path: string, size: number): JournalState {
   let state = states.get(path);
   if (state && size >= state.size) {
     if (size > state.size) {
-      const lines = parseLines(readFrom(path, state.size, size));
+      const { lines } = parseJournalLines(readFrom(path, state.size, size));
       const nonce = state.replay.nonce;
-      if (lines.some((l) => l.t === "head" && l.nonce !== nonce)) {
+      if (lines.some(({ line }) => line.t === "head" && line.nonce !== nonce)) {
         state = undefined;
       } else {
-        for (const line of lines) {
+        for (const { line } of lines) {
           state.replay.apply(line);
         }
         state.size = size;
@@ -70,7 +53,8 @@ function caughtUp(path: string, size: number): JournalState {
   if (!state) {
     // Not read yet in this process, or recreated (shorter, or a new head)
     const replay = new JournalReplay();
-    for (const line of parseLines(size ? readFrom(path, 0, size) : "")) {
+    const bytes = size ? readFrom(path, 0, size) : Buffer.alloc(0);
+    for (const { line } of parseJournalLines(bytes).lines) {
       replay.apply(line);
     }
     state = { replay, size };
@@ -184,7 +168,7 @@ function append(
   }
   // After a line torn by a crash, start on a new line
   const prefix =
-    size > 0 && readFrom(path, size - 1, size) !== "\n" ? "\n" : "";
+    size > 0 && readFrom(path, size - 1, size)[0] !== 0x0a ? "\n" : "";
   const text = prefix + lines.map((l) => JSON.stringify(l)).join("\n") + "\n";
   fs.appendFileSync(path, text);
   state.size = size + Buffer.byteLength(text);

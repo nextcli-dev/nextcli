@@ -408,9 +408,14 @@ export class SqliteDatabase {
    * Runs `fn` between BEGIN and COMMIT, and rolls back if `fn` or the COMMIT
    * fails, so the connection is never left inside a transaction. `fn` is
    * synchronous, so no other caller's statements can run inside it; keep it
-   * short, because it holds the write lock and the thread.
+   * short, because it holds the write lock and the thread. `immediate` takes
+   * the write lock at BEGIN: a transaction that reads before it writes then
+   * can't fail on its first write because another connection wrote between.
    */
-  transaction<T>(fn: (tx: SqliteTransaction) => T): Promise<T> {
+  transaction<T>(
+    fn: (tx: SqliteTransaction) => T,
+    options: { immediate?: boolean } = {},
+  ): Promise<T> {
     return schedule(() => {
       const statements = new Map<string, StatementSync>();
       const tx: SqliteTransaction = {
@@ -425,7 +430,7 @@ export class SqliteDatabase {
           );
         },
       };
-      call(() => this.db.exec("BEGIN"));
+      call(() => this.db.exec(options.immediate ? "BEGIN IMMEDIATE" : "BEGIN"));
       try {
         const result = fn(tx);
         call(() => this.db.exec("COMMIT"));
