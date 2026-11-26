@@ -1,8 +1,6 @@
-import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { redactSecretText } from "@continuedev/terminal-security";
-import { readJournalHead } from "@nextcli/context/archive";
 import type { HistoryStore } from "@nextcli/context/history-store";
 
 import { ContextItem, ToolExtras } from "../..";
@@ -11,13 +9,10 @@ import {
   getSessionJournalPath,
   getSessionsFolderPath,
 } from "../../util/paths";
-import { isSameLocalPath } from "../../util/uri";
 import { ToolImpl } from ".";
 
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 20;
-// Workspace scope looks at the newest transcripts only
-const MAX_WORKSPACE_SESSIONS = 500;
 
 let storePromise: Promise<HistoryStore> | undefined;
 
@@ -48,37 +43,6 @@ function errorItem(name: string, message: string): ContextItem[] {
   return [item(name, "Error", `Error: ${message}`)];
 }
 
-/**
- * The sessions started in one of the workspace folders. The GUI saves a
- * folder as a URI and the IDE lists it as one too, but encoding and drive
- * letter case differ between sources, so compare them as paths.
- */
-async function sessionsOfWorkspace(extras: ToolExtras): Promise<string[]> {
-  const dirs = await extras.ide.getWorkspaceDirs();
-  const sessionsDir = getSessionsFolderPath();
-  const files = fs
-    .readdirSync(sessionsDir)
-    .filter((f) => f.endsWith(".jsonl"))
-    .map((f) => ({
-      id: f.slice(0, -".jsonl".length),
-      mtime: fs.statSync(path.join(sessionsDir, f)).mtimeMs,
-    }))
-    .sort((a, b) => b.mtime - a.mtime);
-  const ids: string[] = [];
-  for (const { id } of files) {
-    const workspace = readJournalHead(
-      path.join(sessionsDir, `${id}.jsonl`),
-    )?.workspace;
-    if (workspace && dirs.some((dir) => isSameLocalPath(dir, workspace))) {
-      ids.push(id);
-      if (ids.length === MAX_WORKSPACE_SESSIONS) {
-        break;
-      }
-    }
-  }
-  return ids;
-}
-
 function describeState(state: string): string {
   return state === "folded" ? "compacted" : state === "cut" ? "undone" : "";
 }
@@ -99,6 +63,7 @@ export const searchHistoryImpl: ToolImpl = async (args, extras) => {
     : DEFAULT_LIMIT;
 
   let sessionIds: string[] | undefined;
+  let workspace: string[] | undefined;
   if (scope === "session") {
     if (!extras.sessionId) {
       return errorItem(
@@ -108,16 +73,25 @@ export const searchHistoryImpl: ToolImpl = async (args, extras) => {
     }
     sessionIds = [extras.sessionId];
   } else if (scope === "workspace") {
-    sessionIds = await sessionsOfWorkspace(extras);
-    if (!sessionIds.length) {
-      return [
-        item(name, "No results", "No saved conversations in this workspace."),
-      ];
+    // The index matches a folder however it was written: VS Code's file://
+    // URI, cn's path, a symlink. Another host's folder (a remote URI) stays
+    // apart even when its path reads the same
+    workspace = await extras.ide.getWorkspaceDirs();
+    if (!workspace.length) {
+      return errorItem(
+        name,
+        "no folder is open, so scope workspace can't be searched. Try scope session",
+      );
     }
   }
 
   const store = await getHistoryStore();
-  const result = await store.search({ text: query, sessionIds, limit });
+  const result = await store.search({
+    text: query,
+    sessionIds,
+    workspace,
+    limit,
+  });
 
   const lines = result.hits.map((hit) => {
     const where =

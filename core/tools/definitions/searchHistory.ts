@@ -5,9 +5,14 @@ import { BUILT_IN_GROUP_NAME, BuiltInToolNames } from "../builtIn";
 export const searchHistoryTool: Tool = {
   type: "function",
   displayTitle: "Search History",
-  wouldLikeTo: 'search the conversation history for "{{{ query }}}"',
-  isCurrently: 'searching the conversation history for "{{{ query }}}"',
-  hasAlready: 'searched the conversation history for "{{{ query }}}"',
+  // The scope is what decides whether it asks: the line shows it, and the
+  // default, so the approval names what will be searched
+  wouldLikeTo:
+    'search {{^scope}}this conversation{{/scope}}{{#scope}}saved conversations (scope: {{{ scope }}}){{/scope}} for "{{{ query }}}"',
+  isCurrently:
+    'searching {{^scope}}this conversation{{/scope}}{{#scope}}saved conversations (scope: {{{ scope }}}){{/scope}} for "{{{ query }}}"',
+  hasAlready:
+    'searched {{^scope}}this conversation{{/scope}}{{#scope}}saved conversations (scope: {{{ scope }}}){{/scope}} for "{{{ query }}}"',
   readonly: true,
   isInstant: true,
   group: BUILT_IN_GROUP_NAME,

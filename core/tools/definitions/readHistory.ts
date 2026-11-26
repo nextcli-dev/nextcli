@@ -5,9 +5,14 @@ import { BUILT_IN_GROUP_NAME, BuiltInToolNames } from "../builtIn";
 export const readHistoryTool: Tool = {
   type: "function",
   displayTitle: "Read History",
-  wouldLikeTo: "read conversation history items {{{ from }}} to {{{ to }}}",
-  isCurrently: "reading conversation history items {{{ from }}} to {{{ to }}}",
-  hasAlready: "read conversation history items {{{ from }}} to {{{ to }}}",
+  // Another conversation's id is what makes it ask: the line names it, and
+  // the default. A 0 is falsy to Mustache, so "to" is left out when it is
+  wouldLikeTo:
+    "read items #{{{ from }}}{{#to}} to #{{{ to }}}{{/to}} of {{#session}}conversation {{{ session }}}{{/session}}{{^session}}this conversation{{/session}}",
+  isCurrently:
+    "reading items #{{{ from }}}{{#to}} to #{{{ to }}}{{/to}} of {{#session}}conversation {{{ session }}}{{/session}}{{^session}}this conversation{{/session}}",
+  hasAlready:
+    "read items #{{{ from }}}{{#to}} to #{{{ to }}}{{/to}} of {{#session}}conversation {{{ session }}}{{/session}}{{^session}}this conversation{{/session}}",
   readonly: true,
   isInstant: true,
   group: BUILT_IN_GROUP_NAME,

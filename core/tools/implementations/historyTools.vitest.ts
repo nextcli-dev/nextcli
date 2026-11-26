@@ -1,4 +1,7 @@
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { v4 as uuidv4 } from "uuid";
 import { describe, expect, it } from "vitest";
@@ -114,43 +117,85 @@ describe("search_history and read_history", () => {
     expect(result).toMatch(/^Error: .*session/);
   });
 
-  it("workspace scope finds sessions of the workspace, in whatever form its folder is written", async () => {
+  it("workspace scope finds a folder's sessions however they wrote it", async () => {
     const marker = `wsfact${uuidv4().slice(0, 8)}`;
-    const inside = uuidv4();
+    // A folder with a space, and a link to it
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "history-ws-"));
+    const app = path.join(root, "My Work", "app");
+    const link = path.join(root, "link");
+    fs.mkdirSync(app, { recursive: true });
+    fs.symlinkSync(app, link, "junction");
+    const fromVsCode = uuidv4();
+    const fromCn = uuidv4();
+    const throughLink = uuidv4();
     const outside = uuidv4();
-    const viewer = uuidv4();
+    // VS Code records a percent-encoded URI, cn process.cwd()
+    save(fromVsCode, [item("user", `${marker} vs`)], pathToFileURL(app).href);
+    save(fromCn, [item("user", `${marker} cn`)], app);
+    save(throughLink, [item("user", `${marker} link`)], link);
     save(
-      inside,
-      [item("user", `${marker} inside`)],
-      "file:///c%3A/My%20Work/app",
+      outside,
+      [item("user", `${marker} outside`)],
+      pathToFileURL(root).href,
     );
-    save(outside, [item("user", `${marker} outside`)], "file:///elsewhere");
-    save(viewer, [item("user", "x")]);
+    const folders = [pathToFileURL(app).href];
+    if (process.platform === "darwin" || process.platform === "win32") {
+      folders.push(pathToFileURL(app.toUpperCase()).href);
+    }
 
-    const extras = extrasFor(viewer, ["file:///C:/My Work/app"]);
-    const result = await search({ query: marker, scope: "workspace" }, extras);
-    expect(result).toContain(`session ${inside}`);
-    expect(result).not.toContain(outside);
-
-    const none = await search(
-      { query: marker, scope: "workspace" },
-      extrasFor(viewer, ["file:///unrelated"]),
-    );
-    expect(none).toContain("No saved conversations");
+    try {
+      for (const folder of folders) {
+        const result = await search(
+          { query: marker, scope: "workspace", limit: 10 },
+          extrasFor(uuidv4(), [folder]),
+        );
+        expect(result).toContain(`session ${fromVsCode}`);
+        expect(result).toContain(`session ${fromCn}`);
+        expect(result).toContain(`session ${throughLink}`);
+        expect(result).not.toContain(outside);
+      }
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 
-  it("workspace scope finds a session cn saved with a plain path", async () => {
-    const marker = `cnfact${uuidv4().slice(0, 8)}`;
-    const fromCn = uuidv4();
-    // cn records process.cwd(); VS Code lists the folder as a URI
-    save(fromCn, [item("user", `${marker} from cn`)], "/work/cn-project");
-
-    const result = await search(
-      { query: marker, scope: "workspace" },
-      extrasFor(uuidv4(), ["file:///work/cn-project"]),
+  it("workspace scope keeps another host's folder apart", async () => {
+    const marker = `remotefact${uuidv4().slice(0, 8)}`;
+    const remote = uuidv4();
+    save(
+      remote,
+      [item("user", `${marker} on box`)],
+      "vscode-remote://ssh-remote+box/home/me/proj",
     );
+    const inWindow = (folder: string) =>
+      search(
+        { query: marker, scope: "workspace" },
+        extrasFor(uuidv4(), [folder]),
+      );
 
-    expect(result).toContain(`session ${fromCn}`);
+    expect(
+      await inWindow("vscode-remote://ssh-remote+other/home/me/proj"),
+    ).toContain("No matches");
+    expect(await inWindow("file:///home/me/proj")).toContain("No matches");
+    expect(
+      await inWindow("vscode-remote://ssh-remote+box/home/me/proj"),
+    ).toContain(`session ${remote}`);
+  });
+
+  it("read_history leaves out undone turns, as search does", async () => {
+    const id = uuidv4();
+    save(id, [
+      item("user", "first"),
+      item("assistant", "kept"),
+      item("user", "the undone ask"),
+    ]);
+    // The user undid the last turn
+    save(id, [item("user", "first"), item("assistant", "kept")]);
+
+    const text = await read({ from: 0, to: 5 }, extrasFor(id));
+
+    expect(text).toContain("#1 assistant: kept");
+    expect(text).not.toContain("undone");
   });
 
   it("says where to read on when the size limit stops a read", async () => {
