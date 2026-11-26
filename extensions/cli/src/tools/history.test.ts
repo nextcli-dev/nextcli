@@ -19,8 +19,9 @@ import {
 } from "../session.js";
 
 import { readHistoryTool, searchHistoryTool } from "./history.js";
-import { validateToolCallArgsPresent } from "./index.js";
 import { Tool } from "./types.js";
+
+import { validateToolCallArgsPresent } from "./index.js";
 
 // vitest.global-dir-setup.ts gives each test file its own CONTINUE_GLOBAL_DIR:
 // cn saves sessions there, and core's HistoryManager writes their transcripts
@@ -167,7 +168,13 @@ describe("SearchHistory and ReadHistory", () => {
     ]);
     const args = { outline: true };
     validateToolCallArgsPresent(
-      { id: "c1", name: "ReadHistory", arguments: args, argumentsStr: "" },
+      {
+        id: "c1",
+        name: "ReadHistory",
+        arguments: args,
+        argumentsStr: "",
+        startNotified: false,
+      },
       readHistoryTool,
     );
 
