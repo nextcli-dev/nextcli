@@ -23,6 +23,7 @@ import { checkBackgroundJobTool } from "./checkBackgroundJob.js";
 import { editTool } from "./edit.js";
 import { exitTool } from "./exit.js";
 import { fetchTool } from "./fetch.js";
+import { readHistoryTool, searchHistoryTool } from "./history.js";
 import { listFilesTool } from "./listFiles.js";
 import { multiEditTool } from "./multiEdit.js";
 import { readFileTool } from "./readFile.js";
@@ -71,6 +72,9 @@ const BASE_BUILTIN_TOOLS: Tool[] = [
   fetchTool,
   writeChecklistTool,
   checkBackgroundJobTool,
+  // Offered by policy: excluded where nobody is present (see defaultPolicies)
+  searchHistoryTool,
+  readHistoryTool,
 ];
 
 const BUILTIN_SEARCH_TOOLS: Tool[] = [searchCodeTool];

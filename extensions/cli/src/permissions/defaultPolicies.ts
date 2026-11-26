@@ -32,6 +32,16 @@ const interactive: Defaults = {
   plan: "allow",
   planHeadless: "exclude",
 };
+/**
+ * Recalls earlier turns: offered with someone present, until headless runs
+ * get compaction that points the model to them
+ */
+const recall: Defaults = {
+  normal: "allow",
+  headless: "exclude",
+  plan: "allow",
+  planHeadless: "exclude",
+};
 /** Sends data off the machine: closed when nobody is watching */
 const network: Defaults = {
   normal: "allow",
@@ -62,6 +72,8 @@ const TOOL_DEFAULTS: Record<string, Defaults> = {
   Read: allow,
   ReportFailure: allow,
   Search: allow,
+  SearchHistory: recall,
+  ReadHistory: recall,
   Skills: allow,
   Status: allow,
   Fetch: network,
@@ -116,3 +128,25 @@ export function getPlanModePolicies(
 export const AUTO_MODE_POLICIES: ToolPermissionPolicy[] = [
   { tool: "*", permission: "allow" },
 ];
+
+/**
+ * Auto mode allows every tool, except the recall tools when nobody is
+ * present (cn -p --auto): a headless run gets none until its compaction
+ * points the model to them, as without --auto.
+ */
+export function getAutoModePolicies(
+  isHeadless = false,
+): ToolPermissionPolicy[] {
+  const recallTools = Object.keys(TOOL_DEFAULTS).filter(
+    (tool) => TOOL_DEFAULTS[tool] === recall,
+  );
+  return [
+    ...(isHeadless
+      ? recallTools.map((tool) => ({
+          tool,
+          permission: "exclude" as const,
+        }))
+      : []),
+    ...AUTO_MODE_POLICIES,
+  ];
+}

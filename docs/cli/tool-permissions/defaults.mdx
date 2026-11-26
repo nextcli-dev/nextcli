@@ -10,6 +10,7 @@ description: "The permission each cn tool gets by default in the TUI, in headles
 |------|------------|---------|-----------------|--------------------|
 | `Read`, `List`, `Search`, `Diff`, `Checklist`, `Status`, `CheckBackgroundJob`, `Skills`, `Exit`, `ReportFailure` | `allow` | `allow` | `allow` | `allow` |
 | `AskQuestion` | `allow` | `exclude` | `allow` | `exclude` |
+| `SearchHistory`, `ReadHistory` | `allow` | `exclude` | `allow` | `exclude` |
 | `Edit`, `MultiEdit`, `Write` | `ask` | `ask`, so refused | `exclude` | `exclude` |
 | `Bash` | `ask` | `allow`, [read-only commands](/cli/tool-permissions/read-only-commands) only | `ask` | `exclude` |
 | `Fetch`, `UploadArtifact` | `allow` | `exclude` | `allow` | `exclude` |
@@ -29,6 +30,7 @@ Some tools exist only in some runs:
 | `ReportFailure` | with `--id` |
 | `UploadArtifact` | with `--id` and `--beta-upload-artifact-tool` |
 | `Subagent` | with `--beta-subagent-tool` |
+| `SearchHistory`, `ReadHistory` | in the TUI and `cn serve`, never in a subagent. Not in `cn -p`, with or without `--auto`; `--allow SearchHistory` opts a run in, except under `--auto`, which ignores the flags. Searching every session, or reading another session's turns, asks first, so `cn -p` refuses it |
 
 A capable model gets `MultiEdit`, and other models get `Edit`. Both have the same permissions.
 

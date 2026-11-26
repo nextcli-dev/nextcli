@@ -4,6 +4,7 @@ import { askQuestionTool } from "./askQuestion.js";
 import { editTool } from "./edit.js";
 import { exitTool } from "./exit.js";
 import { fetchTool } from "./fetch.js";
+import { readHistoryTool, searchHistoryTool } from "./history.js";
 import { listFilesTool } from "./listFiles.js";
 import { multiEditTool } from "./multiEdit.js";
 import { readFileTool } from "./readFile.js";
@@ -26,9 +27,11 @@ export const ALL_BUILT_IN_TOOLS = [
   listFilesTool,
   multiEditTool,
   readFileTool,
+  readHistoryTool,
   reportFailureTool,
   runTerminalCommandTool,
   searchCodeTool,
+  searchHistoryTool,
   statusTool,
   SUBAGENT_TOOL_META,
   SKILLS_TOOL_META,

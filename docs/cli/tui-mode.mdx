@@ -81,6 +81,8 @@ This restores the full conversation history, so the agent remembers prior contex
 
 Next to each session's file, `~/.continue/sessions/<id>.jsonl` keeps a transcript of the session that only grows. Compaction and `/undo` shorten the session itself, never the transcript: compacted turns stay in it, and undone ones are marked rather than removed. It holds the full text of every turn, tool output included (images are replaced with a placeholder), and the VS Code extension writes the same file for its sessions. Deleting a session deletes its transcript.
 
+The agent can search the transcripts with `SearchHistory` and read turns back with `ReadHistory`, so a requirement or an error from before a compaction isn't lost to it. It searches this session by default; it can also search the sessions in this folder, or every session after you approve. Secrets are redacted in what these tools return, and in the search index (`~/.continue/index/history.sqlite`). Without FTS5 (Node.js 22.15), words match as substrings, results say "basic search", and the index is `history-basic.sqlite`.
+
 ## Undo a turn
 
 Before each turn, `cn` records the state of your git work tree, so you can take back what the agent changed: edits, new files, and files that shell commands deleted or wrote.
@@ -136,4 +138,4 @@ Note: Dangerous commands will be blocked regardless of your preference.
 
 The note under a shell command means what it says: `rm -rf /` and the like never run, whatever you answer.
 
-Read-only tools (`Read`, `List`, `Search`, `Diff`, `Fetch`, `AskQuestion`, `Checklist`, `Status`, `Skills`) run without asking. Shift+Tab outside a prompt cycles the [permission mode](/cli/modes): normal → plan (`⏸ plan`, never writes) → auto (`⏵⏵ auto`, nothing asks). See [tool permissions](/cli/tool-permissions) for the rules, the flags and `permissions.yaml`.
+Read-only tools (`Read`, `List`, `Search`, `Diff`, `Fetch`, `AskQuestion`, `Checklist`, `Status`, `Skills`, `SearchHistory`, `ReadHistory`) run without asking, except that searching every session or reading another session's turns asks first. Shift+Tab outside a prompt cycles the [permission mode](/cli/modes): normal → plan (`⏸ plan`, never writes) → auto (`⏵⏵ auto`, nothing asks). See [tool permissions](/cli/tool-permissions) for the rules, the flags and `permissions.yaml`.

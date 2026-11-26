@@ -16,13 +16,16 @@ The defaults live in one table in `defaultPolicies.ts`, with a column for each k
 - Write tools (`Edit`, `MultiEdit`, `Write`) **ask**.
 - A few tools are open in the TUI and closed in headless mode, because nobody is there to approve them:
 
-| Tool                      | TUI       | Headless                                   |
-| ------------------------- | --------- | ------------------------------------------ |
-| `Bash`                    | **ask**   | **allow**, but only for read-only commands |
-| `Fetch`, `UploadArtifact` | **allow** | **exclude**                                |
-| `Subagent`, MCP, others   | **ask**   | **exclude**                                |
+| Tool                           | TUI       | Headless                                   |
+| ------------------------------ | --------- | ------------------------------------------ |
+| `Bash`                         | **ask**   | **allow**, but only for read-only commands |
+| `Fetch`, `UploadArtifact`      | **allow** | **exclude**                                |
+| `SearchHistory`, `ReadHistory` | **allow** | **exclude**                                |
+| `Subagent`, MCP, others        | **ask**   | **exclude**                                |
 
 `--readonly` (plan mode) never allows the write tools and keeps `Bash` to read-only commands, whatever the flags say.
+
+Auto mode allows every tool, except `SearchHistory` and `ReadHistory` when headless (`cn -p --auto`): as without `--auto`, a run with nobody present gets no recall tools.
 
 A new built-in tool needs a row in `defaultPolicies.ts`. When unsure, make the headless default **exclude**.
 

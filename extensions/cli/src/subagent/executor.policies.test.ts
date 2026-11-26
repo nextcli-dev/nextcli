@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getDefaultToolPolicies } from "../permissions/defaultPolicies.js";
+import {
+  getAutoModePolicies,
+  getDefaultToolPolicies,
+} from "../permissions/defaultPolicies.js";
 import { checkToolPermission } from "../permissions/permissionChecker.js";
 import type {
   ToolPermissions,
@@ -89,4 +92,34 @@ describe("executeSubAgent permissions", () => {
     expect(check("AskQuestion")).toBe("exclude");
     expect(check("Read")).toBe("allow");
   });
+
+  it.each([
+    ["the terminal UI", getDefaultToolPolicies(false)],
+    // Allows every tool, the recall tools included
+    ["auto mode", getAutoModePolicies(false)],
+  ])(
+    "keeps a subagent from recalling the main session, under %s",
+    async (_, policies) => {
+      parent = { policies };
+      expect(
+        checkToolPermission(
+          { name: "SearchHistory", arguments: { query: "x" } },
+          parent,
+        ).permission,
+      ).toBe("allow");
+
+      await executeSubAgent({
+        agent: { model: { name: "child" }, llmApi: {} } as any,
+        prompt: "look around",
+        parentSessionId: "parent",
+        abortController: new AbortController(),
+      });
+
+      const check = (name: string, args: Record<string, unknown>) =>
+        checkToolPermission({ name, arguments: args }, childPermissions!)
+          .permission;
+      expect(check("SearchHistory", { query: "x" })).toBe("exclude");
+      expect(check("ReadHistory", { from: 0, to: 1 })).toBe("exclude");
+    },
+  );
 });
