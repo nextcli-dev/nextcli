@@ -9,6 +9,7 @@ import {
 import { updateEditStateApplyState } from "../slices/editState";
 import {
   acceptToolCall,
+  cancelToolCall,
   errorToolCall,
   updateApplyState,
   updateToolCallOutput,
@@ -39,6 +40,7 @@ vi.mock("../slices/editState", () => ({
 
 vi.mock("../slices/sessionSlice", () => ({
   acceptToolCall: vi.fn(() => ({ type: "session/acceptToolCall" })),
+  cancelToolCall: vi.fn(() => ({ type: "session/cancelToolCall" })),
   errorToolCall: vi.fn(() => ({ type: "session/errorToolCall" })),
   updateApplyState: vi.fn(() => ({ type: "session/updateApplyState" })),
   updateToolCallOutput: vi.fn(() => ({ type: "session/updateToolCallOutput" })),
@@ -524,6 +526,72 @@ describe("handleApplyStateUpdate", () => {
       expect(streamResponseAfterToolCall).toHaveBeenCalledWith({
         toolCallId: "test-tool-call",
       });
+    });
+
+    it("cancels a call whose diff the user rejected in the editor", async () => {
+      const toolCallState: ToolCallState = {
+        toolCallId: "test-tool-call",
+        status: "calling",
+        ...UNUSED_TOOL_CALL_PARAMS,
+      };
+      vi.mocked(findToolCallById).mockReturnValue(toolCallState);
+      mockGetState.mockReturnValue({
+        session: {
+          history: [],
+          codeBlockApplyStates: { states: [{ streamId: "chat-stream" }] },
+        },
+        config: { config: {} },
+      });
+
+      const thunk = handleApplyStateUpdate({
+        streamId: "chat-stream",
+        toolCallId: "test-tool-call",
+        status: "closed",
+        filepath: "test.txt",
+        rejected: true,
+      });
+      await thunk(mockDispatch, mockGetState, mockExtra);
+
+      expect(cancelToolCall).toHaveBeenCalledWith({
+        toolCallId: "test-tool-call",
+      });
+      expect(logToolUsage).toHaveBeenCalledWith(
+        toolCallState,
+        false,
+        true,
+        mockExtra.ideMessenger,
+      );
+      expect(acceptToolCall).not.toHaveBeenCalled();
+      expect(updateToolCallOutput).not.toHaveBeenCalled();
+      expect(streamResponseAfterToolCall).not.toHaveBeenCalled();
+    });
+
+    it("leaves a call the chat's Reject button already canceled", async () => {
+      const toolCallState: ToolCallState = {
+        toolCallId: "test-tool-call",
+        status: "canceled",
+        ...UNUSED_TOOL_CALL_PARAMS,
+      };
+      vi.mocked(findToolCallById).mockReturnValue(toolCallState);
+      mockGetState.mockReturnValue({
+        session: {
+          history: [],
+          codeBlockApplyStates: { states: [{ streamId: "chat-stream" }] },
+        },
+        config: { config: {} },
+      });
+
+      const thunk = handleApplyStateUpdate({
+        streamId: "chat-stream",
+        toolCallId: "test-tool-call",
+        status: "closed",
+        rejected: true,
+      });
+      await thunk(mockDispatch, mockGetState, mockExtra);
+
+      expect(cancelToolCall).not.toHaveBeenCalled();
+      expect(acceptToolCall).not.toHaveBeenCalled();
+      expect(streamResponseAfterToolCall).not.toHaveBeenCalled();
     });
 
     it("names the file from the stored apply state when the update has none", async () => {

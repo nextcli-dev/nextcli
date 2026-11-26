@@ -1,6 +1,7 @@
 import { waitFor } from "@testing-library/dom";
 import { act, screen } from "@testing-library/react";
 import { ChatHistoryItem, ChatMessage, Session } from "core";
+import { CANCELLED_TOOL_CALL_MESSAGE } from "core/tools/constants";
 import { renderChatMessage } from "core/util/messageContent";
 import { generateToolCallButtonTestId } from "../../components/mainInput/Lump/LumpToolbar/PendingToolCallToolbar";
 import { MockIdeMessenger } from "../../context/MockIdeMessenger";
@@ -532,26 +533,29 @@ test.each(loaderNames)(
   },
 );
 
-test("an edit stopped by a reload takes the outcome of its diff, which was still open", async () => {
+/**
+ * Loads a session whose edit was still waiting for its diff: the panel
+ * reloaded while the extension host kept the diff open
+ */
+async function loadStoppedEdit() {
   const rendered = await renderChat();
-  const { ideMessenger, store } = rendered;
-  // The panel reloaded while the extension host kept the diff open
   const editOnly = structuredClone(SAVED_MID_TURN);
   editOnly.history = editOnly.history.slice(0, 2);
-  ideMessenger.responses["history/load"] = editOnly;
+  rendered.ideMessenger.responses["history/load"] = editOnly;
   await act(async () => {
-    await loaders.loadSession(store, editOnly);
+    await loaders.loadSession(rendered.store, editOnly);
   });
   const edit = () =>
-    store
+    rendered.store
       .getState()
       .session.history.flatMap((item) => item.toolCallStates ?? [])
       .find((tc) => tc.toolCallId === "call_edit")!;
   expect(edit().status).toBe("errored");
-  ideMessenger.chatResponse = [{ role: "assistant", content: "Edited a.ts" }];
-  const request = vi.spyOn(ideMessenger, "request");
+  return { ...rendered, edit };
+}
 
-  // The user accepts the diff in the editor
+/** What the extension sends when the user closes the diff in the editor */
+function closeDiffInEditor(ideMessenger: MockIdeMessenger, rejected?: boolean) {
   act(() => {
     ideMessenger.mockMessageToWebview("updateApplyState", {
       streamId: "edit-stream",
@@ -559,22 +563,61 @@ test("an edit stopped by a reload takes the outcome of its diff, which was still
       status: "closed",
       filepath: "a.ts",
       numDiffs: 0,
+      rejected,
     });
   });
+}
+
+/** The messages of the first request since `request` began spying */
+function firstRequestSent(request: { mock: { calls: unknown[][] } }) {
+  const [, compile] = request.mock.calls.find(
+    ([type]) => type === "llm/compileChat",
+  )!;
+  return (compile as { messages: ChatMessage[] }).messages.map(
+    renderChatMessage,
+  );
+}
+
+test("an edit stopped by a reload takes the outcome of its diff, which was still open", async () => {
+  const { ideMessenger, edit } = await loadStoppedEdit();
+  ideMessenger.chatResponse = [{ role: "assistant", content: "Edited a.ts" }];
+  const request = vi.spyOn(ideMessenger, "request");
+
+  closeDiffInEditor(ideMessenger);
 
   await screen.findByText("Edited a.ts");
   expect(edit().status).toBe("done");
   expect(edit().output?.[0].content).toBe("Successfully edited a.ts");
-  const [, compile] = request.mock.calls.find(
-    ([type]) => type === "llm/compileChat",
-  )!;
-  const sent = (compile as { messages: ChatMessage[] }).messages.map(
-    renderChatMessage,
-  );
+  const sent = firstRequestSent(request);
   expect(sent.some((text) => text.includes("Successfully edited a.ts"))).toBe(
     true,
   );
   expect(
     sent.some((text) => text.includes("Its result was not recorded")),
   ).toBe(false);
+});
+
+test("an edit whose diff was rejected in the editor reads as cancelled, not made", async () => {
+  const { ideMessenger, edit } = await loadStoppedEdit();
+  const streamCalls = vi.spyOn(ideMessenger, "llmStreamChat");
+
+  closeDiffInEditor(ideMessenger, true);
+
+  await waitFor(() => expect(edit().status).toBe("canceled"));
+  // Like the chat's Reject button, it ends the turn
+  expect(streamCalls).not.toHaveBeenCalled();
+  const request = vi.spyOn(ideMessenger, "request");
+  await sendInputWithMockedResponse(ideMessenger, "Go on", [
+    { role: "assistant", content: "Done" },
+  ]);
+  await waitFor(() =>
+    expect(
+      request.mock.calls.some(([type]) => type === "llm/compileChat"),
+    ).toBe(true),
+  );
+  const sent = firstRequestSent(request);
+  expect(sent.some((text) => text.includes(CANCELLED_TOOL_CALL_MESSAGE))).toBe(
+    true,
+  );
+  expect(sent.some((text) => text.includes("Successfully edited"))).toBe(false);
 });

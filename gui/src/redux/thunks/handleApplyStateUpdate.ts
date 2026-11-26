@@ -10,6 +10,7 @@ import {
 import { updateEditStateApplyState } from "../slices/editState";
 import {
   acceptToolCall,
+  cancelToolCall,
   errorToolCall,
   updateApplyState,
   updateToolCallOutput,
@@ -73,8 +74,14 @@ export const handleApplyStateUpdate = createAsyncThunk<
 
         if (applyState.status === "closed") {
           if (toolCallState) {
+            // Rejected in the editor ends the call like the chat's Reject
+            // button, which cancels it before the diff closes
+            if (applyState.rejected && toolCallState.status !== "canceled") {
+              dispatch(cancelToolCall({ toolCallId: applyState.toolCallId }));
+            }
             const accepted =
               toolCallState.status !== "canceled" &&
+              !applyState.rejected &&
               !applyState.interruptedByUserEdit;
 
             logToolUsage(toolCallState, accepted, true, extra.ideMessenger);

@@ -265,6 +265,7 @@ export class VerticalDiffManager {
           fileContent,
           destructiveWarning,
           interruptedByUserEdit,
+          rejected,
         ) =>
           void this.webviewProtocol.request("updateApplyState", {
             streamId,
@@ -275,6 +276,7 @@ export class VerticalDiffManager {
             toolCallId,
             destructiveWarning,
             interruptedByUserEdit,
+            rejected,
           }),
         streamId,
         destructiveCheckSuggestedCode,
@@ -351,7 +353,14 @@ export class VerticalDiffManager {
       editor.document.lineCount - 1,
       {
         instant: true,
-        onStatusUpdate: (status, numDiffs, fileContent) =>
+        onStatusUpdate: (
+          status,
+          numDiffs,
+          fileContent,
+          destructiveWarning,
+          interruptedByUserEdit,
+          rejected,
+        ) =>
           void this.webviewProtocol.request("updateApplyState", {
             streamId,
             status,
@@ -359,6 +368,9 @@ export class VerticalDiffManager {
             fileContent,
             filepath: fileUri,
             toolCallId,
+            destructiveWarning,
+            interruptedByUserEdit,
+            rejected,
           }),
         streamId,
       },
@@ -490,6 +502,7 @@ export class VerticalDiffManager {
           fileContent,
           destructiveWarning,
           interruptedByUserEdit,
+          rejected,
         ) =>
           streamId &&
           void this.webviewProtocol.request("updateApplyState", {
@@ -501,6 +514,7 @@ export class VerticalDiffManager {
             toolCallId,
             destructiveWarning,
             interruptedByUserEdit,
+            rejected,
           }),
         streamId,
         destructiveCheckSuggestedCode: isApply ? (newCode ?? "") : undefined,

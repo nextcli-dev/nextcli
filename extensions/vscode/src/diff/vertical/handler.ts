@@ -27,6 +27,7 @@ export interface VerticalDiffHandlerOptions {
     fileContent?: ApplyState["fileContent"],
     destructiveWarning?: ApplyState["destructiveWarning"],
     interruptedByUserEdit?: ApplyState["interruptedByUserEdit"],
+    rejected?: ApplyState["rejected"],
   ) => void;
   streamId?: string;
   /**
@@ -61,6 +62,11 @@ export class VerticalDiffHandler implements vscode.Disposable {
   private ownEditsInFlight = 0;
   /** Set when the user edited the file mid-edit; the edit is then abandoned */
   private interruptedByUserEdit = false;
+  /** The user's decisions on this diff: some changes kept, some rejected */
+  private keptChanges = false;
+  private rejectedChanges = false;
+  /** Set when the apply itself failed; it reports its own error */
+  private failed = false;
   private abortPromise?: Promise<void>;
   /** The whole document before the handler changed anything */
   private readonly originalDocumentText: string;
@@ -299,6 +305,15 @@ export class VerticalDiffHandler implements vscode.Disposable {
     return this.cancelled;
   }
 
+  /**
+   * Whether the user rejected this diff's changes and kept none: Reject All,
+   * or every block rejected on its own. Reported with "closed", so the chat
+   * doesn't record the edit as made.
+   */
+  private get rejectedByUser(): boolean {
+    return this.rejectedChanges && !this.keptChanges && !this.failed;
+  }
+
   private get fileUri() {
     return this.editor.document.uri.toString();
   }
@@ -311,6 +326,16 @@ export class VerticalDiffHandler implements vscode.Disposable {
     );
 
     const removedRanges = this.removedLineDecorations.ranges;
+    // Accept All or Reject All decides what is still shown. A block-by-block
+    // review closes with accept and nothing left to keep
+    if (!accept) {
+      this.rejectedChanges = true;
+    } else if (
+      removedRanges.length > 0 ||
+      this.addedLineDecorations.ranges.length > 0
+    ) {
+      this.keptChanges = true;
+    }
     if (accept) {
       // Accept all: delete all the red ranges and clear green decorations
       await this.deleteRangeLines(removedRanges.map((r) => r.range));
@@ -326,6 +351,7 @@ export class VerticalDiffHandler implements vscode.Disposable {
       this.editor.document.getText(),
       undefined,
       this.interruptedByUserEdit || undefined,
+      this.rejectedByUser || undefined,
     );
 
     this.cancelled = true;
@@ -440,6 +466,7 @@ export class VerticalDiffHandler implements vscode.Disposable {
       //   }
       // });
     } catch (e) {
+      this.failed = true;
       this.clearForFileUri(this.fileUri, false);
       throw e;
     }
@@ -485,6 +512,13 @@ export class VerticalDiffHandler implements vscode.Disposable {
     this.shiftCodeLensObjects(startLine, offset);
 
     if (!skipStatusUpdate) {
+      // The user's decision on this block. The handler's own resets skip
+      // the status update, and aren't decisions
+      if (accept) {
+        this.keptChanges = true;
+      } else {
+        this.rejectedChanges = true;
+      }
       const numDiffs =
         this.editorToVerticalDiffCodeLens.get(this.fileUri)?.length ?? 0;
 
@@ -494,6 +528,9 @@ export class VerticalDiffHandler implements vscode.Disposable {
         status,
         numDiffs,
         this.editor.document.getText(),
+        undefined,
+        undefined,
+        (status === "closed" && this.rejectedByUser) || undefined,
       );
     }
   }
