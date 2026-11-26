@@ -13,7 +13,9 @@ let store: Promise<HistoryStore> | undefined;
 /**
  * The full-text index over the session transcripts, next to the sessions
  * folder (index/history.sqlite, or history-basic.sqlite where node:sqlite
- * has no FTS5), shared with the VS Code extension. Opened on first use.
+ * has no FTS5), shared with the VS Code extension. Opened on first use, and
+ * kept once it opens: an open that fails (another process holds the index
+ * longer than the busy timeout) is tried again on the next call.
  */
 function historyStore(): Promise<HistoryStore> {
   const sessionsDir = getSessionDir();
@@ -21,6 +23,9 @@ function historyStore(): Promise<HistoryStore> {
     dbPath: path.join(path.dirname(sessionsDir), "index", "history.sqlite"),
     sessionsDir,
     redact: redactSecretText,
+  }).catch((e: unknown) => {
+    store = undefined;
+    throw e;
   });
   return store;
 }
@@ -125,7 +130,7 @@ const MAX_READ = 40;
 export const readHistoryTool: Tool = {
   name: "ReadHistory",
   displayName: "Read history",
-  description: `Read items of a session transcript verbatim, by position, as SearchHistory reports them: from the first to the last position, at most ${MAX_READ} items. Secrets are redacted.`,
+  description: `Read items of a session transcript verbatim, by position, as SearchHistory reports them: from the first to the last position, at most ${MAX_READ} items and about 80,000 characters. When a limit stops it, the result says where to read on. Secrets are redacted.`,
   parameters: {
     type: "object",
     required: ["from", "to"],
@@ -175,17 +180,18 @@ export const readHistoryTool: Tool = {
     from: number;
     to: number;
   }): Promise<string> => {
-    const { items, pending } = await (
+    const { items, pending, next } = await (
       await historyStore()
-    ).read(
-      args.session,
-      args.from,
-      Math.min(args.to, args.from + MAX_READ - 1),
-    );
-    // Not indexed to its end yet: an empty or short read isn't the answer
-    const note = pending
-      ? "This session isn't fully indexed yet (busy, or it changed); read again for the rest."
-      : undefined;
+    ).read(args.session, args.from, args.to);
+    // An empty or short read isn't the end of the transcript when it wasn't
+    // indexed to its end, or the size limit stopped it
+    let note: string | undefined;
+    if (pending) {
+      note =
+        "This session isn't fully indexed yet (busy, or it changed); read again for the rest.";
+    } else if (next !== undefined) {
+      note = `Stopped at the size limit; read from #${next} for the rest.`;
+    }
     if (!items.length) {
       return note ?? `Nothing at #${args.from}-#${args.to} of that session.`;
     }

@@ -1,4 +1,5 @@
 import path from "path";
+import { pathToFileURL } from "url";
 
 import { syncJournal } from "@nextcli/context/archive";
 import { SqliteDatabase, sqliteHasFts5 } from "@nextcli/context/sqlite";
@@ -98,6 +99,12 @@ describe("SearchHistory and ReadHistory", () => {
     startNewSession();
     updateSessionHistory([user("nothing relevant here")]);
     otherSession("same-folder", process.cwd(), "the PLANTED_FACT here");
+    // VS Code records the folder as a file:// URI
+    otherSession(
+      "vscode-same-folder",
+      pathToFileURL(process.cwd()).href,
+      "the PLANTED_FACT in VS Code",
+    );
     otherSession("other-project", "/elsewhere", "the PLANTED_FACT there");
 
     const session = await call(searchHistoryTool, { query: "PLANTED_FACT" });
@@ -111,7 +118,8 @@ describe("SearchHistory and ReadHistory", () => {
     });
 
     expect(session).toBe('No match for "PLANTED_FACT".');
-    expect(workspace).toMatch(/^same-folder #0 \(user\)/);
+    expect(workspace).toContain("same-folder #0 (user)");
+    expect(workspace).toContain("vscode-same-folder #0 (user)");
     expect(workspace).not.toContain("other-project");
     expect(all).toContain("other-project #0");
   });
@@ -127,6 +135,21 @@ describe("SearchHistory and ReadHistory", () => {
 
     expect(found).not.toContain("sk-proj");
     expect(turns).toBe("#0 user: export OPENAI_API_KEY=[redacted] and retry");
+  });
+
+  it("say where to read on when the size limit stops a read", async () => {
+    startNewSession();
+    updateSessionHistory([
+      read("a.log", "a".repeat(30_000)),
+      read("b.log", "b".repeat(30_000)),
+      read("c.log", "c".repeat(30_000)),
+    ]);
+
+    const turns = await call(readHistoryTool, { from: 0, to: 2 });
+
+    expect(turns).toContain("#1 assistant");
+    expect(turns).not.toContain("#2 assistant");
+    expect(turns).toMatch(/read from #2 for the rest\.$/);
   });
 
   it("say a read may be incomplete while the index is busy", async () => {
