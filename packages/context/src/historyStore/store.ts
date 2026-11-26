@@ -81,6 +81,21 @@ class SyncRace extends Error {}
 
 const isBusy = (e: unknown) => (e as { code?: string }).code === "SQLITE_BUSY";
 
+/**
+ * Whether `work` got to the end: false when it says it didn't, or when the
+ * database was busy. Either way the session counts as pending.
+ */
+async function finished(work: () => Promise<boolean>): Promise<boolean> {
+  try {
+    return await work();
+  } catch (e) {
+    if (!isBusy(e)) {
+      throw e;
+    }
+    return false;
+  }
+}
+
 const quoteTerm = (term: string) => `"${term.replace(/"/g, '""')}"`;
 const likeTerm = (term: string) =>
   `%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
@@ -110,12 +125,12 @@ function extraSummary(item: StoredItem): string | undefined {
     : undefined;
 }
 
-function readBytes(file: string, start: number, end: number): string {
+function readBytes(file: string, start: number, end: number): Buffer {
   const fd = fs.openSync(file, "r");
   try {
     const buffer = Buffer.alloc(end - start);
     fs.readSync(fd, buffer, 0, buffer.length, start);
-    return buffer.toString("utf8");
+    return buffer;
   } finally {
     fs.closeSync(fd);
   }
@@ -226,15 +241,11 @@ export class HistoryStore {
     );
     let pending = 0;
     for (const { session_id } of indexed) {
-      if (!present.has(session_id)) {
-        try {
-          await this.drop(session_id);
-        } catch (e) {
-          if (!isBusy(e)) {
-            throw e;
-          }
-          pending++;
-        }
+      if (
+        !present.has(session_id) &&
+        !(await finished(() => this.drop(session_id).then(() => true)))
+      ) {
+        pending++;
       }
     }
     const startedAt = Date.now();
@@ -242,14 +253,7 @@ export class HistoryStore {
       if (!present.has(sessionId)) {
         continue;
       }
-      try {
-        if (!(await this.syncJournal(sessionId, startedAt))) {
-          pending++;
-        }
-      } catch (e) {
-        if (!isBusy(e)) {
-          throw e;
-        }
+      if (!(await finished(() => this.syncJournal(sessionId, startedAt)))) {
         pending++;
       }
     }
@@ -297,7 +301,11 @@ export class HistoryStore {
     startedAt: number,
   ): Promise<boolean> {
     const file = path.join(this.options.sessionsDir, `${sessionId}.jsonl`);
-    const stat = fs.statSync(file);
+    const stat = fs.statSync(file, { throwIfNoEntry: false });
+    if (!stat) {
+      // Deleted since the folder was listed: the next sync forgets it
+      return true;
+    }
     const inode = String(stat.ino);
     let row = await this.journalRow(sessionId);
     // Recreated or rewritten: index it again. Linux gives a deleted file's
@@ -558,10 +566,9 @@ export class HistoryStore {
         whereParams.push(likeTerm(term));
       }
     }
-    // Each item's best chunk gives its rank and its snippet (SQLite takes
-    // the other columns from the row MIN picks)
-    // Each item's best chunk gives its rank and its snippet. bm25 can't run
-    // inside an aggregate, so chunks are scored first; SQLite then takes the
+    // Each item's best chunk (by bm25; without full-text terms, its first
+    // matching chunk) gives its rank and its snippet. bm25 can't run inside
+    // an aggregate, so chunks are scored first; SQLite then takes the
     // snippet from the row MIN picks
     const chunks = words.length
       ? {
@@ -638,7 +645,7 @@ export class HistoryStore {
     from: number,
     to: number,
   ): Promise<HistoryReadResult> {
-    const pending = (await this.sync([sessionId])) > 0;
+    let pending = (await this.sync([sessionId])) > 0;
     const rows = await this.db.all<
       {
         id: number;
@@ -659,9 +666,22 @@ export class HistoryStore {
     const items: HistoryReadItem[] = [];
     let chars = 0;
     for (const row of rows) {
-      const line = JSON.parse(
-        readBytes(file, row.byte_offset, row.byte_offset + row.byte_len),
-      ) as JournalLine;
+      let line: JournalLine;
+      try {
+        line = JSON.parse(
+          readBytes(
+            file,
+            row.byte_offset,
+            row.byte_offset + row.byte_len,
+          ).toString("utf8"),
+        ) as JournalLine;
+      } catch {
+        // The transcript is gone, or was rewritten since it was indexed
+        // (deleted while the index was busy, or replaced after this sync):
+        // the index no longer describes it until the next sync
+        pending = true;
+        break;
+      }
       if (line.t !== "put") {
         continue;
       }

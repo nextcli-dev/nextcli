@@ -309,25 +309,36 @@ export interface ParsedJournalLine {
 /**
  * The complete lines of a chunk of a journal that starts at byte `start`,
  * and the byte after the last of them. A line torn by a crash is skipped:
- * the writer after it started on a new line.
+ * the writer after it started on a new line. Offsets are counted in the
+ * bytes themselves: a torn line can end inside a multibyte character, which
+ * decodes to a replacement character of another length.
  */
 export function parseJournalLines(
-  text: string,
+  bytes: Buffer,
   start = 0,
 ): { lines: ParsedJournalLine[]; end: number } {
   const lines: ParsedJournalLine[] = [];
-  let offset = start;
-  const complete = text.slice(0, text.lastIndexOf("\n") + 1);
-  for (const raw of complete.split("\n").slice(0, -1)) {
-    const length = Buffer.byteLength(raw);
-    try {
-      if (raw) {
-        lines.push({ line: JSON.parse(raw) as JournalLine, offset, length });
+  let at = 0;
+  for (
+    let newline = bytes.indexOf(0x0a);
+    newline !== -1;
+    newline = bytes.indexOf(0x0a, at)
+  ) {
+    const length = newline - at;
+    if (length) {
+      try {
+        lines.push({
+          line: JSON.parse(
+            bytes.subarray(at, newline).toString("utf8"),
+          ) as JournalLine,
+          offset: start + at,
+          length,
+        });
+      } catch {
+        // Torn: skipped
       }
-    } catch {
-      // Torn: skipped
     }
-    offset += length + 1;
+    at = newline + 1;
   }
-  return { lines, end: offset };
+  return { lines, end: start + at };
 }

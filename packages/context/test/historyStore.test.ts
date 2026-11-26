@@ -388,11 +388,87 @@ describe.each(modes)("HistoryStore (fts: %s)", (fts) => {
     await other.exec("BEGIN IMMEDIATE");
     try {
       expect(await store.sync()).toBe(1);
+      // Its rows are still indexed, its file is gone
+      expect(await store.read("s1", 0, 10)).toEqual({
+        items: [],
+        pending: true,
+      });
     } finally {
       await other.exec("ROLLBACK");
       await other.close();
     }
     expect(await store.sync()).toBe(0);
+  });
+
+  // SQLite takes an empty IN (), unlike most databases
+  it("finds nothing in an empty list of sessions", async () => {
+    save("s1", [user("a turn in some session")]);
+    const store = await open(fts);
+
+    const result = await store.search({
+      text: "turn",
+      sessionIds: [],
+      limit: 5,
+    });
+
+    expect(result.hits).toEqual([]);
+  });
+
+  it("skips a transcript deleted while the sync runs", async () => {
+    save("s1", [user("the first session")]);
+    save("s2", [user("the second session")]);
+    // Whichever session is indexed first deletes the other's transcript,
+    // after the folder was listed
+    let deleted = false;
+    const store = await HistoryStore.open({
+      dbPath,
+      sessionsDir,
+      fts,
+      redact: (text) => {
+        if (!deleted) {
+          deleted = true;
+          const other = text.includes("first") ? "s2" : "s1";
+          fs.unlinkSync(path.join(sessionsDir, `${other}.jsonl`));
+        }
+        return text;
+      },
+    });
+    stores.push(store);
+
+    const result = await store.search({ text: "session", limit: 5 });
+
+    expect(deleted).toBe(true);
+    expect(result.hits).toHaveLength(1);
+  });
+
+  it("reads the turns after a line a crash cut inside a character", async () => {
+    const file = path.join(sessionsDir, "s1.jsonl");
+    save("s1", [user("before the crash")]);
+    // The write stopped after the first byte of "é" (2 bytes in UTF-8)
+    fs.appendFileSync(
+      file,
+      Buffer.concat([
+        Buffer.from(
+          '{"t":"put","i":1,"h":"x","ts":1,"item":{"role":"user","content":"caf',
+        ),
+        Buffer.from("é").subarray(0, 1),
+      ]),
+    );
+    forgetJournal();
+    save("s1", [user("before the crash"), reply("after the crash")]);
+    const store = await open(fts);
+
+    const result = await store.read("s1", 0, 10);
+    const again = await store.read("s1", 0, 10);
+
+    expect(result.items.map((i) => i.text)).toEqual([
+      "user: before the crash",
+      "assistant: after the crash",
+    ]);
+    expect(result.pending).toBe(false);
+    expect(again.items.map((i) => i.ord)).toEqual(
+      result.items.map((i) => i.ord),
+    );
   });
 
   it("cuts one item longer than a read short", async () => {

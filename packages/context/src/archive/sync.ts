@@ -20,12 +20,12 @@ interface JournalState {
 
 const states = new Map<string, JournalState>();
 
-function readFrom(path: string, offset: number, size: number): string {
+function readFrom(path: string, offset: number, size: number): Buffer {
   const fd = fs.openSync(path, "r");
   try {
     const buffer = Buffer.alloc(size - offset);
     fs.readSync(fd, buffer, 0, buffer.length, offset);
-    return buffer.toString("utf8");
+    return buffer;
   } finally {
     fs.closeSync(fd);
   }
@@ -53,9 +53,8 @@ function caughtUp(path: string, size: number): JournalState {
   if (!state) {
     // Not read yet in this process, or recreated (shorter, or a new head)
     const replay = new JournalReplay();
-    for (const { line } of parseJournalLines(
-      size ? readFrom(path, 0, size) : "",
-    ).lines) {
+    const bytes = size ? readFrom(path, 0, size) : Buffer.alloc(0);
+    for (const { line } of parseJournalLines(bytes).lines) {
       replay.apply(line);
     }
     state = { replay, size };
@@ -169,7 +168,7 @@ function append(
   }
   // After a line torn by a crash, start on a new line
   const prefix =
-    size > 0 && readFrom(path, size - 1, size) !== "\n" ? "\n" : "";
+    size > 0 && readFrom(path, size - 1, size)[0] !== 0x0a ? "\n" : "";
   const text = prefix + lines.map((l) => JSON.stringify(l)).join("\n") + "\n";
   fs.appendFileSync(path, text);
   state.size = size + Buffer.byteLength(text);

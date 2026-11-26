@@ -47,8 +47,7 @@ export function redactSecretText(text: string): string {
         double !== undefined ? '"' : single !== undefined ? "'" : "";
       // A path is redacted too: the shell filter keeps a path to a file
       // (a pointer to a credential), but text has no reason to stat it
-      return value !== REDACTED &&
-        looksLikeSecret(name.replace(/-/g, "_"), value)
+      return looksLikeSecret(name.replace(/-/g, "_"), value)
         ? `${nameQuote}${name}${nameQuote}${separator}${quote}${REDACTED}${quote}`
         : match;
     },
