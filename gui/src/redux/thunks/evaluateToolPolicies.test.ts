@@ -3,6 +3,8 @@ import { ToolCallState } from "core";
 import { BuiltInToolNames } from "core/tools/builtIn";
 import { fetchUrlContentTool } from "core/tools/definitions/fetchUrlContent";
 import { readFileTool } from "core/tools/definitions/readFile";
+import { readHistoryTool } from "core/tools/definitions/readHistory";
+import { searchHistoryTool } from "core/tools/definitions/searchHistory";
 import { runTerminalCommandTool } from "core/tools/definitions/runTerminalCommand";
 import { terminalCommandTrust } from "core/tools/policies/terminalAccess";
 import { describe, expect, it, vi } from "vitest";
@@ -227,5 +229,80 @@ describe("evaluateToolPolicies with trusted commands", () => {
         })
       ).policy,
     ).toBe("allowedWithPermission");
+  });
+});
+
+describe("evaluateToolPolicies for the history tools", () => {
+  /** A messenger that answers tools/evaluatePolicy with the tool's own rule, as core does */
+  function coreLikeMessenger() {
+    const messenger = new MockIdeMessenger();
+    messenger.responseHandlers["tools/evaluatePolicy"] = async (data) => {
+      const tool = [searchHistoryTool, readHistoryTool].find(
+        (t) => t.function.name === data.toolName,
+      );
+      return {
+        policy:
+          tool?.evaluateToolCallPolicy?.(
+            data.basePolicy,
+            data.parsedArgs,
+            data.processedArgs,
+          ) ?? data.basePolicy,
+      };
+    };
+    return messenger;
+  }
+
+  async function policyOf(
+    toolCall: ToolCallState,
+    toolPolicies: Record<string, ToolPolicy> = {},
+  ): Promise<ToolPolicy> {
+    const [result] = await evaluateToolPolicies(
+      vi.fn(),
+      coreLikeMessenger(),
+      [searchHistoryTool, readHistoryTool],
+      [toolCall],
+      toolPolicies,
+    );
+    return result.policy;
+  }
+
+  it("asks before searching every conversation", async () => {
+    expect(
+      await policyOf(
+        call(BuiltInToolNames.SearchHistory, { query: "x", scope: "all" }),
+      ),
+    ).toBe("allowedWithPermission");
+  });
+
+  it("searches this session and this workspace without asking", async () => {
+    for (const args of [
+      { query: "x" },
+      { query: "x", scope: "session" },
+      { query: "x", scope: "workspace" },
+    ]) {
+      expect(await policyOf(call(BuiltInToolNames.SearchHistory, args))).toBe(
+        "allowedWithoutPermission",
+      );
+    }
+  });
+
+  it("asks before reading another session, not this one", async () => {
+    expect(
+      await policyOf(call(BuiltInToolNames.ReadHistory, { from: 3 })),
+    ).toBe("allowedWithoutPermission");
+    expect(
+      await policyOf(
+        call(BuiltInToolNames.ReadHistory, { from: 3, session: "abc" }),
+      ),
+    ).toBe("allowedWithPermission");
+  });
+
+  it("keeps a tool the user excluded excluded", async () => {
+    expect(
+      await policyOf(
+        call(BuiltInToolNames.SearchHistory, { query: "x", scope: "all" }),
+        { [BuiltInToolNames.SearchHistory]: "disabled" },
+      ),
+    ).toBe("disabled");
   });
 });

@@ -1,5 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { ToolCallState } from "core";
+import { readHistoryTool } from "core/tools/definitions/readHistory";
+import { searchHistoryTool } from "core/tools/definitions/searchHistory";
 import { viewDiffTool } from "core/tools/definitions/viewDiff";
 import { describe, expect, it } from "vitest";
 import { ToolCallStatusMessage } from "./ToolCallStatusMessage";
@@ -63,5 +65,38 @@ describe("ToolCallStatusMessage", () => {
     expect(screen.getByTestId("tool-call-title")).toHaveTextContent(
       "NextCLI viewed the git diff",
     );
+  });
+
+  // Scope all and another conversation's id are what make these ask: the
+  // line the user approves names them, and the defaults
+  it.each([
+    [
+      searchHistoryTool,
+      { query: "x" },
+      'wants to search this conversation for "x"',
+    ],
+    [
+      searchHistoryTool,
+      { query: "x", scope: "all" },
+      'wants to search saved conversations (scope: all) for "x"',
+    ],
+    [
+      readHistoryTool,
+      { from: 3 },
+      "wants to read items #3 of this conversation",
+    ],
+    [
+      readHistoryTool,
+      { from: 0, to: 10, session: "abc-123" },
+      "wants to read items #0 to #10 of conversation abc-123",
+    ],
+  ] as const)("names what %#. history call reaches", (tool, args, text) => {
+    render(
+      <ToolCallStatusMessage
+        tool={tool}
+        toolCallState={{ ...stateWithStatus("generated"), parsedArgs: args }}
+      />,
+    );
+    expect(screen.getByTestId("tool-call-title")).toHaveTextContent(text);
   });
 });

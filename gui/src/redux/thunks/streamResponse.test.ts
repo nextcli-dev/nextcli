@@ -804,6 +804,7 @@ describe("streamResponseThunk", () => {
           arguments: JSON.stringify({ query: "test function" }),
         },
       },
+      sessionId: "session-123",
     });
 
     // Verify that multiple compilation calls were made (due to tool call continuation)

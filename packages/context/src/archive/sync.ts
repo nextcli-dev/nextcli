@@ -75,6 +75,31 @@ function backfill(path: string): JournalSourceItem[] {
   }
 }
 
+/** Enough for a head line: a nonce and a workspace path */
+const HEAD_BYTES = 8192;
+
+/**
+ * A transcript's head line: its nonce and the workspace it was started in.
+ * Undefined when the file can't be read or doesn't start with one.
+ */
+export function readJournalHead(
+  path: string,
+): Extract<JournalLine, { t: "head" }> | undefined {
+  try {
+    const fd = fs.openSync(path, "r");
+    try {
+      const buffer = Buffer.alloc(HEAD_BYTES);
+      const n = fs.readSync(fd, buffer, 0, HEAD_BYTES, 0);
+      const first = parseJournalLines(buffer.subarray(0, n)).lines[0]?.line;
+      return first?.t === "head" ? first : undefined;
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return undefined;
+  }
+}
+
 export interface SyncJournalOptions {
   /**
    * The session file the journal belongs to. A session saved before the

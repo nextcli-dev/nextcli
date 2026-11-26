@@ -9,11 +9,13 @@ export { lsTool } from "./ls";
 export { multiEditTool } from "./multiEdit";
 export { readCurrentlyOpenFileTool } from "./readCurrentlyOpenFile";
 export { readFileTool } from "./readFile";
+export { readHistoryTool } from "./readHistory";
 
 export { readFileRangeTool } from "./readFileRange";
 export { readSkillTool } from "./readSkill";
 export { requestRuleTool } from "./requestRule";
 export { runTerminalCommandTool } from "./runTerminalCommand";
+export { searchHistoryTool } from "./searchHistory";
 export { searchWebTool } from "./searchWeb";
 export { singleFindAndReplaceTool } from "./singleFindAndReplace";
 export { viewDiffTool } from "./viewDiff";

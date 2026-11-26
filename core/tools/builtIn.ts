@@ -17,6 +17,8 @@ export enum BuiltInToolNames {
   FetchUrlContent = "fetch_url_content",
   ReadSkill = "read_skill",
   AskQuestion = "ask_question",
+  SearchHistory = "search_history",
+  ReadHistory = "read_history",
 
   // excluded from allTools for now
   ViewRepoMap = "view_repo_map",

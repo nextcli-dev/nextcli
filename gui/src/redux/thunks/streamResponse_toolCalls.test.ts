@@ -426,6 +426,7 @@ describe("streamResponseThunk - tool calls", () => {
           arguments: JSON.stringify({ query: "test function" }),
         },
       },
+      sessionId: "session-123",
     });
 
     // Verify that multiple compilation calls were made (due to tool call continuation)
@@ -1831,6 +1832,7 @@ describe("streamResponseThunk - tool calls", () => {
           arguments: JSON.stringify({ query: "test function" }),
         },
       },
+      sessionId: "session-123",
     });
 
     // Verify second streaming call was made for continuation

@@ -13,6 +13,10 @@ import { grepSearchImpl } from "./implementations/grepSearch";
 import { lsToolImpl } from "./implementations/lsTool";
 import { readCurrentlyOpenFileImpl } from "./implementations/readCurrentlyOpenFile";
 import { readFileImpl } from "./implementations/readFile";
+import {
+  readHistoryImpl,
+  searchHistoryImpl,
+} from "./implementations/historyTools";
 
 import { readFileRangeImpl } from "./implementations/readFileRange";
 import { readSkillImpl } from "./implementations/readSkill";
@@ -217,6 +221,10 @@ export async function callBuiltInTool(
       return await requestRuleImpl(args, extras);
     case BuiltInToolNames.ReadSkill:
       return await readSkillImpl(args, extras);
+    case BuiltInToolNames.SearchHistory:
+      return await searchHistoryImpl(args, extras);
+    case BuiltInToolNames.ReadHistory:
+      return await readHistoryImpl(args, extras);
     case BuiltInToolNames.ViewRepoMap:
       return await viewRepoMapImpl(args, extras);
     case BuiltInToolNames.ViewSubdirectory:

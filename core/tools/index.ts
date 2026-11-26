@@ -14,6 +14,8 @@ export const getBaseToolDefinitions = () => [
   toolDefinitions.createRuleBlock,
   toolDefinitions.fetchUrlContentTool,
   toolDefinitions.askQuestionTool,
+  toolDefinitions.searchHistoryTool,
+  toolDefinitions.readHistoryTool,
 ];
 
 export const getConfigDependentToolDefinitions = async (
