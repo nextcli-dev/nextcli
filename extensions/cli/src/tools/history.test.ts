@@ -216,6 +216,15 @@ describe("SearchHistory and ReadHistory", () => {
     ]);
   });
 
+  it("read one item when only from is given", async () => {
+    startNewSession();
+    updateSessionHistory([user("first ask"), reply("first answer")]);
+
+    expect(await call(readHistoryTool, { from: 1 })).toBe(
+      "#1 assistant: first answer",
+    );
+  });
+
   it("say where to read on when the size limit stops a read", async () => {
     startNewSession();
     updateSessionHistory([

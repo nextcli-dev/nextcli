@@ -61,7 +61,7 @@ In Agent mode, all tools are available including the read-only tools above plus:
 When a long conversation is compacted, the model keeps only a summary of the earlier turns. `search_history` and `read_history` let it look the details up again.
 
 - `search_history` searches the full transcript of the conversation, including turns that were compacted out of the context. It searches this conversation by default, or earlier conversations in this workspace with `scope: "workspace"`. That includes `cn` sessions started in the same folder, but not a folder of the same path on another machine (a remote window).
-- Results with every word of the search come first, then results with some of the words, marked with the words they lack. Common words such as "the" or "how" are skipped.
+- Results with every word of the search come first, then results with some of the words, marked with the words they lack. Common words such as "the" or "how" are skipped, and a word matches where a word starts ("fix" finds "Fixed", not "prefix").
 - `read_history` reads the items it found verbatim, by position. With `outline: true` it lists the conversation's outline instead: your messages and the compaction summaries, with their positions, so the model can find the part of a long conversation to read.
 - Undone turns are neither searched nor read back: once you undo a turn, these tools don't put it back in front of the model.
 - The line you approve names what the call reaches: the scope of a search, and the conversation a read or an outline comes from.
