@@ -43,42 +43,58 @@ import {
   findChatHistoryItemByToolCallId,
   findToolCallById,
   isQuestionCall,
+  STOPPED_TOOL_CALL_NAME,
 } from "../util";
 
+interface StoppedOutputs {
+  description: string;
+  /** The output of a call that was running */
+  running: string;
+  /**
+   * The output of a call whose arguments the model was still writing. Without
+   * it, that call and one waiting for approval are canceled. With it, a call
+   * waiting for approval is kept, so its approval bar comes back
+   */
+  unwritten?: string;
+}
+
 /**
- * Ends what these items still show as running: reasoning stops, tool calls
- * that hadn't started are canceled, and running ones fail with `stopped` as
- * their output. An open question stays open: it waits for the user, not a
- * tool, and answering it continues the turn.
+ * Ends what these items still show as running: reasoning stops, and a running
+ * tool call fails with `stopped.running` as its output (see
+ * isStoppedToolCall). An open question stays open: it waits for the user, not
+ * a tool, and answering it continues the turn.
  */
 function stopRunningItems(
   items: ChatHistoryItemWithMessageId[],
-  stopped: { description: string; content: string },
+  stopped: StoppedOutputs,
 ) {
+  const fail = (toolCallState: ToolCallState, content: string) => {
+    toolCallState.status = "errored";
+    toolCallState.output = [
+      {
+        icon: "problems",
+        name: STOPPED_TOOL_CALL_NAME,
+        description: stopped.description,
+        content,
+        hidden: false,
+      },
+    ];
+  };
   for (const item of items) {
     if (item.reasoning?.active) {
       item.reasoning.active = false;
       item.reasoning.endAt = Date.now();
     }
     for (const toolCallState of item.toolCallStates ?? []) {
-      if (
-        toolCallState.status === "generating" ||
-        toolCallState.status === "generated"
-      ) {
-        toolCallState.status = "canceled";
-      } else if (
-        toolCallState.status === "calling" &&
-        !isQuestionCall(toolCallState)
-      ) {
-        toolCallState.status = "errored";
-        toolCallState.output = [
-          {
-            icon: "problems",
-            name: "Tool Call Stopped",
-            ...stopped,
-            hidden: false,
-          },
-        ];
+      const { status } = toolCallState;
+      if (status === "calling" && !isQuestionCall(toolCallState)) {
+        fail(toolCallState, stopped.running);
+      } else if (stopped.unwritten === undefined) {
+        if (status === "generating" || status === "generated") {
+          toolCallState.status = "canceled";
+        }
+      } else if (status === "generating") {
+        fail(toolCallState, stopped.unwritten);
       }
     }
   }
@@ -462,7 +478,7 @@ export const sessionSlice = createSlice({
       // The tool may still finish; its result goes nowhere now
       stopRunningItems(turn, {
         description: "Session switched",
-        content:
+        running:
           "The session was switched while this tool was running. Its result was not recorded.",
       });
 
@@ -932,11 +948,14 @@ export const sessionSlice = createSlice({
         state.history = payload.history as any;
         // Nothing runs yet for a session that is only now loaded. A file
         // saved mid-turn (the editor reloaded, or the extension host stopped
-        // answering before the next save) would otherwise spin forever
+        // answering before the next save) would otherwise spin forever. Calls
+        // waiting for approval are saved that way on purpose, and stay
         stopRunningItems(state.history, {
           description: "Interrupted",
-          content:
+          running:
             "This tool was still running when the session was last saved, and the session was loaded again before it finished. Its result was not recorded.",
+          unwritten:
+            "The model was still writing this tool call when the session was last saved, so it never ran.",
         });
         state.title = payload.title;
         state.id = payload.sessionId;

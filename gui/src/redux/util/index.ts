@@ -191,3 +191,18 @@ export function isDismissedQuestion(toolCallState: ToolCallState): boolean {
     toolCallState.output?.[0]?.content === DISMISS_TEXT
   );
 }
+
+/** The output name of a call that was stopped before its result came */
+export const STOPPED_TOOL_CALL_NAME = "Tool Call Stopped";
+
+/**
+ * A call that was still running when its turn was left or its session was
+ * loaded again. It may still finish: an edit's diff can stay open in the
+ * editor, and its outcome then replaces this output.
+ */
+export function isStoppedToolCall(toolCallState: ToolCallState): boolean {
+  return (
+    toolCallState.status === "errored" &&
+    toolCallState.output?.[0]?.name === STOPPED_TOOL_CALL_NAME
+  );
+}

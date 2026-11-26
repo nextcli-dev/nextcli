@@ -1,12 +1,14 @@
 import { waitFor } from "@testing-library/dom";
-import { act } from "@testing-library/react";
+import { act, screen } from "@testing-library/react";
 import { ChatHistoryItem, ChatMessage, Session } from "core";
 import { renderChatMessage } from "core/util/messageContent";
+import { generateToolCallButtonTestId } from "../../components/mainInput/Lump/LumpToolbar/PendingToolCallToolbar";
 import { MockIdeMessenger } from "../../context/MockIdeMessenger";
 import { Chat } from "../../pages/gui/Chat";
 import { addAndSelectMockLlm } from "../../util/test/config";
 import { renderWithProviders } from "../../util/test/render";
 import {
+  getElementByTestId,
   getMainEditor,
   sendInputWithMockedResponse,
 } from "../../util/test/utils";
@@ -372,22 +374,24 @@ const SAVED_MID_TURN: Session = {
   ],
 };
 
+type Store = Awaited<ReturnType<typeof renderChat>>["store"];
+
+/** Loads `session`, which "history/load" must answer with */
 const loaders = {
-  loadSession: async (store: Awaited<ReturnType<typeof renderChat>>["store"]) =>
+  loadSession: async (store: Store, session: Session) =>
     store.dispatch(
-      loadSession({ sessionId: "saved-mid-turn", saveCurrentSession: false }),
+      loadSession({ sessionId: session.sessionId, saveCurrentSession: false }),
     ),
   // What a reloaded editor runs to reopen the last session
-  loadLastSession: async (
-    store: Awaited<ReturnType<typeof renderChat>>["store"],
-  ) => {
-    store.dispatch(newSession({ ...SAVED_MID_TURN, history: [] }));
+  loadLastSession: async (store: Store, session: Session) => {
+    store.dispatch(newSession({ ...session, history: [] }));
     store.dispatch(newSession());
     return store.dispatch(loadLastSession());
   },
 };
+const loaderNames = Object.keys(loaders) as (keyof typeof loaders)[];
 
-test.each(Object.keys(loaders) as (keyof typeof loaders)[])(
+test.each(loaderNames)(
   "%s stops a tool the file saved as running, and keeps an open question open",
   async (loader) => {
     const rendered = await renderChat();
@@ -395,7 +399,7 @@ test.each(Object.keys(loaders) as (keyof typeof loaders)[])(
     ideMessenger.responses["history/load"] = structuredClone(SAVED_MID_TURN);
 
     await act(async () => {
-      await loaders[loader](store);
+      await loaders[loader](store, SAVED_MID_TURN);
     });
 
     const history = store.getState().session.history;
@@ -449,4 +453,128 @@ test("the model learns that a tool saved as running has no result", async () => 
     sent.some((text) => text.includes("Its result was not recorded")),
   ).toBe(true);
   expect(sent.some((text) => text.includes("No tool output"))).toBe(false);
+});
+
+/**
+ * A session file saved while a call waited for approval, the normal pause
+ * before a write. The stream had ended inside a second call, so its
+ * arguments never finished.
+ */
+const SAVED_AT_APPROVAL: Session = {
+  sessionId: "saved-at-approval",
+  title: "Saved at approval",
+  workspaceDirectory: "",
+  history: [
+    {
+      message: { role: "user", content: "Show the diff" },
+      contextItems: [],
+    },
+    {
+      message: {
+        role: "assistant",
+        content: "",
+        toolCalls: [
+          storedCall("call_diff", "view_diff", {}).toolCall,
+          storedCall("call_half", "read_file", {}).toolCall,
+        ],
+      },
+      contextItems: [],
+      toolCallStates: [
+        { ...storedCall("call_diff", "view_diff", {}), status: "generated" },
+        { ...storedCall("call_half", "read_file", {}), status: "generating" },
+      ],
+    },
+  ],
+};
+
+test.each(loaderNames)(
+  "%s keeps a call waiting for approval, and running it continues the turn",
+  async (loader) => {
+    const rendered = await renderChat();
+    const { ideMessenger, store } = rendered;
+    ideMessenger.responses["history/load"] = structuredClone(SAVED_AT_APPROVAL);
+    ideMessenger.responses["tools/call"] = {
+      contextItems: [{ name: "Diff", description: "", content: "no changes" }],
+      errorMessage: undefined,
+    };
+    ideMessenger.chatResponse = [
+      { role: "assistant", content: "Diff checked" },
+    ];
+    const request = vi.spyOn(ideMessenger, "request");
+
+    await act(async () => {
+      await loaders[loader](store, SAVED_AT_APPROVAL);
+    });
+
+    const states = () =>
+      store
+        .getState()
+        .session.history.flatMap((item) => item.toolCallStates ?? []);
+    const half = states().find((tc) => tc.toolCallId === "call_half")!;
+    expect(half.status).toBe("errored");
+    expect(half.output?.[0].content).toContain("it never ran");
+
+    await act(async () => {
+      (
+        await getElementByTestId(
+          generateToolCallButtonTestId("accept", "call_diff"),
+        )
+      ).click();
+    });
+
+    await screen.findByText("Diff checked");
+    expect(
+      request.mock.calls.filter(([type]) => type === "tools/call"),
+    ).toMatchObject([["tools/call", { toolCall: { id: "call_diff" } }]]);
+    expect(states().find((tc) => tc.toolCallId === "call_diff")?.status).toBe(
+      "done",
+    );
+  },
+);
+
+test("an edit stopped by a reload takes the outcome of its diff, which was still open", async () => {
+  const rendered = await renderChat();
+  const { ideMessenger, store } = rendered;
+  // The panel reloaded while the extension host kept the diff open
+  const editOnly = structuredClone(SAVED_MID_TURN);
+  editOnly.history = editOnly.history.slice(0, 2);
+  ideMessenger.responses["history/load"] = editOnly;
+  await act(async () => {
+    await loaders.loadSession(store, editOnly);
+  });
+  const edit = () =>
+    store
+      .getState()
+      .session.history.flatMap((item) => item.toolCallStates ?? [])
+      .find((tc) => tc.toolCallId === "call_edit")!;
+  expect(edit().status).toBe("errored");
+  ideMessenger.chatResponse = [{ role: "assistant", content: "Edited a.ts" }];
+  const request = vi.spyOn(ideMessenger, "request");
+
+  // The user accepts the diff in the editor
+  act(() => {
+    ideMessenger.mockMessageToWebview("updateApplyState", {
+      streamId: "edit-stream",
+      toolCallId: "call_edit",
+      status: "closed",
+      filepath: "a.ts",
+      numDiffs: 0,
+    });
+  });
+
+  await screen.findByText("Edited a.ts");
+  expect(edit().status).toBe("done");
+  expect(edit().output?.[0].content).toBe("Successfully edited a.ts");
+  const [, compile] = request.mock.calls.find(
+    ([type]) => type === "llm/compileChat",
+  )!;
+  const sent = (compile as { messages: ChatMessage[] }).messages.map(
+    renderChatMessage,
+  );
+  expect(sent.some((text) => text.includes("Successfully edited a.ts"))).toBe(
+    true,
+  );
+  expect(
+    sent.some((text) => text.includes("Its result was not recorded")),
+  ).toBe(false);
 });

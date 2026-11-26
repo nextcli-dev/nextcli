@@ -44,8 +44,10 @@ vi.mock("../slices/sessionSlice", () => ({
   updateToolCallOutput: vi.fn(() => ({ type: "session/updateToolCallOutput" })),
 }));
 
-vi.mock("../util", () => ({
+vi.mock("../util", async (importOriginal) => ({
   findToolCallById: vi.fn(),
+  isStoppedToolCall: (await importOriginal<typeof import("../util")>())
+    .isStoppedToolCall,
   logToolUsage: vi.fn(),
 }));
 

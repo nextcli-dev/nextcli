@@ -15,7 +15,7 @@ import {
   updateToolCallOutput,
 } from "../slices/sessionSlice";
 import { ThunkApiType } from "../store";
-import { findToolCallById, logToolUsage } from "../util";
+import { findToolCallById, isStoppedToolCall, logToolUsage } from "../util";
 import { exitEdit } from "./edit";
 import { streamResponseAfterToolCall } from "./streamResponseAfterToolCall";
 
@@ -122,7 +122,12 @@ export const handleApplyStateUpdate = createAsyncThunk<
                 }),
               );
             } else if (accepted) {
-              if (toolCallState.status !== "errored") {
+              // A call stopped while its diff stayed open (the panel reloaded,
+              // or the session was left) gets the diff's outcome after all
+              if (
+                toolCallState.status !== "errored" ||
+                isStoppedToolCall(toolCallState)
+              ) {
                 dispatch(
                   acceptToolCall({
                     toolCallId: applyState.toolCallId,
