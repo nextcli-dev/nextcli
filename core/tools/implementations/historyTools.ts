@@ -100,9 +100,17 @@ export const searchHistoryImpl: ToolImpl = async (args, extras) => {
         : `session ${hit.sessionId} (${new Date(hit.ts).toISOString().slice(0, 10)})`;
     const state = describeState(hit.state);
     const what = [hit.role, hit.tool].filter(Boolean).join(" ");
-    return `${where} #${hit.ord} (${what}${state ? `, ${state}` : ""}): ${hit.snippet}`;
+    const partial = hit.missing
+      ? `, partial, missing: ${hit.missing.join(", ")}`
+      : "";
+    return `${where} #${hit.ord} (${what}${state ? `, ${state}` : ""}${partial}): ${hit.snippet}`;
   });
   const notes: string[] = [];
+  if (result.hits.some((hit) => hit.missing)) {
+    notes.push(
+      "Note: partial matches lack some of the words, so they may be about something else.",
+    );
+  }
   if (!lines.length) {
     notes.push(`No matches for "${query}" in scope ${scope}.`);
   }
@@ -139,14 +147,7 @@ function toPosition(value: unknown): number | undefined {
 
 export const readHistoryImpl: ToolImpl = async (args, extras) => {
   const name = "Read History";
-  const from = toPosition(args?.from);
-  const to = isMissing(args?.to) ? from : toPosition(args?.to);
-  if (from === undefined || to === undefined) {
-    return errorItem(name, "from and to must be positions such as 12");
-  }
-  if (to < from) {
-    return errorItem(name, "to must not be before from");
-  }
+  // Before anything else: the outline path must not skip this check
   const sessionId =
     typeof args?.session === "string" && args.session.trim()
       ? args.session.trim()
@@ -160,6 +161,24 @@ export const readHistoryImpl: ToolImpl = async (args, extras) => {
   if (!getSessionJournalPath(sessionId)) {
     return errorItem(name, `"${sessionId}" is not a session id`);
   }
+  if (args?.outline === true || args?.outline === "true") {
+    const start = isMissing(args?.from) ? 0 : toPosition(args?.from);
+    if (start === undefined) {
+      return errorItem(name, "from must be a position such as 12");
+    }
+    return outlineOf(name, sessionId, start);
+  }
+  const from = toPosition(args?.from);
+  const to = isMissing(args?.to) ? from : toPosition(args?.to);
+  if (from === undefined || to === undefined) {
+    return errorItem(
+      name,
+      "from and to must be positions such as 12; to list the conversation's turns, pass outline: true",
+    );
+  }
+  if (to < from) {
+    return errorItem(name, "to must not be before from");
+  }
 
   const store = await getHistoryStore();
   const { items, pending, next } = await store.read(sessionId, from, to);
@@ -167,8 +186,7 @@ export const readHistoryImpl: ToolImpl = async (args, extras) => {
   // indexed to its end, or the size limit stopped it
   let note: string | undefined;
   if (pending) {
-    note =
-      "Note: this conversation isn't fully indexed yet (busy, or it changed), so items may be missing. Read again in a moment.";
+    note = NOT_INDEXED;
   } else if (next !== undefined) {
     note = `Note: stopped at the size limit; read from #${next} for the rest.`;
   }
@@ -189,3 +207,34 @@ export const readHistoryImpl: ToolImpl = async (args, extras) => {
     ),
   ];
 };
+
+const NOT_INDEXED =
+  "Note: this conversation isn't fully indexed yet (busy, or it changed), so items may be missing. Read again in a moment.";
+
+/** One line per user message or compaction summary, from `from` */
+async function outlineOf(
+  name: string,
+  sessionId: string,
+  from: number,
+): Promise<ContextItem[]> {
+  const store = await getHistoryStore();
+  const { items, pending, next } = await store.outline(sessionId, from);
+  const lines = items.map((i) => {
+    const state = describeState(i.state);
+    return `#${i.ord}${state ? ` (${state})` : ""} ${i.kind}: ${i.text}`;
+  });
+  if (pending) {
+    lines.push(NOT_INDEXED);
+  } else if (next !== undefined) {
+    lines.push(`Note: read the outline from #${next} for the rest.`);
+  }
+  return [
+    item(
+      name,
+      "Outline",
+      lines.length
+        ? lines.join("\n")
+        : "No user messages in that conversation.",
+    ),
+  ];
+}

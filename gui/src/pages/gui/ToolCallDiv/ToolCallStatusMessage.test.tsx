@@ -99,4 +99,39 @@ describe("ToolCallStatusMessage", () => {
     );
     expect(screen.getByTestId("tool-call-title")).toHaveTextContent(text);
   });
+
+  // Exact lines: a plain string would also match a longer, wrong one
+  it.each([
+    [
+      "generated",
+      { outline: true },
+      "NextCLI wants to read the outline of this conversation",
+    ],
+    [
+      "generated",
+      { outline: true, session: "abc-123", from: 100 },
+      "NextCLI wants to read the outline of conversation abc-123 from #100",
+    ],
+    [
+      "generated",
+      { outline: true, from: 0, to: 9 },
+      "NextCLI wants to read the outline of this conversation",
+    ],
+    [
+      "done",
+      { outline: true, session: "abc-123" },
+      "NextCLI read the outline of conversation abc-123",
+    ],
+  ] as const)("names a %s outline of a conversation", (status, args, text) => {
+    render(
+      <ToolCallStatusMessage
+        tool={readHistoryTool}
+        toolCallState={{ ...stateWithStatus(status), parsedArgs: args }}
+      />,
+    );
+    // A done call has no intro word, so its line has a double space
+    expect(
+      screen.getByTestId("tool-call-title").textContent?.replace(/\s+/g, " "),
+    ).toBe(text);
+  });
 });

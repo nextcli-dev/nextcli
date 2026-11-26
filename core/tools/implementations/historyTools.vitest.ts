@@ -244,6 +244,51 @@ describe("search_history and read_history", () => {
     );
   });
 
+  it("search_history marks a partial match with the words it lacks", async () => {
+    const id = uuidv4();
+    save(id, [item("user", "the login screen froze")]);
+
+    const found = await search({ query: "login retry" }, extrasFor(id));
+
+    expect(found).toMatch(
+      /^this session #0 \(user, partial, missing: retry\): .*login/,
+    );
+    expect(found).toContain("partial matches lack some of the words");
+  });
+
+  it("read_history outlines the conversation, with a summary VS Code set", async () => {
+    const id = uuidv4();
+    const turns = [
+      item("user", "Refactor the importer"),
+      item("assistant", "Done refactoring"),
+    ];
+    save(id, turns);
+    save(id, [
+      turns[0],
+      {
+        ...turns[1],
+        conversationSummary: "Summary: the importer was split",
+      } as ChatHistoryItem,
+      item("user", "Now the exporter"),
+    ]);
+
+    const outline = await read({ outline: true }, extrasFor(id));
+
+    expect(outline).toBe(
+      [
+        "#0 user: Refactor the importer",
+        "#1 summary: Summary: the importer was split",
+        "#2 user: Now the exporter",
+      ].join("\n"),
+    );
+  });
+
+  it("read_history checks the session id of an outline too", async () => {
+    expect(
+      await read({ outline: true, session: "../x" }, extrasFor(uuidv4())),
+    ).toMatch(/^Error: .*not a session id/);
+  });
+
   it("rejects a session id that is not a file name", async () => {
     expect(
       await read({ session: "../x", from: 0 }, extrasFor(uuidv4())),
@@ -282,6 +327,11 @@ describe("history tool policies", () => {
     );
   });
 
+  it("read_history needs no position for an outline", () => {
+    const { parameters } = tool(BuiltInToolNames.ReadHistory).function;
+    expect(parameters?.required ?? []).not.toContain("from");
+  });
+
   it("read_history asks for another session only", () => {
     const { evaluateToolCallPolicy } = tool(BuiltInToolNames.ReadHistory);
     const base = "allowedWithoutPermission";
@@ -290,6 +340,12 @@ describe("history tool policies", () => {
     );
     expect(evaluateToolCallPolicy!(base, { from: 1, session: "abc" })).toBe(
       "allowedWithPermission",
+    );
+    expect(
+      evaluateToolCallPolicy!(base, { outline: true, session: "abc" }),
+    ).toBe("allowedWithPermission");
+    expect(evaluateToolCallPolicy!(base, { outline: true })).toBe(
+      "allowedWithoutPermission",
     );
   });
 });
