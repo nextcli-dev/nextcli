@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
 
 import { redactSecretText } from "../src/index.js";
@@ -47,12 +49,34 @@ describe("redactSecretText", () => {
     );
   });
 
+  it("removes a URL password that contains an @", () => {
+    expect(redactSecretText("see https://bob:p@ssword@host.example/x")).toBe(
+      "see https://bob:[redacted]@host.example/x",
+    );
+  });
+
+  it("removes a quoted passphrase with spaces whole", () => {
+    expect(
+      redactSecretText(
+        `DB_PASSWORD="correct horse battery staple" and secret: 'two words here'`,
+      ),
+    ).toBe(`DB_PASSWORD="[redacted]" and secret: '[redacted]'`);
+  });
+
+  it("removes a secret-named path, without looking at the file system", () => {
+    // This test file: a path to a file, which the shell filter keeps
+    const file = fileURLToPath(import.meta.url);
+
+    expect(redactSecretText(`API_KEY=${file}`)).toBe("API_KEY=[redacted]");
+  });
+
   it("keeps ordinary words and settings that look close", () => {
     const text = [
       "the desk-lamp and task-runner-1234567890abcdef tests",
       "ghost_writer, PATH=/usr/local/bin, NODE_ENV=production",
       "TOKENIZERS_PARALLELISM=true, https://github.com/nextcli-dev/nextcli",
       "a short key: abc",
+      '"description": "the token is refreshed hourly"',
     ].join("\n");
 
     expect(redactSecretText(text)).toBe(text);

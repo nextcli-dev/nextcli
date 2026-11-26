@@ -1,4 +1,4 @@
-import { isSecretEnvVar } from "./secretEnv.js";
+import { looksLikeSecret } from "./secretEnv.js";
 
 const REDACTED = "[redacted]";
 
@@ -23,12 +23,14 @@ const SECRET_TEXT_PATTERNS = [
   /\bnpm_[A-Za-z0-9]{20,}/g,
 ];
 
-// A password in a URL: scheme://user:password@host
-const URL_PASSWORD = /(\b[a-z][\w+.-]*:\/\/[^\s:@/]+:)[^\s@/]+@/gi;
+// A password in a URL: scheme://user:password@host. Up to the last @ before
+// the path, since a password may itself contain @
+const URL_PASSWORD = /(\b[a-z][\w+.-]*:\/\/[^\s:@/]+:)[^\s/]+@/gi;
 
-// NAME=value, NAME: value, "name": "value"
+// NAME=value, NAME: value, "name": "value". A quoted value may hold spaces
+// (a passphrase); a bare one ends at a space or a separator
 const ASSIGNMENT =
-  /(["']?)\b([A-Za-z_][\w-]*)\1(\s*[=:]\s*)(["']?)([^\s"',;]{6,})\4/g;
+  /(["']?)\b([A-Za-z_][\w-]*)\1(\s*[=:]\s*)(?:"([^"\n]{6,512})"|'([^'\n]{6,512})'|([^\s"',;]{6,}))/g;
 
 /** The text with every credential it recognises replaced by [redacted] */
 export function redactSecretText(text: string): string {
@@ -39,9 +41,16 @@ export function redactSecretText(text: string): string {
   redacted = redacted.replace(URL_PASSWORD, `$1${REDACTED}@`);
   return redacted.replace(
     ASSIGNMENT,
-    (match, nameQuote, name, separator, valueQuote, value) =>
-      value !== REDACTED && isSecretEnvVar(name.replace(/-/g, "_"), value)
-        ? `${nameQuote}${name}${nameQuote}${separator}${valueQuote}${REDACTED}${valueQuote}`
-        : match,
+    (match, nameQuote, name, separator, double, single, bare) => {
+      const value: string = double ?? single ?? bare;
+      const quote =
+        double !== undefined ? '"' : single !== undefined ? "'" : "";
+      // A path is redacted too: the shell filter keeps a path to a file
+      // (a pointer to a credential), but text has no reason to stat it
+      return value !== REDACTED &&
+        looksLikeSecret(name.replace(/-/g, "_"), value)
+        ? `${nameQuote}${name}${nameQuote}${separator}${quote}${REDACTED}${quote}`
+        : match;
+    },
   );
 }

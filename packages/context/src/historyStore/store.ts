@@ -42,8 +42,19 @@ export interface HistoryReadItem {
   text: string;
 }
 
+export interface HistoryReadResult {
+  items: HistoryReadItem[];
+  /** The transcript isn't indexed to its end yet (busy, or out of time) */
+  pending: boolean;
+}
+
 export interface HistoryStoreOptions {
-  /** The index database; keep it outside the sessions folder */
+  /**
+   * The index database; keep it outside the sessions folder. Without FTS5
+   * the index is `<name>-basic.sqlite` next to it: the two modes keep text in
+   * different tables, so cn and VS Code on Node builds that differ each keep
+   * their own instead of sharing offsets over tables only one of them fills.
+   */
   dbPath: string;
   /** The folder holding the `<id>.jsonl` transcripts */
   sessionsDir: string;
@@ -55,8 +66,10 @@ export interface HistoryStoreOptions {
 
 const CHUNK_CHARS = 8_000;
 // A chunk's rowid is its item's id * MAX_CHUNKS + its index, so an item's
-// chunks are one rowid range
+// chunks are one rowid range. A summary set on an existing item (VS Code's
+// compaction) takes the chunks from SUMMARY_CHUNK on
 const MAX_CHUNKS = 1_000;
+const SUMMARY_CHUNK = 900;
 const BATCH_BYTES = 1_000_000;
 const SYNC_BUDGET_MS = 300;
 const READ_MAX_ITEMS = 40;
@@ -65,6 +78,15 @@ const READ_MAX_CHARS = 80_000;
 const HEAD_BYTES = 8192;
 
 class SyncRace extends Error {}
+
+const isBusy = (e: unknown) => (e as { code?: string }).code === "SQLITE_BUSY";
+
+const quoteTerm = (term: string) => `"${term.replace(/"/g, '""')}"`;
+const likeTerm = (term: string) =>
+  `%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+
+/** Redacted texts of a batch's lines by byte offset, made before the lock */
+type BatchTexts = Map<number, { text: string; summary?: string }>;
 
 /** An item as plain text: what was said, done and returned */
 export function itemText(item: StoredItem): string {
@@ -76,6 +98,16 @@ export function itemText(item: StoredItem): string {
     parts.push(context.content);
   }
   return parts.filter(Boolean).join("\n");
+}
+
+/**
+ * A summary the item's text doesn't already hold: VS Code sets one on an
+ * existing message, while cn's summary message is its content
+ */
+function extraSummary(item: StoredItem): string | undefined {
+  return item.summary && item.summary !== item.content
+    ? item.summary
+    : undefined;
 }
 
 function readBytes(file: string, start: number, end: number): string {
@@ -122,9 +154,12 @@ export class HistoryStore {
   }
 
   static async open(options: HistoryStoreOptions): Promise<HistoryStore> {
-    fs.mkdirSync(path.dirname(options.dbPath), { recursive: true });
-    const db = await SqliteDatabase.open(options.dbPath);
     const fts = options.fts ?? sqliteHasFts5();
+    const file = fts
+      ? options.dbPath
+      : options.dbPath.replace(/(\.sqlite)?$/, "-basic$1");
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const db = await SqliteDatabase.open(file);
     // node:sqlite waits on the calling thread, so the wait stays short
     await db.exec("PRAGMA busy_timeout = 200");
     await db.exec("PRAGMA journal_mode = WAL");
@@ -157,6 +192,17 @@ export class HistoryStore {
           : "CREATE TABLE IF NOT EXISTS history_text (rowid INTEGER PRIMARY KEY, text TEXT NOT NULL);"
       }
     `);
+    if (fts) {
+      try {
+        // A deleted session's terms leave FTS5's index at once, not at its
+        // next segment merge
+        await db.exec(
+          "INSERT INTO history_fts (history_fts, rank) VALUES ('secure-delete', 1)",
+        );
+      } catch {
+        // SQLite before 3.42, or busy: set by the next open
+      }
+    }
     return new HistoryStore(db, options, fts);
   }
 
@@ -178,13 +224,20 @@ export class HistoryStore {
     const indexed = await this.db.all<{ session_id: string }[]>(
       "SELECT session_id FROM journals",
     );
+    let pending = 0;
     for (const { session_id } of indexed) {
       if (!present.has(session_id)) {
-        await this.drop(session_id);
+        try {
+          await this.drop(session_id);
+        } catch (e) {
+          if (!isBusy(e)) {
+            throw e;
+          }
+          pending++;
+        }
       }
     }
     const startedAt = Date.now();
-    let pending = 0;
     for (const sessionId of sessionIds ?? present) {
       if (!present.has(sessionId)) {
         continue;
@@ -194,7 +247,7 @@ export class HistoryStore {
           pending++;
         }
       } catch (e) {
-        if ((e as { code?: string }).code !== "SQLITE_BUSY") {
+        if (!isBusy(e)) {
           throw e;
         }
         pending++;
@@ -222,6 +275,20 @@ export class HistoryStore {
       },
       { immediate: true },
     );
+    // secure_delete zeroes the freed pages; until a checkpoint the WAL still
+    // holds the text
+    try {
+      await this.db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+    } catch {
+      // Busy: the next one does it
+    }
+  }
+
+  private journalRow(sessionId: string): Promise<JournalRow | undefined> {
+    return this.db.get<JournalRow>(
+      "SELECT nonce, inode, offset, live FROM journals WHERE session_id = ?",
+      sessionId,
+    );
   }
 
   /** Whether the transcript is indexed to its end */
@@ -232,10 +299,7 @@ export class HistoryStore {
     const file = path.join(this.options.sessionsDir, `${sessionId}.jsonl`);
     const stat = fs.statSync(file);
     const inode = String(stat.ino);
-    let row = await this.db.get<JournalRow>(
-      "SELECT nonce, inode, offset, live FROM journals WHERE session_id = ?",
-      sessionId,
-    );
+    let row = await this.journalRow(sessionId);
     // Recreated or rewritten: index it again. Linux gives a deleted file's
     // inode to the next file, and the new one can be as long, so the head's
     // nonce is what tells them apart
@@ -249,8 +313,8 @@ export class HistoryStore {
       await this.drop(sessionId);
       row = undefined;
     }
-    let offset = row?.offset ?? 0;
-    while (offset < stat.size) {
+    while ((row?.offset ?? 0) < stat.size) {
+      const offset = row?.offset ?? 0;
       if (Date.now() - startedAt > SYNC_BUDGET_MS) {
         return false;
       }
@@ -274,6 +338,7 @@ export class HistoryStore {
         await this.drop(sessionId);
         return this.syncJournal(sessionId, startedAt);
       }
+      const texts = this.redactBatch(parsed.lines);
       const ord = (
         await this.db.get<{ n: number }>(
           "SELECT COUNT(*) AS n FROM messages WHERE session_id = ?",
@@ -283,34 +348,76 @@ export class HistoryStore {
       try {
         await this.db.transaction(
           (tx) =>
-            this.applyBatch(tx, sessionId, inode, row, parsed, offset, ord!),
+            this.applyBatch(tx, {
+              sessionId,
+              inode,
+              row,
+              parsed,
+              from: offset,
+              firstOrd: ord!,
+              texts,
+            }),
           { immediate: true },
         );
       } catch (e) {
-        if (e instanceof SyncRace) {
-          // Another process indexed this range first
-          return true;
+        // Another process indexed this range first. It may have stopped
+        // there (its own budget), so go on from where it got to
+        if (!(e instanceof SyncRace)) {
+          throw e;
         }
-        throw e;
       }
-      offset = parsed.end;
-      row = await this.db.get<JournalRow>(
-        "SELECT nonce, inode, offset, live FROM journals WHERE session_id = ?",
-        sessionId,
-      );
+      row = await this.journalRow(sessionId);
     }
     return true;
   }
 
+  private redactBatch(lines: ParsedJournalLine[]): BatchTexts {
+    const { redact } = this.options;
+    const texts: BatchTexts = new Map();
+    for (const { line, offset } of lines) {
+      if (line.t === "put") {
+        const summary = extraSummary(line.item);
+        texts.set(offset, {
+          text: redact(itemText(line.item)),
+          summary: summary === undefined ? undefined : redact(summary),
+        });
+      } else if (line.t === "summary" && line.text) {
+        texts.set(offset, { text: redact(line.text) });
+      }
+    }
+    return texts;
+  }
+
+  /** Chunks of `text` into rowids `first` up to `end` of message `id` */
+  private insertChunks(
+    tx: SqliteTransaction,
+    id: number,
+    first: number,
+    end: number,
+    text: string,
+  ): void {
+    for (let i = 0; i * CHUNK_CHARS < text.length && first + i < end; i++) {
+      tx.run(
+        `INSERT INTO ${this.text} (rowid, text) VALUES (?, ?)`,
+        id * MAX_CHUNKS + first + i,
+        text.slice(i * CHUNK_CHARS, (i + 1) * CHUNK_CHARS),
+      );
+    }
+  }
+
   private applyBatch(
     tx: SqliteTransaction,
-    sessionId: string,
-    inode: string,
-    row: JournalRow | undefined,
-    parsed: { lines: ParsedJournalLine[]; end: number },
-    from: number,
-    firstOrd: number,
+    batch: {
+      sessionId: string;
+      inode: string;
+      row: JournalRow | undefined;
+      parsed: { lines: ParsedJournalLine[]; end: number };
+      from: number;
+      firstOrd: number;
+      texts: BatchTexts;
+    },
   ): void {
+    const { sessionId, inode, row, parsed, from, firstOrd, texts } = batch;
     const claim = row
       ? tx.run(
           "UPDATE journals SET offset = ? WHERE session_id = ? AND offset = ?",
@@ -359,17 +466,10 @@ export class HistoryStore {
               length,
             ).lastID,
           );
-          const text = this.options.redact(itemText(line.item));
-          for (
-            let i = 0;
-            i * CHUNK_CHARS < text.length && i < MAX_CHUNKS;
-            i++
-          ) {
-            tx.run(
-              `INSERT INTO ${this.text} (rowid, text) VALUES (?, ?)`,
-              id * MAX_CHUNKS + i,
-              text.slice(i * CHUNK_CHARS, (i + 1) * CHUNK_CHARS),
-            );
+          const { text, summary } = texts.get(offset)!;
+          this.insertChunks(tx, id, 0, SUMMARY_CHUNK, text);
+          if (summary) {
+            this.insertChunks(tx, id, SUMMARY_CHUNK, MAX_CHUNKS, summary);
           }
           live.push(id);
           break;
@@ -382,9 +482,23 @@ export class HistoryStore {
           mark(live.slice(line.from, line.n), "folded");
           live = [...live.slice(0, line.from), ...live.slice(line.n)];
           break;
-        case "summary":
-          // The turns it covers are indexed; the summary restates them
+        case "summary": {
+          // VS Code set or removed a summary on an existing message
+          const id = live[line.i];
+          if (id === undefined) {
+            break;
+          }
+          tx.run(
+            `DELETE FROM ${this.text} WHERE rowid >= ? AND rowid < ?`,
+            id * MAX_CHUNKS + SUMMARY_CHUNK,
+            (id + 1) * MAX_CHUNKS,
+          );
+          const summary = texts.get(offset)?.text;
+          if (summary) {
+            this.insertChunks(tx, id, SUMMARY_CHUNK, MAX_CHUNKS, summary);
+          }
           break;
+        }
       }
     }
     tx.run(
@@ -398,7 +512,9 @@ export class HistoryStore {
 
   /**
    * Searches the transcripts of the given sessions, of one workspace, or all
-   * of them. Undone (cut) items are left out; compacted ones are found.
+   * of them. Every term must be in the item, in any of its chunks. Undone
+   * (cut) items are left out; compacted ones are found. The same item in
+   * several sessions (a fork copies its source) is one hit, the newest copy.
    */
   async search(query: {
     text: string;
@@ -411,64 +527,87 @@ export class HistoryStore {
     if (!terms.length) {
       return { hits: [], basic: !this.fts, pending };
     }
-    const where = [
-      "m.state != 'cut'",
-      `m.id = ${this.text}.rowid / ${MAX_CHUNKS}`,
-    ];
-    const params: (string | number)[] = [];
+    const where = ["m.state != 'cut'"];
+    const whereParams: string[] = [];
     if (query.sessionIds) {
       where.push(
         `m.session_id IN (${query.sessionIds.map(() => "?").join(", ")})`,
       );
-      params.push(...query.sessionIds);
+      whereParams.push(...query.sessionIds);
     }
     if (query.workspace) {
       where.push(
         "m.session_id IN (SELECT session_id FROM journals WHERE workspace = ?)",
       );
-      params.push(query.workspace);
+      whereParams.push(query.workspace);
     }
     // Trigrams need 3 characters: shorter terms, and every term without
     // FTS5, match as substrings
-    const matched = this.fts ? terms.filter((t) => t.length >= 3) : [];
-    for (const term of terms.filter((t) => !matched.includes(t))) {
-      where.push(`${this.text}.text LIKE ? ESCAPE '\\'`);
-      params.push(`%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
-    }
-    if (matched.length) {
-      where.push("history_fts MATCH ?");
-      params.push(matched.map((t) => `"${t.replace(/"/g, '""')}"`).join(" "));
-    }
-    const rows = await this.db.all<
-      {
-        session_id: string;
-        ord: number;
-        role: string;
-        tool: string | null;
-        state: HistoryState;
-        ts: number;
-        h: string;
-        snippet: string;
-      }[]
-    >(
-      `SELECT m.session_id, m.ord, m.role, m.tool, m.state, m.ts, m.h,
-         ${matched.length ? "snippet(history_fts, 0, '«', '»', '…', 16)" : `substr(${this.text}.text, 1, 200)`} AS snippet
-       FROM ${this.text}, messages m
-       WHERE ${where.join(" AND ")}
-       ORDER BY ${matched.length ? "bm25(history_fts)" : "m.ts DESC"}
-       LIMIT ?`,
-      ...params,
-      query.limit * 4,
-    );
-    // The same item again (a redo, a forked session) is one hit
-    const seen = new Set<string>();
-    const hits: HistoryHit[] = [];
-    for (const row of rows) {
-      if (hits.length === query.limit) {
-        break;
+    const words = this.fts ? terms.filter((t) => t.length >= 3) : [];
+    const messageOf = `rowid / ${MAX_CHUNKS}`;
+    for (const term of terms) {
+      if (words.includes(term)) {
+        where.push(
+          `m.id IN (SELECT ${messageOf} FROM history_fts WHERE history_fts MATCH ?)`,
+        );
+        whereParams.push(quoteTerm(term));
+      } else {
+        where.push(
+          `m.id IN (SELECT ${messageOf} FROM ${this.text} WHERE text LIKE ? ESCAPE '\\')`,
+        );
+        whereParams.push(likeTerm(term));
       }
-      if (!seen.has(row.h)) {
-        seen.add(row.h);
+    }
+    // Each item's best chunk gives its rank and its snippet (SQLite takes
+    // the other columns from the row MIN picks)
+    // Each item's best chunk gives its rank and its snippet. bm25 can't run
+    // inside an aggregate, so chunks are scored first; SQLite then takes the
+    // snippet from the row MIN picks
+    const chunks = words.length
+      ? {
+          sql: `SELECT ${messageOf} AS id, bm25(history_fts) AS score,
+                  snippet(history_fts, 0, '«', '»', '…', 16) AS snippet
+                FROM history_fts WHERE history_fts MATCH ?`,
+          params: [words.map(quoteTerm).join(" OR ")],
+          order: "best.score, m.ts DESC, m.id DESC",
+        }
+      : {
+          sql: `SELECT ${messageOf} AS id, rowid AS score,
+                  substr(text, max(1, instr(lower(text), lower(?)) - 80), 200) AS snippet
+                FROM ${this.text} WHERE text LIKE ? ESCAPE '\\'`,
+          params: [terms[0], likeTerm(terms[0])],
+          order: "m.ts DESC, m.id DESC",
+        };
+    const sql = `WITH chunks AS MATERIALIZED (${chunks.sql}),
+        best AS (SELECT id, MIN(score) AS score, snippet FROM chunks GROUP BY id)
+      SELECT m.session_id, m.ord, m.role, m.tool, m.state, m.ts, m.h, best.snippet
+      FROM best JOIN messages m ON m.id = best.id
+      WHERE ${where.join(" AND ")}
+      ORDER BY ${chunks.order}
+      LIMIT ? OFFSET ?`;
+    const page = query.limit * 4;
+    // Which session's copy of an item is shown: the first, the newest
+    const shown = new Map<string, string>();
+    const hits: HistoryHit[] = [];
+    for (let offset = 0; hits.length < query.limit; offset += page) {
+      const rows = await this.db.all<
+        {
+          session_id: string;
+          ord: number;
+          role: string;
+          tool: string | null;
+          state: HistoryState;
+          ts: number;
+          h: string;
+          snippet: string;
+        }[]
+      >(sql, ...chunks.params, ...whereParams, page, offset);
+      for (const row of rows) {
+        const owner = shown.get(row.h);
+        if (owner !== undefined && owner !== row.session_id) {
+          continue;
+        }
+        shown.set(row.h, row.session_id);
         hits.push({
           sessionId: row.session_id,
           ord: row.ord,
@@ -478,20 +617,31 @@ export class HistoryStore {
           ts: row.ts,
           snippet: row.snippet,
         });
+        if (hits.length === query.limit) {
+          break;
+        }
+      }
+      if (rows.length < page) {
+        break;
       }
     }
     return { hits, basic: !this.fts, pending };
   }
 
-  /** Items `from` to `to` of a transcript, redacted */
+  /**
+   * Items `from` to `to` of a transcript, redacted, with any summary set on
+   * them. At most READ_MAX_ITEMS and about READ_MAX_CHARS: a first item
+   * longer than that is cut short.
+   */
   async read(
     sessionId: string,
     from: number,
     to: number,
-  ): Promise<HistoryReadItem[]> {
-    await this.sync([sessionId]);
+  ): Promise<HistoryReadResult> {
+    const pending = (await this.sync([sessionId])) > 0;
     const rows = await this.db.all<
       {
+        id: number;
         ord: number;
         state: HistoryState;
         ts: number;
@@ -499,7 +649,7 @@ export class HistoryStore {
         byte_len: number;
       }[]
     >(
-      "SELECT ord, state, ts, byte_offset, byte_len FROM messages WHERE session_id = ? AND ord BETWEEN ? AND ? ORDER BY ord LIMIT ?",
+      "SELECT id, ord, state, ts, byte_offset, byte_len FROM messages WHERE session_id = ? AND ord BETWEEN ? AND ? ORDER BY ord LIMIT ?",
       sessionId,
       from,
       to,
@@ -515,15 +665,31 @@ export class HistoryStore {
       if (line.t !== "put") {
         continue;
       }
-      const text = this.options.redact(
+      let text = this.options.redact(
         `${line.item.role}: ${itemText(line.item)}`,
       );
-      if (items.length && chars + text.length > READ_MAX_CHARS) {
-        break;
+      const summary = (
+        await this.db.all<{ text: string }[]>(
+          `SELECT text FROM ${this.text} WHERE rowid >= ? AND rowid < ? ORDER BY rowid`,
+          row.id * MAX_CHUNKS + SUMMARY_CHUNK,
+          (row.id + 1) * MAX_CHUNKS,
+        )
+      )
+        .map((c) => c.text)
+        .join("");
+      if (summary) {
+        text += `\nSummary of the conversation up to here: ${summary}`;
+      }
+      if (chars + text.length > READ_MAX_CHARS) {
+        if (items.length) {
+          break;
+        }
+        const more = text.length - READ_MAX_CHARS;
+        text = `${text.slice(0, READ_MAX_CHARS)}\n… ${more} more characters not shown`;
       }
       chars += text.length;
       items.push({ ord: row.ord, state: row.state, ts: row.ts, text });
     }
-    return items;
+    return { items, pending };
   }
 }
