@@ -1,11 +1,14 @@
 import * as fs from "fs";
 
+import { forgetJournal, syncJournal } from "@nextcli/context/archive";
+
 import { BaseSessionMetadata, Session } from "../index.js";
 import { ListHistoryOptions } from "../protocol/core.js";
 
 import { NEW_SESSION_TITLE } from "./constants.js";
 import {
   getSessionFilePath,
+  getSessionJournalPath,
   getSessionsFolderPath,
   getSessionsListPath,
 } from "./paths.js";
@@ -49,6 +52,38 @@ function withoutPrompts(history: Session["history"]): Session["history"] {
   );
 }
 
+/** Transcripts whose last write failed, so each failure is reported once */
+const failingTranscripts = new Set<string>();
+
+/**
+ * Appends what changed to the session's transcript, which keeps every turn:
+ * compaction and undo shorten the session file, never the transcript. A
+ * failure never stops the save: the next save writes what this one missed.
+ * It is reported once per transcript until a write succeeds again.
+ */
+function writeTranscript(
+  session: Session,
+  history: Session["history"],
+  sessionFile: string,
+) {
+  const journal = getSessionJournalPath(session.sessionId);
+  if (!journal) {
+    return;
+  }
+  try {
+    syncJournal(journal, history, {
+      sessionFile,
+      workspace: session.workspaceDirectory,
+    });
+    failingTranscripts.delete(journal);
+  } catch (e) {
+    if (!failingTranscripts.has(journal)) {
+      failingTranscripts.add(journal);
+      console.warn(`Couldn't write the session transcript ${journal}: ${e}`);
+    }
+  }
+}
+
 export class HistoryManager {
   list(options: ListHistoryOptions): BaseSessionMetadata[] {
     const filepath = getSessionsListPath();
@@ -86,6 +121,13 @@ export class HistoryManager {
   }
 
   delete(sessionId: string) {
+    // The transcript first: the check below throws if the file is gone
+    const journal = getSessionJournalPath(sessionId);
+    if (journal) {
+      forgetJournal(journal);
+      fs.rmSync(journal, { force: true });
+    }
+
     // Delete a session
     const sessionFile = getSessionFilePath(sessionId);
     if (!fs.existsSync(sessionFile)) {
@@ -113,6 +155,7 @@ export class HistoryManager {
   }
 
   clearAll() {
+    forgetJournal();
     fs.rmSync(getSessionsFolderPath(), { recursive: true, force: true });
   }
 
@@ -157,10 +200,11 @@ export class HistoryManager {
       orderedSession.usage = session.usage;
     }
 
-    fs.writeFileSync(
-      getSessionFilePath(session.sessionId),
-      JSON.stringify(orderedSession, undefined, 2),
-    );
+    const sessionFile = getSessionFilePath(session.sessionId);
+    // Before the file is written: a session saved before the transcript
+    // existed has its earlier turns only there
+    writeTranscript(session, orderedSession.history, sessionFile);
+    fs.writeFileSync(sessionFile, JSON.stringify(orderedSession, undefined, 2));
 
     // Read and update the sessions list
     const sessionsListFilePath = getSessionsListPath();

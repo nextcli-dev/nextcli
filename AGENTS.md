@@ -13,7 +13,7 @@ The CLI is the priority. Its main job is to review pull requests and fix bugs on
 - **Predictable cost.** Hard caps on turns, tokens and dollars (`--max-turns`, `--max-session-tokens`, `--max-cost`) must keep working. An unknown price is never treated as zero.
 - **Local and private.** No hosted service, sign-in or telemetry endpoint.
 
-Not goals: a server mode, chat-app integrations, a web console, long-term memory, embeddings or a vector store, container backends. Don't add them unless an issue asks for them.
+Not goals: a server mode, chat-app integrations, a web console, long-term memory beyond the agent's own conversation history (project notes, memory providers), embeddings or a vector store, container backends. Don't add them unless an issue asks for them.
 
 ## Repository layout
 

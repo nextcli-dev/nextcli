@@ -105,6 +105,16 @@ export function getSessionFilePath(sessionId: string): string {
   return path.join(getSessionsFolderPath(), `${sessionId}.json`);
 }
 
+/**
+ * The session's append-only transcript, next to its file. Undefined for an
+ * id that isn't a plain file name, as /import takes ids from a file.
+ */
+export function getSessionJournalPath(sessionId: string): string | undefined {
+  return /^[\w-][\w.-]*$/.test(sessionId)
+    ? path.join(getSessionsFolderPath(), `${sessionId}.jsonl`)
+    : undefined;
+}
+
 export function getSessionsListPath(): string {
   const filepath = path.join(getSessionsFolderPath(), "sessions.json");
   if (!fs.existsSync(filepath)) {

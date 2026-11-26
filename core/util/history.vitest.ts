@@ -1,11 +1,12 @@
 import fs from "fs";
+import path from "path";
 
 import { v4 as uuidv4 } from "uuid";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { Session } from "..";
 import historyManager from "./history";
-import { getSessionFilePath } from "./paths";
+import { getSessionFilePath, getSessionJournalPath } from "./paths";
 
 const PROMPT_TEXT = "the whole rendered conversation sent to the model";
 
@@ -169,5 +170,133 @@ describe("HistoryManager and model-call prompts", () => {
       expect(loaded.title).toBe("No history");
       expect(loaded.history).toEqual([]);
     });
+  });
+});
+
+describe("HistoryManager and the session transcript", () => {
+  const item = (role: "user" | "assistant", content: string) => ({
+    message: { role, content },
+    contextItems: [],
+  });
+  const session = (sessionId: string, history: Session["history"]): Session =>
+    ({
+      sessionId,
+      title: "Transcript",
+      workspaceDirectory: "/workspace",
+      history,
+    }) as Session;
+  const transcript = (sessionId: string) =>
+    fs.readFileSync(getSessionJournalPath(sessionId)!, "utf8");
+
+  it("keeps the turns a compaction replaced, while the session file drops them", () => {
+    const sessionId = uuidv4();
+    historyManager.save(
+      session(sessionId, [
+        item("user", "REQUIREMENT: keep the public API"),
+        item("assistant", "ENOENT in loadConfig, fixed"),
+      ] as Session["history"]),
+    );
+    historyManager.save(
+      session(sessionId, [
+        { ...item("assistant", "Summary"), conversationSummary: "Summary" },
+        item("user", "Continue"),
+      ] as Session["history"]),
+    );
+
+    expect(
+      fs.readFileSync(getSessionFilePath(sessionId), "utf8"),
+    ).not.toContain("ENOENT");
+    expect(transcript(sessionId)).toContain("REQUIREMENT: keep the public API");
+    expect(transcript(sessionId)).toContain("ENOENT in loadConfig, fixed");
+    expect(transcript(sessionId)).toContain('"t":"fold"');
+  });
+
+  it("journals a session saved before transcripts existed before compacting it", () => {
+    const sessionId = uuidv4();
+    fs.writeFileSync(
+      getSessionFilePath(sessionId),
+      JSON.stringify(
+        session(sessionId, [
+          item("user", "an early requirement"),
+        ] as Session["history"]),
+      ),
+    );
+
+    historyManager.save(
+      session(sessionId, [
+        { ...item("assistant", "Summary"), conversationSummary: "Summary" },
+      ] as Session["history"]),
+    );
+
+    expect(transcript(sessionId)).toContain("an early requirement");
+  });
+
+  // A read-only file stands in for a full disk; root and Windows ignore it
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "writes the turns a failed transcript write missed on the next save",
+    () => {
+      const sessionId = uuidv4();
+      const journal = getSessionJournalPath(sessionId)!;
+      const turns = [
+        item("user", "hi"),
+        item("assistant", "the turn the failed write missed"),
+      ] as Session["history"];
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        historyManager.save(session(sessionId, turns.slice(0, 1)));
+        fs.chmodSync(journal, 0o444);
+
+        historyManager.save(session(sessionId, turns));
+        historyManager.save(session(sessionId, turns));
+        // The session itself is saved, and the failure reported once
+        expect(
+          fs.readFileSync(getSessionFilePath(sessionId), "utf8"),
+        ).toContain("the turn the failed write missed");
+        expect(warn).toHaveBeenCalledTimes(1);
+
+        fs.chmodSync(journal, 0o644);
+        historyManager.save(session(sessionId, turns));
+        expect(transcript(sessionId)).toContain(
+          "the turn the failed write missed",
+        );
+
+        // A later failure is reported again
+        fs.chmodSync(journal, 0o444);
+        historyManager.save(
+          session(sessionId, [...turns, item("user", "more")]),
+        );
+        expect(warn).toHaveBeenCalledTimes(2);
+      } finally {
+        fs.chmodSync(journal, 0o644);
+        warn.mockRestore();
+      }
+    },
+  );
+
+  it("deletes the transcript with the session, even when its file is gone", () => {
+    const sessionId = uuidv4();
+    historyManager.save(
+      session(sessionId, [item("user", "hi")] as Session["history"]),
+    );
+    fs.unlinkSync(getSessionFilePath(sessionId));
+
+    expect(() => historyManager.delete(sessionId)).toThrow();
+    expect(fs.existsSync(getSessionJournalPath(sessionId)!)).toBe(false);
+  });
+
+  it("writes no transcript for an id that isn't a file name", () => {
+    const outside = path.join(
+      path.dirname(getSessionFilePath("x")),
+      "..",
+      "escaped",
+    );
+
+    // /import takes the id from a file
+    historyManager.save(
+      session("../escaped", [item("user", "hi")] as Session["history"]),
+    );
+
+    expect(fs.existsSync(`${outside}.jsonl`)).toBe(false);
+    fs.rmSync(`${outside}.json`, { force: true });
   });
 });

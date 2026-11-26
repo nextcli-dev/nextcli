@@ -77,6 +77,10 @@ cn --resume
 
 This restores the full conversation history, so the agent remembers prior context.
 
+### Session transcripts
+
+Next to each session's file, `~/.continue/sessions/<id>.jsonl` keeps a transcript of the session that only grows. Compaction and `/undo` shorten the session itself, never the transcript: compacted turns stay in it, and undone ones are marked rather than removed. It holds the full text of every turn, tool output included (images are replaced with a placeholder), and the VS Code extension writes the same file for its sessions. Deleting a session deletes its transcript.
+
 ## Undo a turn
 
 Before each turn, `cn` records the state of your git work tree, so you can take back what the agent changed: edits, new files, and files that shell commands deleted or wrote.
