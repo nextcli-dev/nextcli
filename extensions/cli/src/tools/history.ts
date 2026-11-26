@@ -1,7 +1,10 @@
 import * as path from "path";
 
 import { redactSecretText } from "@continuedev/terminal-security";
-import { HistoryStore } from "@nextcli/context/history-store";
+import {
+  HistoryStore,
+  type HistoryOutline,
+} from "@nextcli/context/history-store";
 
 import { getCurrentSession, getSessionDir } from "../session.js";
 
@@ -39,7 +42,7 @@ export const searchHistoryTool: Tool = {
   name: "SearchHistory",
   displayName: "Search history",
   description:
-    "Search the full transcript of this conversation, including turns that were compacted out of your context, or of earlier sessions. Use it to recover a requirement, a file path, an error or a decision from before a compaction. Every word must match. Results give each item's session and position; read them with ReadHistory.",
+    "Search the full transcript of this conversation, including turns that were compacted out of your context, or of earlier sessions. Use it to recover a requirement, a file path, an error or a decision from before a compaction. Items with every word come first, then items with some of them, marked with the words they lack. Words match whole, in any case, with common endings ('fix' finds 'fixed' and 'fixes', not 'prefix'), and inside identifiers ('config' finds 'loadConfig', 'id' finds 'getElementById'); common words such as 'the' or 'how' are skipped, and phrases aren't supported. Results give each item's session and position; read them with ReadHistory.",
   parameters: {
     type: "object",
     required: ["query"],
@@ -104,12 +107,20 @@ export const searchHistoryTool: Tool = {
       const state = { live: "", folded: ", compacted", cut: ", undone" }[
         hit.state
       ];
-      return `${where} #${hit.ord} (${what}${state}): ${hit.snippet.replace(/\s+/g, " ")}`;
+      const partial = hit.missing
+        ? `, partial, missing: ${hit.missing.join(", ")}`
+        : "";
+      return `${where} #${hit.ord} (${what}${state}${partial}): ${hit.snippet.replace(/\s+/g, " ")}`;
     });
     const notes = [
+      ...(result.hits.some((hit) => hit.missing)
+        ? [
+            "Partial matches lack some of the words, so they may be about something else.",
+          ]
+        : []),
       ...(result.basic
         ? [
-            "Basic search: this Node.js has no FTS5, so words match as substrings, newest first.",
+            "Basic search: this Node.js has no FTS5, so the search is slower and results aren't ranked by relevance. Words match the same way, and items with every word still come first.",
           ]
         : []),
       ...(result.pending
@@ -130,18 +141,29 @@ const MAX_READ = 40;
 export const readHistoryTool: Tool = {
   name: "ReadHistory",
   displayName: "Read history",
-  description: `Read items of a session transcript verbatim, by position, as SearchHistory reports them: from the first to the last position, at most ${MAX_READ} items and about 80,000 characters. When a limit stops it, the result says where to read on. Secrets are redacted.`,
+  description: `Read items of a session transcript verbatim, by position, as SearchHistory reports them: from the first to the last position, at most ${MAX_READ} items and about 80,000 characters. When a limit stops it, the result says where to read on. With outline: true it lists the session's user messages and compaction summaries instead, with their positions and first words: use it to find the part of a long session to read. Secrets are redacted.`,
   parameters: {
     type: "object",
-    required: ["from", "to"],
     properties: {
       session: {
         type: "string",
         description:
           "The session id from SearchHistory; this session by default",
       },
-      from: { type: "number", description: "First position (#) to read" },
-      to: { type: "number", description: "Last position (#) to read" },
+      from: {
+        type: "number",
+        description:
+          "First position (#) to read; with outline, the position to list from (0 by default)",
+      },
+      to: {
+        type: "number",
+        description: "Last position (#) to read; not used with outline",
+      },
+      outline: {
+        type: "boolean",
+        description:
+          "List the session's user messages and compaction summaries instead of reading items",
+      },
     },
   },
   readonly: true,
@@ -151,26 +173,47 @@ export const readHistoryTool: Tool = {
     typeof args.session === "string" &&
     args.session !== getCurrentSession().sessionId,
   preprocess: async (args) => {
+    const session =
+      typeof args.session === "string" && args.session
+        ? args.session
+        : getCurrentSession().sessionId;
+    const where =
+      session === getCurrentSession().sessionId ? "this session" : session;
+    if (args.outline === true || args.outline === "true") {
+      const from = args.from === undefined ? 0 : Number(args.from);
+      if (!Number.isInteger(from) || from < 0) {
+        throw new Error("from must be a position such as 12");
+      }
+      return {
+        args: { session, from, outline: true },
+        preview: [
+          {
+            type: "text",
+            content: `Will read the outline of ${where}${from ? ` from #${from}` : ""}`,
+          },
+        ],
+      };
+    }
     const from = Number(args.from);
-    const to = Number(args.to);
+    // As read_history does: one item when "to" is left out
+    const to =
+      args.to === undefined || args.to === null ? from : Number(args.to);
     if (
       !Number.isInteger(from) ||
       !Number.isInteger(to) ||
       from < 0 ||
       to < from
     ) {
-      throw new Error("from and to must be positions with from <= to");
+      throw new Error(
+        "from and to must be positions with from <= to; to list the session's turns, pass outline: true",
+      );
     }
-    const session =
-      typeof args.session === "string" && args.session
-        ? args.session
-        : getCurrentSession().sessionId;
     return {
       args: { session, from, to },
       preview: [
         {
           type: "text",
-          content: `Will read #${from}-#${to} of ${session === getCurrentSession().sessionId ? "this session" : session}`,
+          content: `Will read #${from}-#${to} of ${where}`,
         },
       ],
     };
@@ -178,22 +221,29 @@ export const readHistoryTool: Tool = {
   run: async (args: {
     session: string;
     from: number;
-    to: number;
+    to?: number;
+    outline?: boolean;
   }): Promise<string> => {
-    const { items, pending, next } = await (
-      await historyStore()
-    ).read(args.session, args.from, args.to);
+    const store = await historyStore();
+    if (args.outline) {
+      return outlineText(await store.outline(args.session, args.from));
+    }
+    const to = args.to ?? args.from;
+    const { items, pending, next } = await store.read(
+      args.session,
+      args.from,
+      to,
+    );
     // An empty or short read isn't the end of the transcript when it wasn't
     // indexed to its end, or the size limit stopped it
     let note: string | undefined;
     if (pending) {
-      note =
-        "This session isn't fully indexed yet (busy, or it changed); read again for the rest.";
+      note = NOT_INDEXED;
     } else if (next !== undefined) {
       note = `Stopped at the size limit; read from #${next} for the rest.`;
     }
     if (!items.length) {
-      return note ?? `Nothing at #${args.from}-#${args.to} of that session.`;
+      return note ?? `Nothing at #${args.from}-#${to} of that session.`;
     }
     return [
       ...items.map((item) => {
@@ -206,3 +256,20 @@ export const readHistoryTool: Tool = {
     ].join("\n\n");
   },
 };
+
+const NOT_INDEXED =
+  "This session isn't fully indexed yet (busy, or it changed); read again for the rest.";
+
+/** One line per user message or compaction summary */
+function outlineText({ items, pending, next }: HistoryOutline): string {
+  const lines = items.map((item) => {
+    const state = item.state === "folded" ? " (compacted)" : "";
+    return `#${item.ord}${state} ${item.kind}: ${item.text}`;
+  });
+  if (pending) {
+    lines.push(NOT_INDEXED);
+  } else if (next !== undefined) {
+    lines.push(`More: read the outline from #${next}.`);
+  }
+  return lines.length ? lines.join("\n") : "No user messages in that session.";
+}

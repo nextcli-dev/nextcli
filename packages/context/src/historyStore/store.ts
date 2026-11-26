@@ -10,6 +10,14 @@ import {
 } from "../archive/journal.js";
 import { readJournalHead } from "../archive/sync.js";
 import {
+  candidateText,
+  findWord,
+  indexWords,
+  likePatterns,
+  searchWord,
+  type SearchWord,
+} from "./words.js";
+import {
   SqliteDatabase,
   sqliteHasFts5,
   type SqliteTransaction,
@@ -27,11 +35,21 @@ export interface HistoryHit {
   state: HistoryState;
   ts: number;
   snippet: string;
+  /**
+   * A partial match: the query's words this item lacks. Unset when it has
+   * every word.
+   */
+  missing?: string[];
 }
 
 export interface HistorySearchResult {
   hits: HistoryHit[];
-  /** Searched without FTS5 (Node 22.15): substring matches, newest first */
+  /**
+   * Searched without FTS5 (Node 22.15): candidates are found by scanning the
+   * index's words instead of the full-text index, and items are not ranked
+   * by bm25. Words match the same way, and the order is the same apart from
+   * that: items with every word first, then by how many, then newest first.
+   */
   basic: boolean;
   /** Transcripts not indexed yet: the search ran out of time, or was busy */
   pending: number;
@@ -52,6 +70,24 @@ export interface HistoryReadResult {
    * The read stopped at its size limit before `to`: the first position it
    * didn't return, to read from next
    */
+  next?: number;
+}
+
+export interface HistoryOutlineItem {
+  ord: number;
+  /** A user message, or a compaction summary */
+  kind: "user" | "summary";
+  state: HistoryState;
+  ts: number;
+  /** The start of its redacted text, on one line */
+  text: string;
+}
+
+export interface HistoryOutline {
+  items: HistoryOutlineItem[];
+  /** The transcript isn't indexed to its end yet (busy, or out of time) */
+  pending: boolean;
+  /** More items than one outline shows: the position to list from next */
   next?: number;
 }
 
@@ -81,10 +117,14 @@ const BATCH_BYTES = 1_000_000;
 const SYNC_BUDGET_MS = 300;
 const READ_MAX_ITEMS = 40;
 /**
- * The layout of the index. An index of another version is dropped and built
- * again from the transcripts: it is a cache of them.
+ * The layout of the index. An index of an older version is dropped and built
+ * again from the transcripts: it is a cache of them. One of a newer version
+ * is left alone and the open fails, so two host versions don't keep dropping
+ * each other's index.
  */
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 3;
+const OUTLINE_MAX_ITEMS = 100;
+const OUTLINE_TEXT_CHARS = 160;
 const READ_MAX_CHARS = 80_000;
 
 class SyncRace extends Error {}
@@ -106,9 +146,50 @@ async function finished(work: () => Promise<boolean>): Promise<boolean> {
   }
 }
 
+/**
+ * Common English words a search skips: they are in nearly every item, so
+ * requiring them hides real matches and counting them ranks noise. Negations
+ * stay, since they matter in error messages.
+ */
+const STOP_WORDS = new Set(
+  (
+    "a an and are as at be been but by can could did do does for from had has " +
+    "have how i if in into is it its me my of on or our so than that the their " +
+    "them then there these they this those to us was we were what when where " +
+    "which who why will with would you your"
+  ).split(" "),
+);
+const MAX_TERMS = 16;
+
+/**
+ * The words of a query a search looks for. `terms` are what a full hit holds;
+ * `counted`, the terms of 3 or more characters, are what makes an item a
+ * partial hit and ranks it. A query of stop words only keeps them all and
+ * has no partial hits.
+ */
+function searchTerms(text: string): { terms: string[]; counted: string[] } {
+  const seen = new Set<string>();
+  const all: string[] = [];
+  for (const raw of text.split(/\s+/)) {
+    // Phrases aren't supported: a quoted phrase is its words
+    const term = raw.replace(/^["']+|["']+$/g, "");
+    const key = term.toLowerCase();
+    // Punctuation alone has no word to look for
+    if (term && !seen.has(key) && searchWord(term)) {
+      seen.add(key);
+      all.push(term);
+    }
+  }
+  // The cap applies after stop words go, so they don't push real words out
+  const meaningful = all
+    .filter((t) => !STOP_WORDS.has(t.toLowerCase()))
+    .slice(0, MAX_TERMS);
+  return meaningful.length
+    ? { terms: meaningful, counted: meaningful.filter((t) => t.length >= 3) }
+    : { terms: all.slice(0, MAX_TERMS), counted: [] };
+}
+
 const quoteTerm = (term: string) => `"${term.replace(/"/g, '""')}"`;
-const likeTerm = (term: string) =>
-  `%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 
 /** Redacted texts of a batch's lines by byte offset, made before the lock */
 type BatchTexts = Map<number, { text: string; summary?: string }>;
@@ -212,11 +293,20 @@ export class HistoryStore {
     const version =
       (await db.get<{ user_version: number }>("PRAGMA user_version"))
         ?.user_version ?? 0;
+    if (version > SCHEMA_VERSION) {
+      // A newer cn or VS Code uses it: dropping it would make the two drop
+      // each other's index on every open
+      await db.close();
+      throw new Error(
+        `The history index ${file} was made by a newer version of NextCLI. Update the CLI and the extension to the same version.`,
+      );
+    }
     if (version !== SCHEMA_VERSION) {
       await db.exec(`
         DROP TABLE IF EXISTS journals;
         DROP TABLE IF EXISTS messages;
         DROP TABLE IF EXISTS history_text;
+        DROP TABLE IF EXISTS history_words;
         ${fts ? "DROP TABLE IF EXISTS history_fts;" : ""}
       `);
     }
@@ -239,9 +329,12 @@ export class HistoryStore {
         h TEXT NOT NULL,
         ts INTEGER NOT NULL,
         byte_offset INTEGER NOT NULL,
-        byte_len INTEGER NOT NULL
+        byte_len INTEGER NOT NULL,
+        summary INTEGER NOT NULL DEFAULT 0
       );
       CREATE INDEX IF NOT EXISTS messages_session ON messages (session_id, ord);
+      -- Each chunk's words as search compares them (words.ts), in both modes
+      CREATE TABLE IF NOT EXISTS history_words (rowid INTEGER PRIMARY KEY, words TEXT NOT NULL);
       ${
         fts
           ? "CREATE VIRTUAL TABLE IF NOT EXISTS history_fts USING fts5(text, tokenize = 'trigram');"
@@ -312,11 +405,13 @@ export class HistoryStore {
     await this.db.transaction(
       (tx) => {
         for (const { id } of ids) {
-          tx.run(
-            `DELETE FROM ${this.text} WHERE rowid >= ? AND rowid < ?`,
-            id * MAX_CHUNKS,
-            (id + 1) * MAX_CHUNKS,
-          );
+          for (const table of [this.text, "history_words"]) {
+            tx.run(
+              `DELETE FROM ${table} WHERE rowid >= ? AND rowid < ?`,
+              id * MAX_CHUNKS,
+              (id + 1) * MAX_CHUNKS,
+            );
+          }
         }
         tx.run("DELETE FROM messages WHERE session_id = ?", sessionId);
         tx.run("DELETE FROM journals WHERE session_id = ?", sessionId);
@@ -455,10 +550,17 @@ export class HistoryStore {
     text: string,
   ): void {
     for (let i = 0; i * CHUNK_CHARS < text.length && first + i < end; i++) {
+      const rowid = id * MAX_CHUNKS + first + i;
+      const chunk = text.slice(i * CHUNK_CHARS, (i + 1) * CHUNK_CHARS);
       tx.run(
         `INSERT INTO ${this.text} (rowid, text) VALUES (?, ?)`,
-        id * MAX_CHUNKS + first + i,
-        text.slice(i * CHUNK_CHARS, (i + 1) * CHUNK_CHARS),
+        rowid,
+        chunk,
+      );
+      tx.run(
+        "INSERT INTO history_words (rowid, words) VALUES (?, ?)",
+        rowid,
+        indexWords(chunk),
       );
     }
   }
@@ -515,7 +617,7 @@ export class HistoryStore {
           live = live.slice(0, line.i);
           const id = Number(
             tx.run(
-              "INSERT INTO messages (session_id, ord, role, tool, state, h, ts, byte_offset, byte_len) VALUES (?, ?, ?, ?, 'live', ?, ?, ?, ?)",
+              "INSERT INTO messages (session_id, ord, role, tool, state, h, ts, byte_offset, byte_len, summary) VALUES (?, ?, ?, ?, 'live', ?, ?, ?, ?, ?)",
               sessionId,
               ord++,
               line.item.role,
@@ -524,6 +626,8 @@ export class HistoryStore {
               line.ts,
               offset,
               length,
+              // cn's compaction summary, or a message VS Code summarized
+              line.item.summary ? 1 : 0,
             ).lastID,
           );
           const { text, summary } = texts.get(offset)!;
@@ -548,10 +652,17 @@ export class HistoryStore {
           if (id === undefined) {
             break;
           }
+          for (const table of [this.text, "history_words"]) {
+            tx.run(
+              `DELETE FROM ${table} WHERE rowid >= ? AND rowid < ?`,
+              id * MAX_CHUNKS + SUMMARY_CHUNK,
+              (id + 1) * MAX_CHUNKS,
+            );
+          }
           tx.run(
-            `DELETE FROM ${this.text} WHERE rowid >= ? AND rowid < ?`,
-            id * MAX_CHUNKS + SUMMARY_CHUNK,
-            (id + 1) * MAX_CHUNKS,
+            "UPDATE messages SET summary = ? WHERE id = ?",
+            line.text ? 1 : 0,
+            id,
           );
           const summary = texts.get(offset)?.text;
           if (summary) {
@@ -572,9 +683,14 @@ export class HistoryStore {
 
   /**
    * Searches the transcripts of the given sessions, of some workspaces, or
-   * all of them. Every term must be in the item, in any of its chunks. Undone
-   * (cut) items are left out; compacted ones are found. The same item in
-   * several sessions (a fork copies its source) is one hit, the newest copy.
+   * all of them. Items with every word of the query come first; if there are
+   * fewer than `limit`, items with some of its words fill the rest, ranked by
+   * how many they have, each with the words it lacks. Words match whole, in
+   * any chunk of an item, with an English ending allowed (words.ts); common
+   * words are skipped (STOP_WORDS).
+   * Undone (cut) items are left out; compacted ones are found. The same item
+   * in several sessions (a fork copies its source) is one hit, the newest
+   * copy.
    */
   async search(query: {
     text: string;
@@ -584,75 +700,99 @@ export class HistoryStore {
     limit: number;
   }): Promise<HistorySearchResult> {
     const pending = await this.sync(query.sessionIds);
-    const terms = query.text.split(/\s+/).filter(Boolean);
+    const { terms, counted } = searchTerms(query.text);
     if (!terms.length) {
       return { hits: [], basic: !this.fts, pending };
     }
-    const where = ["m.state != 'cut'"];
-    const whereParams: string[] = [];
+    const params: (string | number)[] = [];
+    // The items searched, before any text is touched
+    const scope = ["m.state != 'cut'"];
     if (query.sessionIds) {
-      where.push(
+      scope.push(
         `m.session_id IN (${query.sessionIds.map(() => "?").join(", ")})`,
       );
-      whereParams.push(...query.sessionIds);
+      params.push(...query.sessionIds);
     }
     if (query.workspace !== undefined) {
       const keys = [query.workspace].flat().map(workspaceKey);
-      where.push(
+      scope.push(
         `m.session_id IN (SELECT session_id FROM journals WHERE workspace IN (${keys.map(() => "?").join(", ")}))`,
       );
-      whereParams.push(...keys);
+      params.push(...keys);
     }
-    // Trigrams need 3 characters: shorter terms, and every term without
-    // FTS5, match as substrings
-    const words = this.fts ? terms.filter((t) => t.length >= 3) : [];
-    const messageOf = `rowid / ${MAX_CHUNKS}`;
-    for (const term of terms) {
-      if (words.includes(term)) {
-        where.push(
-          `m.id IN (SELECT ${messageOf} FROM history_fts WHERE history_fts MATCH ?)`,
-        );
-        whereParams.push(quoteTerm(term));
-      } else {
-        where.push(
-          `m.id IN (SELECT ${messageOf} FROM ${this.text} WHERE text LIKE ? ESCAPE '\\')`,
-        );
-        whereParams.push(likeTerm(term));
+    // Candidates: chunks that may hold any of the words. With FTS5, the text
+    // every match contains finds them (trigrams match inside words, so this
+    // finds more than the words); without it, or when a word has no such
+    // text of 3 characters, the index's words are scanned
+    const words = terms.map((term) => searchWord(term)!);
+    const ranked = (counted.length ? counted : terms).map(
+      (term) => words[terms.indexOf(term)],
+    );
+    const candidates = ranked.map(candidateText);
+    const matched = this.fts && candidates.every((text) => text.length);
+    const fullText = candidates
+      .map((text) => `(${text.map(quoteTerm).join(" AND ")})`)
+      .join(" OR ");
+    let chunks: string;
+    if (matched) {
+      chunks = `SELECT rowid / ${MAX_CHUNKS} AS id, rowid AS chunk, bm25(history_fts) AS score
+        FROM history_fts WHERE history_fts MATCH ? AND rowid / ${MAX_CHUNKS} IN scope`;
+      params.push(fullText);
+    } else {
+      const patterns = ranked.flatMap(likePatterns);
+      chunks = `SELECT w.rowid / ${MAX_CHUNKS} AS id, w.rowid AS chunk, w.rowid AS score
+        FROM scope s JOIN history_words w
+          ON w.rowid >= s.id * ${MAX_CHUNKS} AND w.rowid < (s.id + 1) * ${MAX_CHUNKS}
+        WHERE ${patterns.map(() => "w.words LIKE ?").join(" OR ")}`;
+      params.push(...patterns);
+    }
+    // One flag per term: whether the item holds the word, in any chunk. With
+    // FTS5, MATCH first narrows to the items that may
+    const flags = words.map((word, i) => {
+      const patterns = likePatterns(word);
+      let flag = `EXISTS (SELECT 1 FROM history_words
+          WHERE rowid >= best.id * ${MAX_CHUNKS} AND rowid < (best.id + 1) * ${MAX_CHUNKS}
+            AND (${patterns.map(() => "words LIKE ?").join(" OR ")}))`;
+      const text = candidateText(word);
+      if (this.fts && text.length) {
+        params.push(text.map(quoteTerm).join(" AND "));
+        flag = `(id IN (SELECT rowid / ${MAX_CHUNKS} FROM history_fts
+          WHERE history_fts MATCH ? AND rowid / ${MAX_CHUNKS} IN scope) AND ${flag})`;
       }
+      params.push(...patterns);
+      return `${flag} AS t${i}`;
+    });
+    const full = terms.map((_, i) => `f.t${i}`).join(" AND ");
+    // Sort keys are expressions over the materialized flags: an alias would
+    // run the subqueries again, and a bare 0 would be read as a column
+    const order = [`(${full}) DESC`];
+    const matchedWords = counted
+      .map((c) => `f.t${terms.indexOf(c)}`)
+      .join(" + ");
+    if (counted.length) {
+      order.push(`(${matchedWords}) DESC`);
     }
-    // Each item's best chunk (by bm25; without full-text terms, its first
-    // matching chunk) gives its rank and its snippet. bm25 can't run inside
-    // an aggregate, so chunks are scored first; SQLite then takes the
-    // snippet from the row MIN picks
-    const chunks = words.length
-      ? {
-          sql: `SELECT ${messageOf} AS id, bm25(history_fts) AS score,
-                  snippet(history_fts, 0, '«', '»', '…', 16) AS snippet
-                FROM history_fts WHERE history_fts MATCH ?`,
-          params: [words.map(quoteTerm).join(" OR ")],
-          order: "best.score, m.ts DESC, m.id DESC",
-        }
-      : {
-          sql: `SELECT ${messageOf} AS id, rowid AS score,
-                  substr(text, max(1, instr(lower(text), lower(?)) - 80), 200) AS snippet
-                FROM ${this.text} WHERE text LIKE ? ESCAPE '\\'`,
-          params: [terms[0], likeTerm(terms[0])],
-          order: "m.ts DESC, m.id DESC",
-        };
-    const sql = `WITH chunks AS MATERIALIZED (${chunks.sql}),
-        best AS (SELECT id, MIN(score) AS score, snippet FROM chunks GROUP BY id)
-      SELECT m.session_id, m.ord, m.role, m.tool, m.state, m.ts, m.h, best.snippet
-      FROM best JOIN messages m ON m.id = best.id
-      WHERE ${where.join(" AND ")}
-      ORDER BY ${chunks.order}
+    order.push(...(matched ? ["f.score"] : []), "m.ts DESC", "m.id DESC");
+    const sql = `WITH scope AS MATERIALIZED (
+          SELECT m.id FROM messages m WHERE ${scope.join(" AND ")}),
+        chunks AS MATERIALIZED (${chunks}),
+        best AS (SELECT id, MIN(score) AS score, chunk FROM chunks GROUP BY id),
+        flagged AS MATERIALIZED (SELECT id, score, chunk, ${flags.join(", ")} FROM best)
+      SELECT m.id, m.session_id, m.ord, m.role, m.tool, m.state, m.ts, m.h, f.chunk,
+        ${terms.map((_, i) => `f.t${i}`).join(", ")}
+      FROM flagged f JOIN messages m ON m.id = f.id
+      WHERE ${counted.length ? `(${matchedWords}) > 0` : full}
+      ORDER BY ${order.join(", ")}
       LIMIT ? OFFSET ?`;
     const page = query.limit * 4;
     // Which session's copy of an item is shown: the first, the newest
     const shown = new Map<string, string>();
-    const hits: HistoryHit[] = [];
+    const seen = new Set<number>();
+    const hits: (HistoryHit & { chunk: number })[] = [];
     for (let offset = 0; hits.length < query.limit; offset += page) {
       const rows = await this.db.all<
-        {
+        ({
+          id: number;
           session_id: string;
           ord: number;
           role: string;
@@ -660,15 +800,20 @@ export class HistoryStore {
           state: HistoryState;
           ts: number;
           h: string;
-          snippet: string;
-        }[]
-      >(sql, ...chunks.params, ...whereParams, page, offset);
+          chunk: number;
+        } & Record<string, number>)[]
+      >(sql, ...params, page, offset);
       for (const row of rows) {
         const owner = shown.get(row.h);
-        if (owner !== undefined && owner !== row.session_id) {
+        if (
+          seen.has(row.id) ||
+          (owner !== undefined && owner !== row.session_id)
+        ) {
           continue;
         }
+        seen.add(row.id);
         shown.set(row.h, row.session_id);
+        const missing = terms.filter((_, i) => !row[`t${i}`]);
         hits.push({
           sessionId: row.session_id,
           ord: row.ord,
@@ -676,7 +821,9 @@ export class HistoryStore {
           tool: row.tool ?? undefined,
           state: row.state,
           ts: row.ts,
-          snippet: row.snippet,
+          snippet: "",
+          ...(missing.length ? { missing } : {}),
+          chunk: row.chunk,
         });
         if (hits.length === query.limit) {
           break;
@@ -686,14 +833,52 @@ export class HistoryStore {
         break;
       }
     }
-    return { hits, basic: !this.fts, pending };
+    // Snippets only for what is returned: computing them for every
+    // candidate chunk made a search with common words take seconds
+    for (const hit of hits) {
+      const found = words.filter((_, i) => !hit.missing?.includes(terms[i]));
+      hit.snippet = await this.snippet(hit.chunk, found, words);
+    }
+    return {
+      hits: hits.map(({ chunk: _, ...hit }) => hit),
+      basic: !this.fts,
+      pending,
+    };
+  }
+
+  /**
+   * Text around a word the item holds, marked: the earliest of the words it
+   * has, else of any of them (it may hold one only in another chunk)
+   */
+  private async snippet(
+    chunk: number,
+    found: SearchWord[],
+    words: SearchWord[],
+  ): Promise<string> {
+    // The wrapper binds a rowid past 2^31 as REAL; the cast keeps it a rowid
+    const text =
+      (
+        await this.db.get<{ text: string }>(
+          `SELECT text FROM ${this.text} WHERE rowid = CAST(? AS INTEGER)`,
+          chunk,
+        )
+      )?.text ?? "";
+    const at = findWord(text, found) ?? findWord(text, words);
+    if (!at) {
+      return oneLine(text.slice(0, 200));
+    }
+    const start = Math.max(0, at.start - 80);
+    const end = Math.min(text.length, Math.max(at.end, start + 200));
+    return oneLine(
+      `${start ? "…" : ""}${text.slice(start, at.start)}«${text.slice(at.start, at.end)}»${text.slice(at.end, end)}${end < text.length ? "…" : ""}`,
+    );
   }
 
   /**
    * Items `from` to `to` of a transcript, redacted, with any summary set on
-   * them. Undone (cut) items are left out; compacted ones are marked. At most READ_MAX_ITEMS and about READ_MAX_CHARS, with `next` set
-   * when that stopped it before `to`; a first item longer than that is cut
-   * short.
+   * them. Undone (cut) items are left out; compacted ones are marked. At
+   * most READ_MAX_ITEMS and about READ_MAX_CHARS, with `next` set when that
+   * stopped it before `to`; a first item longer than that is cut short.
    */
   async read(
     sessionId: string,
@@ -775,4 +960,73 @@ export class HistoryStore {
     }
     return { items, pending, ...(next === undefined ? {} : { next }) };
   }
+
+  /**
+   * The user's messages and the compaction summaries of a transcript, from
+   * position `from`, each with the start of its text: a map of a long
+   * session, to find the part to read. Taken from the index, redacted.
+   * Undone (cut) items are left out; compacted ones are marked.
+   */
+  async outline(sessionId: string, from = 0): Promise<HistoryOutline> {
+    const pending = (await this.sync([sessionId])) > 0;
+    const rows = await this.db.all<
+      {
+        ord: number;
+        role: string;
+        state: HistoryState;
+        ts: number;
+        summary: number;
+        head: string | null;
+        extra: string | null;
+      }[]
+    >(
+      `SELECT m.ord, m.role, m.state, m.ts, m.summary,
+        (SELECT substr(text, 1, 400) FROM ${this.text}
+          WHERE rowid = m.id * ${MAX_CHUNKS}) AS head,
+        (SELECT substr(text, 1, 400) FROM ${this.text}
+          WHERE rowid = m.id * ${MAX_CHUNKS} + ${SUMMARY_CHUNK}) AS extra
+      FROM messages m
+      WHERE m.session_id = ? AND m.ord >= ? AND m.state != 'cut'
+        AND (m.role = 'user' OR m.summary = 1)
+      ORDER BY m.ord
+      LIMIT ?`,
+      sessionId,
+      from,
+      // One more, to tell whether there is more
+      OUTLINE_MAX_ITEMS + 1,
+    );
+    const next = rows.length > OUTLINE_MAX_ITEMS ? rows.pop()!.ord : undefined;
+    const items: HistoryOutlineItem[] = [];
+    for (const row of rows) {
+      const item = { ord: row.ord, state: row.state, ts: row.ts };
+      // One line per position. A user message VS Code summarized shows its
+      // summary: that is where the compaction happened, and the message is
+      // read with read(). VS Code's summary is in the summary chunks of the
+      // message it is set on; cn's summary message is its own text
+      items.push(
+        row.summary
+          ? {
+              ...item,
+              kind: "summary",
+              text: outlineText(row.extra ?? row.head),
+            }
+          : { ...item, kind: "user", text: outlineText(row.head) },
+      );
+    }
+    return { items, pending, ...(next === undefined ? {} : { next }) };
+  }
+}
+
+const oneLine = (text: string) => text.replace(/\s+/g, " ").trim();
+
+/** One line of an outline: whitespace collapsed, cut short */
+function outlineText(text: string | null): string {
+  const line = oneLine(text ?? "");
+  if (!line) {
+    return "(no text)";
+  }
+  const chars = Array.from(line);
+  return chars.length > OUTLINE_TEXT_CHARS
+    ? `${chars.slice(0, OUTLINE_TEXT_CHARS).join("")}…`
+    : line;
 }

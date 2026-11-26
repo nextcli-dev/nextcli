@@ -21,6 +21,8 @@ import {
 import { readHistoryTool, searchHistoryTool } from "./history.js";
 import { Tool } from "./types.js";
 
+import { validateToolCallArgsPresent } from "./index.js";
+
 // vitest.global-dir-setup.ts gives each test file its own CONTINUE_GLOBAL_DIR:
 // cn saves sessions there, and core's HistoryManager writes their transcripts
 
@@ -136,6 +138,91 @@ describe("SearchHistory and ReadHistory", () => {
 
     expect(found).not.toContain("sk-proj");
     expect(turns).toBe("#0 user: export OPENAI_API_KEY=[redacted] and retry");
+  });
+
+  it("mark a partial match with the words it lacks", async () => {
+    startNewSession();
+    updateSessionHistory([user("the login screen froze"), reply("noted")]);
+
+    const found = await call(searchHistoryTool, { query: "login retry" });
+
+    expect(found).toMatch(
+      /^this session #0 \(user, partial, missing: retry\): .*login/,
+    );
+    expect(found).toContain("Partial matches lack some of the words");
+  });
+
+  it("outline a compacted session: its user turns and the summary", async () => {
+    startNewSession();
+    updateSessionHistory([
+      user("REQUIREMENT: keep the v1 API"),
+      read("src/auth/token.ts", "the token code"),
+      reply("Fixed the skew"),
+    ]);
+    updateSessionHistory([
+      {
+        ...reply("Summary of the fix"),
+        conversationSummary: "Summary of the fix",
+      },
+      user("Continue"),
+    ]);
+    const args = { outline: true };
+    validateToolCallArgsPresent(
+      {
+        id: "c1",
+        name: "ReadHistory",
+        arguments: args,
+        argumentsStr: "",
+        startNotified: false,
+      },
+      readHistoryTool,
+    );
+
+    const outline = await call(readHistoryTool, args);
+
+    expect(outline).toBe(
+      [
+        "#0 (compacted) user: REQUIREMENT: keep the v1 API",
+        "#3 summary: Summary of the fix",
+        "#4 user: Continue",
+      ].join("\n"),
+    );
+  });
+
+  it("page a long outline, and name another session in its preview", async () => {
+    startNewSession();
+    updateSessionHistory(
+      Array.from({ length: 105 }, (_, i) => user(`turn ${i}`)),
+    );
+
+    const first = await call(readHistoryTool, { outline: true });
+    const rest = await call(readHistoryTool, { outline: true, from: 100 });
+    const preview = await readHistoryTool.preprocess!({
+      outline: true,
+      session: "another-session",
+      from: 5,
+    });
+
+    expect(first.split("\n")).toHaveLength(101);
+    expect(first).toMatch(/More: read the outline from #100\.$/);
+    expect(rest).toBe(
+      [100, 101, 102, 103, 104].map((i) => `#${i} user: turn ${i}`).join("\n"),
+    );
+    expect(preview.preview).toEqual([
+      {
+        type: "text",
+        content: "Will read the outline of another-session from #5",
+      },
+    ]);
+  });
+
+  it("read one item when only from is given", async () => {
+    startNewSession();
+    updateSessionHistory([user("first ask"), reply("first answer")]);
+
+    expect(await call(readHistoryTool, { from: 1 })).toBe(
+      "#1 assistant: first answer",
+    );
   });
 
   it("say where to read on when the size limit stops a read", async () => {
