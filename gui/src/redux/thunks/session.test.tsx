@@ -1,17 +1,25 @@
 import { waitFor } from "@testing-library/dom";
-import { act } from "@testing-library/react";
+import { act, screen } from "@testing-library/react";
 import { ChatHistoryItem, ChatMessage, Session } from "core";
+import { CANCELLED_TOOL_CALL_MESSAGE } from "core/tools/constants";
+import { renderChatMessage } from "core/util/messageContent";
+import { generateToolCallButtonTestId } from "../../components/mainInput/Lump/LumpToolbar/PendingToolCallToolbar";
 import { MockIdeMessenger } from "../../context/MockIdeMessenger";
 import { Chat } from "../../pages/gui/Chat";
 import { addAndSelectMockLlm } from "../../util/test/config";
 import { renderWithProviders } from "../../util/test/render";
 import {
+  getElementByTestId,
   getMainEditor,
   sendInputWithMockedResponse,
 } from "../../util/test/utils";
-import { setActive, setToolGenerated } from "../slices/sessionSlice";
+import {
+  newSession,
+  setActive,
+  setToolGenerated,
+} from "../slices/sessionSlice";
 import { callToolById } from "./callToolById";
-import { loadSession, saveCurrentSession } from "./session";
+import { loadLastSession, loadSession, saveCurrentSession } from "./session";
 import { streamResponseThunk } from "./streamResponse";
 
 /** A turn that stops mid-way through generating a tool call */
@@ -300,4 +308,316 @@ test("opening another session during a stream saves the turn as stopped", async 
   expect(turn.message.content).toBe("Let me look.");
   expect(turn.toolCallStates?.[0].status).toBe("canceled");
   expect(store.getState().session.mainEditorContentTrigger).toBeUndefined();
+});
+
+/** A tool call state as a session file stores it */
+function storedCall(id: string, name: string, args: object) {
+  return {
+    toolCallId: id,
+    status: "calling" as const,
+    toolCall: {
+      id,
+      type: "function" as const,
+      function: { name, arguments: JSON.stringify(args) },
+    },
+    parsedArgs: args,
+  };
+}
+
+/**
+ * A session file saved while an edit was running, then continued: the
+ * extension host stopped answering before the next save, and after a reload
+ * the conversation went on. A later question still waits for its answer.
+ */
+const SAVED_MID_TURN: Session = {
+  sessionId: "saved-mid-turn",
+  title: "Saved mid-turn",
+  workspaceDirectory: "",
+  history: [
+    {
+      message: { role: "user", content: "Edit a.ts" },
+      contextItems: [],
+    },
+    {
+      message: {
+        role: "assistant",
+        content: "",
+        toolCalls: [storedCall("call_edit", "multi_edit", {}).toolCall],
+      },
+      contextItems: [],
+      reasoning: { active: true, text: "Planning the edit", startAt: 1 },
+      toolCallStates: [
+        storedCall("call_edit", "multi_edit", { filepath: "a.ts", edits: [] }),
+      ],
+    },
+    {
+      message: { role: "user", content: "Check" },
+      contextItems: [],
+    },
+    {
+      message: {
+        role: "assistant",
+        content: "",
+        toolCalls: [storedCall("call_question", "ask_question", {}).toolCall],
+      },
+      contextItems: [],
+      toolCallStates: [
+        storedCall("call_question", "ask_question", {
+          questions: [
+            {
+              question: "Which agent should be the default?",
+              options: [{ label: "nextcli" }, { label: "opencode" }],
+            },
+          ],
+        }),
+      ],
+    },
+  ],
+};
+
+type Store = Awaited<ReturnType<typeof renderChat>>["store"];
+
+/** Loads `session`, which "history/load" must answer with */
+const loaders = {
+  loadSession: async (store: Store, session: Session) =>
+    store.dispatch(
+      loadSession({ sessionId: session.sessionId, saveCurrentSession: false }),
+    ),
+  // What a reloaded editor runs to reopen the last session
+  loadLastSession: async (store: Store, session: Session) => {
+    store.dispatch(newSession({ ...session, history: [] }));
+    store.dispatch(newSession());
+    return store.dispatch(loadLastSession());
+  },
+};
+const loaderNames = Object.keys(loaders) as (keyof typeof loaders)[];
+
+test.each(loaderNames)(
+  "%s stops a tool the file saved as running, and keeps an open question open",
+  async (loader) => {
+    const rendered = await renderChat();
+    const { ideMessenger, store } = rendered;
+    ideMessenger.responses["history/load"] = structuredClone(SAVED_MID_TURN);
+
+    await act(async () => {
+      await loaders[loader](store, SAVED_MID_TURN);
+    });
+
+    const history = store.getState().session.history;
+    expect(store.getState().session.id).toBe("saved-mid-turn");
+    const states = history.flatMap((item) => item.toolCallStates ?? []);
+    const edit = states.find((tc) => tc.toolCallId === "call_edit")!;
+    expect(edit.status).toBe("errored");
+    expect(edit.output?.[0].content).toContain("Its result was not recorded");
+    expect(history[1].reasoning?.active).toBe(false);
+    expect(history[1].reasoning?.endAt).toBeDefined();
+    expect(states.find((tc) => tc.toolCallId === "call_question")?.status).toBe(
+      "calling",
+    );
+  },
+);
+
+test("the model learns that a tool saved as running has no result", async () => {
+  const rendered = await renderChat();
+  const { ideMessenger, store } = rendered;
+  const withoutQuestion = structuredClone(SAVED_MID_TURN);
+  withoutQuestion.history = withoutQuestion.history.slice(0, 3);
+  withoutQuestion.history.push({
+    message: { role: "assistant", content: "Let me check." },
+    contextItems: [],
+  });
+  ideMessenger.responses["history/load"] = withoutQuestion;
+  await act(async () => {
+    await store.dispatch(
+      loadSession({ sessionId: "saved-mid-turn", saveCurrentSession: false }),
+    );
+  });
+  const request = vi.spyOn(ideMessenger, "request");
+
+  await sendInputWithMockedResponse(ideMessenger, "Go on", [
+    { role: "assistant", content: "Done" },
+  ]);
+
+  await waitFor(() =>
+    expect(
+      request.mock.calls.some(([type]) => type === "llm/compileChat"),
+    ).toBe(true),
+  );
+  const [, compile] = request.mock.calls.find(
+    ([type]) => type === "llm/compileChat",
+  )!;
+  // As a tool message, or a user message for models without native tools
+  const sent = (compile as { messages: ChatMessage[] }).messages.map(
+    renderChatMessage,
+  );
+  expect(
+    sent.some((text) => text.includes("Its result was not recorded")),
+  ).toBe(true);
+  expect(sent.some((text) => text.includes("No tool output"))).toBe(false);
+});
+
+/**
+ * A session file saved while a call waited for approval, the normal pause
+ * before a write. The stream had ended inside a second call, so its
+ * arguments never finished.
+ */
+const SAVED_AT_APPROVAL: Session = {
+  sessionId: "saved-at-approval",
+  title: "Saved at approval",
+  workspaceDirectory: "",
+  history: [
+    {
+      message: { role: "user", content: "Show the diff" },
+      contextItems: [],
+    },
+    {
+      message: {
+        role: "assistant",
+        content: "",
+        toolCalls: [
+          storedCall("call_diff", "view_diff", {}).toolCall,
+          storedCall("call_half", "read_file", {}).toolCall,
+        ],
+      },
+      contextItems: [],
+      toolCallStates: [
+        { ...storedCall("call_diff", "view_diff", {}), status: "generated" },
+        { ...storedCall("call_half", "read_file", {}), status: "generating" },
+      ],
+    },
+  ],
+};
+
+test.each(loaderNames)(
+  "%s keeps a call waiting for approval, and running it continues the turn",
+  async (loader) => {
+    const rendered = await renderChat();
+    const { ideMessenger, store } = rendered;
+    ideMessenger.responses["history/load"] = structuredClone(SAVED_AT_APPROVAL);
+    ideMessenger.responses["tools/call"] = {
+      contextItems: [{ name: "Diff", description: "", content: "no changes" }],
+      errorMessage: undefined,
+    };
+    ideMessenger.chatResponse = [
+      { role: "assistant", content: "Diff checked" },
+    ];
+    const request = vi.spyOn(ideMessenger, "request");
+
+    await act(async () => {
+      await loaders[loader](store, SAVED_AT_APPROVAL);
+    });
+
+    const states = () =>
+      store
+        .getState()
+        .session.history.flatMap((item) => item.toolCallStates ?? []);
+    const half = states().find((tc) => tc.toolCallId === "call_half")!;
+    expect(half.status).toBe("errored");
+    expect(half.output?.[0].content).toContain("it never ran");
+
+    await act(async () => {
+      (
+        await getElementByTestId(
+          generateToolCallButtonTestId("accept", "call_diff"),
+        )
+      ).click();
+    });
+
+    await screen.findByText("Diff checked");
+    expect(
+      request.mock.calls.filter(([type]) => type === "tools/call"),
+    ).toMatchObject([["tools/call", { toolCall: { id: "call_diff" } }]]);
+    expect(states().find((tc) => tc.toolCallId === "call_diff")?.status).toBe(
+      "done",
+    );
+  },
+);
+
+/**
+ * Loads a session whose edit was still waiting for its diff: the panel
+ * reloaded while the extension host kept the diff open
+ */
+async function loadStoppedEdit() {
+  const rendered = await renderChat();
+  const editOnly = structuredClone(SAVED_MID_TURN);
+  editOnly.history = editOnly.history.slice(0, 2);
+  rendered.ideMessenger.responses["history/load"] = editOnly;
+  await act(async () => {
+    await loaders.loadSession(rendered.store, editOnly);
+  });
+  const edit = () =>
+    rendered.store
+      .getState()
+      .session.history.flatMap((item) => item.toolCallStates ?? [])
+      .find((tc) => tc.toolCallId === "call_edit")!;
+  expect(edit().status).toBe("errored");
+  return { ...rendered, edit };
+}
+
+/** What the extension sends when the user closes the diff in the editor */
+function closeDiffInEditor(ideMessenger: MockIdeMessenger, rejected?: boolean) {
+  act(() => {
+    ideMessenger.mockMessageToWebview("updateApplyState", {
+      streamId: "edit-stream",
+      toolCallId: "call_edit",
+      status: "closed",
+      filepath: "a.ts",
+      numDiffs: 0,
+      rejected,
+    });
+  });
+}
+
+/** The messages of the first request since `request` began spying */
+function firstRequestSent(request: { mock: { calls: unknown[][] } }) {
+  const [, compile] = request.mock.calls.find(
+    ([type]) => type === "llm/compileChat",
+  )!;
+  return (compile as { messages: ChatMessage[] }).messages.map(
+    renderChatMessage,
+  );
+}
+
+test("an edit stopped by a reload takes the outcome of its diff, which was still open", async () => {
+  const { ideMessenger, edit } = await loadStoppedEdit();
+  ideMessenger.chatResponse = [{ role: "assistant", content: "Edited a.ts" }];
+  const request = vi.spyOn(ideMessenger, "request");
+
+  closeDiffInEditor(ideMessenger);
+
+  await screen.findByText("Edited a.ts");
+  expect(edit().status).toBe("done");
+  expect(edit().output?.[0].content).toBe("Successfully edited a.ts");
+  const sent = firstRequestSent(request);
+  expect(sent.some((text) => text.includes("Successfully edited a.ts"))).toBe(
+    true,
+  );
+  expect(
+    sent.some((text) => text.includes("Its result was not recorded")),
+  ).toBe(false);
+});
+
+test("an edit whose diff was rejected in the editor reads as cancelled, not made", async () => {
+  const { ideMessenger, edit } = await loadStoppedEdit();
+  const streamCalls = vi.spyOn(ideMessenger, "llmStreamChat");
+
+  closeDiffInEditor(ideMessenger, true);
+
+  await waitFor(() => expect(edit().status).toBe("canceled"));
+  // Like the chat's Reject button, it ends the turn
+  expect(streamCalls).not.toHaveBeenCalled();
+  const request = vi.spyOn(ideMessenger, "request");
+  await sendInputWithMockedResponse(ideMessenger, "Go on", [
+    { role: "assistant", content: "Done" },
+  ]);
+  await waitFor(() =>
+    expect(
+      request.mock.calls.some(([type]) => type === "llm/compileChat"),
+    ).toBe(true),
+  );
+  const sent = firstRequestSent(request);
+  expect(sent.some((text) => text.includes(CANCELLED_TOOL_CALL_MESSAGE))).toBe(
+    true,
+  );
+  expect(sent.some((text) => text.includes("Successfully edited"))).toBe(false);
 });

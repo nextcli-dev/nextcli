@@ -1576,6 +1576,11 @@ export interface ApplyState {
   destructiveWarning?: string;
   /** Set when the user edited the file mid-stream and the edit was reverted */
   interruptedByUserEdit?: boolean;
+  /**
+   * Set on "closed" when the user rejected the diff's changes and kept none,
+   * in the editor or the chat panel
+   */
+  rejected?: boolean;
 }
 
 export type StreamDiffLinesType = "edit" | "apply";

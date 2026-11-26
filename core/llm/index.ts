@@ -502,7 +502,14 @@ export abstract class BaseLLM implements ILLM {
     error?: any,
     streamEnd?: StreamEnd,
   ): InteractionStatus {
-    let promptTokens = this.countTokens(prompt);
+    // The prompt is the whole conversation, and tokenizing it here blocks the
+    // extension host for seconds once a conversation is long. The provider's
+    // count is exact and costs nothing, so the estimate is only for providers
+    // that report none
+    let promptTokens =
+      usage && usage.promptTokens > 0
+        ? usage.promptTokens
+        : this.countTokens(prompt);
     let generatedTokens = this.countTokens(completion);
     let thinkingTokens = thinking ? this.countTokens(thinking) : 0;
 

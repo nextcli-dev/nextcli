@@ -6,7 +6,20 @@ import { executeFindAndReplace } from "core/edit/searchAndReplace/performReplace
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
+import { processDiff } from "../processDiff";
+
 import { VerticalDiffHandler } from "./handler";
+import { VerticalDiffManager } from "./manager";
+
+import type { ApplyState } from "core";
+
+// What the manager and processDiff reach beyond the editor
+vi.mock("../../extension/EditOutcomeTracker", () => ({
+  editOutcomeTracker: { recordEditOutcome: vi.fn() },
+}));
+vi.mock("core/data/log", () => ({ DataLogger: { getInstance: () => ({}) } }));
+vi.mock("../../util/errorHandling", () => ({ handleLLMError: vi.fn() }));
+vi.mock("../../apply/utils", () => ({ isFastApplyModel: vi.fn() }));
 
 // Minimal in-memory implementation of the vscode API used by the handler
 vi.mock("vscode", () => {
@@ -671,5 +684,219 @@ describe("VerticalDiffHandler accepts or rejects one block at a time", () => {
     await resolveBlock(handler, blocks, true, 1);
     await resolveBlock(handler, blocks, true, 0);
     expect(getText()).toBe(AFTER);
+  });
+});
+
+describe("VerticalDiffHandler reports a rejected diff when it closes", () => {
+  const BEFORE = "a\nb\nc\nd\ne\n";
+  const AFTER = "a\nB\nc\nD\ne\n";
+
+  /** A diff with two blocks; `closes` collects `rejected` from each "closed" */
+  async function openDiff(
+    lines: AsyncGenerator<string> = toStream(AFTER.split("\n")),
+  ) {
+    const { editor, getText } = createEditor(BEFORE);
+    (vscode.window as any).activeTextEditor = editor;
+    (vscode.window as any).visibleTextEditors = [editor];
+    const codeLens = new Map<string, any[]>();
+    const closes: (boolean | undefined)[] = [];
+    let clearing: Promise<void> | undefined;
+    const handler: VerticalDiffHandler = new VerticalDiffHandler(
+      0,
+      BEFORE.split("\n").length - 1,
+      editor,
+      codeLens,
+      // The manager's clearForfileUri
+      (_uri, accept, options) => {
+        if (!options?.handlerAlreadyCleared) {
+          clearing = handler.clear(accept);
+        }
+      },
+      () => {},
+      {
+        onStatusUpdate: (status, _n, _c, _d, _i, rejected) => {
+          if (status === "closed") {
+            closes.push(rejected);
+          }
+        },
+      },
+    );
+    const run = handler.run(streamDiff(BEFORE.split("\n"), lines));
+    const blocks = () => codeLens.get(editor.document.uri.toString()) ?? [];
+    return { handler, run, blocks, closes, getText, cleared: () => clearing };
+  }
+
+  // What a CodeLens Accept/Reject on the first block does (manager.ts
+  // acceptRejectVerticalDiffBlock): the last one also clears with accept
+  async function resolveFirstBlock(
+    handler: VerticalDiffHandler,
+    blocks: () => any[],
+    accept: boolean,
+  ) {
+    const block = blocks()[0];
+    await handler.acceptRejectBlock(
+      accept,
+      block.start,
+      block.numGreen,
+      block.numRed,
+    );
+    if (blocks().length === 0) {
+      await handler.clear(true);
+    }
+  }
+
+  it("after Reject All", async () => {
+    const { handler, run, closes, getText } = await openDiff();
+    await run;
+    await handler.clear(false);
+    expect(closes).toEqual([true]);
+    expect(getText()).toBe(BEFORE);
+  });
+
+  it("after every block was rejected on its own", async () => {
+    const { handler, run, blocks, closes } = await openDiff();
+    await run;
+    await resolveFirstBlock(handler, blocks, false);
+    await resolveFirstBlock(handler, blocks, false);
+    expect(closes).toEqual([true, true]);
+  });
+
+  it("not after Accept All", async () => {
+    const { handler, run, closes } = await openDiff();
+    await run;
+    await handler.clear(true);
+    expect(closes).toEqual([undefined]);
+  });
+
+  it("not when one block was kept and the other rejected", async () => {
+    const { handler, run, blocks, closes } = await openDiff();
+    await run;
+    await resolveFirstBlock(handler, blocks, true);
+    await resolveFirstBlock(handler, blocks, false);
+    expect(closes).toEqual([undefined, undefined]);
+  });
+
+  it("not when Reject All follows a block the user kept", async () => {
+    const { handler, run, blocks, closes, getText } = await openDiff();
+    await run;
+    await resolveFirstBlock(handler, blocks, true);
+    await handler.clear(false);
+    expect(closes).toEqual([undefined]);
+    expect(getText()).toBe("a\nB\nc\nd\ne\n");
+  });
+
+  it("not when the apply failed, which reports its own error", async () => {
+    async function* failing() {
+      yield "a";
+      yield "B";
+      throw new Error("stream broke");
+    }
+    const { run, closes, cleared } = await openDiff(failing());
+    await expect(run).rejects.toThrow("stream broke");
+    await cleared();
+    expect(closes).toEqual([undefined]);
+  });
+});
+
+describe("an agent edit's diff, as the chat hears of it", () => {
+  const BEFORE = "a\nb\nc\n";
+  const AFTER = "a\nB\nc\n";
+
+  /**
+   * Starts the diff the way the edit tools do (ApplyManager.applyToFile with
+   * isSearchAndReplace). `closed()` is the "closed" update that names the
+   * tool call, the one the chat settles the call with: processDiff's own
+   * has no id, and the handler's arrives after its edits.
+   */
+  function startEditDiff() {
+    const { editor, getText, userInsert } = createEditor(BEFORE);
+    (vscode.window as any).activeTextEditor = editor;
+    (vscode.window as any).visibleTextEditors = [editor];
+    const updates: ApplyState[] = [];
+    const webviewProtocol = {
+      request: vi.fn(async (type: string, data: ApplyState) => {
+        if (type === "updateApplyState") {
+          updates.push(data);
+        }
+      }),
+    };
+    const manager = new VerticalDiffManager(
+      webviewProtocol as any,
+      {} as any,
+      {} as any,
+    );
+    const applying = manager.instantApplyDiff(
+      BEFORE,
+      AFTER,
+      "edit-stream",
+      "call_edit",
+    );
+    const closed = async () => {
+      const closes = () =>
+        updates.filter((u) => u.status === "closed" && u.toolCallId);
+      await vi.waitFor(() => expect(closes()).toHaveLength(1));
+      return closes()[0];
+    };
+    return {
+      uri: editor.document.uri.toString(),
+      manager,
+      webviewProtocol,
+      applying,
+      updates,
+      closed,
+      getText,
+      userInsert,
+    };
+  }
+
+  /** Runs what the editor's Accept All or Reject All command runs */
+  async function closeFromEditor(action: "accept" | "reject") {
+    const diff = startEditDiff();
+    await diff.applying;
+    expect(diff.updates.at(-1)).toMatchObject({ status: "done", numDiffs: 1 });
+    const ide = {
+      openFile: vi.fn(),
+      readFile: vi.fn(async () => diff.getText()),
+      saveFile: vi.fn(),
+    };
+    await processDiff(
+      action,
+      { webviewProtocol: diff.webviewProtocol } as any,
+      ide as any,
+      { invoke: vi.fn() } as any,
+      diff.manager,
+      diff.uri,
+    );
+    return { close: await diff.closed(), text: diff.getText() };
+  }
+
+  it("is rejected after Reject All in the editor", async () => {
+    const { close, text } = await closeFromEditor("reject");
+    expect(text).toBe(BEFORE);
+    expect(close).toMatchObject({ toolCallId: "call_edit", rejected: true });
+  });
+
+  it("isn't rejected after Accept All in the editor", async () => {
+    const { close, text } = await closeFromEditor("accept");
+    expect(text).toBe(AFTER);
+    expect(close.toolCallId).toBe("call_edit");
+    expect(close.rejected).toBeUndefined();
+  });
+
+  it("is interrupted when the user types in the file while it is applied", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const diff = startEditDiff();
+    const handler = diff.manager.getHandlerForFile(diff.uri)!;
+    // The final pass waits 100 ms before rewriting
+    await vi.waitFor(() => expect((handler as any).phase).toBe("finishing"));
+    diff.userInsert(new vscode.Position(3, 0), "TYPED");
+    await diff.applying;
+
+    expect(diff.getText()).toBe(BEFORE + "TYPED");
+    expect(diff.updates.some((u) => u.status === "done")).toBe(false);
+    expect(await diff.closed()).toMatchObject({
+      toolCallId: "call_edit",
+      interruptedByUserEdit: true,
+    });
   });
 });

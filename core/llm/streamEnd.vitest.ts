@@ -1,7 +1,8 @@
 import { Readable } from "node:stream";
 
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
+import { DevDataSqliteDb } from "../data/devdataSqlite.js";
 import { ChatMessage, PromptLog } from "../index.js";
 import Deepseek from "./llms/Deepseek.js";
 import OpenAI from "./llms/OpenAI.js";
@@ -413,5 +414,62 @@ describe("the Responses API", () => {
     ]);
     expect(log.finishReason).toBe("length");
     expect(log.usage).toEqual(expectedUsage);
+  });
+});
+
+describe("token stats after a reply", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /**
+   * Streams a reply and returns what the stats table got, the prompt, and
+   * every text the model's tokenizer counted
+   */
+  async function statsFor(chunks: object[]) {
+    const logged = vi
+      .spyOn(DevDataSqliteDb, "logTokensGenerated")
+      .mockResolvedValue(undefined);
+    const counted: string[] = [];
+    const { log } = await streamWith(chunks, (llm) => {
+      const count = llm.countTokens.bind(llm);
+      vi.spyOn(llm, "countTokens").mockImplementation((text: string) => {
+        counted.push(text);
+        return count(text);
+      });
+    });
+    expect(logged).toHaveBeenCalledTimes(1);
+    const [, , promptTokens, generatedTokens] = logged.mock.calls[0];
+    return { promptTokens, generatedTokens, prompt: log.prompt, counted };
+  }
+
+  test("records the provider's prompt count without tokenizing the prompt", async () => {
+    const { promptTokens, prompt, counted } = await statsFor([
+      chunk({ content: "The plan" }, "stop"),
+      usageChunk(3),
+    ]);
+    expect(promptTokens).toBe(10);
+    expect(prompt.length).toBeGreaterThan(0);
+    expect(counted).not.toContain(prompt);
+  });
+
+  test("estimates the prompt when the provider reports no usage", async () => {
+    const { promptTokens, generatedTokens, prompt, counted } = await statsFor([
+      chunk({ content: "The plan" }, "stop"),
+    ]);
+    expect(counted).toContain(prompt);
+    expect(promptTokens).toBeGreaterThan(0);
+    expect(generatedTokens).toBeGreaterThan(0);
+  });
+
+  test("estimates the prompt when the provider reports a prompt of 0 tokens", async () => {
+    const zeroPrompt = usageChunk(3);
+    zeroPrompt.usage.prompt_tokens = 0;
+    const { promptTokens, prompt, counted } = await statsFor([
+      chunk({ content: "The plan" }, "stop"),
+      zeroPrompt,
+    ]);
+    expect(counted).toContain(prompt);
+    expect(promptTokens).toBeGreaterThan(0);
   });
 });

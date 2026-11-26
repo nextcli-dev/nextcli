@@ -10,12 +10,13 @@ import {
 import { updateEditStateApplyState } from "../slices/editState";
 import {
   acceptToolCall,
+  cancelToolCall,
   errorToolCall,
   updateApplyState,
   updateToolCallOutput,
 } from "../slices/sessionSlice";
 import { ThunkApiType } from "../store";
-import { findToolCallById, logToolUsage } from "../util";
+import { findToolCallById, isStoppedToolCall, logToolUsage } from "../util";
 import { exitEdit } from "./edit";
 import { streamResponseAfterToolCall } from "./streamResponseAfterToolCall";
 
@@ -73,8 +74,14 @@ export const handleApplyStateUpdate = createAsyncThunk<
 
         if (applyState.status === "closed") {
           if (toolCallState) {
+            // Rejected in the editor ends the call like the chat's Reject
+            // button, which cancels it before the diff closes
+            if (applyState.rejected && toolCallState.status !== "canceled") {
+              dispatch(cancelToolCall({ toolCallId: applyState.toolCallId }));
+            }
             const accepted =
               toolCallState.status !== "canceled" &&
+              !applyState.rejected &&
               !applyState.interruptedByUserEdit;
 
             logToolUsage(toolCallState, accepted, true, extra.ideMessenger);
@@ -122,7 +129,12 @@ export const handleApplyStateUpdate = createAsyncThunk<
                 }),
               );
             } else if (accepted) {
-              if (toolCallState.status !== "errored") {
+              // A call stopped while its diff stayed open (the panel reloaded,
+              // or the session was left) gets the diff's outcome after all
+              if (
+                toolCallState.status !== "errored" ||
+                isStoppedToolCall(toolCallState)
+              ) {
                 dispatch(
                   acceptToolCall({
                     toolCallId: applyState.toolCallId,
