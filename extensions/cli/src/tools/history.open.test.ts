@@ -33,6 +33,7 @@ describe("SearchHistory's index", () => {
       await other.close();
     }
 
-    expect(await search()).toBe('No match for "x".');
+    // Without FTS5 (Node 22.15) a "Basic search" line follows
+    expect((await search()).split("\n")[0]).toBe('No match for "x".');
   });
 });

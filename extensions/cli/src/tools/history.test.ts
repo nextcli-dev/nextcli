@@ -117,7 +117,8 @@ describe("SearchHistory and ReadHistory", () => {
       scope: "all",
     });
 
-    expect(session).toBe('No match for "PLANTED_FACT".');
+    // Without FTS5 (Node 22.15) a "Basic search" line follows
+    expect(session.split("\n")[0]).toBe('No match for "PLANTED_FACT".');
     expect(workspace).toContain("same-folder #0 (user)");
     expect(workspace).toContain("vscode-same-folder #0 (user)");
     expect(workspace).not.toContain("other-project");
