@@ -189,6 +189,32 @@ describe.each(modes)("HistoryStore (fts: %s)", (fts) => {
     ).toHaveLength(1);
   });
 
+  it("indexes a transcript recreated on the same inode and size again", async () => {
+    // Linux hands a deleted file's inode to the next file at once
+    const file = path.join(sessionsDir, "s1.jsonl");
+    const kept = path.join(root, "kept.jsonl");
+    save("s1", [user("from the old transcript")]);
+    const store = await open(fts);
+    await store.sync();
+
+    fs.renameSync(file, kept);
+    forgetJournal();
+    save("s1", [user("from the new transcript")]);
+    const recreated = fs.readFileSync(file);
+    fs.unlinkSync(file);
+    fs.renameSync(kept, file);
+    const inode = fs.statSync(file).ino;
+    fs.writeFileSync(file, recreated);
+    expect(fs.statSync(file).ino).toBe(inode);
+
+    expect(
+      (await store.search({ text: "old transcript", limit: 5 })).hits,
+    ).toEqual([]);
+    expect(
+      (await store.search({ text: "new transcript", limit: 5 })).hits,
+    ).toHaveLength(1);
+  });
+
   it("searches one workspace's sessions", async () => {
     save("s1", [user("shared word in repo A")], "/repo-a");
     save("s2", [user("shared word in repo B")], "/repo-b");
