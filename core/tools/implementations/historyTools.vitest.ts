@@ -1,8 +1,12 @@
+import path from "node:path";
+
 import { v4 as uuidv4 } from "uuid";
 import { describe, expect, it } from "vitest";
 
 import { ChatHistoryItem, Session, Tool, ToolExtras } from "../..";
 import historyManager from "../../util/history";
+import { getIndexFolderPath } from "../../util/paths";
+import { SqliteDatabase, sqliteHasFts5 } from "../../util/sqlite";
 import { callBuiltInTool } from "../callTool";
 import { BuiltInToolNames } from "../builtIn";
 import { getBaseToolDefinitions } from "../index";
@@ -133,6 +137,66 @@ describe("search_history and read_history", () => {
       extrasFor(viewer, ["file:///unrelated"]),
     );
     expect(none).toContain("No saved conversations");
+  });
+
+  it("workspace scope finds a session cn saved with a plain path", async () => {
+    const marker = `cnfact${uuidv4().slice(0, 8)}`;
+    const fromCn = uuidv4();
+    // cn records process.cwd(); VS Code lists the folder as a URI
+    save(fromCn, [item("user", `${marker} from cn`)], "/work/cn-project");
+
+    const result = await search(
+      { query: marker, scope: "workspace" },
+      extrasFor(uuidv4(), ["file:///work/cn-project"]),
+    );
+
+    expect(result).toContain(`session ${fromCn}`);
+  });
+
+  it("says where to read on when the size limit stops a read", async () => {
+    const id = uuidv4();
+    save(id, [
+      item("assistant", "a".repeat(30_000)),
+      item("assistant", "b".repeat(30_000)),
+      item("assistant", "c".repeat(30_000)),
+    ]);
+
+    const text = await read({ from: 0, to: 2 }, extrasFor(id));
+
+    expect(text).toContain("#1 assistant");
+    expect(text).not.toContain("#2 assistant");
+    expect(text).toMatch(/read from #2 for the rest\.$/);
+  });
+
+  it("says a read may be incomplete while another process holds the index", async () => {
+    const id = uuidv4();
+    save(id, [item("user", "indexed before the lock")]);
+    await read({ from: 0 }, extrasFor(id));
+    save(id, [
+      item("user", "indexed before the lock"),
+      item("assistant", "written while the index is held"),
+    ]);
+    // Another VS Code window or a cn process, in the middle of a write
+    const other = await SqliteDatabase.open(
+      path.join(
+        getIndexFolderPath(),
+        sqliteHasFts5() ? "history.sqlite" : "history-basic.sqlite",
+      ),
+    );
+    await other.exec("BEGIN IMMEDIATE");
+    let text: string;
+    try {
+      text = await read({ from: 0, to: 1 }, extrasFor(id));
+    } finally {
+      await other.exec("ROLLBACK");
+      await other.close();
+    }
+
+    expect(text).toContain("#0 user: indexed before the lock");
+    expect(text).toMatch(/isn't fully indexed yet/);
+    expect(await read({ from: 1 }, extrasFor(id))).toBe(
+      "#1 assistant: written while the index is held",
+    );
   });
 
   it("rejects a session id that is not a file name", async () => {

@@ -31,7 +31,7 @@ export const readHistoryTool: Tool = {
         to: {
           type: "number",
           description:
-            "The position of the last item. Defaults to 'from'. At most 40 items are returned",
+            "The position of the last item. Defaults to 'from'. At most 40 items and about 80,000 characters are returned; when a limit stops the read, the result says where to read on",
         },
       },
     },

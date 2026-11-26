@@ -203,9 +203,20 @@ export const readHistoryImpl: ToolImpl = async (args, extras) => {
   }
 
   const store = await getHistoryStore();
-  const items = await store.read(sessionId, from, to!);
+  const { items, pending, next } = await store.read(sessionId, from, to!);
+  // An empty or short read isn't the end of the conversation when it wasn't
+  // indexed to its end, or the size limit stopped it
+  let note: string | undefined;
+  if (pending) {
+    note =
+      "Note: this conversation isn't fully indexed yet (busy, or it changed), so items may be missing. Read again in a moment.";
+  } else if (next !== undefined) {
+    note = `Note: stopped at the size limit; read from #${next} for the rest.`;
+  }
   if (!items.length) {
-    return errorItem(name, `no items at #${from} to #${to} in that session`);
+    return note
+      ? [item(name, "Not indexed yet", note)]
+      : errorItem(name, `no items at #${from} to #${to} in that session`);
   }
   const blocks = items.map((i) => {
     const state = describeState(i.state);
@@ -215,7 +226,7 @@ export const readHistoryImpl: ToolImpl = async (args, extras) => {
     item(
       name,
       `Items #${items[0].ord} to #${items[items.length - 1].ord}`,
-      blocks.join("\n\n"),
+      [...blocks, ...(note ? [note] : [])].join("\n\n"),
     ),
   ];
 };
