@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { redactSecretText } from "@continuedev/terminal-security";
+import { readJournalHead } from "@nextcli/context/archive";
 import type { HistoryStore } from "@nextcli/context/history-store";
 
 import { ContextItem, ToolExtras } from "../..";
@@ -17,7 +18,6 @@ const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 20;
 // Workspace scope looks at the newest transcripts only
 const MAX_WORKSPACE_SESSIONS = 500;
-const HEAD_BYTES = 8_192;
 
 let storePromise: Promise<HistoryStore> | undefined;
 
@@ -48,24 +48,6 @@ function errorItem(name: string, message: string): ContextItem[] {
   return [item(name, "Error", `Error: ${message}`)];
 }
 
-/** The workspace a transcript was started in: its head line */
-function readHeadWorkspace(file: string): string | undefined {
-  try {
-    const fd = fs.openSync(file, "r");
-    try {
-      const buffer = Buffer.alloc(HEAD_BYTES);
-      const n = fs.readSync(fd, buffer, 0, HEAD_BYTES, 0);
-      const line = buffer.toString("utf8", 0, n).split("\n")[0];
-      const head = JSON.parse(line) as { t?: string; workspace?: string };
-      return head.t === "head" && head.workspace ? head.workspace : undefined;
-    } finally {
-      fs.closeSync(fd);
-    }
-  } catch {
-    return undefined;
-  }
-}
-
 /**
  * The sessions started in one of the workspace folders. The GUI saves a
  * folder as a URI and the IDE lists it as one too, but encoding and drive
@@ -84,7 +66,9 @@ async function sessionsOfWorkspace(extras: ToolExtras): Promise<string[]> {
     .sort((a, b) => b.mtime - a.mtime);
   const ids: string[] = [];
   for (const { id } of files) {
-    const workspace = readHeadWorkspace(path.join(sessionsDir, `${id}.jsonl`));
+    const workspace = readJournalHead(
+      path.join(sessionsDir, `${id}.jsonl`),
+    )?.workspace;
     if (workspace && dirs.some((dir) => isSameLocalPath(dir, workspace))) {
       ids.push(id);
       if (ids.length === MAX_WORKSPACE_SESSIONS) {
@@ -170,22 +154,23 @@ export const searchHistoryImpl: ToolImpl = async (args, extras) => {
   ];
 };
 
+const isMissing = (value: unknown) =>
+  value === undefined || value === null || value === "";
+
+/** A position such as 12, or undefined when the value isn't one */
 function toPosition(value: unknown): number | undefined {
-  if (value === undefined || value === null || value === "") {
-    return undefined;
-  }
   const n = Number(value);
-  return Number.isInteger(n) && n >= 0 ? n : NaN;
+  return !isMissing(value) && Number.isInteger(n) && n >= 0 ? n : undefined;
 }
 
 export const readHistoryImpl: ToolImpl = async (args, extras) => {
   const name = "Read History";
   const from = toPosition(args?.from);
-  const to = toPosition(args?.to) ?? from;
-  if (from === undefined || Number.isNaN(from) || Number.isNaN(to)) {
+  const to = isMissing(args?.to) ? from : toPosition(args?.to);
+  if (from === undefined || to === undefined) {
     return errorItem(name, "from and to must be positions such as 12");
   }
-  if (to! < from) {
+  if (to < from) {
     return errorItem(name, "to must not be before from");
   }
   const sessionId =
@@ -203,7 +188,7 @@ export const readHistoryImpl: ToolImpl = async (args, extras) => {
   }
 
   const store = await getHistoryStore();
-  const { items, pending, next } = await store.read(sessionId, from, to!);
+  const { items, pending, next } = await store.read(sessionId, from, to);
   // An empty or short read isn't the end of the conversation when it wasn't
   // indexed to its end, or the size limit stopped it
   let note: string | undefined;

@@ -5,4 +5,9 @@ export {
   type StoredItem,
   type StoredToolCall,
 } from "./journal.js";
-export { forgetJournal, syncJournal, type SyncJournalOptions } from "./sync.js";
+export {
+  forgetJournal,
+  readJournalHead,
+  syncJournal,
+  type SyncJournalOptions,
+} from "./sync.js";

@@ -8,6 +8,7 @@ import {
   type ParsedJournalLine,
   type StoredItem,
 } from "../archive/journal.js";
+import { readJournalHead } from "../archive/sync.js";
 import {
   SqliteDatabase,
   sqliteHasFts5,
@@ -85,8 +86,6 @@ const READ_MAX_ITEMS = 40;
  */
 const SCHEMA_VERSION = 1;
 const READ_MAX_CHARS = 80_000;
-/** Enough for a head line: a nonce and a workspace path */
-const HEAD_BYTES = 8192;
 
 class SyncRace extends Error {}
 
@@ -174,15 +173,6 @@ function readBytes(file: string, start: number, end: number): Buffer {
   } finally {
     fs.closeSync(fd);
   }
-}
-
-/** The nonce on a transcript's head line, if its first line is one */
-function headNonce(file: string, size: number): string | undefined {
-  const { lines } = parseJournalLines(
-    readBytes(file, 0, Math.min(size, HEAD_BYTES)),
-  );
-  const first = lines[0]?.line;
-  return first?.t === "head" ? first.nonce : undefined;
 }
 
 interface JournalRow {
@@ -365,7 +355,7 @@ export class HistoryStore {
     // Recreated or rewritten: index it again. Linux gives a deleted file's
     // inode to the next file, and the new one can be as long, so the head's
     // nonce is what tells them apart
-    const head = row?.nonce ? headNonce(file, stat.size) : undefined;
+    const head = row?.nonce ? readJournalHead(file)?.nonce : undefined;
     if (
       row &&
       (row.inode !== inode ||
