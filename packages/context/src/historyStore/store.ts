@@ -36,7 +36,11 @@ export interface HistoryHit {
 
 export interface HistorySearchResult {
   hits: HistoryHit[];
-  /** Searched without FTS5 (Node 22.15): substring matches, newest first */
+  /**
+   * Searched without FTS5 (Node 22.15): words are found as substrings, not
+   * through the full-text index. The order is the same: items with every
+   * word first, then by how many words they have, then newest first.
+   */
   basic: boolean;
   /** Transcripts not indexed yet: the search ran out of time, or was busy */
   pending: number;
@@ -104,8 +108,10 @@ const BATCH_BYTES = 1_000_000;
 const SYNC_BUDGET_MS = 300;
 const READ_MAX_ITEMS = 40;
 /**
- * The layout of the index. An index of another version is dropped and built
- * again from the transcripts: it is a cache of them.
+ * The layout of the index. An index of an older version is dropped and built
+ * again from the transcripts: it is a cache of them. One of a newer version
+ * is left alone and the open fails, so two host versions don't keep dropping
+ * each other's index.
  */
 const SCHEMA_VERSION = 2;
 const OUTLINE_MAX_ITEMS = 100;
@@ -159,15 +165,44 @@ function searchTerms(text: string): { terms: string[]; counted: string[] } {
     // Phrases aren't supported: a quoted phrase is its words
     const term = raw.replace(/^["']+|["']+$/g, "");
     const key = term.toLowerCase();
-    if (term && !seen.has(key) && all.length < MAX_TERMS) {
+    if (term && !seen.has(key)) {
       seen.add(key);
       all.push(term);
     }
   }
-  const meaningful = all.filter((t) => !STOP_WORDS.has(t.toLowerCase()));
+  // The cap applies after stop words go, so they don't push real words out
+  const meaningful = all
+    .filter((t) => !STOP_WORDS.has(t.toLowerCase()))
+    .slice(0, MAX_TERMS);
   return meaningful.length
     ? { terms: meaningful, counted: meaningful.filter((t) => t.length >= 3) }
-    : { terms: all, counted: [] };
+    : { terms: all.slice(0, MAX_TERMS), counted: [] };
+}
+
+const escapeGlob = (text: string) => text.replace(/[*?[]/g, (c) => `[${c}]`);
+// lower() in SQLite folds only ASCII, so the term is folded the same way
+const asciiLower = (text: string) =>
+  text.replace(/[A-Z]/g, (c) => c.toLowerCase());
+
+/**
+ * A condition on a chunk's text: `term` starts a word in it. FTS5's trigrams
+ * and LIKE match anywhere, so "fix" would match "prefix" and "not" "another".
+ * A word starts the text, follows a character that is not a letter or
+ * digit, or is a camelCase hump ("config" in "loadConfig"). It may go on
+ * ("fix" matches "Fixed").
+ */
+function wordStart(term: string): { sql: string; params: string[] } {
+  const lower = escapeGlob(asciiLower(term));
+  // The space makes the start of the text a word start too: one scan
+  const sql = ["(' ' || lower(text)) GLOB ?"];
+  const params = [`*[^a-z0-9]${lower}*`];
+  if (/^[a-z]/i.test(term)) {
+    sql.push("text GLOB ?");
+    params.push(
+      `*[a-z]${escapeGlob(term[0].toUpperCase() + asciiLower(term.slice(1)))}*`,
+    );
+  }
+  return { sql: `(${sql.join(" OR ")})`, params };
 }
 
 const quoteTerm = (term: string) => `"${term.replace(/"/g, '""')}"`;
@@ -705,25 +740,30 @@ export class HistoryStore {
       params.push(...ranked.map(likeTerm));
     }
     // One flag per term: whether the item holds it, in any chunk
+    // One flag per term: whether it starts a word in the item, in any chunk.
+    // With FTS5, MATCH narrows to the items holding it anywhere first
     const flags = terms.map((term, i) => {
+      const inItem = wordStart(term);
+      let flag = `EXISTS (SELECT 1 FROM ${this.text}
+          WHERE rowid >= best.id * ${MAX_CHUNKS} AND rowid < (best.id + 1) * ${MAX_CHUNKS}
+            AND ${inItem.sql})`;
       if (this.fts && term.length >= 3) {
         params.push(quoteTerm(term));
-        return `id IN (SELECT rowid / ${MAX_CHUNKS} FROM history_fts
-          WHERE history_fts MATCH ? AND rowid / ${MAX_CHUNKS} IN scope) AS t${i}`;
+        flag = `(id IN (SELECT rowid / ${MAX_CHUNKS} FROM history_fts
+          WHERE history_fts MATCH ? AND rowid / ${MAX_CHUNKS} IN scope) AND ${flag})`;
       }
-      params.push(likeTerm(term));
-      return `EXISTS (SELECT 1 FROM ${this.text}
-          WHERE rowid >= best.id * ${MAX_CHUNKS} AND rowid < (best.id + 1) * ${MAX_CHUNKS}
-            AND text LIKE ? ESCAPE '\\') AS t${i}`;
+      params.push(...inItem.params);
+      return `${flag} AS t${i}`;
     });
     const full = terms.map((_, i) => `f.t${i}`).join(" AND ");
     // Sort keys are expressions over the materialized flags: an alias would
     // run the subqueries again, and a bare 0 would be read as a column
     const order = [`(${full}) DESC`];
+    const matchedWords = counted
+      .map((c) => `f.t${terms.indexOf(c)}`)
+      .join(" + ");
     if (counted.length) {
-      order.push(
-        `(${counted.map((c) => `f.t${terms.indexOf(c)}`).join(" + ")}) DESC`,
-      );
+      order.push(`(${matchedWords}) DESC`);
     }
     order.push(
       ...(matched.length ? ["f.score"] : []),
@@ -738,7 +778,7 @@ export class HistoryStore {
       SELECT m.id, m.session_id, m.ord, m.role, m.tool, m.state, m.ts, m.h, f.chunk,
         ${terms.map((_, i) => `f.t${i}`).join(", ")}
       FROM flagged f JOIN messages m ON m.id = f.id
-      ${counted.length ? "" : `WHERE ${full}`}
+      WHERE ${counted.length ? `(${matchedWords}) > 0` : full}
       ORDER BY ${order.join(", ")}
       LIMIT ? OFFSET ?`;
     const page = query.limit * 4;
@@ -818,7 +858,7 @@ export class HistoryStore {
         chunk,
       );
       if (row?.s) {
-        return row.s;
+        return oneLine(row.s);
       }
     }
     const text =
@@ -834,7 +874,7 @@ export class HistoryStore {
       .map((t) => lower.indexOf(t.toLowerCase()))
       .filter((i) => i >= 0);
     const start = at.length ? Math.max(0, Math.min(...at) - 80) : 0;
-    return text.slice(start, start + 200);
+    return oneLine(text.slice(start, start + 200));
   }
 
   /**
@@ -962,26 +1002,29 @@ export class HistoryStore {
     const items: HistoryOutlineItem[] = [];
     for (const row of rows) {
       const item = { ord: row.ord, state: row.state, ts: row.ts };
-      if (row.role === "user") {
-        items.push({ ...item, kind: "user", text: outlineText(row.head) });
-      }
-      // VS Code's summary is in the summary chunks of the message it is set
-      // on; cn's summary message is its own text
-      if (row.summary) {
-        items.push({
-          ...item,
-          kind: "summary",
-          text: outlineText(row.extra ?? row.head),
-        });
-      }
+      // One line per position. A user message VS Code summarized shows its
+      // summary: that is where the compaction happened, and the message is
+      // read with read(). VS Code's summary is in the summary chunks of the
+      // message it is set on; cn's summary message is its own text
+      items.push(
+        row.summary
+          ? {
+              ...item,
+              kind: "summary",
+              text: outlineText(row.extra ?? row.head),
+            }
+          : { ...item, kind: "user", text: outlineText(row.head) },
+      );
     }
     return { items, pending, ...(next === undefined ? {} : { next }) };
   }
 }
 
+const oneLine = (text: string) => text.replace(/\s+/g, " ").trim();
+
 /** One line of an outline: whitespace collapsed, cut short */
 function outlineText(text: string | null): string {
-  const line = (text ?? "").replace(/\s+/g, " ").trim();
+  const line = oneLine(text ?? "");
   if (!line) {
     return "(no text)";
   }

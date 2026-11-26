@@ -347,6 +347,60 @@ describe.each(modes)("HistoryStore (fts: %s)", (fts) => {
     ]);
   });
 
+  it("matches a word only where one starts, not inside another word", async () => {
+    save("s1", [
+      user("prefix the login timeout in the config"),
+      reply("Fixed the login timeout"),
+      user("another login timeout"),
+      user("loadConfig failed with a timeout"),
+    ]);
+    const store = await open(fts);
+
+    const fix = await store.search({
+      text: "how did we fix the login timeout",
+      limit: 5,
+    });
+    const not = await store.search({ text: "not timeout", limit: 5 });
+    const config = await store.search({ text: "config", limit: 5 });
+    const fixAlone = await store.search({ text: "fix", limit: 5 });
+
+    // "Fixed" starts with fix; "prefix" only contains it
+    expect(fix.hits[0]).toMatchObject({ ord: 1 });
+    expect(fix.hits[0].missing).toBeUndefined();
+    expect(fix.hits.find((h) => h.ord === 0)?.missing).toEqual(["fix"]);
+    // "another" contains not, but no word starts with it
+    expect(not.hits.every((h) => h.missing?.includes("not"))).toBe(true);
+    // An item where the word is only inside other words is no hit at all
+    expect(fixAlone.hits.map((h) => h.ord)).toEqual([1]);
+    // A camelCase hump starts a word
+    expect(config.hits.map((h) => h.ord).sort()).toEqual([0, 3]);
+  });
+
+  it("searches every real word of a long question", async () => {
+    save("s1", [user("the retry budget was raised")]);
+    const store = await open(fts);
+
+    // Stop words first: they must not use up the cap on words
+    const result = await store.search({
+      text: "the a an and are as at be been but by can could did do does retry budget migration",
+      limit: 5,
+    });
+
+    expect(result.hits.map((h) => [h.ord, h.missing])).toEqual([
+      [0, ["migration"]],
+    ]);
+  });
+
+  it("puts a snippet on one line", async () => {
+    save("s1", [user("please refactor\n\nthe importer")]);
+    const store = await open(fts);
+
+    const [hit] = (await store.search({ text: "refactor", limit: 5 })).hits;
+
+    expect(hit.snippet).toContain("refactor");
+    expect(hit.snippet).not.toMatch(/\n/);
+  });
+
   it("finds only items with every word of a query of common words", async () => {
     save("s1", [user("how did we do that again?"), user("how did it go")]);
     const store = await open(fts);
@@ -720,6 +774,28 @@ describe.each(modes)("HistoryStore (fts: %s)", (fts) => {
       [1, "summary", "Summary: the importer was split"],
     ]);
     expect(removed.items.map((i) => [i.ord, i.kind])).toEqual([[0, "user"]]);
+  });
+
+  it("lists a summarized user message once, as its summary", async () => {
+    const turns = [
+      user("Refactor the importer"),
+      reply("Done"),
+      user("Now the exporter"),
+    ];
+    save("s1", turns);
+    save("s1", [
+      turns[0],
+      turns[1],
+      { ...turns[2], conversationSummary: "Summary: importer done" },
+    ]);
+    const store = await open(fts);
+
+    const outline = await store.outline("s1");
+
+    expect(outline.items.map((i) => [i.ord, i.kind, i.text])).toEqual([
+      [0, "user", "Refactor the importer"],
+      [2, "summary", "Summary: importer done"],
+    ]);
   });
 
   it("puts each outline item on one short line", async () => {
