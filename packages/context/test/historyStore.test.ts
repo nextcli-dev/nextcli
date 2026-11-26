@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -245,6 +246,41 @@ describe.each(modes)("HistoryStore (fts: %s)", (fts) => {
     expect(result.hits.map((h) => h.sessionId)).toEqual(["s2"]);
   });
 
+  it("matches a folder's sessions whichever host wrote them", async () => {
+    // A folder with a space, and a link to it
+    const repo = path.join(root, "my repo");
+    const link = path.join(root, "link");
+    fs.mkdirSync(repo);
+    fs.symlinkSync(repo, link, "junction");
+    save("cli", [user("shared word from cn")], repo);
+    // VS Code records a percent-encoded file:// URI
+    save(
+      "vscode",
+      [user("shared word from VS Code")],
+      pathToFileURL(repo).href,
+    );
+    save("linked", [user("shared word through a link")], link);
+    save("other", [user("shared word elsewhere")], path.join(root, "other"));
+    const store = await open(fts);
+    const asked = [repo, pathToFileURL(repo).href, link];
+    if (process.platform === "darwin" || process.platform === "win32") {
+      asked.push(repo.toUpperCase());
+    }
+
+    for (const workspace of asked) {
+      const result = await store.search({
+        text: "shared word",
+        workspace,
+        limit: 10,
+      });
+      expect(result.hits.map((h) => h.sessionId).sort()).toEqual([
+        "cli",
+        "linked",
+        "vscode",
+      ]);
+    }
+  });
+
   it("matches a short term as a substring", async () => {
     save("s1", [
       user("exit code 42 from the build"),
@@ -471,6 +507,30 @@ describe.each(modes)("HistoryStore (fts: %s)", (fts) => {
     );
   });
 
+  it("says where to read on when the size limit stops a read", async () => {
+    save("s1", [
+      read("a.log", "a".repeat(30_000)),
+      read("b.log", "b".repeat(30_000)),
+      read("c.log", "c".repeat(30_000)),
+    ]);
+    save(
+      "s2",
+      Array.from({ length: 45 }, (_, i) => user(`turn ${i}`)),
+    );
+    const store = await open(fts);
+
+    const bySize = await store.read("s1", 0, 2);
+    const byCount = await store.read("s2", 0, 44);
+    const whole = await store.read("s2", 40, 44);
+
+    expect(bySize.items.map((i) => i.ord)).toEqual([0, 1]);
+    expect(bySize.next).toBe(2);
+    expect(byCount.items).toHaveLength(40);
+    expect(byCount.next).toBe(40);
+    expect(whole.items).toHaveLength(5);
+    expect(whole.next).toBeUndefined();
+  });
+
   it("cuts one item longer than a read short", async () => {
     save("s1", [read("huge.log", "z".repeat(200_000))]);
     const store = await open(fts);
@@ -515,5 +575,38 @@ describe.skipIf(!sqliteHasFts5())("HistoryStore across search modes", () => {
         expect((await store.search({ text, limit: 5 })).hits).toHaveLength(1);
       }
     }
+  });
+});
+
+describe("HistoryStore and an index of an older layout", () => {
+  it("builds it again from the transcripts", async () => {
+    const fts = sqliteHasFts5();
+    const repo = path.join(root, "repo");
+    fs.mkdirSync(repo);
+    save(
+      "s1",
+      [user("indexed again after an upgrade")],
+      pathToFileURL(repo).href,
+    );
+    const first = await open(fts);
+    await first.sync();
+    await first.close();
+    stores.splice(stores.indexOf(first), 1);
+    // As the previous layout stored it: the workspace as the host wrote it
+    const old = await SqliteDatabase.open(indexFile(fts));
+    await old.exec(`
+      UPDATE journals SET workspace = '${pathToFileURL(repo).href}';
+      PRAGMA user_version = 0;
+    `);
+    await old.close();
+
+    const store = await open(fts);
+    const result = await store.search({
+      text: "upgrade",
+      workspace: repo,
+      limit: 5,
+    });
+
+    expect(result.hits.map((h) => h.sessionId)).toEqual(["s1"]);
   });
 });

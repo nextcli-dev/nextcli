@@ -7,4 +7,5 @@ export {
   type HistorySearchResult,
   type HistoryState,
   type HistoryStoreOptions,
+  workspaceKey,
 } from "./store.js";

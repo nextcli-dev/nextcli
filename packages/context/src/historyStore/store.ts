@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   parseJournalLines,
@@ -46,6 +47,11 @@ export interface HistoryReadResult {
   items: HistoryReadItem[];
   /** The transcript isn't indexed to its end yet (busy, or out of time) */
   pending: boolean;
+  /**
+   * The read stopped at its size limit before `to`: the first position it
+   * didn't return, to read from next
+   */
+  next?: number;
 }
 
 export interface HistoryStoreOptions {
@@ -73,6 +79,11 @@ const SUMMARY_CHUNK = 900;
 const BATCH_BYTES = 1_000_000;
 const SYNC_BUDGET_MS = 300;
 const READ_MAX_ITEMS = 40;
+/**
+ * The layout of the index. An index of another version is dropped and built
+ * again from the transcripts: it is a cache of them.
+ */
+const SCHEMA_VERSION = 1;
 const READ_MAX_CHARS = 80_000;
 /** Enough for a head line: a nonce and a workspace path */
 const HEAD_BYTES = 8192;
@@ -113,6 +124,35 @@ export function itemText(item: StoredItem): string {
     parts.push(context.content);
   }
   return parts.filter(Boolean).join("\n");
+}
+
+/**
+ * One form of a workspace, whichever host recorded it, so a folder's sessions
+ * match: cn records a path (process.cwd()), VS Code a file:// URI,
+ * percent-encoded. Symlinks are resolved, and case is folded where file
+ * systems ignore it by default (macOS, Windows). Another kind of URI (a
+ * remote workspace) is kept as it is.
+ */
+export function workspaceKey(workspace: string): string {
+  let dir = workspace;
+  if (/^file:/i.test(dir)) {
+    try {
+      dir = fileURLToPath(dir);
+    } catch {
+      return workspace;
+    }
+  } else if (/^[a-z][\w+.-]*:\/\//i.test(dir)) {
+    return workspace;
+  }
+  dir = path.resolve(dir);
+  try {
+    dir = fs.realpathSync.native(dir);
+  } catch {
+    // Gone: compared as written
+  }
+  return process.platform === "darwin" || process.platform === "win32"
+    ? dir.toLowerCase()
+    : dir;
 }
 
 /**
@@ -179,6 +219,17 @@ export class HistoryStore {
     await db.exec("PRAGMA busy_timeout = 200");
     await db.exec("PRAGMA journal_mode = WAL");
     await db.exec("PRAGMA secure_delete = ON");
+    const version =
+      (await db.get<{ user_version: number }>("PRAGMA user_version"))
+        ?.user_version ?? 0;
+    if (version !== SCHEMA_VERSION) {
+      await db.exec(`
+        DROP TABLE IF EXISTS journals;
+        DROP TABLE IF EXISTS messages;
+        DROP TABLE IF EXISTS history_text;
+        ${fts ? "DROP TABLE IF EXISTS history_fts;" : ""}
+      `);
+    }
     await db.exec(`
       CREATE TABLE IF NOT EXISTS journals (
         session_id TEXT PRIMARY KEY,
@@ -207,6 +258,9 @@ export class HistoryStore {
           : "CREATE TABLE IF NOT EXISTS history_text (rowid INTEGER PRIMARY KEY, text TEXT NOT NULL);"
       }
     `);
+    if (version !== SCHEMA_VERSION) {
+      await db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+    }
     if (fts) {
       try {
         // A deleted session's terms leave FTS5's index at once, not at its
@@ -347,6 +401,11 @@ export class HistoryStore {
         return this.syncJournal(sessionId, startedAt);
       }
       const texts = this.redactBatch(parsed.lines);
+      const head = parsed.lines.find(({ line }) => line.t === "head")?.line;
+      const workspace =
+        head?.t === "head" && head.workspace
+          ? workspaceKey(head.workspace)
+          : null;
       const ord = (
         await this.db.get<{ n: number }>(
           "SELECT COUNT(*) AS n FROM messages WHERE session_id = ?",
@@ -364,6 +423,7 @@ export class HistoryStore {
               from: offset,
               firstOrd: ord!,
               texts,
+              workspace,
             }),
           { immediate: true },
         );
@@ -423,6 +483,8 @@ export class HistoryStore {
       from: number;
       firstOrd: number;
       texts: BatchTexts;
+      /** The head's workspace as workspaceKey gives it */
+      workspace: string | null;
     },
   ): void {
     const { sessionId, inode, row, parsed, from, firstOrd, texts } = batch;
@@ -455,7 +517,7 @@ export class HistoryStore {
       switch (line.t) {
         case "head":
           nonce = line.nonce;
-          workspace = line.workspace ?? null;
+          workspace = batch.workspace;
           break;
         case "put": {
           // A put at i replaces the live items from i on
@@ -547,7 +609,7 @@ export class HistoryStore {
       where.push(
         "m.session_id IN (SELECT session_id FROM journals WHERE workspace = ?)",
       );
-      whereParams.push(query.workspace);
+      whereParams.push(workspaceKey(query.workspace));
     }
     // Trigrams need 3 characters: shorter terms, and every term without
     // FTS5, match as substrings
@@ -637,8 +699,9 @@ export class HistoryStore {
 
   /**
    * Items `from` to `to` of a transcript, redacted, with any summary set on
-   * them. At most READ_MAX_ITEMS and about READ_MAX_CHARS: a first item
-   * longer than that is cut short.
+   * them. At most READ_MAX_ITEMS and about READ_MAX_CHARS, with `next` set
+   * when that stopped it before `to`; a first item longer than that is cut
+   * short.
    */
   async read(
     sessionId: string,
@@ -660,8 +723,13 @@ export class HistoryStore {
       sessionId,
       from,
       to,
-      READ_MAX_ITEMS,
+      // One more, to tell whether the limit stopped the read
+      READ_MAX_ITEMS + 1,
     );
+    let next =
+      rows.length > READ_MAX_ITEMS
+        ? rows.pop()!.ord
+        : (undefined as number | undefined);
     const file = path.join(this.options.sessionsDir, `${sessionId}.jsonl`);
     const items: HistoryReadItem[] = [];
     let chars = 0;
@@ -702,6 +770,7 @@ export class HistoryStore {
       }
       if (chars + text.length > READ_MAX_CHARS) {
         if (items.length) {
+          next = row.ord;
           break;
         }
         const more = text.length - READ_MAX_CHARS;
@@ -710,6 +779,6 @@ export class HistoryStore {
       chars += text.length;
       items.push({ ord: row.ord, state: row.state, ts: row.ts, text });
     }
-    return { items, pending };
+    return { items, pending, ...(next === undefined ? {} : { next }) };
   }
 }
