@@ -25,6 +25,8 @@ The defaults live in one table in `defaultPolicies.ts`, with a column for each k
 
 `--readonly` (plan mode) never allows the write tools and keeps `Bash` to read-only commands, whatever the flags say.
 
+Auto mode allows every tool, except `SearchHistory` and `ReadHistory` when headless (`cn -p --auto`): as without `--auto`, a run with nobody present gets no recall tools.
+
 A new built-in tool needs a row in `defaultPolicies.ts`. When unsure, make the headless default **exclude**.
 
 ## How It Works

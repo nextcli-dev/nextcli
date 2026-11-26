@@ -128,3 +128,25 @@ export function getPlanModePolicies(
 export const AUTO_MODE_POLICIES: ToolPermissionPolicy[] = [
   { tool: "*", permission: "allow" },
 ];
+
+/**
+ * Auto mode allows every tool, except the recall tools when nobody is
+ * present (cn -p --auto): a headless run gets none until its compaction
+ * points the model to them, as without --auto.
+ */
+export function getAutoModePolicies(
+  isHeadless = false,
+): ToolPermissionPolicy[] {
+  const recallTools = Object.keys(TOOL_DEFAULTS).filter(
+    (tool) => TOOL_DEFAULTS[tool] === recall,
+  );
+  return [
+    ...(isHeadless
+      ? recallTools.map((tool) => ({
+          tool,
+          permission: "exclude" as const,
+        }))
+      : []),
+    ...AUTO_MODE_POLICIES,
+  ];
+}

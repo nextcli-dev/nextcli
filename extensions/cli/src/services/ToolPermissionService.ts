@@ -1,5 +1,5 @@
 import {
-  AUTO_MODE_POLICIES,
+  getAutoModePolicies,
   getDefaultToolPolicies,
   getPlanModePolicies,
 } from "src/permissions/defaultPolicies.js";
@@ -178,7 +178,8 @@ export class ToolPermissionService
    *   ignores permissions.yaml and the agent file. checkToolPermission keeps
    *   writes excluded and Bash strict whatever the flags say.
    * - An agent file's policies apply in normal and auto mode, after the flags.
-   * - Auto mode without an agent file allows every tool.
+   * - Auto mode without an agent file allows every tool (headless: but the
+   *   recall tools).
    * - Normal mode layers flags, permissions.yaml and the defaults.
    */
   private buildPolicies(): ToolPermissionPolicy[] {
@@ -197,7 +198,7 @@ export class ToolPermissionService
       ];
     }
     if (currentMode === "auto") {
-      return [...AUTO_MODE_POLICIES];
+      return getAutoModePolicies(isHeadless);
     }
     return resolvePermissionPrecedence({
       commandLineFlags: flags,

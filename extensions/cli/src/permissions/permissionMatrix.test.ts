@@ -52,6 +52,13 @@ const edit = ["Edit", { file_path: "src/a.ts" }] as const;
 const fetchUrl = ["Fetch", { url: "https://example.com" }] as const;
 const mcp = [MCP_TOOL, { title: "x" }] as const;
 const bash = (command: string) => ["Bash", { command }] as const;
+// Recall: this session, every session, another session's turns
+const searchHere = ["SearchHistory", { query: "x" }] as const;
+const searchAll = ["SearchHistory", { query: "x", scope: "all" }] as const;
+const readOther = [
+  "ReadHistory",
+  { session: "another", from: 0, to: 1 },
+] as const;
 
 const HEADLESS: InitializeToolServiceOverrides = { isHeadless: true };
 
@@ -85,8 +92,18 @@ const rows: Row[] = [
       [...bash("rm -rf /"), "deny"],
       [...fetchUrl, "allow"],
       [...mcp, "ask"],
+      [...searchHere, "allow"],
+      [...searchAll, "ask"],
+      [...readOther, "ask"],
     ],
-    offered: { Bash: true, Edit: true, Fetch: true, [MCP_TOOL]: true },
+    offered: {
+      Bash: true,
+      Edit: true,
+      Fetch: true,
+      [MCP_TOOL]: true,
+      SearchHistory: true,
+      ReadHistory: true,
+    },
   },
   {
     name: "TUI remembered Bash(npm*) allow",
@@ -303,6 +320,9 @@ const rows: Row[] = [
       [...bash("curl https://x"), "allow"],
       [...bash("rm -rf /"), "deny"],
       [...mcp, "allow"],
+      [...searchHere, "allow"],
+      [...searchAll, "ask"],
+      [...readOther, "ask"],
     ],
   },
   {
@@ -417,6 +437,7 @@ const rows: Row[] = [
       [...mcp, "deny"],
       ["Subagent", { prompt: "x" }, "deny"],
       ["UploadArtifact", { filepath: "a.txt" }, "deny"],
+      [...searchHere, "deny"],
     ],
     offered: {
       Read: true,
@@ -426,7 +447,21 @@ const rows: Row[] = [
       UploadArtifact: false,
       Subagent: false,
       [MCP_TOOL]: false,
+      SearchHistory: false,
+      ReadHistory: false,
     },
+  },
+  {
+    name: "headless --allow SearchHistory and ReadHistory",
+    approver: false,
+    init: { ...HEADLESS, allow: ["SearchHistory", "ReadHistory"] },
+    // Every session, or another session's turns, still asks: nobody can
+    calls: [
+      [...searchHere, "allow"],
+      [...searchAll, "deny"],
+      [...readOther, "deny"],
+    ],
+    offered: { SearchHistory: true, ReadHistory: true },
   },
   {
     name: "headless --exclude Bash",
@@ -623,8 +658,16 @@ const rows: Row[] = [
       [...bash("ls"), "allow"],
       [...bash("curl https://x"), "deny"],
       [...bash("npm test"), "deny"],
+      // As without --auto: no recall tools when nobody is present
+      [...searchHere, "deny"],
     ],
-    offered: { Edit: true, Fetch: true, Bash: true },
+    offered: {
+      Edit: true,
+      Fetch: true,
+      Bash: true,
+      SearchHistory: false,
+      ReadHistory: false,
+    },
   },
   {
     name: "headless --auto --allow Bash",
@@ -645,6 +688,7 @@ const rows: Row[] = [
       [...bash("ls"), "deny"],
       [...fetchUrl, "deny"],
       [...mcp, "deny"],
+      [...searchHere, "deny"],
     ],
     offered: {
       Read: true,
@@ -653,6 +697,7 @@ const rows: Row[] = [
       Bash: false,
       Fetch: false,
       [MCP_TOOL]: false,
+      SearchHistory: false,
     },
   },
   {
@@ -761,6 +806,7 @@ const rows: Row[] = [
       [...bash("git push"), "deny"],
       [...fetchUrl, "deny"],
       [...mcp, "deny"],
+      [...searchHere, "deny"],
     ],
   },
 
@@ -777,8 +823,10 @@ const rows: Row[] = [
       [...bash("git add -A && git commit -m x"), "allow"],
       [...bash("git add -A && git push"), "ask"],
       [...mcp, "ask"],
+      [...searchHere, "allow"],
+      [...searchAll, "ask"],
     ],
-    offered: { Edit: true, Bash: true },
+    offered: { Edit: true, Bash: true, SearchHistory: true },
   },
 ];
 

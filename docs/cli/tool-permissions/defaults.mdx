@@ -30,7 +30,7 @@ Some tools exist only in some runs:
 | `ReportFailure` | with `--id` |
 | `UploadArtifact` | with `--id` and `--beta-upload-artifact-tool` |
 | `Subagent` | with `--beta-subagent-tool` |
-| `SearchHistory`, `ReadHistory` | in the TUI and `cn serve`, never in a subagent. Searching every session, or reading another session's turns, asks first |
+| `SearchHistory`, `ReadHistory` | in the TUI and `cn serve`, never in a subagent. Not in `cn -p`, with or without `--auto`; `--allow SearchHistory` opts a run in, except under `--auto`, which ignores the flags. Searching every session, or reading another session's turns, asks first, so `cn -p` refuses it |
 
 A capable model gets `MultiEdit`, and other models get `Edit`. Both have the same permissions.
 
