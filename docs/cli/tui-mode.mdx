@@ -81,7 +81,7 @@ This restores the full conversation history, so the agent remembers prior contex
 
 Next to each session's file, `~/.continue/sessions/<id>.jsonl` keeps a transcript of the session that only grows. Compaction and `/undo` shorten the session itself, never the transcript: compacted turns stay in it, and undone ones are marked rather than removed. It holds the full text of every turn, tool output included (images are replaced with a placeholder), and the VS Code extension writes the same file for its sessions. Deleting a session deletes its transcript.
 
-The agent can search the transcripts with `SearchHistory` and read turns back with `ReadHistory`, so a requirement or an error from before a compaction isn't lost to it. It searches this session by default; it can also search the sessions in this folder, or every session after you approve. Secrets are redacted in what these tools return, and in the search index (`~/.continue/index/history.sqlite`). Without FTS5 (Node.js 22.15), words match as substrings and results say "basic search".
+The agent can search the transcripts with `SearchHistory` and read turns back with `ReadHistory`, so a requirement or an error from before a compaction isn't lost to it. It searches this session by default; it can also search the sessions in this folder, or every session after you approve. Secrets are redacted in what these tools return, and in the search index (`~/.continue/index/history.sqlite`). Without FTS5 (Node.js 22.15), words match as substrings, results say "basic search", and the index is `history-basic.sqlite`.
 
 ## Undo a turn
 

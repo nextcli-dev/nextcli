@@ -1,6 +1,7 @@
 import path from "path";
 
 import { syncJournal } from "@nextcli/context/archive";
+import { SqliteDatabase, sqliteHasFts5 } from "@nextcli/context/sqlite";
 import type { ChatHistoryItem } from "core/index.js";
 import { describe, expect, it } from "vitest";
 
@@ -126,6 +127,37 @@ describe("SearchHistory and ReadHistory", () => {
 
     expect(found).not.toContain("sk-proj");
     expect(turns).toBe("#0 user: export OPENAI_API_KEY=[redacted] and retry");
+  });
+
+  it("say a read may be incomplete while the index is busy", async () => {
+    startNewSession();
+    updateSessionHistory([user("indexed before the lock")]);
+    await call(readHistoryTool, { from: 0, to: 0 });
+    updateSessionHistory([
+      user("indexed before the lock"),
+      reply("written while another process holds the index"),
+    ]);
+    // The tool's index, as another cn or a VS Code window would hold it
+    const index = path.join(
+      path.dirname(getSessionDir()),
+      "index",
+      sqliteHasFts5() ? "history.sqlite" : "history-basic.sqlite",
+    );
+    const other = await SqliteDatabase.open(index);
+    await other.exec("BEGIN IMMEDIATE");
+    let turns: string;
+    try {
+      turns = await call(readHistoryTool, { from: 0, to: 1 });
+    } finally {
+      await other.exec("ROLLBACK");
+      await other.close();
+    }
+
+    expect(turns).toContain("#0 user: indexed before the lock");
+    expect(turns).toMatch(/isn't fully indexed yet .*read again/);
+    expect(await call(readHistoryTool, { from: 1, to: 1 })).toBe(
+      "#1 assistant: written while another process holds the index",
+    );
   });
 });
 

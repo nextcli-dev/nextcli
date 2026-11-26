@@ -12,8 +12,8 @@ let store: Promise<HistoryStore> | undefined;
 
 /**
  * The full-text index over the session transcripts, next to the sessions
- * folder (index/history.sqlite), shared with the VS Code extension. Opened
- * on first use.
+ * folder (index/history.sqlite, or history-basic.sqlite where node:sqlite
+ * has no FTS5), shared with the VS Code extension. Opened on first use.
  */
 function historyStore(): Promise<HistoryStore> {
   const sessionsDir = getSessionDir();
@@ -175,23 +175,28 @@ export const readHistoryTool: Tool = {
     from: number;
     to: number;
   }): Promise<string> => {
-    const items = await (
+    const { items, pending } = await (
       await historyStore()
     ).read(
       args.session,
       args.from,
       Math.min(args.to, args.from + MAX_READ - 1),
     );
+    // Not indexed to its end yet: an empty or short read isn't the answer
+    const note = pending
+      ? "This session isn't fully indexed yet (busy, or it changed); read again for the rest."
+      : undefined;
     if (!items.length) {
-      return `Nothing at #${args.from}-#${args.to} of that session.`;
+      return note ?? `Nothing at #${args.from}-#${args.to} of that session.`;
     }
-    return items
-      .map((item) => {
+    return [
+      ...items.map((item) => {
         const state = { live: "", folded: " (compacted)", cut: " (undone)" }[
           item.state
         ];
         return `#${item.ord}${state} ${item.text}`;
-      })
-      .join("\n\n");
+      }),
+      ...(note ? [note] : []),
+    ].join("\n\n");
   },
 };
