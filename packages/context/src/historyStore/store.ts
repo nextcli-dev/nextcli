@@ -27,6 +27,11 @@ export interface HistoryHit {
   state: HistoryState;
   ts: number;
   snippet: string;
+  /**
+   * A partial match: the query's words this item lacks. Unset when it has
+   * every word.
+   */
+  missing?: string[];
 }
 
 export interface HistorySearchResult {
@@ -104,6 +109,45 @@ async function finished(work: () => Promise<boolean>): Promise<boolean> {
     }
     return false;
   }
+}
+
+/**
+ * Common English words a search skips: they are in nearly every item, so
+ * requiring them hides real matches and counting them ranks noise. Negations
+ * stay, since they matter in error messages.
+ */
+const STOP_WORDS = new Set(
+  (
+    "a an and are as at be been but by can could did do does for from had has " +
+    "have how i if in into is it its me my of on or our so than that the their " +
+    "them then there these they this those to us was we were what when where " +
+    "which who why will with would you your"
+  ).split(" "),
+);
+const MAX_TERMS = 16;
+
+/**
+ * The words of a query a search looks for. `terms` are what a full hit holds;
+ * `counted`, the terms of 3 or more characters, are what makes an item a
+ * partial hit and ranks it. A query of stop words only keeps them all and
+ * has no partial hits.
+ */
+function searchTerms(text: string): { terms: string[]; counted: string[] } {
+  const seen = new Set<string>();
+  const all: string[] = [];
+  for (const raw of text.split(/\s+/)) {
+    // Phrases aren't supported: a quoted phrase is its words
+    const term = raw.replace(/^["']+|["']+$/g, "");
+    const key = term.toLowerCase();
+    if (term && !seen.has(key) && all.length < MAX_TERMS) {
+      seen.add(key);
+      all.push(term);
+    }
+  }
+  const meaningful = all.filter((t) => !STOP_WORDS.has(t.toLowerCase()));
+  return meaningful.length
+    ? { terms: meaningful, counted: meaningful.filter((t) => t.length >= 3) }
+    : { terms: all, counted: [] };
 }
 
 const quoteTerm = (term: string) => `"${term.replace(/"/g, '""')}"`;
@@ -572,9 +616,13 @@ export class HistoryStore {
 
   /**
    * Searches the transcripts of the given sessions, of some workspaces, or
-   * all of them. Every term must be in the item, in any of its chunks. Undone
-   * (cut) items are left out; compacted ones are found. The same item in
-   * several sessions (a fork copies its source) is one hit, the newest copy.
+   * all of them. Items with every word of the query come first; if there are
+   * fewer than `limit`, items with some of its words fill the rest, ranked by
+   * how many they have, each with the words it lacks. Words match anywhere in
+   * an item, in any of its chunks; common words are skipped (STOP_WORDS).
+   * Undone (cut) items are left out; compacted ones are found. The same item
+   * in several sessions (a fork copies its source) is one hit, the newest
+   * copy.
    */
   async search(query: {
     text: string;
@@ -584,75 +632,88 @@ export class HistoryStore {
     limit: number;
   }): Promise<HistorySearchResult> {
     const pending = await this.sync(query.sessionIds);
-    const terms = query.text.split(/\s+/).filter(Boolean);
+    const { terms, counted } = searchTerms(query.text);
     if (!terms.length) {
       return { hits: [], basic: !this.fts, pending };
     }
-    const where = ["m.state != 'cut'"];
-    const whereParams: string[] = [];
+    const params: (string | number)[] = [];
+    // The items searched, before any text is touched
+    const scope = ["m.state != 'cut'"];
     if (query.sessionIds) {
-      where.push(
+      scope.push(
         `m.session_id IN (${query.sessionIds.map(() => "?").join(", ")})`,
       );
-      whereParams.push(...query.sessionIds);
+      params.push(...query.sessionIds);
     }
     if (query.workspace !== undefined) {
       const keys = [query.workspace].flat().map(workspaceKey);
-      where.push(
+      scope.push(
         `m.session_id IN (SELECT session_id FROM journals WHERE workspace IN (${keys.map(() => "?").join(", ")}))`,
       );
-      whereParams.push(...keys);
+      params.push(...keys);
     }
-    // Trigrams need 3 characters: shorter terms, and every term without
-    // FTS5, match as substrings
-    const words = this.fts ? terms.filter((t) => t.length >= 3) : [];
-    const messageOf = `rowid / ${MAX_CHUNKS}`;
-    for (const term of terms) {
-      if (words.includes(term)) {
-        where.push(
-          `m.id IN (SELECT ${messageOf} FROM history_fts WHERE history_fts MATCH ?)`,
-        );
-        whereParams.push(quoteTerm(term));
-      } else {
-        where.push(
-          `m.id IN (SELECT ${messageOf} FROM ${this.text} WHERE text LIKE ? ESCAPE '\\')`,
-        );
-        whereParams.push(likeTerm(term));
+    // Candidates: chunks with any of the words. Trigrams need 3 characters,
+    // so shorter terms, and every term without FTS5, match as substrings
+    const ranked = counted.length ? counted : terms;
+    const matched = this.fts ? ranked.filter((t) => t.length >= 3) : [];
+    let chunks: string;
+    if (matched.length) {
+      chunks = `SELECT rowid / ${MAX_CHUNKS} AS id, rowid AS chunk, bm25(history_fts) AS score
+        FROM history_fts WHERE history_fts MATCH ? AND rowid / ${MAX_CHUNKS} IN scope`;
+      params.push(matched.map(quoteTerm).join(" OR "));
+    } else {
+      chunks = `SELECT t.rowid / ${MAX_CHUNKS} AS id, t.rowid AS chunk, t.rowid AS score
+        FROM scope s JOIN ${this.text} t
+          ON t.rowid >= s.id * ${MAX_CHUNKS} AND t.rowid < (s.id + 1) * ${MAX_CHUNKS}
+        WHERE ${ranked.map(() => "t.text LIKE ? ESCAPE '\\'").join(" OR ")}`;
+      params.push(...ranked.map(likeTerm));
+    }
+    // One flag per term: whether the item holds it, in any chunk
+    const flags = terms.map((term, i) => {
+      if (this.fts && term.length >= 3) {
+        params.push(quoteTerm(term));
+        return `id IN (SELECT rowid / ${MAX_CHUNKS} FROM history_fts
+          WHERE history_fts MATCH ? AND rowid / ${MAX_CHUNKS} IN scope) AS t${i}`;
       }
+      params.push(likeTerm(term));
+      return `EXISTS (SELECT 1 FROM ${this.text}
+          WHERE rowid >= best.id * ${MAX_CHUNKS} AND rowid < (best.id + 1) * ${MAX_CHUNKS}
+            AND text LIKE ? ESCAPE '\\') AS t${i}`;
+    });
+    const full = terms.map((_, i) => `f.t${i}`).join(" AND ");
+    // Sort keys are expressions over the materialized flags: an alias would
+    // run the subqueries again, and a bare 0 would be read as a column
+    const order = [`(${full}) DESC`];
+    if (counted.length) {
+      order.push(
+        `(${counted.map((c) => `f.t${terms.indexOf(c)}`).join(" + ")}) DESC`,
+      );
     }
-    // Each item's best chunk (by bm25; without full-text terms, its first
-    // matching chunk) gives its rank and its snippet. bm25 can't run inside
-    // an aggregate, so chunks are scored first; SQLite then takes the
-    // snippet from the row MIN picks
-    const chunks = words.length
-      ? {
-          sql: `SELECT ${messageOf} AS id, bm25(history_fts) AS score,
-                  snippet(history_fts, 0, '«', '»', '…', 16) AS snippet
-                FROM history_fts WHERE history_fts MATCH ?`,
-          params: [words.map(quoteTerm).join(" OR ")],
-          order: "best.score, m.ts DESC, m.id DESC",
-        }
-      : {
-          sql: `SELECT ${messageOf} AS id, rowid AS score,
-                  substr(text, max(1, instr(lower(text), lower(?)) - 80), 200) AS snippet
-                FROM ${this.text} WHERE text LIKE ? ESCAPE '\\'`,
-          params: [terms[0], likeTerm(terms[0])],
-          order: "m.ts DESC, m.id DESC",
-        };
-    const sql = `WITH chunks AS MATERIALIZED (${chunks.sql}),
-        best AS (SELECT id, MIN(score) AS score, snippet FROM chunks GROUP BY id)
-      SELECT m.session_id, m.ord, m.role, m.tool, m.state, m.ts, m.h, best.snippet
-      FROM best JOIN messages m ON m.id = best.id
-      WHERE ${where.join(" AND ")}
-      ORDER BY ${chunks.order}
+    order.push(
+      ...(matched.length ? ["f.score"] : []),
+      "m.ts DESC",
+      "m.id DESC",
+    );
+    const sql = `WITH scope AS MATERIALIZED (
+          SELECT m.id FROM messages m WHERE ${scope.join(" AND ")}),
+        chunks AS MATERIALIZED (${chunks}),
+        best AS (SELECT id, MIN(score) AS score, chunk FROM chunks GROUP BY id),
+        flagged AS MATERIALIZED (SELECT id, score, chunk, ${flags.join(", ")} FROM best)
+      SELECT m.id, m.session_id, m.ord, m.role, m.tool, m.state, m.ts, m.h, f.chunk,
+        ${terms.map((_, i) => `f.t${i}`).join(", ")}
+      FROM flagged f JOIN messages m ON m.id = f.id
+      ${counted.length ? "" : `WHERE ${full}`}
+      ORDER BY ${order.join(", ")}
       LIMIT ? OFFSET ?`;
     const page = query.limit * 4;
     // Which session's copy of an item is shown: the first, the newest
     const shown = new Map<string, string>();
-    const hits: HistoryHit[] = [];
+    const seen = new Set<number>();
+    const hits: (HistoryHit & { chunk: number })[] = [];
     for (let offset = 0; hits.length < query.limit; offset += page) {
       const rows = await this.db.all<
-        {
+        ({
+          id: number;
           session_id: string;
           ord: number;
           role: string;
@@ -660,15 +721,20 @@ export class HistoryStore {
           state: HistoryState;
           ts: number;
           h: string;
-          snippet: string;
-        }[]
-      >(sql, ...chunks.params, ...whereParams, page, offset);
+          chunk: number;
+        } & Record<string, number>)[]
+      >(sql, ...params, page, offset);
       for (const row of rows) {
         const owner = shown.get(row.h);
-        if (owner !== undefined && owner !== row.session_id) {
+        if (
+          seen.has(row.id) ||
+          (owner !== undefined && owner !== row.session_id)
+        ) {
           continue;
         }
+        seen.add(row.id);
         shown.set(row.h, row.session_id);
+        const missing = terms.filter((_, i) => !row[`t${i}`]);
         hits.push({
           sessionId: row.session_id,
           ord: row.ord,
@@ -676,7 +742,9 @@ export class HistoryStore {
           tool: row.tool ?? undefined,
           state: row.state,
           ts: row.ts,
-          snippet: row.snippet,
+          snippet: "",
+          ...(missing.length ? { missing } : {}),
+          chunk: row.chunk,
         });
         if (hits.length === query.limit) {
           break;
@@ -686,14 +754,58 @@ export class HistoryStore {
         break;
       }
     }
-    return { hits, basic: !this.fts, pending };
+    // Snippets only for what is returned: computing them for every
+    // candidate chunk made a search with common words take seconds
+    for (const hit of hits) {
+      hit.snippet = await this.snippet(hit.chunk, terms, matched);
+    }
+    return {
+      hits: hits.map(({ chunk: _, ...hit }) => hit),
+      basic: !this.fts,
+      pending,
+    };
+  }
+
+  /** Text around the query's words in one chunk */
+  private async snippet(
+    chunk: number,
+    terms: string[],
+    matched: string[],
+  ): Promise<string> {
+    if (matched.length) {
+      // The wrapper binds a rowid past 2^31 as REAL, and FTS5 ignores a REAL
+      // rowid next to MATCH
+      const row = await this.db.get<{ s: string }>(
+        `SELECT snippet(history_fts, 0, '«', '»', '…', 16) AS s FROM history_fts
+          WHERE history_fts MATCH ? AND rowid = CAST(? AS INTEGER)`,
+        matched.map(quoteTerm).join(" OR "),
+        chunk,
+      );
+      if (row?.s) {
+        return row.s;
+      }
+    }
+    const text =
+      (
+        await this.db.get<{ text: string }>(
+          `SELECT text FROM ${this.text} WHERE rowid = CAST(? AS INTEGER)`,
+          chunk,
+        )
+      )?.text ?? "";
+    // Around the earliest word the chunk holds, not just the first one asked
+    const lower = text.toLowerCase();
+    const at = terms
+      .map((t) => lower.indexOf(t.toLowerCase()))
+      .filter((i) => i >= 0);
+    const start = at.length ? Math.max(0, Math.min(...at) - 80) : 0;
+    return text.slice(start, start + 200);
   }
 
   /**
    * Items `from` to `to` of a transcript, redacted, with any summary set on
-   * them. Undone (cut) items are left out; compacted ones are marked. At most READ_MAX_ITEMS and about READ_MAX_CHARS, with `next` set
-   * when that stopped it before `to`; a first item longer than that is cut
-   * short.
+   * them. Undone (cut) items are left out; compacted ones are marked. At
+   * most READ_MAX_ITEMS and about READ_MAX_CHARS, with `next` set when that
+   * stopped it before `to`; a first item longer than that is cut short.
    */
   async read(
     sessionId: string,

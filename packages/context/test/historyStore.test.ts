@@ -190,19 +190,19 @@ describe.each(modes)("HistoryStore (fts: %s)", (fts) => {
   });
 
   it("indexes a recreated transcript again", async () => {
-    save("s1", [user("from the old transcript")]);
+    save("s1", [user("from the zanzibar transcript")]);
     const store = await open(fts);
     await store.sync();
 
     fs.unlinkSync(path.join(sessionsDir, "s1.jsonl"));
     forgetJournal();
-    save("s1", [user("from the new transcript")]);
+    save("s1", [user("from the kalahari transcript")]);
 
+    expect((await store.search({ text: "zanzibar", limit: 5 })).hits).toEqual(
+      [],
+    );
     expect(
-      (await store.search({ text: "old transcript", limit: 5 })).hits,
-    ).toEqual([]);
-    expect(
-      (await store.search({ text: "new transcript", limit: 5 })).hits,
+      (await store.search({ text: "kalahari", limit: 5 })).hits,
     ).toHaveLength(1);
   });
 
@@ -210,13 +210,13 @@ describe.each(modes)("HistoryStore (fts: %s)", (fts) => {
     // Linux hands a deleted file's inode to the next file at once
     const file = path.join(sessionsDir, "s1.jsonl");
     const kept = path.join(root, "kept.jsonl");
-    save("s1", [user("from the old transcript")]);
+    save("s1", [user("from the zanzibar transcript")]);
     const store = await open(fts);
     await store.sync();
 
     fs.renameSync(file, kept);
     forgetJournal();
-    save("s1", [user("from the new transcript")]);
+    save("s1", [user("from the kalahari transcript")]);
     const recreated = fs.readFileSync(file);
     fs.unlinkSync(file);
     fs.renameSync(kept, file);
@@ -224,11 +224,11 @@ describe.each(modes)("HistoryStore (fts: %s)", (fts) => {
     fs.writeFileSync(file, recreated);
     expect(fs.statSync(file).ino).toBe(inode);
 
+    expect((await store.search({ text: "zanzibar", limit: 5 })).hits).toEqual(
+      [],
+    );
     expect(
-      (await store.search({ text: "old transcript", limit: 5 })).hits,
-    ).toEqual([]);
-    expect(
-      (await store.search({ text: "new transcript", limit: 5 })).hits,
+      (await store.search({ text: "kalahari", limit: 5 })).hits,
     ).toHaveLength(1);
   });
 
@@ -302,16 +302,125 @@ describe.each(modes)("HistoryStore (fts: %s)", (fts) => {
     expect(none.hits).toEqual([]);
   });
 
-  it("matches a short term as a substring", async () => {
+  it("ranks a weak item with every word above stronger partial ones", async () => {
+    const padding = "nothing relevant in this part. ".repeat(40);
+    save("s1", [
+      reply(`${padding} login ${padding} timeout ${padding} retry ${padding}`),
+      // Long, so bm25 alone would rank the short one-word item above it
+      read("auth.log", `${padding} login failed: timeout ${padding}`),
+      user("retry retry retry"),
+      // Enough other items for bm25 to tell common words from rare ones
+      ...Array.from({ length: 12 }, (_, i) => user(`unrelated turn ${i}`)),
+    ]);
+    const store = await open(fts);
+
+    const result = await store.search({
+      text: "login timeout retry",
+      limit: 5,
+    });
+
+    expect(result.hits.map((h) => [h.ord, h.missing])).toEqual([
+      [0, undefined],
+      [1, ["retry"]],
+      [2, ["login", "timeout"]],
+    ]);
+  });
+
+  it("answers a question asked in other words, skipping common ones", async () => {
+    save("s1", [
+      user("Login fails with a timeout after 30 seconds"),
+      reply("Fixed it: raised the login timeout to 60s"),
+      user("how did the tests go?"),
+      user("We need to fix the build"),
+    ]);
+    const store = await open(fts);
+
+    const result = await store.search({
+      text: "how did we fix the login timeout",
+      limit: 5,
+    });
+
+    expect(result.hits.map((h) => [h.ord, h.missing])).toEqual([
+      [1, undefined],
+      [0, ["fix"]],
+      [3, ["login", "timeout"]],
+    ]);
+  });
+
+  it("finds only items with every word of a query of common words", async () => {
+    save("s1", [user("how did we do that again?"), user("how did it go")]);
+    const store = await open(fts);
+
+    const result = await store.search({ text: "how did we do that", limit: 5 });
+
+    expect(result.hits.map((h) => [h.ord, h.missing])).toEqual([
+      [0, undefined],
+    ]);
+  });
+
+  it("keeps partial hits to the scope searched, without undone turns", async () => {
+    save("s1", [user("the login screen"), reply("noted")]);
+    save("s1", [user("the login screen"), reply("noted"), user("login again")]);
+    save("s1", [user("the login screen"), reply("noted")]);
+    save("s2", [user("login retry from another session")]);
+    const store = await open(fts);
+
+    const result = await store.search({
+      text: "login retry",
+      sessionIds: ["s1"],
+      limit: 5,
+    });
+
+    expect(result.hits.map((h) => [h.sessionId, h.ord, h.missing])).toEqual([
+      ["s1", 0, ["retry"]],
+    ]);
+  });
+
+  it("shows a forked partial hit once, from the newest copy", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(1_000);
+      save("s1", [user("the login screen froze")]);
+      vi.setSystemTime(2_000);
+      save("s2", [user("the login screen froze")]);
+    } finally {
+      vi.useRealTimers();
+    }
+    const store = await open(fts);
+
+    const result = await store.search({ text: "login retry", limit: 5 });
+
+    expect(result.hits.map((h) => [h.sessionId, h.missing])).toEqual([
+      ["s2", ["retry"]],
+    ]);
+  });
+
+  it("shows the words an item has in its snippet", async () => {
+    save("s1", [user(`${"padding ".repeat(80)}the request hit a timeout`)]);
+    const store = await open(fts);
+
+    const result = await store.search({ text: "zebra timeout", limit: 5 });
+
+    expect(result.hits[0].missing).toEqual(["zebra"]);
+    expect(result.hits[0].snippet).toContain("timeout");
+  });
+
+  it("needs a short term for a full hit, but doesn't rank by it", async () => {
     save("s1", [
       user("exit code 42 from the build"),
       reply("the build passed"),
+      reply("error 42 in the parser"),
     ]);
     const store = await open(fts);
 
     const result = await store.search({ text: "42 build", limit: 5 });
 
-    expect(result.hits.map((h) => h.ord)).toEqual([0]);
+    // Under 3 characters, 42 matches as a substring: it decides a full hit
+    // and is listed as missing, but alone it makes nothing a partial hit
+    expect(result.hits.map((h) => [h.ord, h.missing])).toEqual([
+      [0, undefined],
+      [1, ["42"]],
+    ]);
   });
 
   it("reads turns back in order, redacted, with compacted ones marked", async () => {
@@ -606,7 +715,8 @@ describe.skipIf(!sqliteHasFts5())("HistoryStore across search modes", () => {
 
     for (const store of [full, basic]) {
       for (const text of ["full-text process", "basic process"]) {
-        expect((await store.search({ text, limit: 5 })).hits).toHaveLength(1);
+        const { hits } = await store.search({ text, limit: 5 });
+        expect(hits.filter((h) => !h.missing)).toHaveLength(1);
       }
     }
   });
