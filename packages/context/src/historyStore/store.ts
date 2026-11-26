@@ -10,6 +10,14 @@ import {
 } from "../archive/journal.js";
 import { readJournalHead } from "../archive/sync.js";
 import {
+  candidateText,
+  findWord,
+  indexWords,
+  likePatterns,
+  searchWord,
+  type SearchWord,
+} from "./words.js";
+import {
   SqliteDatabase,
   sqliteHasFts5,
   type SqliteTransaction,
@@ -37,9 +45,10 @@ export interface HistoryHit {
 export interface HistorySearchResult {
   hits: HistoryHit[];
   /**
-   * Searched without FTS5 (Node 22.15): words are found as substrings, not
-   * through the full-text index. The order is the same: items with every
-   * word first, then by how many words they have, then newest first.
+   * Searched without FTS5 (Node 22.15): candidates are found by scanning the
+   * index's words instead of the full-text index, and items are not ranked
+   * by bm25. Words match the same way, and the order is the same apart from
+   * that: items with every word first, then by how many, then newest first.
    */
   basic: boolean;
   /** Transcripts not indexed yet: the search ran out of time, or was busy */
@@ -113,7 +122,7 @@ const READ_MAX_ITEMS = 40;
  * is left alone and the open fails, so two host versions don't keep dropping
  * each other's index.
  */
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 const OUTLINE_MAX_ITEMS = 100;
 const OUTLINE_TEXT_CHARS = 160;
 const READ_MAX_CHARS = 80_000;
@@ -165,7 +174,8 @@ function searchTerms(text: string): { terms: string[]; counted: string[] } {
     // Phrases aren't supported: a quoted phrase is its words
     const term = raw.replace(/^["']+|["']+$/g, "");
     const key = term.toLowerCase();
-    if (term && !seen.has(key)) {
+    // Punctuation alone has no word to look for
+    if (term && !seen.has(key) && searchWord(term)) {
       seen.add(key);
       all.push(term);
     }
@@ -179,35 +189,7 @@ function searchTerms(text: string): { terms: string[]; counted: string[] } {
     : { terms: all.slice(0, MAX_TERMS), counted: [] };
 }
 
-const escapeGlob = (text: string) => text.replace(/[*?[]/g, (c) => `[${c}]`);
-// lower() in SQLite folds only ASCII, so the term is folded the same way
-const asciiLower = (text: string) =>
-  text.replace(/[A-Z]/g, (c) => c.toLowerCase());
-
-/**
- * A condition on a chunk's text: `term` starts a word in it. FTS5's trigrams
- * and LIKE match anywhere, so "fix" would match "prefix" and "not" "another".
- * A word starts the text, follows a character that is not a letter or
- * digit, or is a camelCase hump ("config" in "loadConfig"). It may go on
- * ("fix" matches "Fixed").
- */
-function wordStart(term: string): { sql: string; params: string[] } {
-  const lower = escapeGlob(asciiLower(term));
-  // The space makes the start of the text a word start too: one scan
-  const sql = ["(' ' || lower(text)) GLOB ?"];
-  const params = [`*[^a-z0-9]${lower}*`];
-  if (/^[a-z]/i.test(term)) {
-    sql.push("text GLOB ?");
-    params.push(
-      `*[a-z]${escapeGlob(term[0].toUpperCase() + asciiLower(term.slice(1)))}*`,
-    );
-  }
-  return { sql: `(${sql.join(" OR ")})`, params };
-}
-
 const quoteTerm = (term: string) => `"${term.replace(/"/g, '""')}"`;
-const likeTerm = (term: string) =>
-  `%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 
 /** Redacted texts of a batch's lines by byte offset, made before the lock */
 type BatchTexts = Map<number, { text: string; summary?: string }>;
@@ -324,6 +306,7 @@ export class HistoryStore {
         DROP TABLE IF EXISTS journals;
         DROP TABLE IF EXISTS messages;
         DROP TABLE IF EXISTS history_text;
+        DROP TABLE IF EXISTS history_words;
         ${fts ? "DROP TABLE IF EXISTS history_fts;" : ""}
       `);
     }
@@ -350,6 +333,8 @@ export class HistoryStore {
         summary INTEGER NOT NULL DEFAULT 0
       );
       CREATE INDEX IF NOT EXISTS messages_session ON messages (session_id, ord);
+      -- Each chunk's words as search compares them (words.ts), in both modes
+      CREATE TABLE IF NOT EXISTS history_words (rowid INTEGER PRIMARY KEY, words TEXT NOT NULL);
       ${
         fts
           ? "CREATE VIRTUAL TABLE IF NOT EXISTS history_fts USING fts5(text, tokenize = 'trigram');"
@@ -420,11 +405,13 @@ export class HistoryStore {
     await this.db.transaction(
       (tx) => {
         for (const { id } of ids) {
-          tx.run(
-            `DELETE FROM ${this.text} WHERE rowid >= ? AND rowid < ?`,
-            id * MAX_CHUNKS,
-            (id + 1) * MAX_CHUNKS,
-          );
+          for (const table of [this.text, "history_words"]) {
+            tx.run(
+              `DELETE FROM ${table} WHERE rowid >= ? AND rowid < ?`,
+              id * MAX_CHUNKS,
+              (id + 1) * MAX_CHUNKS,
+            );
+          }
         }
         tx.run("DELETE FROM messages WHERE session_id = ?", sessionId);
         tx.run("DELETE FROM journals WHERE session_id = ?", sessionId);
@@ -563,10 +550,17 @@ export class HistoryStore {
     text: string,
   ): void {
     for (let i = 0; i * CHUNK_CHARS < text.length && first + i < end; i++) {
+      const rowid = id * MAX_CHUNKS + first + i;
+      const chunk = text.slice(i * CHUNK_CHARS, (i + 1) * CHUNK_CHARS);
       tx.run(
         `INSERT INTO ${this.text} (rowid, text) VALUES (?, ?)`,
-        id * MAX_CHUNKS + first + i,
-        text.slice(i * CHUNK_CHARS, (i + 1) * CHUNK_CHARS),
+        rowid,
+        chunk,
+      );
+      tx.run(
+        "INSERT INTO history_words (rowid, words) VALUES (?, ?)",
+        rowid,
+        indexWords(chunk),
       );
     }
   }
@@ -658,11 +652,13 @@ export class HistoryStore {
           if (id === undefined) {
             break;
           }
-          tx.run(
-            `DELETE FROM ${this.text} WHERE rowid >= ? AND rowid < ?`,
-            id * MAX_CHUNKS + SUMMARY_CHUNK,
-            (id + 1) * MAX_CHUNKS,
-          );
+          for (const table of [this.text, "history_words"]) {
+            tx.run(
+              `DELETE FROM ${table} WHERE rowid >= ? AND rowid < ?`,
+              id * MAX_CHUNKS + SUMMARY_CHUNK,
+              (id + 1) * MAX_CHUNKS,
+            );
+          }
           tx.run(
             "UPDATE messages SET summary = ? WHERE id = ?",
             line.text ? 1 : 0,
@@ -689,8 +685,9 @@ export class HistoryStore {
    * Searches the transcripts of the given sessions, of some workspaces, or
    * all of them. Items with every word of the query come first; if there are
    * fewer than `limit`, items with some of its words fill the rest, ranked by
-   * how many they have, each with the words it lacks. Words match anywhere in
-   * an item, in any of its chunks; common words are skipped (STOP_WORDS).
+   * how many they have, each with the words it lacks. Words match whole, in
+   * any chunk of an item, with an English ending allowed (words.ts); common
+   * words are skipped (STOP_WORDS).
    * Undone (cut) items are left out; compacted ones are found. The same item
    * in several sessions (a fork copies its source) is one hit, the newest
    * copy.
@@ -723,36 +720,46 @@ export class HistoryStore {
       );
       params.push(...keys);
     }
-    // Candidates: chunks with any of the words. Trigrams need 3 characters,
-    // so shorter terms, and every term without FTS5, match as substrings
-    const ranked = counted.length ? counted : terms;
-    const matched = this.fts ? ranked.filter((t) => t.length >= 3) : [];
+    // Candidates: chunks that may hold any of the words. With FTS5, the text
+    // every match contains finds them (trigrams match inside words, so this
+    // finds more than the words); without it, or when a word has no such
+    // text of 3 characters, the index's words are scanned
+    const words = terms.map((term) => searchWord(term)!);
+    const ranked = (counted.length ? counted : terms).map(
+      (term) => words[terms.indexOf(term)],
+    );
+    const candidates = ranked.map(candidateText);
+    const matched = this.fts && candidates.every((text) => text.length);
+    const fullText = candidates
+      .map((text) => `(${text.map(quoteTerm).join(" AND ")})`)
+      .join(" OR ");
     let chunks: string;
-    if (matched.length) {
+    if (matched) {
       chunks = `SELECT rowid / ${MAX_CHUNKS} AS id, rowid AS chunk, bm25(history_fts) AS score
         FROM history_fts WHERE history_fts MATCH ? AND rowid / ${MAX_CHUNKS} IN scope`;
-      params.push(matched.map(quoteTerm).join(" OR "));
+      params.push(fullText);
     } else {
-      chunks = `SELECT t.rowid / ${MAX_CHUNKS} AS id, t.rowid AS chunk, t.rowid AS score
-        FROM scope s JOIN ${this.text} t
-          ON t.rowid >= s.id * ${MAX_CHUNKS} AND t.rowid < (s.id + 1) * ${MAX_CHUNKS}
-        WHERE ${ranked.map(() => "t.text LIKE ? ESCAPE '\\'").join(" OR ")}`;
-      params.push(...ranked.map(likeTerm));
+      const patterns = ranked.flatMap(likePatterns);
+      chunks = `SELECT w.rowid / ${MAX_CHUNKS} AS id, w.rowid AS chunk, w.rowid AS score
+        FROM scope s JOIN history_words w
+          ON w.rowid >= s.id * ${MAX_CHUNKS} AND w.rowid < (s.id + 1) * ${MAX_CHUNKS}
+        WHERE ${patterns.map(() => "w.words LIKE ?").join(" OR ")}`;
+      params.push(...patterns);
     }
-    // One flag per term: whether the item holds it, in any chunk
-    // One flag per term: whether it starts a word in the item, in any chunk.
-    // With FTS5, MATCH narrows to the items holding it anywhere first
-    const flags = terms.map((term, i) => {
-      const inItem = wordStart(term);
-      let flag = `EXISTS (SELECT 1 FROM ${this.text}
+    // One flag per term: whether the item holds the word, in any chunk. With
+    // FTS5, MATCH first narrows to the items that may
+    const flags = words.map((word, i) => {
+      const patterns = likePatterns(word);
+      let flag = `EXISTS (SELECT 1 FROM history_words
           WHERE rowid >= best.id * ${MAX_CHUNKS} AND rowid < (best.id + 1) * ${MAX_CHUNKS}
-            AND ${inItem.sql})`;
-      if (this.fts && term.length >= 3) {
-        params.push(quoteTerm(term));
+            AND (${patterns.map(() => "words LIKE ?").join(" OR ")}))`;
+      const text = candidateText(word);
+      if (this.fts && text.length) {
+        params.push(text.map(quoteTerm).join(" AND "));
         flag = `(id IN (SELECT rowid / ${MAX_CHUNKS} FROM history_fts
           WHERE history_fts MATCH ? AND rowid / ${MAX_CHUNKS} IN scope) AND ${flag})`;
       }
-      params.push(...inItem.params);
+      params.push(...patterns);
       return `${flag} AS t${i}`;
     });
     const full = terms.map((_, i) => `f.t${i}`).join(" AND ");
@@ -765,11 +772,7 @@ export class HistoryStore {
     if (counted.length) {
       order.push(`(${matchedWords}) DESC`);
     }
-    order.push(
-      ...(matched.length ? ["f.score"] : []),
-      "m.ts DESC",
-      "m.id DESC",
-    );
+    order.push(...(matched ? ["f.score"] : []), "m.ts DESC", "m.id DESC");
     const sql = `WITH scope AS MATERIALIZED (
           SELECT m.id FROM messages m WHERE ${scope.join(" AND ")}),
         chunks AS MATERIALIZED (${chunks}),
@@ -833,7 +836,8 @@ export class HistoryStore {
     // Snippets only for what is returned: computing them for every
     // candidate chunk made a search with common words take seconds
     for (const hit of hits) {
-      hit.snippet = await this.snippet(hit.chunk, terms, matched);
+      const found = words.filter((_, i) => !hit.missing?.includes(terms[i]));
+      hit.snippet = await this.snippet(hit.chunk, found, words);
     }
     return {
       hits: hits.map(({ chunk: _, ...hit }) => hit),
@@ -842,25 +846,16 @@ export class HistoryStore {
     };
   }
 
-  /** Text around the query's words in one chunk */
+  /**
+   * Text around a word the item holds, marked: the earliest of the words it
+   * has, else of any of them (it may hold one only in another chunk)
+   */
   private async snippet(
     chunk: number,
-    terms: string[],
-    matched: string[],
+    found: SearchWord[],
+    words: SearchWord[],
   ): Promise<string> {
-    if (matched.length) {
-      // The wrapper binds a rowid past 2^31 as REAL, and FTS5 ignores a REAL
-      // rowid next to MATCH
-      const row = await this.db.get<{ s: string }>(
-        `SELECT snippet(history_fts, 0, '«', '»', '…', 16) AS s FROM history_fts
-          WHERE history_fts MATCH ? AND rowid = CAST(? AS INTEGER)`,
-        matched.map(quoteTerm).join(" OR "),
-        chunk,
-      );
-      if (row?.s) {
-        return oneLine(row.s);
-      }
-    }
+    // The wrapper binds a rowid past 2^31 as REAL; the cast keeps it a rowid
     const text =
       (
         await this.db.get<{ text: string }>(
@@ -868,13 +863,15 @@ export class HistoryStore {
           chunk,
         )
       )?.text ?? "";
-    // Around the earliest word the chunk holds, not just the first one asked
-    const lower = text.toLowerCase();
-    const at = terms
-      .map((t) => lower.indexOf(t.toLowerCase()))
-      .filter((i) => i >= 0);
-    const start = at.length ? Math.max(0, Math.min(...at) - 80) : 0;
-    return oneLine(text.slice(start, start + 200));
+    const at = findWord(text, found) ?? findWord(text, words);
+    if (!at) {
+      return oneLine(text.slice(0, 200));
+    }
+    const start = Math.max(0, at.start - 80);
+    const end = Math.min(text.length, Math.max(at.end, start + 200));
+    return oneLine(
+      `${start ? "…" : ""}${text.slice(start, at.start)}«${text.slice(at.start, at.end)}»${text.slice(at.end, end)}${end < text.length ? "…" : ""}`,
+    );
   }
 
   /**

@@ -347,6 +347,40 @@ describe.each(modes)("HistoryStore (fts: %s)", (fts) => {
     ]);
   });
 
+  it("finds a word inside an identifier, but not the end of another word", async () => {
+    save("s1", [
+      user("call getElementById on the form"),
+      reply("set userID and retry the XMLHttpRequest"),
+      user("base64Encode the payload"),
+      user("nothing to note here"),
+      reply("fix the parser"),
+    ]);
+    const store = await open(fts);
+    const ords = async (text: string) =>
+      (await store.search({ text, limit: 5 })).hits
+        .filter((h) => !h.missing)
+        .map((h) => h.ord);
+
+    expect(await ords("byId")).toEqual([0]);
+    expect((await ords("id")).sort()).toEqual([0, 1]);
+    expect(await ords("http")).toEqual([1]);
+    expect(await ords("encode")).toEqual([2]);
+    // A word must end where the query's does, give or take an ending
+    expect(await ords("not")).toEqual([]);
+    // Another form of the word, found through the text its forms share
+    expect(await ords("fixing")).toEqual([4]);
+  });
+
+  it("marks in the snippet the word that counted, not one it only resembles", async () => {
+    save("s1", [user(`prefix ${"padding ".repeat(30)}then the fix landed`)]);
+    const store = await open(fts);
+
+    const [hit] = (await store.search({ text: "fix", limit: 5 })).hits;
+
+    expect(hit.snippet).toContain("then the «fix» landed");
+    expect(hit.snippet).not.toMatch(/pre«?fix/);
+  });
+
   it("matches a word only where one starts, not inside another word", async () => {
     save("s1", [
       user("prefix the login timeout in the config"),
