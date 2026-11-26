@@ -571,15 +571,16 @@ export class HistoryStore {
   }
 
   /**
-   * Searches the transcripts of the given sessions, of one workspace, or all
-   * of them. Every term must be in the item, in any of its chunks. Undone
+   * Searches the transcripts of the given sessions, of some workspaces, or
+   * all of them. Every term must be in the item, in any of its chunks. Undone
    * (cut) items are left out; compacted ones are found. The same item in
    * several sessions (a fork copies its source) is one hit, the newest copy.
    */
   async search(query: {
     text: string;
     sessionIds?: string[];
-    workspace?: string;
+    /** A folder, or several (a multi-root window): a path or a URI */
+    workspace?: string | string[];
     limit: number;
   }): Promise<HistorySearchResult> {
     const pending = await this.sync(query.sessionIds);
@@ -595,11 +596,12 @@ export class HistoryStore {
       );
       whereParams.push(...query.sessionIds);
     }
-    if (query.workspace) {
+    if (query.workspace !== undefined) {
+      const keys = [query.workspace].flat().map(workspaceKey);
       where.push(
-        "m.session_id IN (SELECT session_id FROM journals WHERE workspace = ?)",
+        `m.session_id IN (SELECT session_id FROM journals WHERE workspace IN (${keys.map(() => "?").join(", ")}))`,
       );
-      whereParams.push(workspaceKey(query.workspace));
+      whereParams.push(...keys);
     }
     // Trigrams need 3 characters: shorter terms, and every term without
     // FTS5, match as substrings
@@ -689,7 +691,7 @@ export class HistoryStore {
 
   /**
    * Items `from` to `to` of a transcript, redacted, with any summary set on
-   * them. At most READ_MAX_ITEMS and about READ_MAX_CHARS, with `next` set
+   * them. Undone (cut) items are left out; compacted ones are marked. At most READ_MAX_ITEMS and about READ_MAX_CHARS, with `next` set
    * when that stopped it before `to`; a first item longer than that is cut
    * short.
    */
@@ -709,7 +711,9 @@ export class HistoryStore {
         byte_len: number;
       }[]
     >(
-      "SELECT id, ord, state, ts, byte_offset, byte_len FROM messages WHERE session_id = ? AND ord BETWEEN ? AND ? ORDER BY ord LIMIT ?",
+      // Undone (cut) items stay out, as in search: an undo took them out of
+      // the conversation, and a read would put them back in the prompt
+      "SELECT id, ord, state, ts, byte_offset, byte_len FROM messages WHERE session_id = ? AND ord BETWEEN ? AND ? AND state != 'cut' ORDER BY ord LIMIT ?",
       sessionId,
       from,
       to,

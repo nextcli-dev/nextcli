@@ -281,6 +281,27 @@ describe.each(modes)("HistoryStore (fts: %s)", (fts) => {
     }
   });
 
+  it("searches the folders of a multi-root window", async () => {
+    save("a", [user("shared word in A")], "/repo-a");
+    save("b", [user("shared word in B")], "/repo-b");
+    save("c", [user("shared word in C")], "/repo-c");
+    const store = await open(fts);
+
+    const both = await store.search({
+      text: "shared word",
+      workspace: ["/repo-a", "file:///repo-b"],
+      limit: 5,
+    });
+    const none = await store.search({
+      text: "shared word",
+      workspace: [],
+      limit: 5,
+    });
+
+    expect(both.hits.map((h) => h.sessionId).sort()).toEqual(["a", "b"]);
+    expect(none.hits).toEqual([]);
+  });
+
   it("matches a short term as a substring", async () => {
     save("s1", [
       user("exit code 42 from the build"),
@@ -529,6 +550,19 @@ describe.each(modes)("HistoryStore (fts: %s)", (fts) => {
     expect(byCount.next).toBe(40);
     expect(whole.items).toHaveLength(5);
     expect(whole.next).toBeUndefined();
+  });
+
+  it("leaves undone turns out of a read, as out of a search", async () => {
+    save("s1", [user("first"), reply("kept"), user("the undone ask")]);
+    save("s1", [user("first"), reply("kept")]);
+    const store = await open(fts);
+
+    const { items } = await store.read("s1", 0, 10);
+
+    expect(items.map((i) => i.text)).toEqual([
+      "user: first",
+      "assistant: kept",
+    ]);
   });
 
   it("cuts one item longer than a read short", async () => {
