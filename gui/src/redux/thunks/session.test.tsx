@@ -1,6 +1,7 @@
 import { waitFor } from "@testing-library/dom";
 import { act } from "@testing-library/react";
 import { ChatHistoryItem, ChatMessage, Session } from "core";
+import { renderChatMessage } from "core/util/messageContent";
 import { MockIdeMessenger } from "../../context/MockIdeMessenger";
 import { Chat } from "../../pages/gui/Chat";
 import { addAndSelectMockLlm } from "../../util/test/config";
@@ -9,9 +10,13 @@ import {
   getMainEditor,
   sendInputWithMockedResponse,
 } from "../../util/test/utils";
-import { setActive, setToolGenerated } from "../slices/sessionSlice";
+import {
+  newSession,
+  setActive,
+  setToolGenerated,
+} from "../slices/sessionSlice";
 import { callToolById } from "./callToolById";
-import { loadSession, saveCurrentSession } from "./session";
+import { loadLastSession, loadSession, saveCurrentSession } from "./session";
 import { streamResponseThunk } from "./streamResponse";
 
 /** A turn that stops mid-way through generating a tool call */
@@ -300,4 +305,148 @@ test("opening another session during a stream saves the turn as stopped", async 
   expect(turn.message.content).toBe("Let me look.");
   expect(turn.toolCallStates?.[0].status).toBe("canceled");
   expect(store.getState().session.mainEditorContentTrigger).toBeUndefined();
+});
+
+/** A tool call state as a session file stores it */
+function storedCall(id: string, name: string, args: object) {
+  return {
+    toolCallId: id,
+    status: "calling" as const,
+    toolCall: {
+      id,
+      type: "function" as const,
+      function: { name, arguments: JSON.stringify(args) },
+    },
+    parsedArgs: args,
+  };
+}
+
+/**
+ * A session file saved while an edit was running, then continued: the
+ * extension host stopped answering before the next save, and after a reload
+ * the conversation went on. A later question still waits for its answer.
+ */
+const SAVED_MID_TURN: Session = {
+  sessionId: "saved-mid-turn",
+  title: "Saved mid-turn",
+  workspaceDirectory: "",
+  history: [
+    {
+      message: { role: "user", content: "Edit a.ts" },
+      contextItems: [],
+    },
+    {
+      message: {
+        role: "assistant",
+        content: "",
+        toolCalls: [storedCall("call_edit", "multi_edit", {}).toolCall],
+      },
+      contextItems: [],
+      reasoning: { active: true, text: "Planning the edit", startAt: 1 },
+      toolCallStates: [
+        storedCall("call_edit", "multi_edit", { filepath: "a.ts", edits: [] }),
+      ],
+    },
+    {
+      message: { role: "user", content: "Check" },
+      contextItems: [],
+    },
+    {
+      message: {
+        role: "assistant",
+        content: "",
+        toolCalls: [storedCall("call_question", "ask_question", {}).toolCall],
+      },
+      contextItems: [],
+      toolCallStates: [
+        storedCall("call_question", "ask_question", {
+          questions: [
+            {
+              question: "Which agent should be the default?",
+              options: [{ label: "nextcli" }, { label: "opencode" }],
+            },
+          ],
+        }),
+      ],
+    },
+  ],
+};
+
+const loaders = {
+  loadSession: async (store: Awaited<ReturnType<typeof renderChat>>["store"]) =>
+    store.dispatch(
+      loadSession({ sessionId: "saved-mid-turn", saveCurrentSession: false }),
+    ),
+  // What a reloaded editor runs to reopen the last session
+  loadLastSession: async (
+    store: Awaited<ReturnType<typeof renderChat>>["store"],
+  ) => {
+    store.dispatch(newSession({ ...SAVED_MID_TURN, history: [] }));
+    store.dispatch(newSession());
+    return store.dispatch(loadLastSession());
+  },
+};
+
+test.each(Object.keys(loaders) as (keyof typeof loaders)[])(
+  "%s stops a tool the file saved as running, and keeps an open question open",
+  async (loader) => {
+    const rendered = await renderChat();
+    const { ideMessenger, store } = rendered;
+    ideMessenger.responses["history/load"] = structuredClone(SAVED_MID_TURN);
+
+    await act(async () => {
+      await loaders[loader](store);
+    });
+
+    const history = store.getState().session.history;
+    expect(store.getState().session.id).toBe("saved-mid-turn");
+    const states = history.flatMap((item) => item.toolCallStates ?? []);
+    const edit = states.find((tc) => tc.toolCallId === "call_edit")!;
+    expect(edit.status).toBe("errored");
+    expect(edit.output?.[0].content).toContain("Its result was not recorded");
+    expect(history[1].reasoning?.active).toBe(false);
+    expect(history[1].reasoning?.endAt).toBeDefined();
+    expect(states.find((tc) => tc.toolCallId === "call_question")?.status).toBe(
+      "calling",
+    );
+  },
+);
+
+test("the model learns that a tool saved as running has no result", async () => {
+  const rendered = await renderChat();
+  const { ideMessenger, store } = rendered;
+  const withoutQuestion = structuredClone(SAVED_MID_TURN);
+  withoutQuestion.history = withoutQuestion.history.slice(0, 3);
+  withoutQuestion.history.push({
+    message: { role: "assistant", content: "Let me check." },
+    contextItems: [],
+  });
+  ideMessenger.responses["history/load"] = withoutQuestion;
+  await act(async () => {
+    await store.dispatch(
+      loadSession({ sessionId: "saved-mid-turn", saveCurrentSession: false }),
+    );
+  });
+  const request = vi.spyOn(ideMessenger, "request");
+
+  await sendInputWithMockedResponse(ideMessenger, "Go on", [
+    { role: "assistant", content: "Done" },
+  ]);
+
+  await waitFor(() =>
+    expect(
+      request.mock.calls.some(([type]) => type === "llm/compileChat"),
+    ).toBe(true),
+  );
+  const [, compile] = request.mock.calls.find(
+    ([type]) => type === "llm/compileChat",
+  )!;
+  // As a tool message, or a user message for models without native tools
+  const sent = (compile as { messages: ChatMessage[] }).messages.map(
+    renderChatMessage,
+  );
+  expect(
+    sent.some((text) => text.includes("Its result was not recorded")),
+  ).toBe(true);
+  expect(sent.some((text) => text.includes("No tool output"))).toBe(false);
 });

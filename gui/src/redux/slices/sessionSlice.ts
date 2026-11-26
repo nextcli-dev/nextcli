@@ -45,6 +45,45 @@ import {
   isQuestionCall,
 } from "../util";
 
+/**
+ * Ends what these items still show as running: reasoning stops, tool calls
+ * that hadn't started are canceled, and running ones fail with `stopped` as
+ * their output. An open question stays open: it waits for the user, not a
+ * tool, and answering it continues the turn.
+ */
+function stopRunningItems(
+  items: ChatHistoryItemWithMessageId[],
+  stopped: { description: string; content: string },
+) {
+  for (const item of items) {
+    if (item.reasoning?.active) {
+      item.reasoning.active = false;
+      item.reasoning.endAt = Date.now();
+    }
+    for (const toolCallState of item.toolCallStates ?? []) {
+      if (
+        toolCallState.status === "generating" ||
+        toolCallState.status === "generated"
+      ) {
+        toolCallState.status = "canceled";
+      } else if (
+        toolCallState.status === "calling" &&
+        !isQuestionCall(toolCallState)
+      ) {
+        toolCallState.status = "errored";
+        toolCallState.output = [
+          {
+            icon: "problems",
+            name: "Tool Call Stopped",
+            ...stopped,
+            hidden: false,
+          },
+        ];
+      }
+    }
+  }
+}
+
 /** Whether the summary at `index` is the latest one, the one requests use */
 function isSummaryInUse(state: SessionState, index: number): boolean {
   return (
@@ -420,38 +459,12 @@ export const sessionSlice = createSlice({
         return !isEmptyPlaceholder;
       });
 
-      for (const item of turn) {
-        if (item.reasoning?.active) {
-          item.reasoning.active = false;
-          item.reasoning.endAt = Date.now();
-        }
-        for (const toolCallState of item.toolCallStates ?? []) {
-          if (
-            toolCallState.status === "generating" ||
-            toolCallState.status === "generated"
-          ) {
-            toolCallState.status = "canceled";
-          } else if (
-            toolCallState.status === "calling" &&
-            !isQuestionCall(toolCallState)
-          ) {
-            // The tool may still finish; its result goes nowhere now. An
-            // open question stays open: it waits for the user, not a tool,
-            // and answering it after coming back continues the turn.
-            toolCallState.status = "errored";
-            toolCallState.output = [
-              {
-                icon: "problems",
-                name: "Tool Call Stopped",
-                description: "Session switched",
-                content:
-                  "The session was switched while this tool was running. Its result was not recorded.",
-                hidden: false,
-              },
-            ];
-          }
-        }
-      }
+      // The tool may still finish; its result goes nowhere now
+      stopRunningItems(turn, {
+        description: "Session switched",
+        content:
+          "The session was switched while this tool was running. Its result was not recorded.",
+      });
 
       state.history = state.history
         .slice(0, lastUserOrToolIdx + 1)
@@ -917,6 +930,14 @@ export const sessionSlice = createSlice({
 
       if (payload) {
         state.history = payload.history as any;
+        // Nothing runs yet for a session that is only now loaded. A file
+        // saved mid-turn (the editor reloaded, or the extension host stopped
+        // answering before the next save) would otherwise spin forever
+        stopRunningItems(state.history, {
+          description: "Interrupted",
+          content:
+            "This tool was still running when the session was last saved, and the session was loaded again before it finished. Its result was not recorded.",
+        });
         state.title = payload.title;
         state.id = payload.sessionId;
         if (payload.mode) {
