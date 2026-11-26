@@ -59,6 +59,10 @@ const readOther = [
   "ReadHistory",
   { session: "another", from: 0, to: 1 },
 ] as const;
+const outlineOther = [
+  "ReadHistory",
+  { session: "another", outline: true },
+] as const;
 
 const HEADLESS: InitializeToolServiceOverrides = { isHeadless: true };
 
@@ -95,6 +99,7 @@ const rows: Row[] = [
       [...searchHere, "allow"],
       [...searchAll, "ask"],
       [...readOther, "ask"],
+      [...outlineOther, "ask"],
     ],
     offered: {
       Bash: true,
@@ -323,6 +328,7 @@ const rows: Row[] = [
       [...searchHere, "allow"],
       [...searchAll, "ask"],
       [...readOther, "ask"],
+      [...outlineOther, "ask"],
     ],
   },
   {
@@ -460,6 +466,7 @@ const rows: Row[] = [
       [...searchHere, "allow"],
       [...searchAll, "deny"],
       [...readOther, "deny"],
+      [...outlineOther, "deny"],
     ],
     offered: { SearchHistory: true, ReadHistory: true },
   },
@@ -825,6 +832,7 @@ const rows: Row[] = [
       [...mcp, "ask"],
       [...searchHere, "allow"],
       [...searchAll, "ask"],
+      [...outlineOther, "ask"],
     ],
     offered: { Edit: true, Bash: true, SearchHistory: true },
   },
