@@ -42,7 +42,7 @@ export const searchHistoryTool: Tool = {
   name: "SearchHistory",
   displayName: "Search history",
   description:
-    "Search the full transcript of this conversation, including turns that were compacted out of your context, or of earlier sessions. Use it to recover a requirement, a file path, an error or a decision from before a compaction. Items with every word come first, then items with some of them, marked with the words they lack. A word matches where a word starts, in any case ('fix' finds 'Fixed' and 'config' finds 'loadConfig', but 'prefix' doesn't match 'fix'); common words such as 'the' or 'how' are skipped, and phrases aren't supported. Results give each item's session and position; read them with ReadHistory.",
+    "Search the full transcript of this conversation, including turns that were compacted out of your context, or of earlier sessions. Use it to recover a requirement, a file path, an error or a decision from before a compaction. Items with every word come first, then items with some of them, marked with the words they lack. Words match whole, in any case, with common endings ('fix' finds 'fixed' and 'fixes', not 'prefix'), and inside identifiers ('config' finds 'loadConfig', 'id' finds 'getElementById'); common words such as 'the' or 'how' are skipped, and phrases aren't supported. Results give each item's session and position; read them with ReadHistory.",
   parameters: {
     type: "object",
     required: ["query"],
@@ -120,7 +120,7 @@ export const searchHistoryTool: Tool = {
         : []),
       ...(result.basic
         ? [
-            "Basic search: this Node.js has no FTS5, so the search is slower and finds words by plain text comparison. Results are ranked the same way: items with every word first.",
+            "Basic search: this Node.js has no FTS5, so the search is slower and results aren't ranked by relevance. Words match the same way, and items with every word still come first.",
           ]
         : []),
       ...(result.pending

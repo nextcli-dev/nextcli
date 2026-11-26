@@ -116,7 +116,7 @@ export const searchHistoryImpl: ToolImpl = async (args, extras) => {
   }
   if (result.basic) {
     notes.push(
-      "Note: full-text search isn't available on this Node version, so words are found by plain text comparison. Results are ranked the same way: items with every word first.",
+      "Note: full-text search isn't available on this Node version, so results aren't ranked by relevance. Words match the same way, and items with every word still come first.",
     );
   }
   if (result.pending > 0) {

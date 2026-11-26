@@ -19,7 +19,7 @@ export const searchHistoryTool: Tool = {
   function: {
     name: BuiltInToolNames.SearchHistory,
     description:
-      "Search the full transcript of this conversation, including turns that were compacted out of your context, or of earlier conversations. Items with every word come first, then items with some of them, marked with the words they lack. A word matches where a word starts, in any case ('fix' finds 'Fixed' and 'config' finds 'loadConfig', but 'prefix' doesn't match 'fix'); common words such as 'the' or 'how' are skipped. Returns matching items with their position; read one in full with read_history. Secrets are redacted.",
+      "Search the full transcript of this conversation, including turns that were compacted out of your context, or of earlier conversations. Items with every word come first, then items with some of them, marked with the words they lack. Words match whole, in any case, with common endings ('fix' finds 'fixed' and 'fixes', not 'prefix'), and inside identifiers ('config' finds 'loadConfig', 'id' finds 'getElementById'); common words such as 'the' or 'how' are skipped. Returns matching items with their position; read one in full with read_history. Secrets are redacted.",
     parameters: {
       type: "object",
       required: ["query"],
