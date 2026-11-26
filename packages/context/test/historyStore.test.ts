@@ -674,6 +674,95 @@ describe.each(modes)("HistoryStore (fts: %s)", (fts) => {
     ]);
   });
 
+  it("outlines a session cn compacted: its user turns and the summary", async () => {
+    save("s1", [
+      user("Fix the config loader"),
+      read("src/config.ts", "the file"),
+      reply("Fixed it"),
+      user("Now the tests"),
+    ]);
+    save("s1", [summary("Summary: fixed the loader"), user("Continue")]);
+    save("s1", [
+      summary("Summary: fixed the loader"),
+      user("Continue"),
+      user("an undone ask"),
+    ]);
+    save("s1", [summary("Summary: fixed the loader"), user("Continue")]);
+    const store = await open(fts);
+
+    const outline = await store.outline("s1");
+
+    expect(outline.items.map((i) => [i.ord, i.kind, i.state, i.text])).toEqual([
+      [0, "user", "folded", "Fix the config loader"],
+      [3, "user", "folded", "Now the tests"],
+      [4, "summary", "live", "Summary: fixed the loader"],
+      [5, "user", "live", "Continue"],
+    ]);
+    expect(outline.pending).toBe(false);
+    expect(outline.next).toBeUndefined();
+  });
+
+  it("outlines a summary VS Code sets on a message, until it is removed", async () => {
+    const turns = [user("Refactor the importer"), reply("Done refactoring")];
+    save("s1", turns);
+    save("s1", [
+      turns[0],
+      { ...turns[1], conversationSummary: "Summary: the importer was split" },
+    ]);
+    const store = await open(fts);
+
+    const summarized = await store.outline("s1");
+    save("s1", turns);
+    const removed = await store.outline("s1");
+
+    expect(summarized.items.map((i) => [i.ord, i.kind, i.text])).toEqual([
+      [0, "user", "Refactor the importer"],
+      [1, "summary", "Summary: the importer was split"],
+    ]);
+    expect(removed.items.map((i) => [i.ord, i.kind])).toEqual([[0, "user"]]);
+  });
+
+  it("puts each outline item on one short line", async () => {
+    save("s1", [user(`first   line\n\nsecond line ${"word ".repeat(60)}`)]);
+    const store = await open(fts);
+
+    const [item] = (await store.outline("s1")).items;
+
+    expect(item.text).toMatch(/^first line second line word word/);
+    expect(item.text).not.toContain("\n");
+    expect(Array.from(item.text)).toHaveLength(161);
+    expect(item.text.endsWith("…")).toBe(true);
+  });
+
+  it("pages a long outline", async () => {
+    save(
+      "s1",
+      Array.from({ length: 105 }, (_, i) => user(`turn ${i}`)),
+    );
+    const store = await open(fts);
+
+    const first = await store.outline("s1");
+    const rest = await store.outline("s1", first.next);
+
+    expect(first.items).toHaveLength(100);
+    expect(first.next).toBe(100);
+    expect(rest.items.map((i) => i.ord)).toEqual([100, 101, 102, 103, 104]);
+    expect(rest.next).toBeUndefined();
+  });
+
+  it("says an outline is pending when the index is busy", async () => {
+    save("s1", [user("a turn not indexed yet")]);
+    const store = await open(fts);
+    const other = await SqliteDatabase.open(indexFile(fts));
+    await other.exec("BEGIN IMMEDIATE");
+    try {
+      expect(await store.outline("s1")).toEqual({ items: [], pending: true });
+    } finally {
+      await other.exec("ROLLBACK");
+      await other.close();
+    }
+  });
+
   it("cuts one item longer than a read short", async () => {
     save("s1", [read("huge.log", "z".repeat(200_000))]);
     const store = await open(fts);
@@ -718,6 +807,56 @@ describe.skipIf(!sqliteHasFts5())("HistoryStore across search modes", () => {
         const { hits } = await store.search({ text, limit: 5 });
         expect(hits.filter((h) => !h.missing)).toHaveLength(1);
       }
+    }
+  });
+});
+
+describe("HistoryStore and an index of another layout", () => {
+  it("rebuilds an index made before summaries were flagged", async () => {
+    const fts = sqliteHasFts5();
+    save("s1", [summary("Summary: the work so far"), user("Continue")]);
+    const first = await open(fts);
+    await first.sync();
+    await first.close();
+    stores.splice(stores.indexOf(first), 1);
+    // The previous layout: no summary column
+    const old = await SqliteDatabase.open(indexFile(fts));
+    await old.exec(`
+      ALTER TABLE messages DROP COLUMN summary;
+      PRAGMA user_version = 1;
+    `);
+    await old.close();
+
+    const store = await open(fts);
+    const outline = await store.outline("s1");
+
+    expect(outline.items.map((i) => [i.ord, i.kind])).toEqual([
+      [0, "summary"],
+      [1, "user"],
+    ]);
+  });
+
+  it("leaves an index of a newer layout alone, and says why", async () => {
+    const fts = sqliteHasFts5();
+    save("s1", [user("indexed by a newer version")]);
+    const first = await open(fts);
+    await first.sync();
+    await first.close();
+    stores.splice(stores.indexOf(first), 1);
+    const newer = await SqliteDatabase.open(indexFile(fts));
+    await newer.exec("PRAGMA user_version = 99");
+    await newer.close();
+
+    await expect(open(fts)).rejects.toThrow(/newer version of NextCLI/);
+
+    const db = await SqliteDatabase.open(indexFile(fts));
+    try {
+      expect(await db.get("PRAGMA user_version")).toEqual({ user_version: 99 });
+      expect(
+        await db.get<{ n: number }>("SELECT COUNT(*) AS n FROM messages"),
+      ).toEqual({ n: 1 });
+    } finally {
+      await db.close();
     }
   });
 });

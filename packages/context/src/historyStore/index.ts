@@ -2,6 +2,8 @@ export {
   HistoryStore,
   itemText,
   type HistoryHit,
+  type HistoryOutline,
+  type HistoryOutlineItem,
   type HistoryReadItem,
   type HistoryReadResult,
   type HistorySearchResult,

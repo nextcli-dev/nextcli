@@ -60,6 +60,24 @@ export interface HistoryReadResult {
   next?: number;
 }
 
+export interface HistoryOutlineItem {
+  ord: number;
+  /** A user message, or a compaction summary */
+  kind: "user" | "summary";
+  state: HistoryState;
+  ts: number;
+  /** The start of its redacted text, on one line */
+  text: string;
+}
+
+export interface HistoryOutline {
+  items: HistoryOutlineItem[];
+  /** The transcript isn't indexed to its end yet (busy, or out of time) */
+  pending: boolean;
+  /** More items than one outline shows: the position to list from next */
+  next?: number;
+}
+
 export interface HistoryStoreOptions {
   /**
    * The index database; keep it outside the sessions folder. Without FTS5
@@ -89,7 +107,9 @@ const READ_MAX_ITEMS = 40;
  * The layout of the index. An index of another version is dropped and built
  * again from the transcripts: it is a cache of them.
  */
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
+const OUTLINE_MAX_ITEMS = 100;
+const OUTLINE_TEXT_CHARS = 160;
 const READ_MAX_CHARS = 80_000;
 
 class SyncRace extends Error {}
@@ -256,6 +276,14 @@ export class HistoryStore {
     const version =
       (await db.get<{ user_version: number }>("PRAGMA user_version"))
         ?.user_version ?? 0;
+    if (version > SCHEMA_VERSION) {
+      // A newer cn or VS Code uses it: dropping it would make the two drop
+      // each other's index on every open
+      await db.close();
+      throw new Error(
+        `The history index ${file} was made by a newer version of NextCLI. Update the CLI and the extension to the same version.`,
+      );
+    }
     if (version !== SCHEMA_VERSION) {
       await db.exec(`
         DROP TABLE IF EXISTS journals;
@@ -283,7 +311,8 @@ export class HistoryStore {
         h TEXT NOT NULL,
         ts INTEGER NOT NULL,
         byte_offset INTEGER NOT NULL,
-        byte_len INTEGER NOT NULL
+        byte_len INTEGER NOT NULL,
+        summary INTEGER NOT NULL DEFAULT 0
       );
       CREATE INDEX IF NOT EXISTS messages_session ON messages (session_id, ord);
       ${
@@ -559,7 +588,7 @@ export class HistoryStore {
           live = live.slice(0, line.i);
           const id = Number(
             tx.run(
-              "INSERT INTO messages (session_id, ord, role, tool, state, h, ts, byte_offset, byte_len) VALUES (?, ?, ?, ?, 'live', ?, ?, ?, ?)",
+              "INSERT INTO messages (session_id, ord, role, tool, state, h, ts, byte_offset, byte_len, summary) VALUES (?, ?, ?, ?, 'live', ?, ?, ?, ?, ?)",
               sessionId,
               ord++,
               line.item.role,
@@ -568,6 +597,8 @@ export class HistoryStore {
               line.ts,
               offset,
               length,
+              // cn's compaction summary, or a message VS Code summarized
+              line.item.summary ? 1 : 0,
             ).lastID,
           );
           const { text, summary } = texts.get(offset)!;
@@ -596,6 +627,11 @@ export class HistoryStore {
             `DELETE FROM ${this.text} WHERE rowid >= ? AND rowid < ?`,
             id * MAX_CHUNKS + SUMMARY_CHUNK,
             (id + 1) * MAX_CHUNKS,
+          );
+          tx.run(
+            "UPDATE messages SET summary = ? WHERE id = ?",
+            line.text ? 1 : 0,
+            id,
           );
           const summary = texts.get(offset)?.text;
           if (summary) {
@@ -887,4 +923,70 @@ export class HistoryStore {
     }
     return { items, pending, ...(next === undefined ? {} : { next }) };
   }
+
+  /**
+   * The user's messages and the compaction summaries of a transcript, from
+   * position `from`, each with the start of its text: a map of a long
+   * session, to find the part to read. Taken from the index, redacted.
+   * Undone (cut) items are left out; compacted ones are marked.
+   */
+  async outline(sessionId: string, from = 0): Promise<HistoryOutline> {
+    const pending = (await this.sync([sessionId])) > 0;
+    const rows = await this.db.all<
+      {
+        ord: number;
+        role: string;
+        state: HistoryState;
+        ts: number;
+        summary: number;
+        head: string | null;
+        extra: string | null;
+      }[]
+    >(
+      `SELECT m.ord, m.role, m.state, m.ts, m.summary,
+        (SELECT substr(text, 1, 400) FROM ${this.text}
+          WHERE rowid = m.id * ${MAX_CHUNKS}) AS head,
+        (SELECT substr(text, 1, 400) FROM ${this.text}
+          WHERE rowid = m.id * ${MAX_CHUNKS} + ${SUMMARY_CHUNK}) AS extra
+      FROM messages m
+      WHERE m.session_id = ? AND m.ord >= ? AND m.state != 'cut'
+        AND (m.role = 'user' OR m.summary = 1)
+      ORDER BY m.ord
+      LIMIT ?`,
+      sessionId,
+      from,
+      // One more, to tell whether there is more
+      OUTLINE_MAX_ITEMS + 1,
+    );
+    const next = rows.length > OUTLINE_MAX_ITEMS ? rows.pop()!.ord : undefined;
+    const items: HistoryOutlineItem[] = [];
+    for (const row of rows) {
+      const item = { ord: row.ord, state: row.state, ts: row.ts };
+      if (row.role === "user") {
+        items.push({ ...item, kind: "user", text: outlineText(row.head) });
+      }
+      // VS Code's summary is in the summary chunks of the message it is set
+      // on; cn's summary message is its own text
+      if (row.summary) {
+        items.push({
+          ...item,
+          kind: "summary",
+          text: outlineText(row.extra ?? row.head),
+        });
+      }
+    }
+    return { items, pending, ...(next === undefined ? {} : { next }) };
+  }
+}
+
+/** One line of an outline: whitespace collapsed, cut short */
+function outlineText(text: string | null): string {
+  const line = (text ?? "").replace(/\s+/g, " ").trim();
+  if (!line) {
+    return "(no text)";
+  }
+  const chars = Array.from(line);
+  return chars.length > OUTLINE_TEXT_CHARS
+    ? `${chars.slice(0, OUTLINE_TEXT_CHARS).join("")}…`
+    : line;
 }
