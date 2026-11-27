@@ -104,8 +104,12 @@ export async function loadMarkdownSkills(): Promise<LoadSkillsResult> {
       )
     ).flat();
 
+    // Kept in the order the files were found, not the order their reads
+    // finish: the Skills tool lists them, and a request whose tools change
+    // misses the provider's prompt cache
+    const loaded: (Skill | undefined)[] = [];
     await Promise.all(
-      skillFilePaths.map(async (skillFilePath) => {
+      skillFilePaths.map(async (skillFilePath, index) => {
         try {
           const content = await fsPromises.readFile(skillFilePath, "utf-8");
           const { frontmatter, markdown } = parseMarkdownRule(content) as {
@@ -121,12 +125,12 @@ export async function loadMarkdownSkills(): Promise<LoadSkillsResult> {
             skillFilePath,
           );
 
-          skills.push({
+          loaded[index] = {
             ...validatedFrontmatter,
             content: markdown,
             path: getRelativePath(cwd, skillFilePath),
             files: filesInSkillsDirectory,
-          });
+          };
         } catch (error) {
           errors.push({
             fatal: false,
@@ -135,6 +139,7 @@ export async function loadMarkdownSkills(): Promise<LoadSkillsResult> {
         }
       }),
     );
+    skills.push(...loaded.filter((skill) => skill !== undefined));
   } catch (err) {
     errors.push({
       fatal: false,

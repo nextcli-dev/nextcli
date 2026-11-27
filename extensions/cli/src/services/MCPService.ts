@@ -236,12 +236,11 @@ export class MCPService
     }
 
     const existingConnection = this.connections.get(serverName);
-    if (existingConnection) {
-      if (existingConnection.status === "connected") {
-        await this.shutdownConnection(existingConnection);
-      }
-      this.connections.delete(serverName);
+    if (existingConnection?.status === "connected") {
+      await this.shutdownConnection(existingConnection);
     }
+    // Replaced in place: the server keeps its place, and so do its tools in
+    // the request, whose order the provider's prompt cache depends on
     await this.connectServer(serverConfig);
   }
 

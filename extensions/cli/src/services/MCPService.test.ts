@@ -13,7 +13,10 @@ const mockClient = {
   connect: vi.fn(),
   getServerCapabilities: vi.fn(() => ({ prompts: true, tools: true })),
   listPrompts: vi.fn(() => Promise.resolve({ prompts: [] })),
-  listTools: vi.fn(() => Promise.resolve({ tools: [] })),
+  listTools: vi.fn(
+    (): Promise<{ tools: { name: string }[] }> =>
+      Promise.resolve({ tools: [] }),
+  ),
   callTool: vi.fn(() => Promise.resolve({})),
   close: vi.fn(() => Promise.resolve()),
 };
@@ -134,6 +137,36 @@ describe("MCPService", () => {
     it("should handle server not found error", async () => {
       await expect(mcpService.restartServer("nonexistent")).rejects.toThrow(
         "Server nonexistent not found in configuration",
+      );
+    });
+
+    it("keeps a restarted server, and its tools, in their place", async () => {
+      const twoServers = {
+        ...mockAssistant,
+        mcpServers: [
+          { name: "one", command: "npx", args: ["-v"] },
+          { name: "two", command: "npx", args: ["-v"] },
+        ],
+      } as AssistantConfig;
+      mockClient.listTools.mockImplementation(async () => ({
+        tools: [{ name: `tool-${mockClient.listTools.mock.calls.length}` }],
+      }));
+      // Headless awaits every connection
+      await mcpService.initialize(twoServers, false, true);
+      const names = () =>
+        mcpService.getState().connections.map((c) => c.config?.name);
+      const tools = mcpService.getState().tools.map((t) => t.name);
+      expect(names()).toEqual(["one", "two"]);
+
+      await mcpService.restartServer("one");
+
+      // The request's tool list keeps its order, so the provider's prompt
+      // cache still matches it
+      expect(names()).toEqual(["one", "two"]);
+      expect(mcpService.getState().tools).toHaveLength(tools.length);
+      expect(mcpService.getState().tools.at(-1)?.name).toBe(tools.at(-1));
+      mockClient.listTools.mockImplementation(() =>
+        Promise.resolve({ tools: [] }),
       );
     });
 

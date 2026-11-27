@@ -121,4 +121,39 @@ Content
     const names = result.skills.map((s) => s.name).sort();
     expect(names).toEqual(["Skill One", "Skill Two"]);
   });
+
+  it("lists skills in the order their files were found, however the reads finish", async () => {
+    const fsPromises = (await import("fs/promises")).default;
+    for (const name of ["a", "b", "c"]) {
+      const dir = path.join(tmpDir, ".continue", "skills", `skill-${name}`);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, "SKILL.md"),
+        `---\nname: Skill ${name}\ndescription: d\n---\nContent\n`,
+      );
+    }
+
+    // The last file found finishes reading first, then each earlier one,
+    // once the loader has handled the one after it
+    const readFile = fsPromises.readFile;
+    const order: string[] = [];
+    const gates = [0, 1, 2].map(() => Promise.withResolvers<void>());
+    gates[2].resolve();
+    const spy = vi
+      .spyOn(fsPromises, "readFile")
+      .mockImplementation(async (file, options) => {
+        const index = order.push(String(file)) - 1;
+        const content = await readFile(file, options);
+        await gates[index].promise;
+        setImmediate(() => gates[index - 1]?.resolve());
+        return content;
+      });
+
+    const result = await loadMarkdownSkills();
+    spy.mockRestore();
+
+    expect(result.skills.map((skill) => skill.path)).toEqual(
+      order.map((file) => path.relative(process.cwd(), file)),
+    );
+  });
 });

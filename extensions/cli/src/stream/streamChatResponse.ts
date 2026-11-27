@@ -63,6 +63,7 @@ import {
   readCallEnd,
   TurnState,
 } from "./turnContinuation.js";
+import { turnPrefix } from "./turnPrefix.js";
 
 function updateFinalResponse(
   content: string,
@@ -451,6 +452,13 @@ export async function streamChatResponse(
     !isCompacting,
   );
 
+  const prefix = turnPrefix(async (mode) => ({
+    systemMessage: await services.systemMessage.getSystemMessage(mode),
+    tools: isCompacting
+      ? []
+      : await requestTools(model, isHeadless, getPermissions),
+  }));
+
   // Aborted on exit, so an interrupted turn never starts another tool (#12701)
   const unregisterAbort = registerAbortController(abortController);
   try {
@@ -465,21 +473,15 @@ export async function streamChatResponse(
       let wrapUp: LimitWrapUp | undefined;
       ({ wrapUp, chatHistory } = applyTurnLimit(budget, chatHistory));
 
-      // Get system message once per iteration (can change based on tool permissions mode)
-      const systemMessage = await services.systemMessage.getSystemMessage(
-        services.toolPermissions.getState().currentMode,
-      );
+      const { systemMessage, tools: turnTools } = await prefix();
 
       // A compaction is one call that only writes the summary. With tools,
       // the summarizer went on reviewing in a nested loop that --max-turns
       // and --max-cost never saw (AI review run 43308492603).
       const onlyCall = !!wrapUp || isCompacting;
 
-      // Recompute tools on each iteration to handle mode changes during
-      // streaming. A run's last call and a compaction get none.
-      const tools = onlyCall
-        ? []
-        : await requestTools(model, isHeadless, getPermissions);
+      // A run's last call and a compaction get no tools
+      const tools = onlyCall ? [] : turnTools;
 
       // A compaction below leaves a history that ends with a user turn
       const compaction = {
