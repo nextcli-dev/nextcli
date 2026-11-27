@@ -455,12 +455,6 @@ export async function streamChatResponse(
 
       const { systemMessage, tools } = await prefix();
 
-      // A compaction only writes the summary, and a run's last call only the
-      // answer: tool calls in either are dropped, never run. When they ran,
-      // the summarizer went on reviewing in a nested loop that --max-turns
-      // and --max-cost never saw (AI review run 43308492603).
-      const onlyCall = !!wrapUp || isCompacting;
-
       // A compaction below leaves a history that ends with a user turn
       const compaction = {
         model,
@@ -513,9 +507,9 @@ export async function streamChatResponse(
           }),
         );
       // A run's last call has no tools and no thinking: it is the last call
-      // the limits allow, so it must answer. A summary keeps the turn's
-      // tools and thinking, so it reads the conversation from the provider's
-      // cache.
+      // the limits allow, so it must answer. A summary's first call keeps the
+      // turn's tools and, unless its budget doesn't fit the output cap, its
+      // thinking, so it reads the conversation from the provider's cache.
       let response = await respond(
         wrapUp ? [] : tools,
         !!wrapUp || !!summary?.thinkingOff,
@@ -538,13 +532,18 @@ export async function streamChatResponse(
         return finalResponse || content || fullResponse;
       }
 
+      // A compaction only writes the summary: tool calls in it are dropped,
+      // never run. When they ran, the summarizer went on reviewing in a
+      // nested loop that --max-turns and --max-cost never saw (AI review run
+      // 43308492603).
       if (isCompacting) {
         // A summary is stored by compactChatHistory's caller, after it passes
         // the next-request check; storing it here would write before that
         handleContentDisplay(content, callbacks, isHeadless);
         return content;
       }
-      if (onlyCall) {
+      // A run's last call only writes the answer: its tool calls are dropped
+      if (wrapUp) {
         await saveFinalAnswer({
           chatHistory,
           content,

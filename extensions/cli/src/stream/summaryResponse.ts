@@ -44,9 +44,8 @@ function summaryProblem(response: SummaryResponse): string | undefined {
  * thinking, so it reads the conversation from the provider's cache. One that
  * can't be stored is asked for once more without tools or thinking, which
  * misses the cache: only when the compacting run's limits leave room for
- * that call, which then counts as one of its calls. A summary still cut off
- * throws, so a stub never replaces the conversation; an empty one is
- * reported by compactChatHistory.
+ * that call, which then counts as one of its calls. A summary still not
+ * usable throws, so neither a stub nor nothing replaces the conversation.
  */
 export async function settleSummary<R extends SummaryResponse>(
   first: R,
@@ -88,7 +87,7 @@ export async function settleSummary<R extends SummaryResponse>(
     response = await options.askAgain();
     problem = summaryProblem(response);
   }
-  if (problem && response.content.trim() && !signal.aborted) {
+  if (problem && !signal.aborted) {
     const hint =
       response.finishReason === "length"
         ? " Raise the output limit (maxTokens) for this model."

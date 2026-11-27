@@ -325,6 +325,45 @@ describe("the summary request compaction sends", () => {
       expect(result.compactionContent).toBe("Summary");
     });
 
+    it("fails, and keeps the session, when the summary is empty again", async () => {
+      vi.mocked(llmApi.chatCompletionStream).mockImplementation(
+        async function* () {
+          yield chunk("");
+        } as never,
+      );
+
+      await expect(
+        compactChatHistory(
+          [user("the task"), assistant("done")],
+          bigReserve,
+          llmApi,
+          next,
+        ),
+      ).rejects.toThrow(
+        "The model returned an empty summary, so the conversation was left as it is.",
+      );
+      expect(llmApi.chatCompletionStream).toHaveBeenCalledTimes(2);
+      expect(services.chatHistory.setHistory).not.toHaveBeenCalled();
+    });
+
+    // Thinking spent the output limit before any text
+    it("says to raise maxTokens for an empty summary that was cut off", async () => {
+      vi.mocked(llmApi.chatCompletionStream).mockImplementation(
+        async function* () {
+          yield chunk("", "length");
+        } as never,
+      );
+
+      await expect(
+        compactChatHistory(
+          [user("the task"), assistant("done")],
+          bigReserve,
+          llmApi,
+          next,
+        ),
+      ).rejects.toThrow(/cut off at its output limit.*maxTokens/);
+    });
+
     it("fails, and keeps the session, when the summary is cut off again", async () => {
       vi.mocked(llmApi.chatCompletionStream).mockImplementation(
         async function* () {

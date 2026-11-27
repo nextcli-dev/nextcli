@@ -313,7 +313,8 @@ export async function compactChatHistory(
   }
   const historyForCompaction = [...fitted.history, compactionPrompt];
 
-  // Stream the compaction response (service drives updates; this collects content locally)
+  // Stream the compaction response (the service drives updates; the text it
+  // returns is the summary)
   const controller = abortController || new AbortController();
 
   const streamCallbacks: StreamCallbacks = {
@@ -351,13 +352,6 @@ export async function compactChatHistory(
       const cancelled = new Error("Compaction cancelled");
       cancelled.name = "AbortError";
       throw cancelled;
-    }
-
-    // A stream that ends without text gives no summary
-    if (!compactionContent.trim()) {
-      throw new Error(
-        "The model returned an empty summary, so the conversation was left as it is.",
-      );
     }
 
     // The system prompt isn't part of the history (role:"system" items are

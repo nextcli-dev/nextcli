@@ -700,31 +700,6 @@ describe("compaction", () => {
       );
     });
 
-    it("fails and keeps the session when the summary is empty", async () => {
-      const mockStreamResponse = vi.mocked(streamChatResponse);
-      const onError = vi.fn();
-
-      mockStreamResponse.mockImplementation(
-        async (history, model, api, controller, callbacks) => {
-          callbacks?.onContent?.("");
-          callbacks?.onContentComplete?.("");
-          return "";
-        },
-      );
-
-      const history = convertToUnifiedHistory([
-        { role: "user", content: "Hello" },
-      ]);
-
-      // No result, so nothing replaces the session
-      await expect(
-        compactChatHistory(history, mockModel, mockLlmApi, {
-          callbacks: { onError },
-        }),
-      ).rejects.toThrow("empty summary");
-      expect(onError).toHaveBeenCalled();
-    });
-
     it("throws instead of keeping a partial summary when aborted", async () => {
       const controller = new AbortController();
       const onError = vi.fn();
