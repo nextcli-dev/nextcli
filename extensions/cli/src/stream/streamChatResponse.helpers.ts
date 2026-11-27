@@ -592,17 +592,19 @@ export function toUsage(
       completionTokens: outputTokens,
     };
   }
+  const details = fullUsage.prompt_tokens_details;
+  // DeepSeek's own API reports cache hits only as prompt_cache_hit_tokens
+  const cachedTokens =
+    details?.cache_read_tokens ??
+    details?.cached_tokens ??
+    fullUsage.prompt_cache_hit_tokens;
   return {
     promptTokens: fullUsage.prompt_tokens,
     completionTokens: fullUsage.completion_tokens,
-    promptTokensDetails: fullUsage.prompt_tokens_details
-      ? {
-          cachedTokens:
-            fullUsage.prompt_tokens_details.cache_read_tokens ??
-            fullUsage.prompt_tokens_details.cached_tokens,
-          cacheWriteTokens: fullUsage.prompt_tokens_details.cache_write_tokens,
-        }
-      : undefined,
+    promptTokensDetails:
+      details || cachedTokens !== undefined
+        ? { cachedTokens, cacheWriteTokens: details?.cache_write_tokens }
+        : undefined,
   };
 }
 
@@ -649,9 +651,6 @@ export function recordStreamTelemetry(options: {
   const totalDuration = responseEndTime - requestStartTime;
 
   // Calculate cost using comprehensive pricing that includes caching
-  let cost: number;
-  let priced: PriceSource;
-  let catalogDate: string | undefined;
   const usage = toUsage(fullUsage, inputTokens, outputTokens);
   // Kept responses only. An estimate, a discarded retry, an interrupt that
   // never received usage, and the compaction summary are not "Measured".
@@ -660,11 +659,13 @@ export function recordStreamTelemetry(options: {
     rememberResponseUsage(measured);
   }
 
-  if (fullUsage) {
-    ({ cost, priced, catalogDate } = priceRequest(model, usage));
-  } else {
-    cost = calculateFallbackCost(inputTokens, outputTokens);
-    priced = "fallback";
+  const { cost, catalogDate, ...price } = priceRequest(model, usage);
+  let priced: PriceSource = price.priced;
+  // No usage came back (a provider that sends none, a stream cut off before
+  // its usage chunk): the tokens are the caller's estimate, so the price is
+  // at best estimated. Never zero, so --max-cost still counts the call.
+  if (!fullUsage && priced !== "fallback") {
+    priced = "estimated";
   }
   recordPriceSource(priced, catalogDate);
 

@@ -5,6 +5,8 @@ import { getAdjustedTokenCountFromModel } from "core/llm/getAdjustedTokenCount.j
 import { encode } from "gpt-tokenizer";
 import type { ChatCompletionTool } from "openai/resources/chat/completions.mjs";
 
+import type { ToolCall } from "../tools/types.js";
+
 import { logger } from "./logger.js";
 import { getModelControlsFor, getModelSettings } from "./modelSettings.js";
 
@@ -407,4 +409,27 @@ export function validateContextLength(params: ValidateContextLengthParams): {
     contextLimit,
     maxTokens: reservedForOutput,
   };
+}
+
+/**
+ * The output tokens of a response that reported no usage, counted from what
+ * it streamed: text, reasoning and tool calls
+ */
+export function estimateOutputTokens(
+  content: string,
+  reasoning: Reasoning | undefined,
+  toolCalls: ReadonlyMap<string, ToolCall>,
+): number {
+  const reasoningText =
+    reasoning?.text ||
+    (reasoning?.details ?? [])
+      .map((detail) => detail.text ?? detail.summary ?? "")
+      .join("\n");
+  return countText(
+    [
+      content,
+      reasoningText,
+      ...[...toolCalls.values()].map((call) => call.name + call.argumentsStr),
+    ].join("\n"),
+  );
 }

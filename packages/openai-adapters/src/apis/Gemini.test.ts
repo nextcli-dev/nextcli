@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { GeminiApi } from "./Gemini.js";
 
@@ -132,5 +132,63 @@ describe("GeminiApi", () => {
       expect(result.contents[1].role).toBe("model");
       expect(result.contents[2].role).toBe("user");
     });
+  });
+});
+
+describe("GeminiApi usage", () => {
+  async function streamedUsage(usageMetadata: object) {
+    const api = new GeminiApi({ provider: "gemini", apiKey: "test-key" });
+    // Test mock: the Google SDK's stream, without a network call
+    vi.spyOn(
+      api as unknown as { generateStream(): Promise<AsyncIterable<unknown>> },
+      "generateStream",
+    ).mockResolvedValue(
+      (async function* () {
+        yield {
+          candidates: [{ content: { role: "model", parts: [{ text: "42" }] } }],
+          usageMetadata,
+        };
+      })(),
+    );
+    const chunks = [];
+    for await (const chunk of api.chatCompletionStream(
+      {
+        model: "gemini-3-flash",
+        messages: [{ role: "user", content: "17 * 23?" }],
+        stream: true,
+      },
+      new AbortController().signal,
+    )) {
+      chunks.push(chunk);
+    }
+    return chunks.at(-1)?.usage;
+  }
+
+  it("bills thinking as output and reports the cached part of the prompt", async () => {
+    expect(
+      await streamedUsage({
+        promptTokenCount: 5000,
+        cachedContentTokenCount: 4000,
+        candidatesTokenCount: 10,
+        thoughtsTokenCount: 300,
+        totalTokenCount: 5310,
+      }),
+    ).toEqual({
+      prompt_tokens: 5000,
+      completion_tokens: 310,
+      total_tokens: 5310,
+      prompt_tokens_details: { cached_tokens: 4000 },
+      completion_tokens_details: { reasoning_tokens: 300 },
+    });
+  });
+
+  it("leaves the details out when there is no cache hit or thinking", async () => {
+    expect(
+      await streamedUsage({
+        promptTokenCount: 50,
+        candidatesTokenCount: 10,
+        totalTokenCount: 60,
+      }),
+    ).toEqual({ prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 });
   });
 });

@@ -29,6 +29,7 @@ vi.mock("../util/tokenizer.js", () => ({
   countChatHistoryItemTokens: vi.fn(() => 100),
   countTotalInputTokens: vi.fn(() => 100),
   validateContextLength: vi.fn(() => ({ isValid: true })),
+  estimateOutputTokens: vi.fn(() => 0),
 }));
 
 vi.mock("../telemetry/telemetryService.js", () => ({

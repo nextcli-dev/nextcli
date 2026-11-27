@@ -3,6 +3,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const server = vi.hoisted(() => ({
   requests: [] as Array<{ url: string; body: any }>,
   parts: [] as any[],
+  usageMetadata: {
+    promptTokenCount: 10,
+    candidatesTokenCount: 5,
+    totalTokenCount: 15,
+  } as Record<string, number>,
 }));
 
 vi.mock("../util.js", async (importOriginal) => {
@@ -14,11 +19,7 @@ vi.mock("../util.js", async (importOriginal) => {
       return new Response(
         JSON.stringify({
           candidates: [{ content: { role: "model", parts: server.parts } }],
-          usageMetadata: {
-            promptTokenCount: 10,
-            candidatesTokenCount: 5,
-            totalTokenCount: 15,
-          },
+          usageMetadata: server.usageMetadata,
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       );
@@ -65,6 +66,11 @@ describe("VertexAIApi non-streamed Gemini", () => {
   afterEach(() => {
     server.requests.length = 0;
     server.parts = [];
+    server.usageMetadata = {
+      promptTokenCount: 10,
+      candidatesTokenCount: 5,
+      totalTokenCount: 15,
+    };
   });
 
   it("sends the system prompt as the system instruction, and the tools", async () => {
@@ -130,5 +136,25 @@ describe("VertexAIApi non-streamed Gemini", () => {
     );
     expect(completion.choices[0].message.content).toBe("Hi there");
     expect(completion.choices[0].finish_reason).toBe("stop");
+  });
+
+  it("counts the thinking as output and the cached part of the prompt", async () => {
+    server.parts = [{ text: "42" }];
+    server.usageMetadata = {
+      promptTokenCount: 5000,
+      cachedContentTokenCount: 4000,
+      candidatesTokenCount: 10,
+      thoughtsTokenCount: 300,
+      totalTokenCount: 5310,
+    };
+    const completion = await vertex().chatCompletionNonStream(
+      request,
+      new AbortController().signal,
+    );
+    expect(completion.usage).toMatchObject({
+      prompt_tokens: 5000,
+      completion_tokens: 310,
+      prompt_tokens_details: { cached_tokens: 4000 },
+    });
   });
 });

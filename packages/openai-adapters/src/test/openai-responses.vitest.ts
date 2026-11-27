@@ -590,10 +590,13 @@ describe("responseToChatCompletion", () => {
       },
     ]);
     expect(result.choices[0].finish_reason).toBe("tool_calls");
+    // The cached tokens are part of input_tokens, as in Chat Completions,
+    // so pricing bills them at the cached rate
     expect(result.usage).toEqual({
       prompt_tokens: 100,
       completion_tokens: 42,
       total_tokens: 142,
+      prompt_tokens_details: { cached_tokens: 4 },
     });
   });
 });
