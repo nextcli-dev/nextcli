@@ -369,6 +369,19 @@ export function processToolCallDelta(
   }
 }
 
+/**
+ * Whether a chunk's usage reports the call. An all-zero usage object reports
+ * nothing: priced as it stands, the call would be free.
+ */
+export function reportsUsage(
+  usage:
+    | { prompt_tokens?: number; completion_tokens?: number }
+    | null
+    | undefined,
+): boolean {
+  return !!usage && (usage.prompt_tokens || usage.completion_tokens || 0) > 0;
+}
+
 // Simple fallback cost calculation for unknown models
 function calculateFallbackCost(
   inputTokens: number,

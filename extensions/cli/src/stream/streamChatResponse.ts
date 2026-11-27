@@ -48,6 +48,7 @@ import {
   finalAnswerMaxTokens,
   recordFailedCall,
   recordStreamTelemetry,
+  reportsUsage,
   trackFirstTokenTime,
   warnUnknownZeroPrice,
 } from "./streamChatResponse.helpers.js";
@@ -278,7 +279,7 @@ export async function processStreamingResponse(
       logger.trace("Received chunk", { chunkCount, chunk });
 
       // Track token usage if available
-      if (chunk.usage) {
+      if (reportsUsage(chunk.usage)) {
         fullUsage = chunk.usage; // Capture full usage including cache details
       }
 
@@ -316,9 +317,11 @@ export async function processStreamingResponse(
       // Used only without a usage chunk: the request as its fit check
       // counted it and the streamed output, so the limits still see the call
       inputTokens: validation.inputTokens ?? 0,
-      outputTokens: fullUsage
-        ? 0
-        : estimateOutputTokens(aiResponse, reasoning.result(), toolCallsMap),
+      outputTokens: estimateOutputTokens(model, {
+        content: aiResponse,
+        reasoning: reasoning.result(),
+        toolCalls: toolCallsMap.values(),
+      }),
       model,
       tools,
       fullUsage,

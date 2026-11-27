@@ -412,24 +412,23 @@ export function validateContextLength(params: ValidateContextLengthParams): {
 }
 
 /**
- * The output tokens of a response that reported no usage, counted from what
- * it streamed: text, reasoning and tool calls
+ * The output tokens of a response or attempt that reported no usage, from
+ * what it streamed: the answer, the reasoning (signatures and encrypted
+ * reasoning too, as countReasoningTokens counts them) and the tool calls'
+ * names and arguments. Adjusted for the model like the prompt count, so both
+ * sides of the price are estimated the same way.
  */
 export function estimateOutputTokens(
-  content: string,
-  reasoning: Reasoning | undefined,
-  toolCalls: ReadonlyMap<string, ToolCall>,
+  model: ModelConfig,
+  response: {
+    content: string;
+    reasoning?: Reasoning;
+    toolCalls: Iterable<Pick<ToolCall, "name" | "argumentsStr">>;
+  },
 ): number {
-  const reasoningText =
-    reasoning?.text ||
-    (reasoning?.details ?? [])
-      .map((detail) => detail.text ?? detail.summary ?? "")
-      .join("\n");
-  return countText(
-    [
-      content,
-      reasoningText,
-      ...[...toolCalls.values()].map((call) => call.name + call.argumentsStr),
-    ].join("\n"),
-  );
+  const calls = [...response.toolCalls].map((c) => c.name + c.argumentsStr);
+  const tokens =
+    countText([response.content, ...calls].join("\n")) +
+    (response.reasoning ? countReasoningTokens(response.reasoning) : 0);
+  return getAdjustedTokenCountFromModel(tokens, model.model ?? "");
 }
