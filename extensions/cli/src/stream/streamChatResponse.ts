@@ -204,7 +204,7 @@ export async function processStreamingResponse(
     throw new Error(`Context length validation failed: ${validation.error}`);
   }
 
-  const { context, messages: openaiChatHistory } = await compiledRequest({
+  const { traced, messages: openaiChatHistory } = await compiledRequest({
     model,
     chatHistory,
     systemMessage,
@@ -246,7 +246,7 @@ export async function processStreamingResponse(
     requestStartTime,
     model,
     tools,
-    context,
+    ...traced,
     abortSignal: abortController.signal,
     estimateInputTokens: () =>
       countTotalInputTokens({ chatHistory, systemMessage, tools, model }),
@@ -315,7 +315,7 @@ export async function processStreamingResponse(
       model,
       tools,
       fullUsage,
-      context,
+      ...traced,
       skipLastUsage: options.isCompacting,
       call: {
         finishReason: callEnd.finishReason,
@@ -336,7 +336,7 @@ export async function processStreamingResponse(
     const aborted =
       error.name === "AbortError" || abortController?.signal.aborted;
     if (!attempts.recorded(error)) {
-      recordFailedCall({ model, requestStartTime, error, aborted, context });
+      recordFailedCall({ model, requestStartTime, error, aborted, ...traced });
     }
 
     if (aborted) {

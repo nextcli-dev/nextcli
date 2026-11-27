@@ -32,17 +32,23 @@ export function readTrace(dir, sessionId) {
 
 function usageOf(attrs) {
   const u = attrs.usage ?? {};
+  const details = u.prompt_tokens_details;
+  // The same fields, in the same order, as the CLI's toUsage
   const cacheRead =
-    u.prompt_tokens_details?.cached_tokens ??
+    details?.cache_read_tokens ??
+    details?.cached_tokens ??
+    u.prompt_cache_hit_tokens ??
     u.cache_read_input_tokens ??
     u.cached_tokens ??
     0;
+  const cacheWrite =
+    details?.cache_write_tokens ?? u.cache_creation_input_tokens ?? 0;
   const input =
-    u.prompt_tokens ??
-    (u.input_tokens ?? 0) + cacheRead + (u.cache_creation_input_tokens ?? 0);
+    u.prompt_tokens ?? (u.input_tokens ?? 0) + cacheRead + cacheWrite;
   return {
     input,
     cached: cacheRead,
+    written: cacheWrite,
     output: u.completion_tokens ?? u.output_tokens ?? 0,
   };
 }
@@ -187,6 +193,11 @@ export function summarizeTrace(traceDir, sessionId, workDir, window) {
     failedRequests: llm.filter((l) => l.attrs.error).length,
     inputTokens: sum(llm, (l) => usageOf(l.attrs).input),
     cachedTokens: sum(llm, (l) => usageOf(l.attrs).cached),
+    cacheWriteTokens: sum(llm, (l) => usageOf(l.attrs).written),
+    // Requests that changed what the last request on their system message
+    // sent (as cn built it); a first request isn't counted
+    prefixBreaks: llm.filter((l) => l.attrs.prefix?.extendsPrevious === false)
+      .length,
     outputTokens: sum(llm, (l) => usageOf(l.attrs).output),
     peakInputTokens: Math.max(0, ...llm.map((l) => usageOf(l.attrs).input)),
     overWindow: window
@@ -198,6 +209,8 @@ export function summarizeTrace(traceDir, sessionId, workDir, window) {
     compactionsCancelled: outcomes("cancelled").length,
     compactionRequests: summaryCalls.length,
     compactionCostUsd: sum(summaryCalls, (l) => l.attrs.costUsd ?? 0),
+    // A summary call's tool calls are dropped, never run
+    summaryToolCalls: sum(summaryCalls, (l) => l.attrs.toolCalls?.length ?? 0),
     omittedMessages: sum(
       outcomes("compacted"),
       (c) => c.attrs.omittedMessages ?? 0,

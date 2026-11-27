@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type { ModelConfig } from "@nextcli/config-yaml";
 import {
   buildSnapshot,
@@ -6,7 +8,10 @@ import {
   type ContextSnapshot,
 } from "@nextcli/context";
 import type { ChatHistoryItem } from "core/index.js";
-import type { ChatCompletionTool } from "openai/resources/chat/completions.mjs";
+import type {
+  ChatCompletionMessageParam,
+  ChatCompletionTool,
+} from "openai/resources/chat/completions.mjs";
 
 import { services } from "../services/index.js";
 import type { MCPConnectionInfo } from "../services/types.js";
@@ -140,6 +145,76 @@ export async function tracedContext(input: {
     return undefined;
   }
   return cliContextSnapshot(input);
+}
+
+/**
+ * What a traced request sends ahead of its new messages, as digests of the
+ * messages cn builds. An adapter can drop a field (Anthropic sends no
+ * `reasoning` text back), so a change here may not reach the provider; its
+ * cached token count says what the cache kept.
+ */
+export interface RequestPrefix {
+  systemHash: string;
+  toolsHash: string;
+  /**
+   * The request repeats the last request on the same system message (its
+   * tools and every message) and only adds to it, so a prompt cache can
+   * still hold the earlier part. Unset on the first request with this system
+   * message, so a subagent's calls in between don't count as a break.
+   */
+  extendsPrevious?: boolean;
+  /** When it doesn't: the first part that differs, in cache order */
+  changed?: "tools" | "messages";
+}
+
+const digest = (value: unknown) =>
+  createHash("sha256")
+    .update(typeof value === "string" ? value : JSON.stringify(value))
+    .digest("base64url")
+    .slice(0, 12);
+
+// The last request on each system message, the most recent few
+const lastRequests = new Map<
+  string,
+  { toolsHash: string; messages: string[] }
+>();
+const REMEMBERED_SYSTEM_MESSAGES = 8;
+
+/** The prefix of a traced request, or nothing when tracing is off. */
+export async function tracedPrefix(
+  systemMessage: string,
+  tools: readonly ChatCompletionTool[] | undefined,
+  messages: readonly ChatCompletionMessageParam[],
+): Promise<RequestPrefix | undefined> {
+  const { traceEnabled } = await import("../trace/trace.js");
+  if (!traceEnabled()) {
+    return undefined;
+  }
+  const systemHash = digest(systemMessage);
+  const toolsHash = digest(tools ?? []);
+  const sent = messages[0]?.role === "system" ? messages.slice(1) : messages;
+  const hashes = sent.map(digest);
+  const previous = lastRequests.get(systemHash);
+  lastRequests.delete(systemHash);
+  lastRequests.set(systemHash, { toolsHash, messages: hashes });
+  if (lastRequests.size > REMEMBERED_SYSTEM_MESSAGES) {
+    lastRequests.delete(lastRequests.keys().next().value!);
+  }
+  if (!previous) {
+    return { systemHash, toolsHash };
+  }
+  const changed =
+    previous.toolsHash === toolsHash
+      ? previous.messages.every((hash, index) => hashes[index] === hash)
+        ? undefined
+        : "messages"
+      : "tools";
+  return {
+    systemHash,
+    toolsHash,
+    extendsPrevious: !changed,
+    ...(changed && { changed }),
+  };
 }
 
 export async function cliContextSnapshot(input: {

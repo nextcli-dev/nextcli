@@ -22,6 +22,13 @@ const COLUMNS = [
   ["compactions", (r) => r.compactions, 1],
   ["input tokens", (r) => r.inputTokens, 0],
   ["cached", (r) => r.cachedTokens, 0],
+  ["cache write", (r) => r.cacheWriteTokens, 0],
+  [
+    "hit %",
+    (r) => (r.inputTokens ? (100 * r.cachedTokens) / r.inputTokens : null),
+    0,
+  ],
+  ["prefix breaks", (r) => r.prefixBreaks, 1],
   ["output", (r) => r.outputTokens, 0],
   ["cost $", (r) => r.costUsd, 3],
   ["wall s", (r) => r.wallMs / 1000, 0],

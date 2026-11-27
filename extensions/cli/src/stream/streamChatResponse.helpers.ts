@@ -19,6 +19,7 @@ import {
 import { ToolPermissionServiceState } from "src/services/ToolPermissionService.js";
 
 import { rememberResponseUsage } from "../context/lastUsage.js";
+import type { RequestPrefix } from "../context/snapshot.js";
 import { safeStderr } from "../init.js";
 import { checkToolPermission } from "../permissions/permissionChecker.js";
 import { toolPermissionManager } from "../permissions/permissionManager.js";
@@ -559,17 +560,25 @@ export async function compiledRequest(input: {
   systemMessage?: string;
   tools?: ChatCompletionTool[];
 }): Promise<{
-  context: ContextSnapshot | undefined;
+  /** For the trace, unset when tracing is off */
+  traced: { context?: ContextSnapshot; prefix?: RequestPrefix };
   messages: ChatCompletionMessageParam[];
 }> {
-  const { tracedContext } = await import("../context/snapshot.js");
+  const { tracedContext, tracedPrefix } = await import(
+    "../context/snapshot.js"
+  );
   const context = await tracedContext(input);
   const messages = convertFromUnifiedHistoryWithSystemMessage(
     input.chatHistory,
     input.systemMessage ?? "",
     { model: input.model.model },
   ) as ChatCompletionMessageParam[];
-  return { context, messages };
+  const prefix = await tracedPrefix(
+    input.systemMessage ?? "",
+    input.tools,
+    messages,
+  );
+  return { traced: { context, prefix }, messages };
 }
 
 /**
@@ -632,6 +641,8 @@ export function recordStreamTelemetry(options: {
   fullUsage?: any;
   /** Counts and names only. Written to the trace, not the log line. */
   context?: ContextSnapshot;
+  /** Digests of what the request repeats, for the trace */
+  prefix?: RequestPrefix;
   /**
    * A compaction summary. Its usage is not the conversation's last response.
    */
@@ -735,6 +746,7 @@ export function recordStreamTelemetry(options: {
     },
     costUsd: cost,
     priced,
+    prefix: options.prefix,
     ...options.call,
   };
   writeCallRecord(
@@ -770,6 +782,7 @@ export function recordFailedCall(options: {
   error: any;
   aborted: boolean;
   context?: ContextSnapshot;
+  prefix?: RequestPrefix;
 }): void {
   const { model, requestStartTime, aborted } = options;
   const durationMs = Date.now() - requestStartTime;
@@ -781,7 +794,7 @@ export function recordFailedCall(options: {
     error: failure.error,
   });
   writeCallRecord(
-    { model: model.model, ...failure, aborted },
+    { model: model.model, ...failure, aborted, prefix: options.prefix },
     { ts: requestStartTime, dur: durationMs },
     options.context,
   );

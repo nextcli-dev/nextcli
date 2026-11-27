@@ -73,6 +73,24 @@ describe("handleSlashCommands - /info", () => {
     expect(result?.exit).toBe(false);
   });
 
+  it("shows the session's cache hit rate", async () => {
+    vi.mocked(services.config.getState).mockReturnValue({
+      config: { name: "test-config", version: "1.0.0" } as any,
+      configPath: "/test/config.yaml",
+    });
+    vi.mocked(sessionModule.getSessionUsage).mockReturnValue({
+      totalCost: 0.5,
+      promptTokens: 40_000,
+      completionTokens: 2_000,
+      promptTokensDetails: { cachedTokens: 30_000, cacheWriteTokens: 5_000 },
+    });
+
+    const result = await handleSlashCommands("/info", mockAssistant as any);
+
+    expect(result?.output).toContain("Cache Read Tokens: 30,000");
+    expect(result?.output).toContain("Cache Hit: 75%");
+  });
+
   it("should show model info in configuration section", async () => {
     // Mock config service
     const mockConfigState = {

@@ -18,3 +18,11 @@ export function clearLastResponseUsage(): void {
 export function getLastResponseUsage(): Usage | undefined {
   return lastResponseUsage;
 }
+
+/** Cache reads as a share of prompt tokens, as a whole percentage */
+export function cacheHitPercent(usage: Usage): string {
+  const cached = usage.promptTokensDetails?.cachedTokens ?? 0;
+  return usage.promptTokens > 0
+    ? `${Math.round((cached / usage.promptTokens) * 100)}%`
+    : "0%";
+}

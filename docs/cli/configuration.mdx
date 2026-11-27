@@ -147,6 +147,7 @@ The first line is a header with the `cn` version, Node version, platform and ids
 - `ttftMs` is the time to the first generated token, reasoning included.
 - An attempt that streamed and then failed is written once, with `"discarded": true`, its `"error"` and what it produced up to then. A call that failed before streaming has `"error"` only.
 - `"error"` is the provider's error message: its first line, at most 200 characters, with the HTTP `"status"` when there is one.
+- `prefix` shows whether the request could reuse the provider's prompt cache. `systemHash` and `toolsHash` are digests of the system prompt and the tools. `extendsPrevious` is `true` when the request repeats everything the last request with the same system prompt sent and only adds to it. When it's `false`, `changed` says what broke the cached prefix first: `tools` or `messages`. The first request with a system prompt has neither field, so a subagent's calls in between don't count as a break. The digests are of the messages `cn` builds, before the provider's format: a field one provider doesn't take, like the reasoning text Anthropic doesn't get back, can be a break here that its cache never sees. The `usage` cache counts show what the provider actually read from its cache.
 
 Each attempt to compact the conversation, automatic or from `/compact`, is one more line, named `context.compaction`. Its summary request is also an `llm.request` line. The `attrs` hold:
 

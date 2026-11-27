@@ -15,11 +15,17 @@ import {
   exitHeadlessDone,
   exitHeadlessOnError,
   headlessExitCode,
+  startHeadlessRun,
   writeHeadlessError,
   writeHeadlessRunSummary,
 } from "./headlessRunSummary.js";
 
-const sessionUsage = { promptTokens: 0, completionTokens: 0, totalCost: 0 };
+const sessionUsage: {
+  promptTokens: number;
+  completionTokens: number;
+  totalCost: number;
+  promptTokensDetails?: { cachedTokens?: number; cacheWriteTokens?: number };
+} = { promptTokens: 0, completionTokens: 0, totalCost: 0 };
 const stderr: string[] = [];
 
 vi.mock("../init.js", () => ({
@@ -35,7 +41,13 @@ vi.mock("../session.js", () => ({
   getSessionUsage: vi.fn(() => ({ ...sessionUsage })),
 }));
 
-const start = { promptTokens: 100, completionTokens: 10, totalCost: 0.5 };
+const start = {
+  promptTokens: 100,
+  completionTokens: 10,
+  cachedTokens: 0,
+  cacheWriteTokens: 0,
+  totalCost: 0.5,
+};
 
 function summaryLine() {
   return JSON.parse(stderr.at(-1)!);
@@ -68,6 +80,8 @@ describe("writeHeadlessError", () => {
         priced: "exact",
         promptTokens: 500,
         completionTokens: 50,
+        cachedTokens: 0,
+        cacheWriteTokens: 0,
       },
     });
   });
@@ -100,8 +114,27 @@ describe("writeHeadlessRunSummary", () => {
         priced: "exact",
         promptTokens: 1000,
         completionTokens: 200,
+        cachedTokens: 0,
+        cacheWriteTokens: 0,
       },
     });
+  });
+
+  it("reports the run's own cache reads and writes", () => {
+    // The session adds cache tokens to its details object in place
+    const details = { cachedTokens: 4000, cacheWriteTokens: 1000 };
+    Object.assign(sessionUsage, { promptTokensDetails: details });
+    const atStart = startHeadlessRun("json");
+    details.cachedTokens += 9000;
+    details.cacheWriteTokens += 500;
+
+    writeHeadlessRunSummary(atStart, "json");
+
+    expect(summaryLine().usage).toMatchObject({
+      cachedTokens: 9000,
+      cacheWriteTokens: 500,
+    });
+    delete sessionUsage.promptTokensDetails;
   });
 
   it("reports the catalog's date when a price came from it", () => {
