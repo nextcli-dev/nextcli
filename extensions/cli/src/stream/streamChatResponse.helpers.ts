@@ -1110,3 +1110,18 @@ export function addUserMessage(
   });
   return chatHistory;
 }
+
+/** The answer so far: a turn that ends replaces it, and headless keeps the latest text */
+export function updateFinalResponse(
+  content: string,
+  shouldContinue: boolean,
+  isHeadless: boolean,
+  currentFinalResponse: string,
+): string {
+  if (!shouldContinue) {
+    return content;
+  } else if (isHeadless && content) {
+    return content;
+  }
+  return currentFinalResponse;
+}

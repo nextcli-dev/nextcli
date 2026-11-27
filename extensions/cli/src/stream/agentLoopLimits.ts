@@ -357,6 +357,28 @@ export class AgentLoopBudget {
     return wrapUp;
   }
 
+  /**
+   * Whether the run can make one call it didn't plan, using about `call`
+   * (a compaction's retry, between this turn's check and its model call):
+   * the turn's own call must still not be the last one, and the tokens and
+   * dollars left after it must still cover the turn's call and the final
+   * answer. When it can, the call counts as one of the run's model calls.
+   */
+  allowsExtraCall(call: UsageSnapshot): boolean {
+    const wrapUp = checkAgentLoopLimits(
+      this.limits,
+      this.turn + 1,
+      this.usageAtStart,
+      call,
+      this.estimateFinalCallCost,
+    );
+    if (wrapUp) {
+      return false;
+    }
+    this.turn++;
+    return true;
+  }
+
   /** Dollars left under --max-cost, or undefined without a cost limit */
   costLeft(): number | undefined {
     if (!this.limits.maxCostUsd || !this.usageAtStart) {

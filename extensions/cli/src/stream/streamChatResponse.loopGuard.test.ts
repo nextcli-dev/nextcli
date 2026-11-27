@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { services } from "../services/index.js";
 
 import {
+  AgentLoopBudget,
   AgentLoopLimitError,
   checkAgentLoopLimits,
   configureAgentLoopLimits,
@@ -126,7 +127,10 @@ function toolCallChunk(): ChatCompletionChunk {
 }
 
 // The wrap-up call has no tools, so the model answers instead
-function contentChunk(text: string): ChatCompletionChunk {
+function contentChunk(
+  text: string,
+  finishReason: ChatCompletionChunk.Choice["finish_reason"] = null,
+): ChatCompletionChunk {
   return {
     id: "test",
     object: "chat.completion.chunk",
@@ -136,7 +140,7 @@ function contentChunk(text: string): ChatCompletionChunk {
       {
         index: 0,
         delta: { content: text },
-        finish_reason: null,
+        finish_reason: finishReason,
       },
     ],
   };
@@ -344,13 +348,11 @@ describe("streamChatResponse - agent loop limits", () => {
         true,
       );
 
-    it("is one call with the turn's tools, whose tool calls are never run", async () => {
-      // AI review run 43308492603: the summarizer kept reading files
+    it("is one call with the turn's tools when it answers with text", async () => {
       vi.mocked(llmApi.chatCompletionStream).mockImplementation(
         async function* () {
           modelCalls++;
           yield contentChunk("Summary");
-          yield toolCallChunk();
         } as any,
       );
 
@@ -358,10 +360,121 @@ describe("streamChatResponse - agent loop limits", () => {
       expect(modelCalls).toBe(1);
       const calls = vi.mocked(llmApi.chatCompletionStream).mock.calls;
       expect(calls[0][0].tools).toEqual([fakeTool]);
-      // The tool call isn't run, and the summary isn't stored: its caller
-      // stores it once it passes the next-request check
+      // The summary isn't stored: its caller stores it once it passes the
+      // next-request check
       expect(handleToolCalls).not.toHaveBeenCalled();
       expect(getLimitReached()).toBeUndefined();
+    });
+
+    // AI review run 43308492603: the summarizer kept reading files. A
+    // tool-use reply is a lead-in and a tool call (review of #249).
+    it("never runs a tool call, and asks again for a lead-in to one", async () => {
+      vi.mocked(llmApi.chatCompletionStream).mockImplementation(
+        async function* (body: { tools?: unknown[] }) {
+          modelCalls++;
+          if (body.tools) {
+            yield contentChunk("I'll read the rest of the diff");
+            yield toolCallChunk();
+          } else {
+            yield contentChunk("Summary");
+          }
+        } as any,
+      );
+
+      await expect(compact()).resolves.toBe("Summary");
+      expect(modelCalls).toBe(2);
+      expect(handleToolCalls).not.toHaveBeenCalled();
+    });
+
+    describe("asks again only within the compacting run's limits", () => {
+      // The compacting run has made `turns` calls, this turn's included
+      const runAt = (turns: number) => {
+        const runBudget = new AgentLoopBudget(() => 0);
+        for (let turn = 0; turn < turns; turn++) {
+          runBudget.nextTurn();
+        }
+        return runBudget;
+      };
+      const compactIn = (runBudget: AgentLoopBudget) =>
+        streamChatResponse(
+          convertToUnifiedHistory([{ role: "user", content: "Summarize" }]),
+          model,
+          llmApi,
+          { signal: { aborted: false }, abort: vi.fn() } as any,
+          undefined,
+          true,
+          undefined,
+          { systemMessage: "System", tools: [fakeTool] as any, runBudget },
+        );
+
+      it("counts the second call as one of the run's calls", async () => {
+        configureAgentLoopLimits({ maxTurns: "4" });
+        const runBudget = runAt(2);
+
+        await expect(compactIn(runBudget)).resolves.toBe("Final answer");
+        expect(modelCalls).toBe(2);
+        // The turn's own call was the 2nd; after the retry, the run's next
+        // call is the 4th and last
+        expect(runBudget.nextTurn()?.limit).toBe("turns");
+      });
+
+      it("doesn't when the turn's own call would then be the last", async () => {
+        configureAgentLoopLimits({ maxTurns: "3" });
+
+        await expect(compactIn(runAt(2))).rejects.toThrow(
+          /tool call, and the run's limits leave no room to ask again/,
+        );
+        expect(modelCalls).toBe(1);
+      });
+
+      it.each([
+        ["--max-cost", { maxCost: "1" }, { totalCost: 0.95 }],
+        [
+          "--max-session-tokens",
+          { maxSessionTokens: "100000" },
+          { promptTokens: 98_000 },
+        ],
+      ])(
+        "doesn't when the run is nearly out of %s",
+        async (_, limits, used) => {
+          configureAgentLoopLimits(limits);
+          const runBudget = runAt(1);
+          Object.assign(sessionUsage, used);
+
+          await expect(compactIn(runBudget)).rejects.toThrow(
+            /leave no room to ask again/,
+          );
+          expect(modelCalls).toBe(1);
+        },
+      );
+
+      it("doesn't ask again for a cut-off summary written without thinking", async () => {
+        vi.mocked(llmApi.chatCompletionStream).mockImplementation(
+          async function* () {
+            modelCalls++;
+            yield contentChunk("The work so far: ", "length");
+          } as any,
+        );
+
+        await expect(
+          streamChatResponse(
+            convertToUnifiedHistory([{ role: "user", content: "Summarize" }]),
+            model,
+            llmApi,
+            { signal: { aborted: false }, abort: vi.fn() } as any,
+            undefined,
+            true,
+            undefined,
+            {
+              systemMessage: "System",
+              tools: [],
+              thinkingOff: true,
+              runBudget: runAt(1),
+            },
+          ),
+        ).rejects.toThrow(/cut off at its output limit.*maxTokens/);
+        expect(modelCalls).toBe(1);
+      });
     });
 
     it("keeps thinking on, and asks once more without tools or thinking for a summary that only calls tools", async () => {

@@ -12,6 +12,7 @@ import {
   isCompactionAborted,
 } from "./compaction.js";
 import { PRUNED_HISTORY_NOTE_PREFIX } from "./fitHistory.js";
+import { AgentLoopBudget } from "./stream/agentLoopLimits.js";
 import { streamChatResponse } from "./stream/streamChatResponse.js";
 
 // Mock the streamChatResponse function
@@ -392,7 +393,9 @@ describe("compaction", () => {
         });
 
         expect(sentHistoryLength()).toBeLessThan(withoutTools);
-        expect(vi.mocked(streamChatResponse).mock.calls.at(-1)?.[7]).toEqual({
+        expect(
+          vi.mocked(streamChatResponse).mock.calls.at(-1)?.[7],
+        ).toMatchObject({
           systemMessage: "System prompt",
           tools: [bigTool],
         });
@@ -598,11 +601,28 @@ describe("compaction", () => {
         { systemMessage: "The turn's system message", tools: [] },
       );
 
-      expect(mockStreamResponse.mock.calls.at(-1)?.[7]).toEqual({
+      expect(mockStreamResponse.mock.calls.at(-1)?.[7]).toMatchObject({
         systemMessage: "The turn's system message",
         tools: [],
       });
       currentSystemPrompt.text = "System prompt";
+    });
+
+    // The run that compacts: a second summary call must fit its limits
+    it("gives the summary request the compacting run's limits", async () => {
+      vi.mocked(streamChatResponse).mockImplementation(async () => "Summary");
+      const budget = new AgentLoopBudget();
+
+      await compactChatHistory(
+        convertToUnifiedHistory([{ role: "user", content: "Hello" }]),
+        mockModel,
+        mockLlmApi,
+        { budget },
+      );
+
+      expect(
+        vi.mocked(streamChatResponse).mock.calls.at(-1)?.[7]?.runBudget,
+      ).toBe(budget);
     });
 
     it("should handle callbacks correctly", async () => {

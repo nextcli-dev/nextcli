@@ -49,12 +49,14 @@ import {
   recordStreamTelemetry,
   reportsUsage,
   trackFirstTokenTime,
+  updateFinalResponse,
   warnUnknownZeroPrice,
 } from "./streamChatResponse.helpers.js";
 import {
   getCompletionOptions,
   StreamCallbacks,
 } from "./streamChatResponse.types.js";
+import { settleSummary, type SummaryRequest } from "./summaryResponse.js";
 import {
   type CallEnd,
   continueAfterResponse,
@@ -62,21 +64,7 @@ import {
   readCallEnd,
   TurnState,
 } from "./turnContinuation.js";
-import { type Prefix, turnPrefix } from "./turnPrefix.js";
-
-function updateFinalResponse(
-  content: string,
-  shouldContinue: boolean,
-  isHeadless: boolean,
-  currentFinalResponse: string,
-): string {
-  if (!shouldContinue) {
-    return content;
-  } else if (isHeadless && content) {
-    return content;
-  }
-  return currentFinalResponse;
-}
+import { turnPrefix } from "./turnPrefix.js";
 
 function handleContentDisplay(
   content: string,
@@ -175,6 +163,8 @@ export async function processStreamingResponse(
   shouldContinue: boolean;
   usage?: any;
   reasoning?: Reasoning;
+  /** How the call ended: "length" when it ran out of output tokens */
+  finishReason?: string;
 }> {
   const {
     model,
@@ -398,6 +388,7 @@ export async function processStreamingResponse(
     shouldContinue: validToolCalls.length > 0,
     usage: fullUsage,
     reasoning: reasoning.result(),
+    finishReason: callEnd.finishReason,
   };
 }
 
@@ -414,8 +405,8 @@ export async function streamChatResponse(
   isCompacting = false,
   /** The permissions this session's tools run with; the main session's by default */
   getPermissions?: ToolPermissionsSource,
-  /** A compaction's: the turn's system message and tools, which it was fit to */
-  given?: Prefix,
+  /** A compaction's: the turn's prefix, which it was fit to, and its run */
+  summary?: SummaryRequest,
 ) {
   logger.debug("streamChatResponse called", {
     model: model.model,
@@ -440,7 +431,13 @@ export async function streamChatResponse(
     !isCompacting,
   );
 
-  const prefix = turnPrefix({ model, isHeadless, getPermissions, given });
+  // A compaction's summary request carries the turn's prefix
+  const prefix = turnPrefix({
+    model,
+    isHeadless,
+    getPermissions,
+    given: summary,
+  });
 
   // Aborted on exit, so an interrupted turn never starts another tool (#12701)
   const unregisterAbort = registerAbortController(abortController);
@@ -474,6 +471,7 @@ export async function streamChatResponse(
         systemMessage,
         tools,
         abortController,
+        budget,
       };
 
       // Pre-API auto-compaction checkpoint (now includes tools). Not before
@@ -517,15 +515,22 @@ export async function streamChatResponse(
       // A run's last call has no tools and no thinking: it is the last call
       // the limits allow, so it must answer. A summary keeps the turn's
       // tools and thinking, so it reads the conversation from the provider's
-      // cache; one that answers only with tool calls is asked once more
-      // without them.
-      let response = await respond(wrapUp ? [] : tools, !!wrapUp);
-      if (
-        isCompacting &&
-        !response.content.trim() &&
-        !abortController.signal.aborted
-      ) {
-        response = await respond([], true);
+      // cache.
+      let response = await respond(
+        wrapUp ? [] : tools,
+        !!wrapUp || !!summary?.thinkingOff,
+      );
+
+      if (isCompacting) {
+        response = await settleSummary(response, {
+          summary,
+          budget,
+          model,
+          chatHistory,
+          systemMessage,
+          askAgain: () => respond([], true),
+          signal: abortController.signal,
+        });
       }
       const { content, toolCalls, shouldContinue, usage, reasoning } = response;
 
@@ -533,12 +538,11 @@ export async function streamChatResponse(
         return finalResponse || content || fullResponse;
       }
 
-      // Tool calls in it are dropped, not run
       if (isCompacting) {
         // A summary is stored by compactChatHistory's caller, after it passes
         // the next-request check; storing it here would write before that
         handleContentDisplay(content, callbacks, isHeadless);
-        return content || finalResponse || fullResponse;
+        return content;
       }
       if (onlyCall) {
         await saveFinalAnswer({

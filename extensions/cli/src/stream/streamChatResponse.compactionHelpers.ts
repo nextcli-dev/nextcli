@@ -8,6 +8,7 @@ import { ToolCall } from "../tools/index.js";
 import { logger } from "../util/logger.js";
 import { validateContextLength } from "../util/tokenizer.js";
 
+import type { AgentLoopBudget } from "./agentLoopLimits.js";
 import { handleAutoCompaction } from "./streamChatResponse.autoCompaction.js";
 import { StreamCallbacks } from "./streamChatResponse.types.js";
 import {
@@ -25,6 +26,8 @@ export interface CompactionHelperOptions {
   tools?: ChatCompletionTool[];
   /** The turn's controller: Escape stops a compaction as well as the turn */
   abortController?: AbortController;
+  /** The run's limits, which a second summary call must fit */
+  budget?: AgentLoopBudget;
 }
 
 /**
@@ -93,6 +96,7 @@ export async function handlePreApiCompaction(
     systemMessage,
     tools,
     abortController,
+    budget,
   } = options;
 
   if (isCompacting) {
@@ -110,6 +114,7 @@ export async function handlePreApiCompaction(
       systemMessage,
       tools,
       abortController,
+      budget,
       followedBy: NEXT_AFTER_SUMMARY,
     });
 
@@ -141,6 +146,7 @@ export async function handlePostToolValidation(
     systemMessage,
     tools,
     abortController,
+    budget,
   } = options;
 
   // Never compact inside a compaction
@@ -188,6 +194,7 @@ export async function handlePostToolValidation(
       systemMessage,
       tools,
       abortController,
+      budget,
       followedBy: NEXT_AFTER_SUMMARY,
     });
 
@@ -232,6 +239,7 @@ export async function handleNormalAutoCompaction(
     systemMessage,
     tools,
     abortController,
+    budget,
   } = options;
 
   // Never compact inside a compaction
@@ -258,6 +266,7 @@ export async function handleNormalAutoCompaction(
       systemMessage,
       tools,
       abortController,
+      budget,
       followedBy: NEXT_AFTER_SUMMARY,
     });
 
