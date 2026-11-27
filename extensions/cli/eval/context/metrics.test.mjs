@@ -167,6 +167,14 @@ describe("summarizeTrace", () => {
           },
           20,
         ),
+        line(
+          "llm.request",
+          {
+            usage: { prompt_tokens: 60 },
+            prefix: { extendsPrevious: false, changed: "reasoning" },
+          },
+          30,
+        ),
       ].join("\n") + "\n",
     );
 
@@ -174,6 +182,7 @@ describe("summarizeTrace", () => {
       cachedTokens: 90,
       cacheWriteTokens: 90,
       prefixBreaks: 1,
+      reasoningDrops: 1,
       compactionRequests: 1,
       summaryToolCalls: 1,
     });

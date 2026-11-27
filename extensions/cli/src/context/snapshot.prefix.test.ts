@@ -109,20 +109,27 @@ describe("tracedPrefix", () => {
     expect(await send([user("a")])).toBeUndefined();
   });
 
-  it("keeps a turn's prefix through tool rounds and the next user message", async () => {
+  it("keeps a turn's prefix through tool rounds", async () => {
     const first = await send([user("a")]);
     expect(first?.extendsPrevious).toBeUndefined();
 
-    expect(await send([user("a"), ...toolRound])).toMatchObject({
-      extendsPrevious: true,
-    });
-    // The reasoning text is sent only until the next user message
-    const followUp = await send([user("a"), ...toolRound, user("b")]);
-    expect(followUp).toEqual({
+    expect(await send([user("a"), ...toolRound])).toEqual({
       systemHash: first?.systemHash,
       toolsHash: first?.toolsHash,
       extendsPrevious: true,
     });
+  });
+
+  it("names a dropped reasoning text apart from a rewritten message", async () => {
+    await send([user("a"), ...toolRound]);
+    // cn sends the reasoning text only until the next user message
+    expect(await send([user("a"), ...toolRound, user("b")])).toMatchObject({
+      extendsPrevious: false,
+      changed: "reasoning",
+    });
+    expect(
+      await send([user("a"), ...toolRound, user("b"), user("c")]),
+    ).toMatchObject({ extendsPrevious: true });
   });
 
   it("names the first part that changed, in cache order", async () => {
@@ -195,7 +202,11 @@ describe("tracedPrefix", () => {
     expect(parentFirst!.extendsPrevious).toBeUndefined();
     expect(subagentFirsts).toEqual(new Array(10).fill(undefined));
     expect(parentNext!).toMatchObject({ extendsPrevious: true });
-    expect(summary!).toMatchObject({ extendsPrevious: true });
+    // Compared with the parent's last request: only its reasoning text is gone
+    expect(summary!).toMatchObject({
+      extendsPrevious: false,
+      changed: "reasoning",
+    });
   });
 
   it("starts over in a new session", async () => {

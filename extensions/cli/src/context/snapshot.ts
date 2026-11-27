@@ -162,8 +162,20 @@ export interface RequestPrefix {
    * Unset on a conversation's first request: a session's, or a subagent's.
    */
   extendsPrevious?: boolean;
-  /** When it doesn't: the first part that differs, in cache order */
-  changed?: "model" | "settings" | "tools" | "system" | "messages";
+  /**
+   * When it doesn't: the first part that differs, in cache order.
+   * `reasoning`: only an earlier assistant message's reasoning text, which
+   * cn sends back only until the next user message. That breaks the cache
+   * of a provider that receives the text (DeepSeek, Qwen); the Anthropic
+   * adapter never sends it.
+   */
+  changed?:
+    | "model"
+    | "settings"
+    | "tools"
+    | "system"
+    | "messages"
+    | "reasoning";
 }
 
 interface SentPrefix {
@@ -172,6 +184,8 @@ interface SentPrefix {
   toolsHash: string;
   systemHash: string;
   messages: string[];
+  /** The same messages without the reasoning text cn later drops */
+  lasting: string[];
 }
 
 const digest = (value: unknown) =>
@@ -181,10 +195,8 @@ const digest = (value: unknown) =>
     .slice(0, 12);
 
 /**
- * A message as far as a later request repeats it. cn sends an assistant's
- * reasoning text, and unsigned reasoning details, only until the next user
- * message (core's addReasoningFields), as reasoning providers expect, so
- * that drop is not a change.
+ * A message without what cn sends only until the next user message (core's
+ * addReasoningFields): an assistant's reasoning text and unsigned details.
  */
 function lastingPart(message: ChatCompletionMessageParam): unknown {
   if (message.role !== "assistant") {
@@ -219,9 +231,13 @@ function firstChange(
         ? "system"
         : part;
   }
-  return previous.messages.every((hash, index) => sent.messages[index] === hash)
+  const repeats = (key: "messages" | "lasting") =>
+    previous[key].every((hash, index) => sent[key][index] === hash);
+  return repeats("messages")
     ? undefined
-    : "messages";
+    : repeats("lasting")
+      ? "reasoning"
+      : "messages";
 }
 
 /**
@@ -242,14 +258,14 @@ export async function tracedPrefix(request: {
   }
   const { max_tokens: _cap, ...settings } = request.settings;
   const { messages } = request;
+  const after = messages[0]?.role === "system" ? messages.slice(1) : messages;
   const sent: SentPrefix = {
     model: `${request.model.provider}/${request.model.model}`,
     settings: digest(settings),
     toolsHash: digest(request.tools ?? []),
     systemHash: digest(request.systemMessage),
-    messages: (messages[0]?.role === "system" ? messages.slice(1) : messages)
-      .map(lastingPart)
-      .map(digest),
+    messages: after.map(digest),
+    lasting: after.map(lastingPart).map(digest),
   };
   const chain = currentTraceChain();
   const previous = chain.last as SentPrefix | undefined;

@@ -196,9 +196,16 @@ export function summarizeTrace(traceDir, sessionId, workDir, window) {
     inputTokens: sum(llm, (l) => usageOf(l.attrs).input),
     cachedTokens: sum(llm, (l) => usageOf(l.attrs).cached),
     cacheWriteTokens: sum(llm, (l) => usageOf(l.attrs).written),
-    // Requests that changed what the last request on their system message
-    // sent (as cn built it); a first request isn't counted
-    prefixBreaks: llm.filter((l) => l.attrs.prefix?.extendsPrevious === false)
+    // Requests that changed what the previous request in their conversation
+    // sent; a first request isn't counted
+    prefixBreaks: llm.filter(
+      (l) =>
+        l.attrs.prefix?.extendsPrevious === false &&
+        l.attrs.prefix.changed !== "reasoning",
+    ).length,
+    // Requests that changed only an earlier reasoning text: a break where
+    // the provider gets that text back (DeepSeek, Qwen), not on Anthropic
+    reasoningDrops: llm.filter((l) => l.attrs.prefix?.changed === "reasoning")
       .length,
     outputTokens: sum(llm, (l) => usageOf(l.attrs).output),
     peakInputTokens: Math.max(0, ...llm.map((l) => usageOf(l.attrs).input)),

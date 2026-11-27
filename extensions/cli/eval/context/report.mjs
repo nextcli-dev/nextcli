@@ -29,6 +29,7 @@ const COLUMNS = [
     0,
   ],
   ["prefix breaks", (r) => r.prefixBreaks, 1],
+  ["reasoning drops", (r) => r.reasoningDrops, 1],
   ["output", (r) => r.outputTokens, 0],
   ["cost $", (r) => r.costUsd, 3],
   ["wall s", (r) => r.wallMs / 1000, 0],
