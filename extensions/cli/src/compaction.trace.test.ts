@@ -13,6 +13,9 @@ const trace = vi.hoisted(() => ({
 
 vi.mock("./trace/trace.js", () => ({
   traceEnabled: () => trace.on,
+  // Chains are tested in context/snapshot.prefix.test.ts
+  withTraceChain: (loop: unknown) => loop,
+  currentTraceChain: () => ({}),
   traceEvent: (name: string, attrs: Record<string, unknown>) => {
     if (name === "context.compaction") {
       trace.events.push({ name, attrs });

@@ -53,7 +53,10 @@ import {
 } from "../util/truncateOutput.js";
 
 import { type PriceSource, recordPriceSource } from "./agentLoopLimits.js";
-import { StreamCallbacks } from "./streamChatResponse.types.js";
+import {
+  getCompletionOptions,
+  StreamCallbacks,
+} from "./streamChatResponse.types.js";
 
 export interface ToolResultWithStatus extends ChatCompletionToolMessageParam {
   status: ToolStatus;
@@ -559,6 +562,7 @@ export async function compiledRequest(input: {
   chatHistory: ChatHistoryItem[];
   systemMessage?: string;
   tools?: ChatCompletionTool[];
+  thinkingOff?: boolean;
 }): Promise<{
   /** For the trace, unset when tracing is off */
   traced: { context?: ContextSnapshot; prefix?: RequestPrefix };
@@ -573,11 +577,15 @@ export async function compiledRequest(input: {
     input.systemMessage ?? "",
     { model: input.model.model },
   ) as ChatCompletionMessageParam[];
-  const prefix = await tracedPrefix(
-    input.systemMessage ?? "",
-    input.tools,
+  const prefix = await tracedPrefix({
+    model: input.model,
+    settings: getCompletionOptions(input.model, {
+      thinkingOff: input.thinkingOff,
+    }),
+    systemMessage: input.systemMessage ?? "",
+    tools: input.tools,
     messages,
-  );
+  });
   return { traced: { context, prefix }, messages };
 }
 

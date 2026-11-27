@@ -148,23 +148,30 @@ export async function tracedContext(input: {
 }
 
 /**
- * What a traced request sends ahead of its new messages, as digests of the
- * messages cn builds. An adapter can drop a field (Anthropic sends no
- * `reasoning` text back), so a change here may not reach the provider; its
- * cached token count says what the cache kept.
+ * What a traced request repeats of the last request in its conversation (its
+ * trace chain), as digests of what cn builds. An adapter can drop a field, so
+ * a change here may not reach the provider; its cached token count says what
+ * the cache kept.
  */
 export interface RequestPrefix {
   systemHash: string;
   toolsHash: string;
   /**
-   * The request repeats the last request on the same system message (its
-   * tools and every message) and only adds to it, so a prompt cache can
-   * still hold the earlier part. Unset on the first request with this system
-   * message, so a subagent's calls in between don't count as a break.
+   * The request sends the same model, settings, tools, system message and
+   * messages as the last one in its conversation, and only adds messages.
+   * Unset on a conversation's first request: a session's, or a subagent's.
    */
   extendsPrevious?: boolean;
   /** When it doesn't: the first part that differs, in cache order */
-  changed?: "tools" | "messages";
+  changed?: "model" | "settings" | "tools" | "system" | "messages";
+}
+
+interface SentPrefix {
+  model: string;
+  settings: string;
+  toolsHash: string;
+  systemHash: string;
+  messages: string[];
 }
 
 const digest = (value: unknown) =>
@@ -173,42 +180,85 @@ const digest = (value: unknown) =>
     .digest("base64url")
     .slice(0, 12);
 
-// The last request on each system message, the most recent few
-const lastRequests = new Map<
-  string,
-  { toolsHash: string; messages: string[] }
->();
-const REMEMBERED_SYSTEM_MESSAGES = 8;
+/**
+ * A message as far as a later request repeats it. cn sends an assistant's
+ * reasoning text, and unsigned reasoning details, only until the next user
+ * message (core's addReasoningFields), as reasoning providers expect, so
+ * that drop is not a change.
+ */
+function lastingPart(message: ChatCompletionMessageParam): unknown {
+  if (message.role !== "assistant") {
+    return message;
+  }
+  const {
+    reasoning: _reasoning,
+    reasoning_content: _reasoningContent,
+    reasoning_details: details,
+    ...rest
+  } = message as ChatCompletionMessageParam & {
+    reasoning?: unknown;
+    reasoning_content?: unknown;
+    reasoning_details?: Record<string, unknown>[];
+  };
+  const signed = details?.filter(
+    (detail) => detail.signature || detail.data || detail.encrypted_content,
+  );
+  return signed?.length ? { ...rest, reasoning_details: signed } : rest;
+}
 
-/** The prefix of a traced request, or nothing when tracing is off. */
-export async function tracedPrefix(
-  systemMessage: string,
-  tools: readonly ChatCompletionTool[] | undefined,
-  messages: readonly ChatCompletionMessageParam[],
-): Promise<RequestPrefix | undefined> {
-  const { traceEnabled } = await import("../trace/trace.js");
+function firstChange(
+  previous: SentPrefix,
+  sent: SentPrefix,
+): RequestPrefix["changed"] {
+  const order = ["model", "settings", "toolsHash", "systemHash"] as const;
+  const part = order.find((key) => previous[key] !== sent[key]);
+  if (part) {
+    return part === "toolsHash"
+      ? "tools"
+      : part === "systemHash"
+        ? "system"
+        : part;
+  }
+  return previous.messages.every((hash, index) => sent.messages[index] === hash)
+    ? undefined
+    : "messages";
+}
+
+/**
+ * The prefix of a traced request, or nothing when tracing is off. The model's
+ * request settings are compared without the output cap, which no cache keys
+ * on; a thinking change counts, as it does on Anthropic.
+ */
+export async function tracedPrefix(request: {
+  model: ModelConfig;
+  settings: Record<string, unknown>;
+  systemMessage: string;
+  tools: readonly ChatCompletionTool[] | undefined;
+  messages: readonly ChatCompletionMessageParam[];
+}): Promise<RequestPrefix | undefined> {
+  const { currentTraceChain, traceEnabled } = await import("../trace/trace.js");
   if (!traceEnabled()) {
     return undefined;
   }
-  const systemHash = digest(systemMessage);
-  const toolsHash = digest(tools ?? []);
-  const sent = messages[0]?.role === "system" ? messages.slice(1) : messages;
-  const hashes = sent.map(digest);
-  const previous = lastRequests.get(systemHash);
-  lastRequests.delete(systemHash);
-  lastRequests.set(systemHash, { toolsHash, messages: hashes });
-  if (lastRequests.size > REMEMBERED_SYSTEM_MESSAGES) {
-    lastRequests.delete(lastRequests.keys().next().value!);
-  }
+  const { max_tokens: _cap, ...settings } = request.settings;
+  const { messages } = request;
+  const sent: SentPrefix = {
+    model: `${request.model.provider}/${request.model.model}`,
+    settings: digest(settings),
+    toolsHash: digest(request.tools ?? []),
+    systemHash: digest(request.systemMessage),
+    messages: (messages[0]?.role === "system" ? messages.slice(1) : messages)
+      .map(lastingPart)
+      .map(digest),
+  };
+  const chain = currentTraceChain();
+  const previous = chain.last as SentPrefix | undefined;
+  chain.last = sent;
+  const { systemHash, toolsHash } = sent;
   if (!previous) {
     return { systemHash, toolsHash };
   }
-  const changed =
-    previous.toolsHash === toolsHash
-      ? previous.messages.every((hash, index) => hashes[index] === hash)
-        ? undefined
-        : "messages"
-      : "tools";
+  const changed = firstChange(previous, sent);
   return {
     systemHash,
     toolsHash,
