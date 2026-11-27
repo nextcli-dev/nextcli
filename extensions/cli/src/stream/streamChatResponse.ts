@@ -456,14 +456,12 @@ export async function streamChatResponse(
       let wrapUp: LimitWrapUp | undefined;
       ({ wrapUp, chatHistory } = applyTurnLimit(budget, chatHistory));
 
-      // A run's last call and a compaction keep the turn's tools too, so
-      // they read the conversation from the provider's cache
       const { systemMessage, tools } = await prefix();
 
-      // A compaction is one call that only writes the summary: tool calls in
-      // it, as in a run's last call, are dropped, never run. Run, the
-      // summarizer went on reviewing in a nested loop that --max-turns and
-      // --max-cost never saw (AI review run 43308492603).
+      // A compaction only writes the summary, and a run's last call only the
+      // answer: tool calls in either are dropped, never run. When they ran,
+      // the summarizer went on reviewing in a nested loop that --max-turns
+      // and --max-cost never saw (AI review run 43308492603).
       const onlyCall = !!wrapUp || isCompacting;
 
       // A compaction below leaves a history that ends with a user turn
@@ -516,12 +514,14 @@ export async function streamChatResponse(
             isCompacting,
           }),
         );
-      let response = await respond(tools);
-      // A last call or a summary must write text. One that answered only
-      // with tool calls is asked once more as before the cache: no tools,
-      // no tokens spent on thinking
+      // A run's last call has no tools and no thinking: it is the last call
+      // the limits allow, so it must answer. A summary keeps the turn's
+      // tools and thinking, so it reads the conversation from the provider's
+      // cache; one that answers only with tool calls is asked once more
+      // without them.
+      let response = await respond(wrapUp ? [] : tools, !!wrapUp);
       if (
-        onlyCall &&
+        isCompacting &&
         !response.content.trim() &&
         !abortController.signal.aborted
       ) {
