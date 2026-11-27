@@ -4,7 +4,10 @@ import {
 } from "openai/resources/index";
 
 import { streamSse } from "@nextcli/fetch";
-import { filterAnthropicSamplingParams } from "@nextcli/openai-adapters";
+import {
+  filterAnthropicSamplingParams,
+  type LLMConfig,
+} from "@nextcli/openai-adapters";
 import {
   ResponseCreateParamsBase,
   ResponseInputItem,
@@ -193,6 +196,22 @@ class OpenAI extends BaseLLM {
     apiBase: "https://api.openai.com/v1/",
     maxEmbeddingBatchSize: 128,
   };
+
+  /**
+   * Prompt-cache markers on Alibaba's Qwen hosts (the adapter's
+   * DashScopeCaching) only when the model asks for caching, as core's other
+   * providers do. The CLI marks by default.
+   */
+  protected adapterConfig(): LLMConfig {
+    const caching =
+      this.cacheBehavior?.cacheSystemMessage ||
+      this.cacheBehavior?.cacheConversation ||
+      this.completionOptions.promptCaching;
+    return {
+      ...super.adapterConfig(),
+      ...(!caching && { cachingStrategy: "none" as const }),
+    } as LLMConfig;
+  }
 
   protected useOpenAIAdapterFor: (LlmApiRequestType | "*")[] = [
     "chat",

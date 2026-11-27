@@ -26,6 +26,10 @@ import {
 } from "./base.js";
 import { filterAnthropicSamplingParams } from "./AnthropicUtils.js";
 import {
+  addDashScopeCacheMarkers,
+  isDashScopeApiBase,
+} from "./DashScopeCaching.js";
+import {
   createResponsesStreamState,
   fromResponsesChunk,
   isResponsesModel,
@@ -89,6 +93,13 @@ export class OpenAIApi implements BaseLlmApi {
       body.max_tokens = undefined;
     }
 
+    if (
+      this.config.cachingStrategy !== "none" &&
+      isDashScopeApiBase(this.apiBase)
+    ) {
+      addDashScopeCacheMarkers(body);
+    }
+
     const sampling = chatSamplingParams(body.model, body);
     body.temperature = sampling.temperature;
     body.top_p = sampling.top_p;
@@ -96,6 +107,7 @@ export class OpenAIApi implements BaseLlmApi {
     // o-series models - only apply for official OpenAI API
     const isOfficialOpenAIAPI = this.apiBase === "https://api.openai.com/v1/";
     if (isOfficialOpenAIAPI) {
+      body.prompt_cache_key ??= this.config.promptCacheKey;
       if (body.model.startsWith("o") || body.model.includes("gpt-5")) {
         // a) use max_completion_tokens instead of max_tokens
         body.max_completion_tokens = body.max_tokens;
@@ -287,6 +299,7 @@ export class OpenAIApi implements BaseLlmApi {
   ): Promise<Response> {
     const params = toResponsesParams({
       ...(body as ChatCompletionCreateParams),
+      prompt_cache_key: body.prompt_cache_key ?? this.config.promptCacheKey,
       stream: false,
     });
     return (await this.openai.responses.create(params, {
@@ -300,6 +313,7 @@ export class OpenAIApi implements BaseLlmApi {
   ): AsyncGenerator<ChatCompletionChunk> {
     const params = toResponsesParams({
       ...(body as ChatCompletionCreateParams),
+      prompt_cache_key: body.prompt_cache_key ?? this.config.promptCacheKey,
       stream: true,
     });
 

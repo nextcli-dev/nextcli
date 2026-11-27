@@ -96,6 +96,15 @@ If you are using an OpenAI API compatible providers, you can change the `apiBase
   </Tab>
 </Tabs>
 
+### Prompt caching in the CLI
+
+The CLI (`cn`) keeps the cached prompt in use across an agent loop's requests:
+
+- **OpenAI (`api.openai.com`)** caches prompts by itself. Each `cn` run also sends its own `prompt_cache_key`, so parallel runs that start with the same system prompt, such as CI checks, don't crowd one cache. No other host gets the field.
+- **Alibaba's Qwen hosts** (DashScope, Qwen Cloud, and their token and coding plans) cache only up to a marker. `cn` marks the system message and the last two user or tool messages, so each request reads what the one before it cached. Without the markers these hosts cache in 256-token blocks and never the newest part.
+
+To turn the Qwen markers off, set `promptCaching: false` under the model's `defaultCompletionOptions`.
+
 ### How to Force Legacy Completions Endpoint Usage
 
 To force usage of `completions` instead of `chat/completions` endpoint you can set:

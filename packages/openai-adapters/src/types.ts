@@ -29,8 +29,27 @@ export const BasePlusConfig = BaseConfig.extend({
 });
 
 // OpenAI and compatible
+/**
+ * Prompt caching for Claude (apis/AnthropicCachingStrategies.ts). Without
+ * one, DEFAULT_CACHING_STRATEGY; `none` adds no cache_control anywhere, on
+ * Alibaba's Qwen hosts too (apis/DashScopeCaching.ts).
+ */
+const CachingStrategySchema = z.enum([
+  "none",
+  "systemOnly",
+  "systemAndTools",
+  "optimized",
+]);
+
 export const OpenAIConfigSchema = BasePlusConfig.extend({
   useResponsesApi: z.boolean().optional(),
+  cachingStrategy: CachingStrategySchema.optional(),
+  /**
+   * Sent as prompt_cache_key, to api.openai.com only, so one conversation's
+   * requests reach the same cache even when many share a prompt's opening.
+   * Strict OpenAI-compatible servers can reject unknown fields.
+   */
+  promptCacheKey: z.string().optional(),
   provider: z.union([
     z.literal("openai"),
     z.literal("mistral"),
@@ -65,17 +84,6 @@ export const OpenAIConfigSchema = BasePlusConfig.extend({
   ]),
 });
 export type OpenAIConfig = z.infer<typeof OpenAIConfigSchema>;
-
-/**
- * Prompt caching for Claude (apis/AnthropicCachingStrategies.ts). Without
- * one, DEFAULT_CACHING_STRATEGY; `none` adds no cache_control anywhere.
- */
-const CachingStrategySchema = z.enum([
-  "none",
-  "systemOnly",
-  "systemAndTools",
-  "optimized",
-]);
 
 export const OpenRouterConfigSchema = OpenAIConfigSchema.extend({
   provider: z.literal("openrouter"),

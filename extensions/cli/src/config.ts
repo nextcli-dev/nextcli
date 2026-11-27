@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import {
   Configuration,
   DefaultApi,
@@ -87,6 +89,10 @@ function removedAiSdkProvider(model: string): Error {
 /**
  * Creates an LLM API instance from a ModelConfig and auth configuration
  */
+// One per process: a run's requests share it, and parallel runs (CI checks
+// with the same system prompt) don't crowd one cache
+const PROMPT_CACHE_KEY = randomUUID();
+
 export function createLlmApi(
   model: ModelConfig,
   _authConfig: AuthConfig,
@@ -100,11 +106,12 @@ export function createLlmApi(
     apiBase: model.apiBase,
     requestOptions: withCliAttribution(model),
     env: model.env,
-    // Claude prompt caching is on unless the model turns it off, for
-    // example for a Vertex AI project that rejects cache_control
+    // Prompt caching (Claude, Qwen) is on unless the model turns it off,
+    // for example for a Vertex AI project that rejects cache_control
     ...(model.defaultCompletionOptions?.promptCaching === false && {
       cachingStrategy: "none",
     }),
+    promptCacheKey: PROMPT_CACHE_KEY,
   };
 
   traceModelRequests(model);
