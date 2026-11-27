@@ -304,6 +304,8 @@ export async function compactChatHistory(
   };
 
   try {
+    // With the system message it was fit to: this turn's, not one read
+    // again from files the agent may have edited since
     await streamChatResponse(
       historyForCompaction,
       summaryModel,
@@ -311,6 +313,8 @@ export async function compactChatHistory(
       controller,
       streamCallbacks,
       true,
+      undefined,
+      systemMessage,
     );
 
     // An aborted stream returns its partial text: never keep it

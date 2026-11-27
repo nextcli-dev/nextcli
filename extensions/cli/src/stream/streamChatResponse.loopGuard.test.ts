@@ -60,8 +60,12 @@ vi.mock("../util/logger.js", () => ({
   },
 }));
 
+const mcpState = vi.hoisted(() => ({ tools: [] as unknown[] }));
+
 vi.mock("../services/index.js", () => ({
   services: {
+    // One array: the request prefix rebuilds when the MCP tools change
+    mcp: { getState: vi.fn(() => mcpState) },
     systemMessage: {
       getSystemMessage: vi.fn(() => Promise.resolve("System message")),
     },

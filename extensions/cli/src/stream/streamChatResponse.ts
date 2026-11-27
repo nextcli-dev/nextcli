@@ -10,7 +10,6 @@ import {
 } from "../fitHistory.js";
 import type { ToolPermissionsSource } from "../permissions/types.js";
 import { services } from "../services/index.js";
-import { applyChatCompletionToolOverrides } from "../tools/applyToolOverrides.js";
 import { ToolCall } from "../tools/index.js";
 import { registerAbortController } from "../util/abortRegistry.js";
 import {
@@ -32,7 +31,7 @@ import {
   LimitWrapUp,
   wrapUpMessage,
 } from "./agentLoopLimits.js";
-import { getRequestTools, handleToolCalls } from "./handleToolCalls.js";
+import { handleToolCalls } from "./handleToolCalls.js";
 import { ReasoningAccumulator } from "./reasoning.js";
 import { trackStreamAttempts } from "./streamAttempts.js";
 import { processChunk } from "./streamChatResponse.chunk.js";
@@ -63,6 +62,7 @@ import {
   readCallEnd,
   TurnState,
 } from "./turnContinuation.js";
+import { turnPrefix } from "./turnPrefix.js";
 
 function updateFinalResponse(
   content: string,
@@ -401,20 +401,7 @@ export async function processStreamingResponse(
   };
 }
 
-/**
- * The tools a normal request carries, with the model's overrides. Compaction
- * sizes its summary with them.
- */
-export async function requestTools(
-  model: ModelConfig,
-  isHeadless: boolean,
-  getPermissions?: ToolPermissionsSource,
-): Promise<ChatCompletionTool[]> {
-  return applyChatCompletionToolOverrides(
-    await getRequestTools(isHeadless, getPermissions),
-    model.chatOptions?.toolOverrides,
-  );
-}
+export { requestTools } from "./turnPrefix.js";
 
 // Main function that handles the conversation loop
 // eslint-disable-next-line max-params
@@ -427,6 +414,8 @@ export async function streamChatResponse(
   isCompacting = false,
   /** The permissions this session's tools run with; the main session's by default */
   getPermissions?: ToolPermissionsSource,
+  /** A compaction's: the turn's system message, which the summary was fit to */
+  turnSystemMessage?: string,
 ) {
   logger.debug("streamChatResponse called", {
     model: model.model,
@@ -451,6 +440,14 @@ export async function streamChatResponse(
     !isCompacting,
   );
 
+  const prefix = turnPrefix({
+    model,
+    isHeadless,
+    getPermissions,
+    isCompacting,
+    systemMessage: turnSystemMessage,
+  });
+
   // Aborted on exit, so an interrupted turn never starts another tool (#12701)
   const unregisterAbort = registerAbortController(abortController);
   try {
@@ -465,21 +462,15 @@ export async function streamChatResponse(
       let wrapUp: LimitWrapUp | undefined;
       ({ wrapUp, chatHistory } = applyTurnLimit(budget, chatHistory));
 
-      // Get system message once per iteration (can change based on tool permissions mode)
-      const systemMessage = await services.systemMessage.getSystemMessage(
-        services.toolPermissions.getState().currentMode,
-      );
+      const { systemMessage, tools: turnTools } = await prefix();
 
       // A compaction is one call that only writes the summary. With tools,
       // the summarizer went on reviewing in a nested loop that --max-turns
       // and --max-cost never saw (AI review run 43308492603).
       const onlyCall = !!wrapUp || isCompacting;
 
-      // Recompute tools on each iteration to handle mode changes during
-      // streaming. A run's last call and a compaction get none.
-      const tools = onlyCall
-        ? []
-        : await requestTools(model, isHeadless, getPermissions);
+      // A run's last call and a compaction get no tools
+      const tools = onlyCall ? [] : turnTools;
 
       // A compaction below leaves a history that ends with a user turn
       const compaction = {

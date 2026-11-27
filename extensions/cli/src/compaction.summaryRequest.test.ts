@@ -11,8 +11,12 @@ import { services } from "./services/index.js";
 // The summary request goes through the real agent loop to a fake provider,
 // so the test sees the messages that would be sent.
 
+const mcpState = vi.hoisted(() => ({ tools: [] as unknown[] }));
+
 vi.mock("./services/index.js", () => ({
   services: {
+    // One array: the request prefix rebuilds when the MCP tools change
+    mcp: { getState: vi.fn(() => mcpState) },
     systemMessage: {
       getSystemMessage: vi.fn(() => Promise.resolve("System prompt")),
     },
