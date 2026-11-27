@@ -42,6 +42,7 @@ export class VertexAIApi implements BaseLlmApi {
     this.anthropicInstance = new AnthropicApi({
       provider: "anthropic",
       apiKey: "dud",
+      cachingStrategy: config.cachingStrategy,
     });
     this.geminiInstance = new GeminiApi({
       provider: "gemini",
@@ -181,8 +182,6 @@ export class VertexAIApi implements BaseLlmApi {
       // Accept: "application/json"
     };
 
-    // TODO - support anthropic prompt caching with "anthropic-beta" header
-
     if (this.config.apiKey) {
       // Express mode - no Authorization header needed, API key is in URL
       return headers;
@@ -212,7 +211,9 @@ export class VertexAIApi implements BaseLlmApi {
   }
 
   private convertAnthropicBody(oaiBody: ChatCompletionCreateParams): object {
-    const body = this.anthropicInstance._convertToCleanAnthropicBody(oaiBody);
+    // Vertex caches like the Anthropic API: cache_control in the body, no
+    // beta header (prompt caching is GA there)
+    const body = this.anthropicInstance._convertBody(oaiBody);
     const { model, ...exceptModel } = body;
     return {
       ...exceptModel,

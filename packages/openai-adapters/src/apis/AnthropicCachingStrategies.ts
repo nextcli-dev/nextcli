@@ -1,8 +1,9 @@
 import { MessageCreateParams } from "@anthropic-ai/sdk/resources";
 
-import { addCacheControlToLastTwoUserMessages } from "./AnthropicUtils.js";
-
-const MAX_CACHING_MESSAGES = 4;
+import {
+  addCacheControlToLastTwoUserMessages,
+  MAX_CACHE_BREAKPOINTS,
+} from "./AnthropicUtils.js";
 
 // Caching strategy type - transforms a clean Anthropic body by adding cache_control
 export type CachingStrategy = (
@@ -17,7 +18,7 @@ const noCachingStrategy: CachingStrategy = (body) => body;
 
 // Strategy 2: System Messages Only
 const systemOnlyStrategy: CachingStrategy = (body) => {
-  let availableCacheMessages = MAX_CACHING_MESSAGES;
+  let availableCacheMessages = MAX_CACHE_BREAKPOINTS;
   if (body.system && Array.isArray(body.system)) {
     return {
       ...body,
@@ -39,7 +40,7 @@ const systemOnlyStrategy: CachingStrategy = (body) => {
 // Strategy 3: System and Tools (High Impact)
 const systemAndToolsStrategy: CachingStrategy = (body) => {
   const result = { ...body };
-  let availableCacheMessages = MAX_CACHING_MESSAGES;
+  let availableCacheMessages = MAX_CACHE_BREAKPOINTS;
 
   // Cache system messages
   if (result.system && Array.isArray(result.system)) {
@@ -69,8 +70,8 @@ const systemAndToolsStrategy: CachingStrategy = (body) => {
     });
   }
 
-  // Cache last two user messages for turn-level caching.
-  // Uses the remaining 2 breakpoints (system=1, last tool=1, 2 user messages=2, total=4).
+  // Cache the last two user messages for turn-level caching, with the
+  // breakpoints system and tools left (each system block takes one).
   // Clone messages to avoid mutating the original input.
   result.messages = result.messages.map((msg) => ({
     ...msg,
@@ -78,7 +79,7 @@ const systemAndToolsStrategy: CachingStrategy = (body) => {
       ? msg.content.map((block) => ({ ...block }))
       : msg.content,
   }));
-  addCacheControlToLastTwoUserMessages(result.messages);
+  addCacheControlToLastTwoUserMessages(result.messages, availableCacheMessages);
 
   return result;
 };
@@ -86,7 +87,7 @@ const systemAndToolsStrategy: CachingStrategy = (body) => {
 // Strategy 4: Optimized (Intelligent Caching)
 const optimizedStrategy: CachingStrategy = (body) => {
   const result = { ...body };
-  let availableCacheMessages = MAX_CACHING_MESSAGES;
+  let availableCacheMessages = MAX_CACHE_BREAKPOINTS;
 
   // Always cache system messages
   if (result.system && Array.isArray(result.system)) {

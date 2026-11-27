@@ -38,7 +38,6 @@ import { extractBase64FromDataUrl } from "../util/url.js";
 import {
   CACHING_STRATEGIES,
   DEFAULT_CACHING_STRATEGY,
-  CachingStrategyName,
 } from "./AnthropicCachingStrategies.js";
 import type { ThinkingMode } from "../modelControls.js";
 import {
@@ -50,6 +49,8 @@ import {
 } from "./anthropicControls.js";
 import {
   addCacheControlToLastTwoUserMessages,
+  countCacheBreakpoints,
+  MAX_CACHE_BREAKPOINTS,
   anthropicFastMode,
   getAnthropicHeaders,
   getAnthropicMediaTypeFromDataUrl,
@@ -138,18 +139,15 @@ export function anthropicFinishReason(
 export class AnthropicApi implements BaseLlmApi {
   apiBase: string = "https://api.anthropic.com/v1/";
 
-  constructor(
-    protected config: AnthropicConfig & {
-      cachingStrategy?: CachingStrategyName;
-    },
-  ) {
+  constructor(protected config: AnthropicConfig) {
     this.apiBase = config.apiBase ?? this.apiBase;
     if (!this.apiBase.endsWith("/")) {
       this.apiBase += "/";
     }
   }
 
-  private _convertBody(oaiBody: ChatCompletionCreateParams) {
+  /** The Anthropic body with the caching strategy applied */
+  public _convertBody(oaiBody: ChatCompletionCreateParams) {
     // Step 1: Convert to clean Anthropic body (no caching)
     const cleanBody = this._convertToCleanAnthropicBody(oaiBody);
 
@@ -157,10 +155,13 @@ export class AnthropicApi implements BaseLlmApi {
     const strategy = this.config.cachingStrategy ?? DEFAULT_CACHING_STRATEGY;
     const result = CACHING_STRATEGIES[strategy](cleanBody);
 
-    // Step 3: Cache last two user messages for conversation turn caching
-    // Skip when caching is disabled
+    // Step 3: Cache last two user messages for conversation turn caching,
+    // within the breakpoints the strategy left. Skip when caching is disabled
     if (strategy !== "none") {
-      addCacheControlToLastTwoUserMessages(result.messages);
+      addCacheControlToLastTwoUserMessages(
+        result.messages,
+        MAX_CACHE_BREAKPOINTS - countCacheBreakpoints(result),
+      );
     }
 
     return result;

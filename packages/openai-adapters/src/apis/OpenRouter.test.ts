@@ -48,6 +48,39 @@ describe("OpenRouterApi Anthropic caching", () => {
     ]);
   });
 
+  it("stays within 4 breakpoints when the system message has two parts", () => {
+    const body: ChatCompletionCreateParams = {
+      model: "anthropic/claude-sonnet-5-5",
+      messages: [
+        {
+          role: "system",
+          content: [
+            { type: "text", text: "System one" },
+            { type: "text", text: "System two" },
+          ],
+        },
+        { role: "user", content: "First" },
+        { role: "assistant", content: "Resp" },
+        { role: "user", content: "Second" },
+      ],
+      tools: [
+        {
+          type: "function",
+          function: { name: "Read", parameters: { type: "object" } },
+        },
+      ],
+    };
+
+    applyAnthropicCachingToOpenRouterBody(body, "systemAndTools");
+
+    // Two system parts and the tool leave one marker, for the newest message
+    expect(JSON.stringify(body).split('"cache_control"')).toHaveLength(5);
+    expect(body.messages[3].content).toEqual([
+      { type: "text", text: "Second", cache_control: { type: "ephemeral" } },
+    ]);
+    expect(body.messages[1].content).toBe("First");
+  });
+
   it("adds cache_control to system message via strategy", () => {
     const api = new OpenRouterApi(baseConfig);
 

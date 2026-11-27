@@ -201,6 +201,7 @@ export type {
   LLMConfig,
   OneProviderConfig,
   OpenRouterConfig,
+  VertexAIConfig,
 } from "./types.js";
 
 export {

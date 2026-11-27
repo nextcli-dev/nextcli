@@ -100,6 +100,11 @@ export function createLlmApi(
     apiBase: model.apiBase,
     requestOptions: withCliAttribution(model),
     env: model.env,
+    // Claude prompt caching is on unless the model turns it off, for
+    // example for a Vertex AI project that rejects cache_control
+    ...(model.defaultCompletionOptions?.promptCaching === false && {
+      cachingStrategy: "none",
+    }),
   };
 
   traceModelRequests(model);

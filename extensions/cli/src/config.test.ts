@@ -1,4 +1,5 @@
 import { AssistantUnrolled, ModelConfig } from "@nextcli/config-yaml";
+import type { ChatCompletionCreateParams } from "openai/resources/index";
 import { describe, expect, test, vi, beforeEach } from "vitest";
 
 // Mock dependencies
@@ -69,6 +70,42 @@ describe("config", () => {
         apiBase: "http://127.0.0.1:8091/v1",
       } as ModelConfig;
       expect(createLlmApi(bridge, mockAuthConfig)).not.toBeNull();
+    });
+
+    describe("Claude prompt caching", () => {
+      const claude = {
+        provider: "anthropic",
+        model: "claude-sonnet-5-5",
+        name: "Claude",
+        apiKey: "k",
+      } as ModelConfig;
+      const body = (model: ModelConfig) =>
+        JSON.stringify(
+          (
+            createLlmApi(model, mockAuthConfig) as unknown as {
+              _convertBody(body: ChatCompletionCreateParams): unknown;
+            }
+          )._convertBody({
+            model: "claude-sonnet-5-5",
+            messages: [
+              { role: "system", content: "You are a coding agent." },
+              { role: "user", content: "Fix the test." },
+            ],
+          }),
+        );
+
+      test("is on by default", () => {
+        expect(body(claude)).toContain('"cache_control"');
+      });
+
+      test("is off when the model sets promptCaching: false", () => {
+        expect(
+          body({
+            ...claude,
+            defaultCompletionOptions: { promptCaching: false },
+          }),
+        ).not.toContain('"cache_control"');
+      });
     });
   });
 

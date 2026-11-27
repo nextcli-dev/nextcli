@@ -1,9 +1,15 @@
 import {
   Base64ImageSource,
+  ContentBlockParam,
+  DocumentBlockParam,
   ErrorResponse,
+  ImageBlockParam,
+  MessageCreateParams,
   MessageParam,
+  TextBlockParam,
   Tool,
   ToolChoice,
+  ToolResultBlockParam,
 } from "@anthropic-ai/sdk/resources";
 import {
   ChatCompletionTool,
@@ -96,7 +102,60 @@ export function getAnthropicHeaders(
   return headers;
 }
 
-export function addCacheControlToLastTwoUserMessages(messages: MessageParam[]) {
+/**
+ * Whether a cache_control marker may sit on this block of a user message.
+ * The API rejects a marker on an empty text block.
+ */
+function isCacheableUserBlock(
+  part: ContentBlockParam,
+): part is
+  | TextBlockParam
+  | ToolResultBlockParam
+  | ImageBlockParam
+  | DocumentBlockParam {
+  switch (part.type) {
+    case "text":
+      return part.text.length > 0;
+    case "tool_result":
+    case "image":
+    case "document":
+      return true;
+    default:
+      return false;
+  }
+}
+
+/** The API rejects a request with more cache_control markers than this */
+export const MAX_CACHE_BREAKPOINTS = 4;
+
+/** The cache_control markers a request body already carries */
+export function countCacheBreakpoints(
+  body: Pick<MessageCreateParams, "system" | "tools" | "messages">,
+): number {
+  const marked = (blocks: unknown): number =>
+    Array.isArray(blocks)
+      ? blocks.filter((block) => !!block?.cache_control).length
+      : 0;
+  return (
+    marked(body.system) +
+    marked(body.tools) +
+    body.messages.reduce((sum, message) => sum + marked(message.content), 0)
+  );
+}
+
+/**
+ * Marks the last cacheable block of each of the last two user messages, so a
+ * request reads the conversation the previous request cached. In an agent
+ * loop those messages hold only tool results: marking text blocks alone left
+ * the conversation uncached from the loop's third request on.
+ *
+ * Adds at most `available` markers, newest message first; a block already
+ * marked costs none.
+ */
+export function addCacheControlToLastTwoUserMessages(
+  messages: MessageParam[],
+  available = 2,
+) {
   let userMessages = 0;
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i];
@@ -107,8 +166,11 @@ export function addCacheControlToLastTwoUserMessages(messages: MessageParam[]) {
       }
       for (let j = msg.content.length - 1; j >= 0; j--) {
         const part = msg.content[j];
-        if (part.type === "text") {
-          part.cache_control = { type: "ephemeral" };
+        if (isCacheableUserBlock(part)) {
+          if (!part.cache_control && available > 0) {
+            part.cache_control = { type: "ephemeral" };
+            available--;
+          }
           break;
         }
       }
