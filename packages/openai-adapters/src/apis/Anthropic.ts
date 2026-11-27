@@ -149,7 +149,8 @@ export class AnthropicApi implements BaseLlmApi {
     }
   }
 
-  private _convertBody(oaiBody: ChatCompletionCreateParams) {
+  /** The Anthropic body with the caching strategy applied */
+  public _convertBody(oaiBody: ChatCompletionCreateParams) {
     // Step 1: Convert to clean Anthropic body (no caching)
     const cleanBody = this._convertToCleanAnthropicBody(oaiBody);
 

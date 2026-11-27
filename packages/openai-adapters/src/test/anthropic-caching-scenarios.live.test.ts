@@ -11,8 +11,10 @@
  * Haiku 5.5 caches prompts of 512 tokens or more. The prompts here are
  * larger (over 4096 tokens), which also covers models with higher minimums.
  *
- * Run: ANTHROPIC_API_KEY=sk-ant-... npx vitest packages/openai-adapters/src/test/anthropic-caching-scenarios.live.test.ts
+ * Run, from packages/openai-adapters:
+ *   LIVE_TESTS=1 ANTHROPIC_API_KEY=sk-ant-... npx vitest run src/test/anthropic-caching-scenarios.live.test.ts
  */
+import { ChatCompletionMessageParam } from "openai/resources/index";
 import { describe, expect, test } from "vitest";
 
 import { constructLlmApi } from "../index.js";
@@ -150,7 +152,13 @@ const TOOLS = [
 
 // System message large enough to exceed the 4096-token minimum of older models
 // when combined with the tool definitions above.
-const SYSTEM_MESSAGE = `You are an AI coding assistant integrated into a developer's IDE. You help with software engineering tasks including writing code, debugging, explaining code, and more.
+// New on every run, so a run never reads the cache an earlier run wrote
+// (entries live 5 minutes) and the "creates cache" checks hold on a rerun
+const RUN_ID = Date.now();
+
+const SYSTEM_MESSAGE = `Run ${RUN_ID}.
+
+You are an AI coding assistant integrated into a developer's IDE. You help with software engineering tasks including writing code, debugging, explaining code, and more.
 
 # Environment
 
@@ -423,14 +431,12 @@ my-app/
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
-/** Total input tokens = cache_read + cache_write + uncached (prompt_tokens) */
+/**
+ * Total input tokens. The adapter's prompt_tokens already holds the cache
+ * reads and writes (promptTokensWithCache in Anthropic.ts)
+ */
 function totalInputTokens(usage: any): number {
-  const details = usage.prompt_tokens_details;
-  return (
-    (details?.cache_read_tokens ?? 0) +
-    (details?.cache_write_tokens ?? 0) +
-    usage.prompt_tokens
-  );
+  return usage.prompt_tokens;
 }
 
 function cacheHitRate(usage: any): number {
@@ -882,7 +888,7 @@ describe.skipIf(!API_KEY)(
       { timeout: 60_000 },
       async () => {
         const api = makeApi();
-        const messages: any[] = [
+        const messages: ChatCompletionMessageParam[] = [
           { role: "system", content: SYSTEM_MESSAGE },
           {
             role: "user",
@@ -1161,9 +1167,12 @@ describe.skipIf(!API_KEY)(
         const details1 = usage1.prompt_tokens_details as any;
         const writeTokens1 = details1?.cache_write_tokens ?? 0;
 
-        // Second request with MODIFIED system message (added a line)
+        // Second request with MODIFIED system message (added a line). The
+        // line is new on every run: a rerun within the cache lifetime would
+        // otherwise read the previous run's entry and write nothing
         const modifiedSystem =
-          SYSTEM_MESSAGE + "\n\n# Additional Context\n- DEBUG MODE: enabled";
+          SYSTEM_MESSAGE +
+          `\n\n# Additional Context\n- DEBUG MODE: enabled (run ${Date.now()})`;
 
         const resp2 = await api.chatCompletionNonStream(
           {
@@ -1192,9 +1201,11 @@ describe.skipIf(!API_KEY)(
         // The key assertion: when system message changes, we should see new
         // cache writes and minimal/no cache reads from the FIRST request's cache
         expect(write2).toBeGreaterThan(0);
-        // The read from the modified request should be less than the original write,
-        // because the system message prefix changed
-        expect(read2).toBeLessThan(writeTokens1);
+        // It reads less than the original prompt (only the tools, which come
+        // before the system message), because the system message changed.
+        // Request 1 may itself be a cache read from an earlier run, so compare
+        // with its whole prompt, not with what it wrote
+        expect(read2).toBeLessThan(usage1.prompt_tokens);
 
         console.log("Scenario 5:", {
           original_write: writeTokens1,
@@ -1402,6 +1413,68 @@ describe.skipIf(!API_KEY)(
           step2_rate: rate2.toFixed(3),
           step3_rate: rate3.toFixed(3),
         });
+      },
+    );
+    // ── Scenario 8: Agent loop with no user text between steps ───
+    // An agent reads one file per step and never gets a user message in
+    // between, so the newest user messages hold only tool results. Each
+    // request must read the previous request's whole conversation from
+    // cache, not just the system prompt and tools.
+    test(
+      "Scenario 8: each step of a tool loop reads the previous step's conversation",
+      { timeout: 120_000 },
+      async () => {
+        const api = makeApi();
+        const fileBody = (name: string) =>
+          Array.from(
+            { length: 120 },
+            (_, i) => `${i + 1} | export const ${name}_${i} = "${name}-${i}";`,
+          ).join("\n");
+        const messages: any[] = [
+          { role: "system", content: SYSTEM_MESSAGE },
+          {
+            role: "user",
+            content: "Read the four config files, one at a time.",
+          },
+        ];
+        const steps: { total: number; read: number }[] = [];
+
+        for (const name of ["alpha", "beta", "gamma", "delta"]) {
+          const id = `toolu_${name}`;
+          messages.push(
+            {
+              role: "assistant",
+              content: null,
+              tool_calls: [
+                {
+                  id,
+                  type: "function",
+                  function: {
+                    name: "read_file",
+                    arguments: JSON.stringify({ path: `config/${name}.ts` }),
+                  },
+                },
+              ],
+            },
+            { role: "tool", tool_call_id: id, content: fileBody(name) },
+          );
+          const response = await api.chatCompletionNonStream(
+            { model: MODEL, messages, tools: TOOLS, max_tokens: 64 },
+            signal,
+          );
+          const usage = response.usage!;
+          steps.push({
+            total: totalInputTokens(usage),
+            read: (usage.prompt_tokens_details as any)?.cache_read_tokens ?? 0,
+          });
+        }
+
+        console.log("Scenario 8:", steps);
+        // From the third request on, the cache read covers the previous
+        // request's whole prompt, so it is far more than system plus tools
+        for (let i = 2; i < steps.length; i++) {
+          expect(steps[i].read).toBeGreaterThanOrEqual(steps[i - 1].total - 50);
+        }
       },
     );
   },

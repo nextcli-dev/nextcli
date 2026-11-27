@@ -1,9 +1,14 @@
 import {
   Base64ImageSource,
+  ContentBlockParam,
+  DocumentBlockParam,
   ErrorResponse,
+  ImageBlockParam,
   MessageParam,
+  TextBlockParam,
   Tool,
   ToolChoice,
+  ToolResultBlockParam,
 } from "@anthropic-ai/sdk/resources";
 import {
   ChatCompletionTool,
@@ -96,6 +101,35 @@ export function getAnthropicHeaders(
   return headers;
 }
 
+/**
+ * Whether a cache_control marker may sit on this block of a user message.
+ * The API rejects a marker on an empty text block.
+ */
+function isCacheableUserBlock(
+  part: ContentBlockParam,
+): part is
+  | TextBlockParam
+  | ToolResultBlockParam
+  | ImageBlockParam
+  | DocumentBlockParam {
+  switch (part.type) {
+    case "text":
+      return part.text.length > 0;
+    case "tool_result":
+    case "image":
+    case "document":
+      return true;
+    default:
+      return false;
+  }
+}
+
+/**
+ * Marks the last cacheable block of each of the last two user messages, so a
+ * request reads the conversation the previous request cached. In an agent
+ * loop those messages hold only tool results: marking text blocks alone left
+ * the conversation uncached from the loop's third request on.
+ */
 export function addCacheControlToLastTwoUserMessages(messages: MessageParam[]) {
   let userMessages = 0;
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -107,7 +141,7 @@ export function addCacheControlToLastTwoUserMessages(messages: MessageParam[]) {
       }
       for (let j = msg.content.length - 1; j >= 0; j--) {
         const part = msg.content[j];
-        if (part.type === "text") {
+        if (isCacheableUserBlock(part)) {
           part.cache_control = { type: "ephemeral" };
           break;
         }

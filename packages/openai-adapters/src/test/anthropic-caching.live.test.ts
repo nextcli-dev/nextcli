@@ -12,7 +12,8 @@
  * larger (over 4096 tokens), which also covers models with higher minimums.
  * The system message + tools in this test are sized to exceed that threshold.
  *
- * Run: ANTHROPIC_API_KEY=sk-ant-... npx vitest packages/openai-adapters/src/test/anthropic-caching.live.test.ts
+ * Run, from packages/openai-adapters:
+ *   LIVE_TESTS=1 ANTHROPIC_API_KEY=sk-ant-... npx vitest run src/test/anthropic-caching.live.test.ts
  */
 import { describe, expect, test } from "vitest";
 

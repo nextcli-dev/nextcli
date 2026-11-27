@@ -1,5 +1,7 @@
+import { MessageParam } from "@anthropic-ai/sdk/resources";
 import { vi } from "vitest";
 import {
+  addCacheControlToLastTwoUserMessages,
   anthropicSupportsForcedToolChoice,
   anthropicSupportsPrefill,
   anthropicThinkingType,
@@ -335,5 +337,101 @@ describe("anthropicSupportsPrefill", () => {
     ["some-proxy-model", true],
   ])("%s supports prefill: %s", (model, expected) => {
     expect(anthropicSupportsPrefill(model)).toBe(expected);
+  });
+});
+
+describe("addCacheControlToLastTwoUserMessages", () => {
+  const toolResult = (id: string, content: string): MessageParam => ({
+    role: "user",
+    content: [{ type: "tool_result", tool_use_id: id, content }],
+  });
+  const toolUse = (id: string): MessageParam => ({
+    role: "assistant",
+    content: [{ type: "tool_use", id, name: "Read", input: {} }],
+  });
+  const markers = (messages: MessageParam[]) =>
+    messages.flatMap((m, i) =>
+      typeof m.content === "string"
+        ? []
+        : m.content.flatMap((block, j) =>
+            "cache_control" in block && block.cache_control ? [[i, j]] : [],
+          ),
+    );
+
+  it("marks the newest tool results in an agent loop, where no user text follows", () => {
+    const messages: MessageParam[] = [
+      { role: "user", content: [{ type: "text", text: "fix the bug" }] },
+      toolUse("a"),
+      toolResult("a", "file one"),
+      toolUse("b"),
+      toolResult("b", "file two"),
+      toolUse("c"),
+      toolResult("c", "file three"),
+    ];
+    addCacheControlToLastTwoUserMessages(messages);
+    // The previous request marked message 4, so this one reads it from cache
+    expect(markers(messages)).toEqual([
+      [4, 0],
+      [6, 0],
+    ]);
+  });
+
+  it("marks the last block of a message with parallel tool results", () => {
+    const messages: MessageParam[] = [
+      { role: "user", content: [{ type: "text", text: "read both" }] },
+      toolUse("a"),
+      {
+        role: "user",
+        content: [
+          { type: "tool_result", tool_use_id: "a", content: "one" },
+          { type: "tool_result", tool_use_id: "b", content: "two" },
+        ],
+      },
+    ];
+    addCacheControlToLastTwoUserMessages(messages);
+    expect(markers(messages)).toEqual([
+      [0, 0],
+      [2, 1],
+    ]);
+  });
+
+  it("skips an empty text block, which the API won't mark, but marks an empty tool result", () => {
+    const messages: MessageParam[] = [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "run it" },
+          { type: "text", text: "" },
+        ],
+      },
+      toolUse("a"),
+      {
+        role: "user",
+        content: [
+          { type: "tool_result", tool_use_id: "a", content: "out" },
+          { type: "tool_result", tool_use_id: "b", content: "" },
+        ],
+      },
+    ];
+    addCacheControlToLastTwoUserMessages(messages);
+    expect(markers(messages)).toEqual([
+      [0, 0],
+      [2, 1],
+    ]);
+  });
+
+  it("still marks the last text block of plain chat turns", () => {
+    const messages: MessageParam[] = [
+      { role: "user", content: [{ type: "text", text: "one" }] },
+      { role: "assistant", content: [{ type: "text", text: "reply" }] },
+      { role: "user", content: [{ type: "text", text: "two" }] },
+      { role: "assistant", content: [{ type: "text", text: "reply" }] },
+      { role: "user", content: [{ type: "text", text: "three" }] },
+    ];
+    addCacheControlToLastTwoUserMessages(messages);
+    expect(markers(messages)).toEqual([
+      [2, 0],
+      [4, 0],
+    ]);
   });
 });
