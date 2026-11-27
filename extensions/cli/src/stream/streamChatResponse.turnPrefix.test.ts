@@ -32,6 +32,7 @@ vi.mock("../util/tokenizer.js", () => ({
   countTotalInputTokens: vi.fn(() => 1000),
   getModelMaxTokens: vi.fn(() => 100_000),
   validateContextLength: vi.fn(() => ({ isValid: true })),
+  estimateOutputTokens: vi.fn(() => 0),
 }));
 
 vi.mock("../telemetry/telemetryService.js", () => ({

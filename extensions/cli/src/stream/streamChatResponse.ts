@@ -10,7 +10,6 @@ import {
 } from "../fitHistory.js";
 import type { ToolPermissionsSource } from "../permissions/types.js";
 import { services } from "../services/index.js";
-import { applyChatCompletionToolOverrides } from "../tools/applyToolOverrides.js";
 import { ToolCall } from "../tools/index.js";
 import { registerAbortController } from "../util/abortRegistry.js";
 import {
@@ -32,7 +31,7 @@ import {
   LimitWrapUp,
   wrapUpMessage,
 } from "./agentLoopLimits.js";
-import { getRequestTools, handleToolCalls } from "./handleToolCalls.js";
+import { handleToolCalls } from "./handleToolCalls.js";
 import { ReasoningAccumulator } from "./reasoning.js";
 import { trackStreamAttempts } from "./streamAttempts.js";
 import { processChunk } from "./streamChatResponse.chunk.js";
@@ -402,20 +401,7 @@ export async function processStreamingResponse(
   };
 }
 
-/**
- * The tools a normal request carries, with the model's overrides. Compaction
- * sizes its summary with them.
- */
-export async function requestTools(
-  model: ModelConfig,
-  isHeadless: boolean,
-  getPermissions?: ToolPermissionsSource,
-): Promise<ChatCompletionTool[]> {
-  return applyChatCompletionToolOverrides(
-    await getRequestTools(isHeadless, getPermissions),
-    model.chatOptions?.toolOverrides,
-  );
-}
+export { requestTools } from "./turnPrefix.js";
 
 // Main function that handles the conversation loop
 // eslint-disable-next-line max-params
@@ -454,11 +440,13 @@ export async function streamChatResponse(
     !isCompacting,
   );
 
-  const prefix = turnPrefix(
-    async () =>
-      isCompacting ? [] : requestTools(model, isHeadless, getPermissions),
-    turnSystemMessage,
-  );
+  const prefix = turnPrefix({
+    model,
+    isHeadless,
+    getPermissions,
+    isCompacting,
+    systemMessage: turnSystemMessage,
+  });
 
   // Aborted on exit, so an interrupted turn never starts another tool (#12701)
   const unregisterAbort = registerAbortController(abortController);
