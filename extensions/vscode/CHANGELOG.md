@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.6.28](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.27...vscode-v1.6.28) (2026-11-26)
+## [1.6.28](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.27...vscode-v1.6.28) (2026-11-27)
 
 
 ### Features
