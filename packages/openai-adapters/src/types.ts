@@ -226,6 +226,7 @@ export type GeminiConfig = z.infer<typeof GeminiConfigSchema>;
 export const AnthropicConfigSchema = OpenAIConfigSchema.extend({
   provider: z.literal("anthropic"),
   apiKey: z.string(),
+  cachingStrategy: CachingStrategySchema.optional(),
 });
 export type AnthropicConfig = z.infer<typeof AnthropicConfigSchema>;
 
@@ -259,6 +260,8 @@ export type InceptionConfig = z.infer<typeof InceptionConfigSchema>;
 
 export const VertexAIConfigSchema = BasePlusConfig.extend({
   provider: z.literal("vertexai"),
+  /** For Claude models */
+  cachingStrategy: CachingStrategySchema.optional(),
   env: z
     .object({
       region: z.string().optional(),

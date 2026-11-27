@@ -42,6 +42,7 @@ export class VertexAIApi implements BaseLlmApi {
     this.anthropicInstance = new AnthropicApi({
       provider: "anthropic",
       apiKey: "dud",
+      cachingStrategy: config.cachingStrategy,
     });
     this.geminiInstance = new GeminiApi({
       provider: "gemini",

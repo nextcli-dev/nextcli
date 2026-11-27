@@ -52,7 +52,7 @@ sidebarTitle: "Anthropic"
 
 Anthropic supports [prompt caching with Claude](https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching), which allows Claude models to cache system messages and conversation history between requests to improve performance and reduce costs.
 
-The CLI (`cn`) caches the system message, tools and conversation by default, including the tool results of an agent loop, for Claude on Anthropic and Vertex AI. The settings below are for the VS Code extension.
+The CLI (`cn`) caches the system message, tools and conversation by default, including the tool results of an agent loop, for Claude on Anthropic and Vertex AI. To turn it off, for example for a Google Cloud project that has prompt caching disabled, set `promptCaching: false` under the model's `defaultCompletionOptions`. In the VS Code extension caching is off until you turn it on with the settings below.
 
 To enable caching of the system message and the turn-by-turn conversation in VS Code, update your model configuration as follows:
 

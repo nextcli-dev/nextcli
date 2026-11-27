@@ -1,6 +1,7 @@
 import { AuthClient, GoogleAuth, JWT, auth } from "google-auth-library";
 
 import { streamResponse, streamSse } from "@nextcli/fetch";
+import type { VertexAIConfig } from "@nextcli/openai-adapters";
 import { ChatMessage, CompletionOptions, LLMOptions } from "../../index.js";
 import { renderChatMessage, stripImages } from "../../util/messageContent.js";
 import { BaseLLM } from "../index.js";
@@ -219,6 +220,21 @@ class VertexAI extends BaseLLM {
     return {
       ...finalOptions,
       anthropic_version: "vertex-2023-10-16",
+    };
+  }
+
+  /**
+   * Claude prompt caching only when the model config asks for it, as core's
+   * Anthropic and OneProvider classes do. The CLI's adapter caches by default.
+   */
+  protected adapterConfig(): VertexAIConfig {
+    const caching =
+      this.cacheBehavior?.cacheSystemMessage ||
+      this.cacheBehavior?.cacheConversation ||
+      this.completionOptions.promptCaching;
+    return {
+      ...(super.adapterConfig() as VertexAIConfig),
+      cachingStrategy: caching ? "systemAndTools" : "none",
     };
   }
 

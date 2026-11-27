@@ -38,7 +38,6 @@ import { extractBase64FromDataUrl } from "../util/url.js";
 import {
   CACHING_STRATEGIES,
   DEFAULT_CACHING_STRATEGY,
-  CachingStrategyName,
 } from "./AnthropicCachingStrategies.js";
 import type { ThinkingMode } from "../modelControls.js";
 import {
@@ -138,11 +137,7 @@ export function anthropicFinishReason(
 export class AnthropicApi implements BaseLlmApi {
   apiBase: string = "https://api.anthropic.com/v1/";
 
-  constructor(
-    protected config: AnthropicConfig & {
-      cachingStrategy?: CachingStrategyName;
-    },
-  ) {
+  constructor(protected config: AnthropicConfig) {
     this.apiBase = config.apiBase ?? this.apiBase;
     if (!this.apiBase.endsWith("/")) {
       this.apiBase += "/";
