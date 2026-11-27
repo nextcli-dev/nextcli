@@ -163,7 +163,7 @@ describe("summarizeTrace", () => {
           "llm.request",
           {
             usage: { prompt_tokens: 40 },
-            prefix: { extendsPrevious: false, changed: "messages" },
+            prefix: { extendsPrevious: false, changed: ["messages"] },
           },
           20,
         ),
@@ -171,9 +171,21 @@ describe("summarizeTrace", () => {
           "llm.request",
           {
             usage: { prompt_tokens: 60 },
-            prefix: { extendsPrevious: false, changed: "reasoning" },
+            prefix: { extendsPrevious: false, changed: ["reasoning"] },
           },
           30,
+        ),
+        // A wrap-up: a break, though its reasoning text changed too
+        line(
+          "llm.request",
+          {
+            usage: { prompt_tokens: 70 },
+            prefix: {
+              extendsPrevious: false,
+              changed: ["settings", "tools", "reasoning"],
+            },
+          },
+          40,
         ),
       ].join("\n") + "\n",
     );
@@ -181,7 +193,7 @@ describe("summarizeTrace", () => {
     expect(summarizeTrace(dir, "eval-t1", dir)).toMatchObject({
       cachedTokens: 90,
       cacheWriteTokens: 90,
-      prefixBreaks: 1,
+      prefixBreaks: 2,
       reasoningDrops: 1,
       compactionRequests: 1,
       summaryToolCalls: 1,

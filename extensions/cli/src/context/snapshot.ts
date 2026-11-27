@@ -163,20 +163,22 @@ export interface RequestPrefix {
    */
   extendsPrevious?: boolean;
   /**
-   * When it doesn't: the first part that differs, in cache order.
-   * `reasoning`: only an earlier assistant message's reasoning text, which
-   * cn sends back only until the next user message. That breaks the cache
-   * of a provider that receives the text (DeepSeek, Qwen); the Anthropic
-   * adapter never sends it.
+   * When it doesn't: every part that differs, in cache order. A run's last
+   * call drops the tools and turns thinking off: both are listed.
+   * `reasoning`: only an earlier assistant message's reasoning text changed.
+   * That breaks the cache of a provider that receives the text (DeepSeek,
+   * Qwen); the Anthropic adapter never sends it.
    */
-  changed?:
-    | "model"
-    | "settings"
-    | "tools"
-    | "system"
-    | "messages"
-    | "reasoning";
+  changed?: PrefixPart[];
 }
+
+type PrefixPart =
+  | "model"
+  | "settings"
+  | "tools"
+  | "system"
+  | "messages"
+  | "reasoning";
 
 interface SentPrefix {
   model: string;
@@ -218,26 +220,23 @@ function lastingPart(message: ChatCompletionMessageParam): unknown {
   return signed?.length ? { ...rest, reasoning_details: signed } : rest;
 }
 
-function firstChange(
-  previous: SentPrefix,
-  sent: SentPrefix,
-): RequestPrefix["changed"] {
-  const order = ["model", "settings", "toolsHash", "systemHash"] as const;
-  const part = order.find((key) => previous[key] !== sent[key]);
-  if (part) {
-    return part === "toolsHash"
-      ? "tools"
-      : part === "systemHash"
-        ? "system"
-        : part;
-  }
+function changedParts(previous: SentPrefix, sent: SentPrefix): PrefixPart[] {
+  const parts = (
+    [
+      ["model", "model"],
+      ["settings", "settings"],
+      ["tools", "toolsHash"],
+      ["system", "systemHash"],
+    ] as const
+  )
+    .filter(([, key]) => previous[key] !== sent[key])
+    .map(([part]): PrefixPart => part);
   const repeats = (key: "messages" | "lasting") =>
     previous[key].every((hash, index) => sent[key][index] === hash);
-  return repeats("messages")
-    ? undefined
-    : repeats("lasting")
-      ? "reasoning"
-      : "messages";
+  if (!repeats("messages")) {
+    parts.push(repeats("lasting") ? "reasoning" : "messages");
+  }
+  return parts;
 }
 
 /**
@@ -274,12 +273,12 @@ export async function tracedPrefix(request: {
   if (!previous) {
     return { systemHash, toolsHash };
   }
-  const changed = firstChange(previous, sent);
+  const changed = changedParts(previous, sent);
   return {
     systemHash,
     toolsHash,
-    extendsPrevious: !changed,
-    ...(changed && { changed }),
+    extendsPrevious: changed.length === 0,
+    ...(changed.length > 0 && { changed }),
   };
 }
 

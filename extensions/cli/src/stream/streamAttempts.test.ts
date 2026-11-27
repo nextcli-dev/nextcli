@@ -144,7 +144,7 @@ describe("a retried call on the trace", () => {
       systemHash: "s",
       toolsHash: "t",
       extendsPrevious: false,
-      changed: "messages" as const,
+      changed: ["messages" as const],
     };
     const attempts = trackStreamAttempts({
       requestStartTime: 1000,

@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const session = vi.hoisted(() => ({ sessionId: "" }));
 vi.mock("../session.js", () => ({ getCurrentSession: () => session }));
 
+import { getCompletionOptions } from "../stream/streamChatResponse.types.js";
 import { withTraceChain } from "../trace/trace.js";
 
 import { tracedPrefix } from "./snapshot.js";
@@ -27,7 +28,8 @@ const user = (content: string): ChatHistoryItem => ({
   message: { role: "user", content },
   contextItems: [],
 });
-// A tool round whose reasoning came back as reasoning_content
+// A tool round. Reasoning is left out: whether core keeps it after the turn
+// is core's rule, tested in messageConversion.reasoning.test.ts
 const toolRound: ChatHistoryItem[] = [
   {
     message: {
@@ -42,12 +44,6 @@ const toolRound: ChatHistoryItem[] = [
       ],
     },
     contextItems: [],
-    reasoning: {
-      active: false,
-      text: "Read a.ts first.",
-      startAt: 0,
-      textField: "reasoning_content",
-    },
     toolCallStates: [
       {
         toolCallId: "call_1",
@@ -64,28 +60,36 @@ const toolRound: ChatHistoryItem[] = [
   },
 ];
 
-/** The request a history compiles to, as core builds it */
-function send(
-  history: ChatHistoryItem[],
-  overrides: {
-    system?: string;
-    settings?: Record<string, unknown>;
-    model?: ModelConfig;
-    tools?: typeof tools;
-  } = {},
+interface Overrides {
+  system?: string;
+  settings?: Record<string, unknown>;
+  model?: ModelConfig;
+  tools?: typeof tools;
+}
+
+function sendMessages(
+  messages: ChatCompletionMessageParam[],
+  overrides: Overrides = {},
 ) {
-  const systemMessage = overrides.system ?? "You are a helper.";
   return tracedPrefix({
     model: overrides.model ?? model,
     settings: overrides.settings ?? { max_tokens: 8000 },
-    systemMessage,
+    systemMessage: overrides.system ?? "You are a helper.",
     tools: overrides.tools ?? tools,
-    messages: convertFromUnifiedHistoryWithSystemMessage(
+    messages,
+  });
+}
+
+/** The request a history compiles to, as core builds it */
+function send(history: ChatHistoryItem[], overrides: Overrides = {}) {
+  return sendMessages(
+    convertFromUnifiedHistoryWithSystemMessage(
       history,
-      systemMessage,
+      overrides.system ?? "You are a helper.",
       { model: model.model },
     ) as ChatCompletionMessageParam[],
-  });
+    overrides,
+  );
 }
 
 // An agent loop: what runs inside it is one trace chain
@@ -121,25 +125,31 @@ describe("tracedPrefix", () => {
   });
 
   it("names a dropped reasoning text apart from a rewritten message", async () => {
-    await send([user("a"), ...toolRound]);
-    // cn sends the reasoning text only until the next user message
-    expect(await send([user("a"), ...toolRound, user("b")])).toMatchObject({
-      extendsPrevious: false,
-      changed: "reasoning",
-    });
+    const ask = { role: "user" as const, content: "a" };
+    const answer = { role: "assistant" as const, content: "Reading a.ts" };
+    await sendMessages([
+      ask,
+      {
+        ...answer,
+        reasoning_content: "Read a.ts first.",
+      } as ChatCompletionMessageParam,
+    ]);
     expect(
-      await send([user("a"), ...toolRound, user("b"), user("c")]),
-    ).toMatchObject({ extendsPrevious: true });
+      await sendMessages([ask, answer, { role: "user", content: "b" }]),
+    ).toMatchObject({ extendsPrevious: false, changed: ["reasoning"] });
+    expect(
+      await sendMessages([ask, { role: "assistant", content: "Reading b.ts" }]),
+    ).toMatchObject({ changed: ["messages"] });
   });
 
-  it("names the first part that changed, in cache order", async () => {
+  it("names the part that changed", async () => {
     await send([user("a")]);
     expect(
       await send([user("a"), user("b")], { system: "Plan mode." }),
-    ).toMatchObject({ extendsPrevious: false, changed: "system" });
+    ).toMatchObject({ extendsPrevious: false, changed: ["system"] });
     expect(
       await send([user("a"), user("b")], { system: "Plan mode.", tools: [] }),
-    ).toMatchObject({ changed: "tools" });
+    ).toMatchObject({ changed: ["tools"] });
     // Thinking off misses the cached messages; an output cap doesn't
     expect(
       await send([user("a"), user("b")], {
@@ -154,7 +164,7 @@ describe("tracedPrefix", () => {
         tools: [],
         settings: { max_tokens: 100, reasoning_effort: "none" },
       }),
-    ).toMatchObject({ changed: "settings" });
+    ).toMatchObject({ changed: ["settings"] });
     expect(
       await send([user("a"), user("b")], {
         system: "Plan mode.",
@@ -162,7 +172,7 @@ describe("tracedPrefix", () => {
         settings: { max_tokens: 100, reasoning_effort: "none" },
         model: { ...model, model: "deepseek-v4.1-pro" },
       }),
-    ).toMatchObject({ changed: "model" });
+    ).toMatchObject({ changed: ["model"] });
     expect(
       await send([user("summary")], {
         system: "Plan mode.",
@@ -170,7 +180,31 @@ describe("tracedPrefix", () => {
         settings: { max_tokens: 100, reasoning_effort: "none" },
         model: { ...model, model: "deepseek-v4.1-pro" },
       }),
-    ).toMatchObject({ changed: "messages" });
+    ).toMatchObject({ changed: ["messages"] });
+  });
+
+  it("lists every part a run's last call changes, on a model that can turn thinking off", async () => {
+    const deepseek = {
+      name: "DeepSeek",
+      provider: "deepseek",
+      model: "deepseek-v4-pro",
+    } as ModelConfig;
+    const history = [user("a"), ...toolRound];
+    await send(history, {
+      model: deepseek,
+      settings: getCompletionOptions(deepseek),
+    });
+    // The wrap-up: no tools, thinking off
+    expect(
+      await send([...history, user("Answer now.")], {
+        model: deepseek,
+        settings: getCompletionOptions(deepseek, { thinkingOff: true }),
+        tools: [],
+      }),
+    ).toMatchObject({
+      extendsPrevious: false,
+      changed: ["settings", "tools"],
+    });
   });
 
   it("gives each subagent its own chain, and keeps a compaction in its caller's", async () => {
@@ -202,11 +236,8 @@ describe("tracedPrefix", () => {
     expect(parentFirst!.extendsPrevious).toBeUndefined();
     expect(subagentFirsts).toEqual(new Array(10).fill(undefined));
     expect(parentNext!).toMatchObject({ extendsPrevious: true });
-    // Compared with the parent's last request: only its reasoning text is gone
-    expect(summary!).toMatchObject({
-      extendsPrevious: false,
-      changed: "reasoning",
-    });
+    // Compared with the parent's last request, which it extends
+    expect(summary!).toMatchObject({ extendsPrevious: true });
   });
 
   it("starts over in a new session", async () => {

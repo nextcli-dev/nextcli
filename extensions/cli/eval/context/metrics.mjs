@@ -201,12 +201,13 @@ export function summarizeTrace(traceDir, sessionId, workDir, window) {
     prefixBreaks: llm.filter(
       (l) =>
         l.attrs.prefix?.extendsPrevious === false &&
-        l.attrs.prefix.changed !== "reasoning",
+        l.attrs.prefix.changed?.some((part) => part !== "reasoning"),
     ).length,
-    // Requests that changed only an earlier reasoning text: a break where
+    // Requests whose only change is an earlier reasoning text: a break where
     // the provider gets that text back (DeepSeek, Qwen), not on Anthropic
-    reasoningDrops: llm.filter((l) => l.attrs.prefix?.changed === "reasoning")
-      .length,
+    reasoningDrops: llm.filter(
+      (l) => l.attrs.prefix?.changed?.join() === "reasoning",
+    ).length,
     outputTokens: sum(llm, (l) => usageOf(l.attrs).output),
     peakInputTokens: Math.max(0, ...llm.map((l) => usageOf(l.attrs).input)),
     overWindow: window

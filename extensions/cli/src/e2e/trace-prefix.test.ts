@@ -118,8 +118,8 @@ describe("E2E: cache prefix on the trace", () => {
     expect(prefixes[2]).toMatchObject({
       systemHash: prefixes[0].systemHash,
       extendsPrevious: false,
-      changed: "tools",
     });
+    expect(prefixes[2].changed).toContain("tools");
 
     const summary = JSON.parse(result.stderr.trim().split("\n").pop()!);
     expect(summary.usage).toMatchObject({
