@@ -11,6 +11,7 @@ import {
 import type { ToolPermissionsSource } from "../permissions/types.js";
 import { services } from "../services/index.js";
 import { ToolCall } from "../tools/index.js";
+import { withTraceChain } from "../trace/trace.js";
 import { registerAbortController } from "../util/abortRegistry.js";
 import {
   chatCompletionStreamWithBackoff,
@@ -204,12 +205,7 @@ export async function processStreamingResponse(
     throw new Error(`Context length validation failed: ${validation.error}`);
   }
 
-  const { context, messages: openaiChatHistory } = await compiledRequest({
-    model,
-    chatHistory,
-    systemMessage,
-    tools,
-  });
+  const request = await compiledRequest({ ...options, chatHistory });
   const requestStartTime = Date.now();
 
   const streamFactory = async (retryAbortSignal: AbortSignal) => {
@@ -222,7 +218,7 @@ export async function processStreamingResponse(
       llmApi,
       {
         model: model.model,
-        messages: openaiChatHistory,
+        messages: request.messages,
         stream: true,
         // OpenAI rejects an empty tools array, so send none at all
         tools: tools?.length ? tools : undefined,
@@ -246,7 +242,7 @@ export async function processStreamingResponse(
     requestStartTime,
     model,
     tools,
-    context,
+    ...request.traced,
     abortSignal: abortController.signal,
     estimateInputTokens: () =>
       countTotalInputTokens({ chatHistory, systemMessage, tools, model }),
@@ -315,7 +311,7 @@ export async function processStreamingResponse(
       model,
       tools,
       fullUsage,
-      context,
+      ...attempts.traced(),
       skipLastUsage: options.isCompacting,
       call: {
         finishReason: callEnd.finishReason,
@@ -336,7 +332,8 @@ export async function processStreamingResponse(
     const aborted =
       error.name === "AbortError" || abortController?.signal.aborted;
     if (!attempts.recorded(error)) {
-      recordFailedCall({ model, requestStartTime, error, aborted, context });
+      const failure = { model, requestStartTime, error, aborted };
+      recordFailedCall({ ...failure, ...attempts.traced() });
     }
 
     if (aborted) {
@@ -396,7 +393,7 @@ export { requestTools } from "./turnPrefix.js";
 
 // Main function that handles the conversation loop
 // eslint-disable-next-line max-params
-export async function streamChatResponse(
+async function runAgentLoop(
   chatHistory: ChatHistoryItem[],
   model: ModelConfig,
   llmApi: BaseLlmApi,
@@ -624,3 +621,9 @@ export async function streamChatResponse(
     unregisterAbort();
   }
 }
+
+/** The conversation loop. A subagent's calls are their own trace chain. */
+export const streamChatResponse = withTraceChain(
+  runAgentLoop,
+  (...args) => args[5] === true,
+);

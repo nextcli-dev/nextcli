@@ -119,6 +119,87 @@ describe("summarizeTrace", () => {
     expect(summarizeTrace(dir, "eval-t1", dir, 64_000).overWindow).toBe(1);
   });
 
+  it("counts cache writes, prefix breaks and dropped summary tool calls", () => {
+    fs.writeFileSync(
+      path.join(dir, "eval-t1-run1.jsonl"),
+      [
+        line(
+          "llm.request",
+          {
+            usage: {
+              prompt_tokens: 100,
+              prompt_tokens_details: { cache_write_tokens: 90 },
+            },
+            prefix: { systemHash: "s", toolsHash: "t" },
+          },
+          1,
+        ),
+        line(
+          "llm.request",
+          {
+            usage: { prompt_tokens: 120, prompt_cache_hit_tokens: 90 },
+            toolCalls: ["List"],
+            prefix: { systemHash: "s", toolsHash: "t", extendsPrevious: true },
+          },
+          2,
+        ),
+        // The compaction's summary call, which asked for a tool anyway
+        line(
+          "llm.request",
+          {
+            usage: { prompt_tokens: 130 },
+            toolCalls: ["Read"],
+            prefix: { extendsPrevious: true },
+          },
+          10,
+        ),
+        JSON.stringify({
+          ts: 9,
+          dur: 5,
+          name: "context.compaction",
+          attrs: { outcome: "compacted" },
+        }),
+        line(
+          "llm.request",
+          {
+            usage: { prompt_tokens: 40 },
+            prefix: { extendsPrevious: false, changed: ["messages"] },
+          },
+          20,
+        ),
+        line(
+          "llm.request",
+          {
+            usage: { prompt_tokens: 60 },
+            prefix: { extendsPrevious: false, changed: ["reasoning"] },
+          },
+          30,
+        ),
+        // A wrap-up: a break, though its reasoning text changed too
+        line(
+          "llm.request",
+          {
+            usage: { prompt_tokens: 70 },
+            prefix: {
+              extendsPrevious: false,
+              changed: ["settings", "tools", "reasoning"],
+            },
+          },
+          40,
+        ),
+      ].join("\n") + "\n",
+    );
+
+    expect(summarizeTrace(dir, "eval-t1", dir)).toMatchObject({
+      cachedTokens: 90,
+      cacheWriteTokens: 90,
+      prefixBreaks: 2,
+      reasoningDrops: 1,
+      compactionRequests: 1,
+      summaryToolCalls: 1,
+    });
+  });
+
   it("skips a request file cut short by a killed run", () => {
     request("eval-t1", 1, ["call_1"]);
     fs.writeFileSync(

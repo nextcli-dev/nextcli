@@ -32,17 +32,25 @@ export function readTrace(dir, sessionId) {
 
 function usageOf(attrs) {
   const u = attrs.usage ?? {};
+  const details = u.prompt_tokens_details;
+  // The CLI's toUsage fields first, then the provider's own field names
+  // (Anthropic's input_tokens and cache_*_input_tokens, Moonshot's
+  // cached_tokens) that a trace can also hold
   const cacheRead =
-    u.prompt_tokens_details?.cached_tokens ??
+    details?.cache_read_tokens ??
+    details?.cached_tokens ??
+    u.prompt_cache_hit_tokens ??
     u.cache_read_input_tokens ??
     u.cached_tokens ??
     0;
+  const cacheWrite =
+    details?.cache_write_tokens ?? u.cache_creation_input_tokens ?? 0;
   const input =
-    u.prompt_tokens ??
-    (u.input_tokens ?? 0) + cacheRead + (u.cache_creation_input_tokens ?? 0);
+    u.prompt_tokens ?? (u.input_tokens ?? 0) + cacheRead + cacheWrite;
   return {
     input,
     cached: cacheRead,
+    written: cacheWrite,
     output: u.completion_tokens ?? u.output_tokens ?? 0,
   };
 }
@@ -187,6 +195,19 @@ export function summarizeTrace(traceDir, sessionId, workDir, window) {
     failedRequests: llm.filter((l) => l.attrs.error).length,
     inputTokens: sum(llm, (l) => usageOf(l.attrs).input),
     cachedTokens: sum(llm, (l) => usageOf(l.attrs).cached),
+    cacheWriteTokens: sum(llm, (l) => usageOf(l.attrs).written),
+    // Requests that changed what the previous request in their conversation
+    // sent; a first request isn't counted
+    prefixBreaks: llm.filter(
+      (l) =>
+        l.attrs.prefix?.extendsPrevious === false &&
+        l.attrs.prefix.changed?.some((part) => part !== "reasoning"),
+    ).length,
+    // Requests whose only change is an earlier reasoning text: a break where
+    // the provider gets that text back (DeepSeek, Qwen), not on Anthropic
+    reasoningDrops: llm.filter(
+      (l) => l.attrs.prefix?.changed?.join() === "reasoning",
+    ).length,
     outputTokens: sum(llm, (l) => usageOf(l.attrs).output),
     peakInputTokens: Math.max(0, ...llm.map((l) => usageOf(l.attrs).input)),
     overWindow: window
@@ -198,6 +219,8 @@ export function summarizeTrace(traceDir, sessionId, workDir, window) {
     compactionsCancelled: outcomes("cancelled").length,
     compactionRequests: summaryCalls.length,
     compactionCostUsd: sum(summaryCalls, (l) => l.attrs.costUsd ?? 0),
+    // A summary call's tool calls are dropped, never run
+    summaryToolCalls: sum(summaryCalls, (l) => l.attrs.toolCalls?.length ?? 0),
     omittedMessages: sum(
       outcomes("compacted"),
       (c) => c.attrs.omittedMessages ?? 0,

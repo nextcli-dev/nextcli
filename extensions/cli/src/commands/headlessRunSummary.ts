@@ -17,8 +17,22 @@ import { gracefulExit } from "../util/exit.js";
 type UsageSnapshot = {
   promptTokens: number;
   completionTokens: number;
+  cachedTokens: number;
+  cacheWriteTokens: number;
   totalCost: number;
 };
+
+/** The session's totals as numbers: its cache details change in place */
+function usageTotals(): UsageSnapshot {
+  const usage = getSessionUsage();
+  return {
+    promptTokens: usage.promptTokens,
+    completionTokens: usage.completionTokens,
+    cachedTokens: usage.promptTokensDetails?.cachedTokens ?? 0,
+    cacheWriteTokens: usage.promptTokensDetails?.cacheWriteTokens ?? 0,
+    totalCost: usage.totalCost,
+  };
+}
 
 /** Headless exit code when a --max-* limit ended the run early */
 export const EXIT_CODE_LIMIT_REACHED = 3;
@@ -41,7 +55,7 @@ export function headlessExitCode(error?: unknown): number {
 export function startHeadlessRun(format?: "json"): UsageSnapshot {
   requireFinalAnswer(format === "json");
   forgetCallEnds();
-  return { ...getSessionUsage() };
+  return usageTotals();
 }
 
 /** Ends a headless run that finished: the usage line, then exit 0 or 3. */
@@ -136,7 +150,7 @@ export function writeHeadlessError(
 
 /** What this run has used since `usageAtStart`. */
 function runUsage(usageAtStart: UsageSnapshot) {
-  const usage = getSessionUsage();
+  const usage = usageTotals();
   return {
     cost: Number((usage.totalCost - usageAtStart.totalCost).toFixed(6)),
     priced: getPriceSource() ?? null,
@@ -144,5 +158,8 @@ function runUsage(usageAtStart: UsageSnapshot) {
     ...(getCatalogDate() && { catalogDate: getCatalogDate() }),
     promptTokens: usage.promptTokens - usageAtStart.promptTokens,
     completionTokens: usage.completionTokens - usageAtStart.completionTokens,
+    // Part of promptTokens: read from, and written to, the provider's cache
+    cachedTokens: usage.cachedTokens - usageAtStart.cachedTokens,
+    cacheWriteTokens: usage.cacheWriteTokens - usageAtStart.cacheWriteTokens,
   };
 }

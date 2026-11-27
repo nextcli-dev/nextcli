@@ -2,6 +2,7 @@ import { execSync } from "child_process";
 
 import chalk from "chalk";
 
+import { cacheHitPercent } from "./context/lastUsage.js";
 import { services } from "./services/index.js";
 import {
   getCurrentSession,
@@ -92,6 +93,7 @@ function getUsageInfo(): string[] {
         lines.push(
           `  Cache Read Tokens: ${chalk.cyan(usage.promptTokensDetails.cachedTokens.toLocaleString())}`,
         );
+        lines.push(`  Cache Hit: ${chalk.cyan(cacheHitPercent(usage))}`);
       }
 
       if (usage.promptTokensDetails?.cacheWriteTokens) {

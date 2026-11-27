@@ -1,5 +1,6 @@
 import type { ChatHistoryItem } from "core/index.js";
 
+import { cacheHitPercent } from "../context/lastUsage.js";
 import { backgroundJobService } from "../services/BackgroundJobService.js";
 import { getSessionUsage } from "../session.js";
 import { telemetryService } from "../telemetry/telemetryService.js";
@@ -167,6 +168,7 @@ function displaySessionUsage(): void {
       logger.info(
         `  Cache Read Tokens: ${usage.promptTokensDetails.cachedTokens.toLocaleString()}`,
       );
+      logger.info(`  Cache Hit:         ${cacheHitPercent(usage)}`);
     }
 
     if (usage.promptTokensDetails?.cacheWriteTokens) {

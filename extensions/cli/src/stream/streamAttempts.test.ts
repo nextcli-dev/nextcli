@@ -136,3 +136,40 @@ describe("trackStreamAttempts", () => {
     );
   });
 });
+
+describe("a retried call on the trace", () => {
+  it("records a retry as extending the attempt it repeats", () => {
+    vi.mocked(recordStreamTelemetry).mockClear();
+    const prefix = {
+      systemHash: "s",
+      toolsHash: "t",
+      extendsPrevious: false,
+      changed: ["messages" as const],
+    };
+    const attempts = trackStreamAttempts({
+      requestStartTime: 1000,
+      model: { model: "deepseek-v4.1-flash" },
+      prefix,
+      abortSignal: new AbortController().signal,
+      estimateInputTokens: () => 12_000,
+    });
+
+    // The first attempt is the break, once
+    expect(attempts.traced().prefix).toEqual(prefix);
+    attempts.onDiscardedAttempt!([contentChunk("a")], new Error("reset"));
+    expect(vi.mocked(recordStreamTelemetry).mock.calls[0]?.[0].prefix).toEqual(
+      prefix,
+    );
+
+    // The retry sends the same request again
+    expect(attempts.traced().prefix).toEqual({
+      systemHash: "s",
+      toolsHash: "t",
+      extendsPrevious: true,
+    });
+    attempts.onDiscardedAttempt!([contentChunk("b")], new Error("reset"));
+    expect(
+      vi.mocked(recordStreamTelemetry).mock.calls[1]?.[0].prefix,
+    ).toMatchObject({ extendsPrevious: true });
+  });
+});

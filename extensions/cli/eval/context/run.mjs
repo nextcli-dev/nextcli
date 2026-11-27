@@ -407,7 +407,8 @@ async function runOne({
       checkOk: check.code === 0,
       keepIntact,
       success: check.code === 0 && keepIntact,
-      summaryCostUsd: summary?.usage?.cost ?? null,
+      // cn's own total from its --format json line; costUsd sums the trace
+      reportedCostUsd: summary?.usage?.cost ?? null,
       ...trace,
       rereads: calls?.rereads ?? null,
       repeatedMax: calls?.repeatedMax ?? null,

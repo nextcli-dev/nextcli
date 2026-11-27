@@ -6,7 +6,7 @@ import { services } from "../services/index.js";
 import type { SlashCommandResult } from "../ui/hooks/useChat.types.js";
 import { formatContextLength } from "../util/modelSettings.js";
 
-import { getLastResponseUsage } from "./lastUsage.js";
+import { cacheHitPercent, getLastResponseUsage } from "./lastUsage.js";
 import { cliContextSnapshot, nextRequestPrefix } from "./snapshot.js";
 
 function count(tokens: number | undefined): string {
@@ -49,17 +49,13 @@ function measuredLine(usage: Usage | undefined): string {
   }
   const cached = usage.promptTokensDetails?.cachedTokens ?? 0;
   const written = usage.promptTokensDetails?.cacheWriteTokens ?? 0;
-  const hit =
-    usage.promptTokens > 0
-      ? `${Math.round((cached / usage.promptTokens) * 100)}%`
-      : "0%";
   return [
     "Measured",
     `prompt ${count(usage.promptTokens)}`,
     `output ${count(usage.completionTokens)}`,
     `cache read ${count(cached)}`,
     `cache write ${count(written)}`,
-    `cache hit ${hit}`,
+    `cache hit ${cacheHitPercent(usage)}`,
   ].join(" · ");
 }
 

@@ -3,6 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../trace/trace.js", () => ({
   traceEnabled: () => true,
+  // Chains are tested in context/snapshot.prefix.test.ts
+  withTraceChain: (loop: unknown) => loop,
+  currentTraceChain: () => ({}),
 }));
 
 import { tracedContext } from "./snapshot.js";

@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "async_hooks";
 import fs from "fs";
 import path from "path";
 
@@ -345,6 +346,48 @@ function traceRequest(request: AdapterRequest): void {
     });
     requestFilesOff = true;
   }
+}
+
+/**
+ * One conversation's model calls, so each traced request is compared with the
+ * last one of the same conversation. Holds what the previous request sent.
+ */
+export type TraceChain = { last?: unknown };
+
+const chains = new AsyncLocalStorage<TraceChain>();
+// A top-level agent loop's chain: one per session, so a new chat starts over
+let mainChain: { sessionId: string; chain: TraceChain } | undefined;
+
+/** The chain of the agent loop this runs in */
+export function currentTraceChain(): TraceChain {
+  const nested = chains.getStore();
+  if (nested) {
+    return nested;
+  }
+  const { sessionId } = getCurrentSession();
+  if (mainChain?.sessionId !== sessionId) {
+    mainChain = { sessionId, chain: {} };
+  }
+  return mainChain.chain;
+}
+
+/**
+ * Runs each call of an agent loop in a trace chain. A loop started inside
+ * another one (a subagent) gets its own, which ends with it; a compaction
+ * stays in its caller's. Tracing off: the loop runs as it is.
+ */
+export function withTraceChain<A extends unknown[], R>(
+  loop: (...args: A) => Promise<R>,
+  isCompacting: (...args: A) => boolean,
+): (...args: A) => Promise<R> {
+  return (...args) => {
+    if (!traceEnabled()) {
+      return loop(...args);
+    }
+    const nested = !!chains.getStore() && !isCompacting(...args);
+    const chain = nested ? {} : currentTraceChain();
+    return chains.run(chain, () => loop(...args));
+  };
 }
 
 /**

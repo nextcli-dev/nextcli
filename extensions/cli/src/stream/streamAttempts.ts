@@ -1,6 +1,7 @@
 import type { ContextSnapshot } from "@nextcli/context";
 import type { ChatCompletionChunk } from "openai/resources/chat/completions.mjs";
 
+import type { RequestPrefix } from "../context/snapshot.js";
 import type { StreamAttemptHooks } from "../util/exponentialBackoff.js";
 import { estimateOutputTokens } from "../util/tokenizer.js";
 
@@ -68,18 +69,34 @@ export function trackStreamAttempts(options: {
   tools?: any[];
   /** The same snapshot the kept attempt writes on llm.request */
   context?: ContextSnapshot;
+  prefix?: RequestPrefix;
   abortSignal: AbortSignal;
   estimateInputTokens: () => number;
 }): StreamAttemptHooks<ChatCompletionChunk> & {
   firstTokenAt: () => number | undefined;
+  /**
+   * The trace fields for the next record of this call. A retry sends what
+   * the discarded attempt sent, so it extends that attempt.
+   */
+  traced: () => { context?: ContextSnapshot; prefix?: RequestPrefix };
   /** The error ended an attempt that is already recorded */
   recorded: (error: unknown) => boolean;
 } {
   let firstTokenAt: number | undefined;
   const recordedErrors = new WeakSet<object>();
+  let retried = false;
+  const traced = () => {
+    const { context, prefix } = options;
+    if (!retried || !prefix) {
+      return { context, prefix };
+    }
+    const { changed: _changed, ...sent } = prefix;
+    return { context, prefix: { ...sent, extendsPrevious: true } };
+  };
 
   return {
     firstTokenAt: () => firstTokenAt,
+    traced,
     recorded: (error) =>
       typeof error === "object" && error !== null && recordedErrors.has(error),
     onChunk: (chunk) => {
@@ -100,6 +117,8 @@ export function trackStreamAttempts(options: {
         .reverse()
         .find((chunk) => reportsUsage(chunk.usage))?.usage;
       const attempt = summarizeAttempt(chunks, options.model);
+      const record = traced();
+      retried = true;
       recordStreamTelemetry({
         requestStartTime: options.requestStartTime,
         responseEndTime: Date.now(),
@@ -108,7 +127,7 @@ export function trackStreamAttempts(options: {
         model: options.model,
         tools: options.tools,
         fullUsage: usage,
-        context: options.context,
+        ...record,
         call: {
           ...attempt.call,
           ttftMs,

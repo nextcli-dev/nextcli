@@ -125,7 +125,7 @@ The review worker gets the closed headless defaults plus `Edit`, `MultiEdit` and
   - `estimated`: from OpenRouter's price for the same model
   - `fallback`: at $1 / $2 per million input / output tokens
 
-  When `--max-cost` is set and a price isn't `exact`, a warning line comes first.
+  When `--max-cost` is set and a price isn't `exact`, a warning line comes first. `cachedTokens` and `cacheWriteTokens` are the part of `promptTokens` read from and written to the provider's prompt cache; they are 0 for a provider that doesn't report caching.
 
 ```json
 {
@@ -135,7 +135,9 @@ The review worker gets the closed headless defaults plus `Edit`, `MultiEdit` and
     "cost": 0.94,
     "priced": "exact",
     "promptTokens": 612000,
-    "completionTokens": 33000
+    "completionTokens": 33000,
+    "cachedTokens": 540000,
+    "cacheWriteTokens": 41000
   }
 }
 ```

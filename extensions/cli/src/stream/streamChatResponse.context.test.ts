@@ -5,6 +5,9 @@ const traceEvent = vi.hoisted(() => vi.fn());
 vi.mock("../trace/trace.js", () => ({
   traceEvent,
   traceEnabled: () => false,
+  // Chains are tested in context/snapshot.prefix.test.ts
+  withTraceChain: (loop: unknown) => loop,
+  currentTraceChain: () => ({}),
 }));
 
 vi.mock("../util/logger.js", () => ({

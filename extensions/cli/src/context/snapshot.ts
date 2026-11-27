@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type { ModelConfig } from "@nextcli/config-yaml";
 import {
   buildSnapshot,
@@ -6,7 +8,10 @@ import {
   type ContextSnapshot,
 } from "@nextcli/context";
 import type { ChatHistoryItem } from "core/index.js";
-import type { ChatCompletionTool } from "openai/resources/chat/completions.mjs";
+import type {
+  ChatCompletionMessageParam,
+  ChatCompletionTool,
+} from "openai/resources/chat/completions.mjs";
 
 import { services } from "../services/index.js";
 import type { MCPConnectionInfo } from "../services/types.js";
@@ -140,6 +145,141 @@ export async function tracedContext(input: {
     return undefined;
   }
   return cliContextSnapshot(input);
+}
+
+/**
+ * What a traced request repeats of the last request in its conversation (its
+ * trace chain), as digests of what cn builds. An adapter can drop a field, so
+ * a change here may not reach the provider; its cached token count says what
+ * the cache kept.
+ */
+export interface RequestPrefix {
+  systemHash: string;
+  toolsHash: string;
+  /**
+   * The request sends the same model, settings, tools, system message and
+   * messages as the last one in its conversation, and only adds messages.
+   * Unset on a conversation's first request: a session's, or a subagent's.
+   */
+  extendsPrevious?: boolean;
+  /**
+   * When it doesn't: every part that differs, in cache order. A run's last
+   * call drops the tools and turns thinking off: both are listed.
+   * `reasoning`: only an earlier assistant message's reasoning text changed.
+   * That breaks the cache of a provider that receives the text (DeepSeek,
+   * Qwen); the Anthropic adapter never sends it.
+   */
+  changed?: PrefixPart[];
+}
+
+type PrefixPart =
+  | "model"
+  | "settings"
+  | "tools"
+  | "system"
+  | "messages"
+  | "reasoning";
+
+interface SentPrefix {
+  model: string;
+  settings: string;
+  toolsHash: string;
+  systemHash: string;
+  messages: string[];
+  /** The same messages without the reasoning text cn later drops */
+  lasting: string[];
+}
+
+const digest = (value: unknown) =>
+  createHash("sha256")
+    .update(typeof value === "string" ? value : JSON.stringify(value))
+    .digest("base64url")
+    .slice(0, 12);
+
+/**
+ * A message without what cn sends only until the next user message (core's
+ * addReasoningFields): an assistant's reasoning text and unsigned details.
+ */
+function lastingPart(message: ChatCompletionMessageParam): unknown {
+  if (message.role !== "assistant") {
+    return message;
+  }
+  const {
+    reasoning: _reasoning,
+    reasoning_content: _reasoningContent,
+    reasoning_details: details,
+    ...rest
+  } = message as ChatCompletionMessageParam & {
+    reasoning?: unknown;
+    reasoning_content?: unknown;
+    reasoning_details?: Record<string, unknown>[];
+  };
+  const signed = details?.filter(
+    (detail) => detail.signature || detail.data || detail.encrypted_content,
+  );
+  return signed?.length ? { ...rest, reasoning_details: signed } : rest;
+}
+
+function changedParts(previous: SentPrefix, sent: SentPrefix): PrefixPart[] {
+  const parts = (
+    [
+      ["model", "model"],
+      ["settings", "settings"],
+      ["tools", "toolsHash"],
+      ["system", "systemHash"],
+    ] as const
+  )
+    .filter(([, key]) => previous[key] !== sent[key])
+    .map(([part]): PrefixPart => part);
+  const repeats = (key: "messages" | "lasting") =>
+    previous[key].every((hash, index) => sent[key][index] === hash);
+  if (!repeats("messages")) {
+    parts.push(repeats("lasting") ? "reasoning" : "messages");
+  }
+  return parts;
+}
+
+/**
+ * The prefix of a traced request, or nothing when tracing is off. The model's
+ * request settings are compared without the output cap, which no cache keys
+ * on; a thinking change counts, as it does on Anthropic.
+ */
+export async function tracedPrefix(request: {
+  model: ModelConfig;
+  settings: Record<string, unknown>;
+  systemMessage: string;
+  tools: readonly ChatCompletionTool[] | undefined;
+  messages: readonly ChatCompletionMessageParam[];
+}): Promise<RequestPrefix | undefined> {
+  const { currentTraceChain, traceEnabled } = await import("../trace/trace.js");
+  if (!traceEnabled()) {
+    return undefined;
+  }
+  const { max_tokens: _cap, ...settings } = request.settings;
+  const { messages } = request;
+  const after = messages[0]?.role === "system" ? messages.slice(1) : messages;
+  const sent: SentPrefix = {
+    model: `${request.model.provider}/${request.model.model}`,
+    settings: digest(settings),
+    toolsHash: digest(request.tools ?? []),
+    systemHash: digest(request.systemMessage),
+    messages: after.map(digest),
+    lasting: after.map(lastingPart).map(digest),
+  };
+  const chain = currentTraceChain();
+  const previous = chain.last as SentPrefix | undefined;
+  chain.last = sent;
+  const { systemHash, toolsHash } = sent;
+  if (!previous) {
+    return { systemHash, toolsHash };
+  }
+  const changed = changedParts(previous, sent);
+  return {
+    systemHash,
+    toolsHash,
+    extendsPrevious: changed.length === 0,
+    ...(changed.length > 0 && { changed }),
+  };
 }
 
 export async function cliContextSnapshot(input: {

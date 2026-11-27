@@ -13,6 +13,9 @@ import { processStreamingResponse } from "./streamChatResponse.js";
 vi.mock("../trace/trace.js", () => ({
   traceEvent: vi.fn(),
   traceEnabled: () => false,
+  // Chains are tested in context/snapshot.prefix.test.ts
+  withTraceChain: (loop: unknown) => loop,
+  currentTraceChain: () => ({}),
 }));
 
 // Test the chunk processing logic that was identified as buggy
