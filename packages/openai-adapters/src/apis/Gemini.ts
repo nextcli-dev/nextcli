@@ -140,10 +140,12 @@ export function geminiChatCompletion(data: any, model: string): ChatCompletion {
 
 /**
  * Gemini's usage in OpenAI's shape. Its prompt count includes the cached
- * tokens, and thinking is counted apart from the answer but billed as output.
+ * tokens; the tool-use prompt is counted apart but billed as input, and
+ * thinking is counted apart from the answer but billed as output.
  */
 function geminiUsage(meta: {
   promptTokenCount?: number;
+  toolUsePromptTokenCount?: number;
   cachedContentTokenCount?: number;
   candidatesTokenCount?: number;
   thoughtsTokenCount?: number;
@@ -151,7 +153,8 @@ function geminiUsage(meta: {
 }): CompletionUsage {
   const thoughts = meta.thoughtsTokenCount ?? 0;
   return {
-    prompt_tokens: meta.promptTokenCount ?? 0,
+    prompt_tokens:
+      (meta.promptTokenCount ?? 0) + (meta.toolUsePromptTokenCount ?? 0),
     completion_tokens: (meta.candidatesTokenCount ?? 0) + thoughts,
     total_tokens: meta.totalTokenCount ?? 0,
     ...(meta.cachedContentTokenCount && {

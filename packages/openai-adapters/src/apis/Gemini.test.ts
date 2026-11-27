@@ -182,6 +182,24 @@ describe("GeminiApi usage", () => {
     });
   });
 
+  it("bills the tool-use prompt as input", async () => {
+    const usage = await streamedUsage({
+      promptTokenCount: 5000,
+      toolUsePromptTokenCount: 700,
+      candidatesTokenCount: 10,
+      thoughtsTokenCount: 300,
+      totalTokenCount: 6010,
+    });
+    expect(usage).toMatchObject({
+      prompt_tokens: 5700,
+      completion_tokens: 310,
+    });
+    // The parts add up to Google's total
+    expect(usage!.prompt_tokens + usage!.completion_tokens).toBe(
+      usage!.total_tokens,
+    );
+  });
+
   it("leaves the details out when there is no cache hit or thinking", async () => {
     expect(
       await streamedUsage({
