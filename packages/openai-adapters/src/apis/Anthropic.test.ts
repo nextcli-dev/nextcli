@@ -181,6 +181,32 @@ describe("caching an agent loop", () => {
     });
   });
 
+  it("stays within 4 breakpoints when the system message has two blocks", () => {
+    const api = new AnthropicApi({ provider: "anthropic", apiKey: "k" });
+    const body = api._convertBody({
+      ...loop,
+      messages: [
+        {
+          role: "system",
+          content: [
+            { type: "text", text: "You are a coding agent." },
+            { type: "text", text: "Project rules." },
+          ],
+        },
+        ...loop.messages.slice(1),
+      ],
+    });
+
+    // Two system blocks and the last tool leave one for the conversation,
+    // which goes on the newest tool result
+    expect(markedBlocks(body)).toHaveLength(4);
+    const last = body.messages.at(-1)?.content;
+    expect(Array.isArray(last) && last.at(-1)).toMatchObject({
+      tool_use_id: "c",
+      cache_control: { type: "ephemeral" },
+    });
+  });
+
   it("adds no marker when caching is off", () => {
     const api = new AnthropicApi({
       provider: "anthropic",

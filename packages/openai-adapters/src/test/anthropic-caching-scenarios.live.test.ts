@@ -1477,5 +1477,54 @@ describe.skipIf(!API_KEY)(
         }
       },
     );
+    // ── Scenario 9: A multi-block system message in a tool loop ──
+    // Each system block takes a breakpoint, and so does the last tool. The
+    // conversation markers must fit in what is left, or the API rejects
+    // the request: "A maximum of 4 blocks with cache_control may be provided"
+    test(
+      "Scenario 9: a two-block system message, tools and tool results stay within 4 breakpoints",
+      { timeout: 60_000 },
+      async () => {
+        const api = makeApi();
+        const toolStep = (id: string): ChatCompletionMessageParam[] => [
+          {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+              {
+                id,
+                type: "function",
+                function: {
+                  name: "read_file",
+                  arguments: JSON.stringify({ path: `${id}.ts` }),
+                },
+              },
+            ],
+          },
+          { role: "tool", tool_call_id: id, content: `contents of ${id}.ts` },
+        ];
+        const response = await api.chatCompletionNonStream(
+          {
+            model: MODEL,
+            messages: [
+              {
+                role: "system",
+                content: [
+                  { type: "text", text: SYSTEM_MESSAGE },
+                  { type: "text", text: "Project rules: keep changes small." },
+                ],
+              },
+              { role: "user", content: "Read both files." },
+              ...toolStep("toolu_one"),
+              ...toolStep("toolu_two"),
+            ],
+            tools: TOOLS,
+            max_tokens: 32,
+          },
+          signal,
+        );
+        expect(response.usage!.prompt_tokens).toBeGreaterThan(0);
+      },
+    );
   },
 );

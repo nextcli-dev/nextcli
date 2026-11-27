@@ -5,6 +5,7 @@ import {
   getAvailableStrategies,
   getStrategyDescription,
 } from "./AnthropicCachingStrategies.js";
+import { countCacheBreakpoints } from "./AnthropicUtils.js";
 
 const body_params = {
   model: "claude",
@@ -389,6 +390,38 @@ describe("AnthropicCachingStrategies", () => {
       ]);
       expect(result.tools).toEqual(body.tools);
       expect(result.messages).toEqual(body.messages);
+    });
+
+    it("leaves the conversation one marker when system takes two and tools one", () => {
+      const toolResult = (id: string) => ({
+        role: "user" as const,
+        content: [
+          { type: "tool_result" as const, tool_use_id: id, content: id },
+        ],
+      });
+      const body: MessageCreateParams = {
+        system: [
+          { type: "text", text: "system message 1" },
+          { type: "text", text: "system message 2" },
+        ],
+        tools: [makeTool("tool1")],
+        messages: [
+          { role: "user", content: [{ type: "text", text: "start" }] },
+          toolResult("a"),
+          toolResult("b"),
+        ],
+        ...body_params,
+      };
+
+      const result = CACHING_STRATEGIES.systemAndTools(body);
+
+      expect(countCacheBreakpoints(result)).toBe(4);
+      expect(result.messages.at(-1)?.content).toMatchObject([
+        { tool_use_id: "b", cache_control: { type: "ephemeral" } },
+      ]);
+      expect(result.messages.at(-2)?.content).toEqual([
+        { type: "tool_result", tool_use_id: "a", content: "a" },
+      ]);
     });
   });
 

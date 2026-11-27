@@ -49,6 +49,8 @@ import {
 } from "./anthropicControls.js";
 import {
   addCacheControlToLastTwoUserMessages,
+  countCacheBreakpoints,
+  MAX_CACHE_BREAKPOINTS,
   anthropicFastMode,
   getAnthropicHeaders,
   getAnthropicMediaTypeFromDataUrl,
@@ -153,10 +155,13 @@ export class AnthropicApi implements BaseLlmApi {
     const strategy = this.config.cachingStrategy ?? DEFAULT_CACHING_STRATEGY;
     const result = CACHING_STRATEGIES[strategy](cleanBody);
 
-    // Step 3: Cache last two user messages for conversation turn caching
-    // Skip when caching is disabled
+    // Step 3: Cache last two user messages for conversation turn caching,
+    // within the breakpoints the strategy left. Skip when caching is disabled
     if (strategy !== "none") {
-      addCacheControlToLastTwoUserMessages(result.messages);
+      addCacheControlToLastTwoUserMessages(
+        result.messages,
+        MAX_CACHE_BREAKPOINTS - countCacheBreakpoints(result),
+      );
     }
 
     return result;

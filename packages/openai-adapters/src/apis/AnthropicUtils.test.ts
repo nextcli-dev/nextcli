@@ -420,6 +420,34 @@ describe("addCacheControlToLastTwoUserMessages", () => {
     ]);
   });
 
+  it("adds at most the markers it is given, newest message first", () => {
+    const messages: MessageParam[] = [
+      { role: "user", content: [{ type: "text", text: "start" }] },
+      toolUse("a"),
+      toolResult("a", "one"),
+    ];
+    addCacheControlToLastTwoUserMessages(messages, 1);
+    expect(markers(messages)).toEqual([[2, 0]]);
+  });
+
+  it("counts a block that is already marked as free", () => {
+    const messages: MessageParam[] = [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "start", cache_control: { type: "ephemeral" } },
+        ],
+      },
+      toolUse("a"),
+      toolResult("a", "one"),
+    ];
+    addCacheControlToLastTwoUserMessages(messages, 1);
+    expect(markers(messages)).toEqual([
+      [0, 0],
+      [2, 0],
+    ]);
+  });
+
   it("still marks the last text block of plain chat turns", () => {
     const messages: MessageParam[] = [
       { role: "user", content: [{ type: "text", text: "one" }] },

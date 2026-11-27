@@ -15,6 +15,8 @@ import {
 } from "./AnthropicCachingStrategies.js";
 import {
   addCacheControlToLastTwoUserMessages,
+  countCacheBreakpoints,
+  MAX_CACHE_BREAKPOINTS,
   openaiToolToAnthropicTool,
 } from "./AnthropicUtils.js";
 
@@ -165,7 +167,10 @@ export const applyAnthropicCachingToOpenRouterBody = (
   const cachedBody = cachingStrategy({ ...anthropicBody });
 
   cachedBody.messages = cachedBody.messages ?? [];
-  addCacheControlToLastTwoUserMessages(cachedBody.messages);
+  addCacheControlToLastTwoUserMessages(
+    cachedBody.messages,
+    MAX_CACHE_BREAKPOINTS - countCacheBreakpoints(cachedBody),
+  );
 
   const cachedSystem = Array.isArray(cachedBody.system)
     ? cachedBody.system
