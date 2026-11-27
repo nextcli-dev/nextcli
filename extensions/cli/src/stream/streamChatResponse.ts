@@ -62,7 +62,7 @@ import {
   readCallEnd,
   TurnState,
 } from "./turnContinuation.js";
-import { turnPrefix } from "./turnPrefix.js";
+import { type Prefix, turnPrefix } from "./turnPrefix.js";
 
 function updateFinalResponse(
   content: string,
@@ -414,8 +414,8 @@ export async function streamChatResponse(
   isCompacting = false,
   /** The permissions this session's tools run with; the main session's by default */
   getPermissions?: ToolPermissionsSource,
-  /** A compaction's: the turn's system message, which the summary was fit to */
-  turnSystemMessage?: string,
+  /** A compaction's: the turn's system message and tools, which it was fit to */
+  given?: Prefix,
 ) {
   logger.debug("streamChatResponse called", {
     model: model.model,
@@ -440,13 +440,7 @@ export async function streamChatResponse(
     !isCompacting,
   );
 
-  const prefix = turnPrefix({
-    model,
-    isHeadless,
-    getPermissions,
-    isCompacting,
-    systemMessage: turnSystemMessage,
-  });
+  const prefix = turnPrefix({ model, isHeadless, getPermissions, given });
 
   // Aborted on exit, so an interrupted turn never starts another tool (#12701)
   const unregisterAbort = registerAbortController(abortController);
@@ -462,15 +456,15 @@ export async function streamChatResponse(
       let wrapUp: LimitWrapUp | undefined;
       ({ wrapUp, chatHistory } = applyTurnLimit(budget, chatHistory));
 
-      const { systemMessage, tools: turnTools } = await prefix();
+      // A run's last call and a compaction keep the turn's tools too, so
+      // they read the conversation from the provider's cache
+      const { systemMessage, tools } = await prefix();
 
-      // A compaction is one call that only writes the summary. With tools,
-      // the summarizer went on reviewing in a nested loop that --max-turns
-      // and --max-cost never saw (AI review run 43308492603).
+      // A compaction is one call that only writes the summary: tool calls in
+      // it, as in a run's last call, are dropped, never run. Run, the
+      // summarizer went on reviewing in a nested loop that --max-turns and
+      // --max-cost never saw (AI review run 43308492603).
       const onlyCall = !!wrapUp || isCompacting;
-
-      // A run's last call and a compaction get no tools
-      const tools = onlyCall ? [] : turnTools;
 
       // A compaction below leaves a history that ends with a user turn
       const compaction = {
@@ -499,8 +493,8 @@ export async function streamChatResponse(
       });
 
       // Get response from LLM
-      const { content, toolCalls, shouldContinue, usage, reasoning } =
-        await budget.measure(() =>
+      const respond = (callTools: ChatCompletionTool[], thinkingOff = false) =>
+        budget.measure(() =>
           processStreamingResponse({
             isHeadless,
             chatHistory,
@@ -508,7 +502,7 @@ export async function streamChatResponse(
             llmApi,
             abortController,
             callbacks,
-            tools,
+            tools: callTools,
             systemMessage,
             // The last call may only spend what is left under --max-cost
             maxTokens: wrapUp
@@ -518,12 +512,22 @@ export async function streamChatResponse(
                   countTotalInputTokens({ chatHistory, systemMessage, model }),
                 )
               : undefined,
-            // The last call writes the answer and a compaction a summary: no
-            // tokens spent on thinking
-            thinkingOff: onlyCall,
+            thinkingOff,
             isCompacting,
           }),
         );
+      let response = await respond(tools);
+      // A last call or a summary must write text. One that answered only
+      // with tool calls is asked once more as before the cache: no tools,
+      // no tokens spent on thinking
+      if (
+        onlyCall &&
+        !response.content.trim() &&
+        !abortController.signal.aborted
+      ) {
+        response = await respond([], true);
+      }
+      const { content, toolCalls, shouldContinue, usage, reasoning } = response;
 
       if (abortController?.signal.aborted) {
         return finalResponse || content || fullResponse;

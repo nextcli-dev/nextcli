@@ -25,7 +25,7 @@ export async function requestTools(
   );
 }
 
-interface Prefix {
+export interface Prefix {
   systemMessage: string;
   tools: ChatCompletionTool[];
 }
@@ -41,17 +41,20 @@ interface Prefix {
  * state is the key for both. A rebuild that gives the same bytes still
  * hits the provider's cache.
  *
- * A compaction's summary request carries no tools, and gets the turn's
- * system message, which the summary was fit to, rather than reading the
- * files again.
+ * A compaction's summary request is given the turn's prefix, which the
+ * summary was fit to, and sends it as it is: the cache it reads is the
+ * turn's, and the files the agent may have edited aren't read again.
  */
 export function turnPrefix(turn: {
   model: ModelConfig;
   isHeadless: boolean;
   getPermissions?: ToolPermissionsSource;
-  isCompacting: boolean;
-  systemMessage?: string;
+  given?: Prefix;
 }): () => Promise<Prefix> {
+  const { given } = turn;
+  if (given) {
+    return async () => given;
+  }
   let built:
     | (Prefix & { mode: PermissionMode; permissions: unknown; mcp: unknown })
     | undefined;
@@ -69,15 +72,12 @@ export function turnPrefix(turn: {
         permissions,
         mcp,
         systemMessage:
-          turn.systemMessage ??
-          (await services.systemMessage.getSystemMessage(currentMode)),
-        tools: turn.isCompacting
-          ? []
-          : await requestTools(
-              turn.model,
-              turn.isHeadless,
-              turn.getPermissions,
-            ),
+          await services.systemMessage.getSystemMessage(currentMode),
+        tools: await requestTools(
+          turn.model,
+          turn.isHeadless,
+          turn.getPermissions,
+        ),
       };
     }
     return built;

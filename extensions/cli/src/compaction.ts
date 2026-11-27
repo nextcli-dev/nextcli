@@ -262,13 +262,14 @@ export async function compactChatHistory(
     contextItems: [],
   };
 
-  // The same check the summary request passes (it has no tools). The
-  // instruction is counted but never kept as a turn.
+  // The same check the summary request passes, which carries the turn's
+  // tools. The instruction is counted but never kept as a turn.
   const validate = (history: ChatHistoryItem[]) =>
     validateContextLength({
       chatHistory: [...history, compactionPrompt],
       model: summaryModel,
       systemMessage,
+      tools: next.tools,
       safetyBuffer: REQUEST_SAFETY_BUFFER,
     });
   const fitted = fitHistory(
@@ -304,8 +305,9 @@ export async function compactChatHistory(
   };
 
   try {
-    // With the system message it was fit to: this turn's, not one read
-    // again from files the agent may have edited since
+    // With the system message and tools it was fit to: this turn's, so it
+    // reads the conversation from the provider's cache, and not files the
+    // agent may have edited since
     await streamChatResponse(
       historyForCompaction,
       summaryModel,
@@ -314,7 +316,7 @@ export async function compactChatHistory(
       streamCallbacks,
       true,
       undefined,
-      systemMessage,
+      { systemMessage, tools: next.tools },
     );
 
     // An aborted stream returns its partial text: never keep it

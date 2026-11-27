@@ -371,6 +371,33 @@ describe("compaction", () => {
         );
       });
 
+      // The summary request carries the turn's tools, so they take room
+      it("counts the turn's tools in the summary request's room", async () => {
+        currentSystemPrompt.text = "System prompt";
+        await compactChatHistory(history, smallModel, mockLlmApi, {
+          tools: [],
+        });
+        const withoutTools = sentHistoryLength();
+
+        const bigTool = {
+          type: "function" as const,
+          function: {
+            name: "Read",
+            description: " hello".repeat(4_000),
+            parameters: { type: "object" },
+          },
+        };
+        await compactChatHistory(history, smallModel, mockLlmApi, {
+          tools: [bigTool],
+        });
+
+        expect(sentHistoryLength()).toBeLessThan(withoutTools);
+        expect(vi.mocked(streamChatResponse).mock.calls.at(-1)?.[7]).toEqual({
+          systemMessage: "System prompt",
+          tools: [bigTool],
+        });
+      });
+
       it("reserves the current system prompt when the caller passes no count", async () => {
         currentSystemPrompt.text = " hello".repeat(4_000);
 
@@ -551,7 +578,7 @@ describe("compaction", () => {
 
     // An agent that edited AGENTS.md mid-turn: the turn keeps the system
     // message it started with, and the summary was fit to that one
-    it("sends the summary request the system message it was fit to", async () => {
+    it("sends the summary request the system message and tools it was fit to", async () => {
       const mockStreamResponse = vi.mocked(streamChatResponse);
       mockStreamResponse.mockImplementation(
         async (history, model, api, controller, callbacks) => {
@@ -568,12 +595,13 @@ describe("compaction", () => {
         ]),
         mockModel,
         mockLlmApi,
-        { systemMessage: "The turn's system message" },
+        { systemMessage: "The turn's system message", tools: [] },
       );
 
-      expect(mockStreamResponse.mock.calls.at(-1)?.[7]).toBe(
-        "The turn's system message",
-      );
+      expect(mockStreamResponse.mock.calls.at(-1)?.[7]).toEqual({
+        systemMessage: "The turn's system message",
+        tools: [],
+      });
       currentSystemPrompt.text = "System prompt";
     });
 

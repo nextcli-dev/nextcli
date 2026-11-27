@@ -157,6 +157,8 @@ describe("streamChatResponse - agent loop limits", () => {
   let llmApi: BaseLlmApi;
   let modelCalls: number;
   let callsWithoutTools: number;
+  // Set once the run asks for its final answer without tools
+  let wrapUpSent: boolean;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -168,6 +170,13 @@ describe("streamChatResponse - agent loop limits", () => {
     });
     modelCalls = 0;
     callsWithoutTools = 0;
+    wrapUpSent = false;
+    vi.mocked(services.chatHistory.addUserMessage).mockImplementation(
+      (content: string) => {
+        if (/do not call any tools/.test(content)) wrapUpSent = true;
+        return { message: { role: "user", content }, contextItems: [] };
+      },
+    );
     llmApi = {
       chatCompletionStream: vi.fn().mockImplementation(async function* (body: {
         tools?: unknown[];
@@ -177,10 +186,11 @@ describe("streamChatResponse - agent loop limits", () => {
         sessionUsage.promptTokens += 900;
         sessionUsage.completionTokens += 100;
         sessionUsage.totalCost += 0.01;
-        if (body.tools) {
+        if (!body.tools) callsWithoutTools++;
+        // The final call keeps the tools; the model answers, as asked
+        if (body.tools && !wrapUpSent) {
           yield toolCallChunk();
         } else {
-          callsWithoutTools++;
           yield contentChunk("Final answer");
         }
       }),
@@ -209,12 +219,15 @@ describe("streamChatResponse - agent loop limits", () => {
   const wrapUpPrompt = () =>
     vi.mocked(services.chatHistory.addUserMessage).mock.calls.at(-1)?.[0];
 
-  it("makes the last allowed call a final answer without tools", async () => {
+  it("makes the last allowed call a final answer that keeps the tools", async () => {
     configureAgentLoopLimits({ maxTurns: "3" });
 
     await expect(run()).resolves.toBe("Final answer");
     expect(modelCalls).toBe(3);
-    expect(callsWithoutTools).toBe(1);
+    // The same tools as every call, so it reads the conversation from cache
+    expect(callsWithoutTools).toBe(0);
+    const calls = vi.mocked(llmApi.chatCompletionStream).mock.calls;
+    expect(calls.at(-1)?.[0].tools).toEqual(calls[0][0].tools);
     expect(wrapUpPrompt()).toMatch(/--max-turns/);
     expect(wrapUpPrompt()).toMatch(/do not call any tools/);
     expect(getLimitReached()).toBe("turns");
@@ -239,7 +252,6 @@ describe("streamChatResponse - agent loop limits", () => {
       // 40-second turn and the 10 seconds kept for the answer
       await expect(run()).resolves.toBe("Final answer");
       expect(modelCalls).toBe(3);
-      expect(callsWithoutTools).toBe(1);
       expect(wrapUpPrompt()).toMatch(/--max-time/);
       expect(getLimitReached()).toBe("time");
     } finally {
@@ -250,7 +262,7 @@ describe("streamChatResponse - agent loop limits", () => {
   it("stops at the default limit of 100 model calls", async () => {
     await expect(run()).resolves.toBe("Final answer");
     expect(modelCalls).toBe(100);
-    expect(callsWithoutTools).toBe(1);
+    expect(wrapUpSent).toBe(true);
   });
 
   it("wraps up when the tokens left would not cover two more calls", async () => {
@@ -286,14 +298,14 @@ describe("streamChatResponse - agent loop limits", () => {
     // On gpt-4 ($30/$60 per million) a 16k final answer costs about $0.99
     await expect(run()).resolves.toBe("Final answer");
     expect(modelCalls).toBe(1);
-    expect(callsWithoutTools).toBe(1);
+    expect(wrapUpSent).toBe(true);
 
     // What $0.50 buys after a $0.03 prompt, at $60 per million output tokens
     const calls = vi.mocked(llmApi.chatCompletionStream).mock.calls;
     expect(calls[0][0]).toMatchObject({ max_tokens: 7833 });
   });
 
-  it("turns thinking off for the final call only, on a model that can", async () => {
+  it("keeps the turn's thinking settings and tools on the final call", async () => {
     // What nextcli-checks configures: OpenAI-compatible, pointed at OneProvider
     const deepseek = {
       provider: "openai",
@@ -306,16 +318,45 @@ describe("streamChatResponse - agent loop limits", () => {
 
     await expect(run(deepseek)).resolves.toBe("Final answer");
 
+    // A thinking or tools change would miss the provider's cache
     const calls = vi.mocked(llmApi.chatCompletionStream).mock.calls;
     expect(calls).toHaveLength(3);
-    expect(calls[0][0]).not.toHaveProperty("thinking");
-    expect(calls[1][0]).not.toHaveProperty("thinking");
-    expect(calls[2][0]).toMatchObject({
-      thinking: { type: "disabled" },
-      reasoning_effort: "none",
-    });
-    expect(calls[1][0]).not.toHaveProperty("reasoning_effort");
+    expect(calls[2][0]).not.toHaveProperty("thinking");
+    expect(calls[2][0]).not.toHaveProperty("reasoning_effort");
+    expect(calls[2][0].tools).toEqual(calls[0][0].tools);
+  });
+
+  it("asks once more without tools when the final call only calls tools", async () => {
+    const deepseek = {
+      provider: "openai",
+      name: "checks",
+      model: "deepseek-v4-pro",
+      apiBase: "https://api.oneprovider.dev/v1",
+      defaultCompletionOptions: { contextLength: 100_000, maxTokens: 2048 },
+    } as unknown as ModelConfig;
+    configureAgentLoopLimits({ maxTurns: "2" });
+    // A model that ignores the request for a final answer
+    vi.mocked(services.chatHistory.addUserMessage).mockImplementation(
+      (content: string) => ({
+        message: { role: "user", content },
+        contextItems: [],
+      }),
+    );
+
+    await expect(run(deepseek)).resolves.toBe("Final answer");
+
+    const calls = vi.mocked(llmApi.chatCompletionStream).mock.calls;
+    expect(calls).toHaveLength(3);
+    expect(calls[1][0].tools).toBeDefined();
+    // The retry is the call as it was before the cache: no tools, no
+    // thinking. The final call's tool call was never run.
     expect(calls[2][0].tools).toBeUndefined();
+    expect(calls[2][0]).toMatchObject({ thinking: { type: "disabled" } });
+    // Saved as the final answer with no tool calls left to run
+    expect(vi.mocked(handleToolCalls).mock.calls.at(-1)?.[0].toolCalls).toEqual(
+      [],
+    );
+    expect(getLimitReached()).toBe("turns");
   });
 
   it("drops tool calls in the final answer", async () => {
@@ -344,7 +385,7 @@ describe("streamChatResponse - agent loop limits", () => {
         true,
       );
 
-    it("is one call without tools, even when the model asks for one", async () => {
+    it("is one call with the turn's tools, whose tool calls are never run", async () => {
       // AI review run 43308492603: the summarizer kept reading files
       vi.mocked(llmApi.chatCompletionStream).mockImplementation(
         async function* () {
@@ -356,16 +397,15 @@ describe("streamChatResponse - agent loop limits", () => {
 
       await expect(compact()).resolves.toBe("Summary");
       expect(modelCalls).toBe(1);
-      expect(getRequestTools).not.toHaveBeenCalled();
       const calls = vi.mocked(llmApi.chatCompletionStream).mock.calls;
-      expect(calls[0][0].tools).toBeUndefined();
+      expect(calls[0][0].tools).toEqual([fakeTool]);
       // The tool call isn't run, and the summary isn't stored: its caller
       // stores it once it passes the next-request check
       expect(handleToolCalls).not.toHaveBeenCalled();
       expect(getLimitReached()).toBeUndefined();
     });
 
-    it("turns thinking off on a model that can", async () => {
+    it("keeps thinking on, and asks once more without tools or thinking for a summary that only calls tools", async () => {
       const deepseek = {
         provider: "openai",
         name: "checks",
@@ -374,10 +414,15 @@ describe("streamChatResponse - agent loop limits", () => {
         defaultCompletionOptions: { maxTokens: 2048 },
       } as unknown as ModelConfig;
 
+      // The fake model calls a tool whenever it has tools
       await expect(compact(deepseek)).resolves.toBe("Final answer");
       const calls = vi.mocked(llmApi.chatCompletionStream).mock.calls;
-      expect(calls).toHaveLength(1);
-      expect(calls[0][0]).toMatchObject({ thinking: { type: "disabled" } });
+      expect(calls).toHaveLength(2);
+      expect(calls[0][0]).not.toHaveProperty("thinking");
+      expect(calls[0][0].tools).toEqual([fakeTool]);
+      expect(calls[1][0]).toMatchObject({ thinking: { type: "disabled" } });
+      expect(calls[1][0].tools).toBeUndefined();
+      expect(handleToolCalls).not.toHaveBeenCalled();
     });
   });
 
