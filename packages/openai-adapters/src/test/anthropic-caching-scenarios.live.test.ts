@@ -152,8 +152,10 @@ const TOOLS = [
 
 // System message large enough to exceed the 4096-token minimum of older models
 // when combined with the tool definitions above.
-// New on every run, so a run never reads the cache an earlier run wrote
-// (entries live 5 minutes) and the "creates cache" checks hold on a rerun
+// New on every run, so a rerun within the cache lifetime (5 minutes) never
+// reads the earlier run's system message or conversation from cache and the
+// "creates cache" checks hold. Only the identical tool prefix, which comes
+// first, can still be read
 const RUN_ID = Date.now();
 
 const SYSTEM_MESSAGE = `Run ${RUN_ID}.
@@ -1203,8 +1205,9 @@ describe.skipIf(!API_KEY)(
         expect(write2).toBeGreaterThan(0);
         // It reads less than the original prompt (only the tools, which come
         // before the system message), because the system message changed.
-        // Request 1 may itself be a cache read from an earlier run, so compare
-        // with its whole prompt, not with what it wrote
+        // Request 1 may read the tools and system message an earlier scenario
+        // in this run cached, so compare with its whole prompt, not with what
+        // it wrote
         expect(read2).toBeLessThan(usage1.prompt_tokens);
 
         console.log("Scenario 5:", {
