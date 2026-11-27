@@ -318,15 +318,17 @@ function addReasoningFields(
   const details = (reasoning.details ?? []).filter(
     (detail) => isCurrentTurn || isSignedReasoningDetail(detail),
   );
+  const claude = !!options.model?.toLowerCase().includes("claude");
 
-  if (
-    options.model?.toLowerCase().includes("claude") &&
-    !details.some(isSignedReasoningDetail)
-  ) {
+  if (claude && !details.some(isSignedReasoningDetail)) {
     return;
   }
   const target = message as unknown as Record<string, unknown>;
-  if (isCurrentTurn && reasoning.textField && reasoning.text) {
+  // The text goes back on every turn: a provider that reads it (DeepSeek,
+  // Qwen) keeps it in the cached prompt, so dropping it after the next user
+  // message misses the cache from here on. Claude's reasoning goes back as
+  // signed details.
+  if ((isCurrentTurn || !claude) && reasoning.textField && reasoning.text) {
     target[reasoning.textField] = reasoning.text;
   }
   if (details.length > 0) {

@@ -40,16 +40,24 @@ describe("convertFromUnifiedHistory reasoning", () => {
     });
   });
 
-  it("does not send reasoning text for earlier turns", () => {
-    const messages = convertFromUnifiedHistory([
+  // Dropping it after the next user message missed DeepSeek's and Qwen's
+  // prompt cache from that message on (about 6K tokens per follow-up)
+  it("sends reasoning text for earlier turns too", () => {
+    const history = [
       user("First"),
       assistant(
         "One",
         reasoning({ text: "old thoughts", textField: "reasoning_content" }),
       ),
-      user("Second"),
-    ]);
-    expect(messages[1]).not.toHaveProperty("reasoning_content");
+    ];
+    const during = convertFromUnifiedHistory(history, {
+      model: "qwen4-max-preview",
+    });
+    const after = convertFromUnifiedHistory([...history, user("Second")], {
+      model: "qwen4-max-preview",
+    });
+    expect(after[1]).toEqual(during[1]);
+    expect(after[1]).toMatchObject({ reasoning_content: "old thoughts" });
   });
 
   it("uses the field the server sent", () => {
