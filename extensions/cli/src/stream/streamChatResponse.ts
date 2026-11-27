@@ -428,6 +428,8 @@ export async function streamChatResponse(
   isCompacting = false,
   /** The permissions this session's tools run with; the main session's by default */
   getPermissions?: ToolPermissionsSource,
+  /** A compaction's: the turn's system message, which the summary was fit to */
+  turnSystemMessage?: string,
 ) {
   logger.debug("streamChatResponse called", {
     model: model.model,
@@ -452,12 +454,11 @@ export async function streamChatResponse(
     !isCompacting,
   );
 
-  const prefix = turnPrefix(async (mode) => ({
-    systemMessage: await services.systemMessage.getSystemMessage(mode),
-    tools: isCompacting
-      ? []
-      : await requestTools(model, isHeadless, getPermissions),
-  }));
+  const prefix = turnPrefix(
+    async () =>
+      isCompacting ? [] : requestTools(model, isHeadless, getPermissions),
+    turnSystemMessage,
+  );
 
   // Aborted on exit, so an interrupted turn never starts another tool (#12701)
   const unregisterAbort = registerAbortController(abortController);

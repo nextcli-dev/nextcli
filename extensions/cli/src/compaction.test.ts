@@ -549,6 +549,34 @@ describe("compaction", () => {
       expect(result.compactionContent).toBe(mockContent);
     });
 
+    // An agent that edited AGENTS.md mid-turn: the turn keeps the system
+    // message it started with, and the summary was fit to that one
+    it("sends the summary request the system message it was fit to", async () => {
+      const mockStreamResponse = vi.mocked(streamChatResponse);
+      mockStreamResponse.mockImplementation(
+        async (history, model, api, controller, callbacks) => {
+          callbacks?.onContent?.("Summary");
+          return "Summary";
+        },
+      );
+      currentSystemPrompt.text = "AGENTS.md as edited during the turn";
+
+      await compactChatHistory(
+        convertToUnifiedHistory([
+          { role: "user", content: "Hello" },
+          { role: "assistant", content: "Hi there" },
+        ]),
+        mockModel,
+        mockLlmApi,
+        { systemMessage: "The turn's system message" },
+      );
+
+      expect(mockStreamResponse.mock.calls.at(-1)?.[7]).toBe(
+        "The turn's system message",
+      );
+      currentSystemPrompt.text = "System prompt";
+    });
+
     it("should handle callbacks correctly", async () => {
       const mockStreamResponse = vi.mocked(streamChatResponse);
       const mockContent = "Summary content";

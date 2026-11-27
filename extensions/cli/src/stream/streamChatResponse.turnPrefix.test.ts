@@ -58,10 +58,12 @@ const permissionState = vi.hoisted(() => ({
   currentMode: "normal",
   permissions: { policies: [] as unknown[] },
 }));
+const mcpState = vi.hoisted(() => ({ tools: [] as unknown[] }));
 
 vi.mock("../services/index.js", () => ({
   services: {
     systemMessage: { getSystemMessage: vi.fn() },
+    mcp: { getState: vi.fn(() => ({ ...mcpState })) },
     toolPermissions: {
       getState: vi.fn(() => ({ ...permissionState })),
       isHeadless: vi.fn(() => true),
@@ -131,6 +133,7 @@ describe("streamChatResponse - the request prefix of a turn", () => {
       currentMode: "normal",
       permissions: { policies: [] },
     });
+    mcpState.tools = [];
     requests = [];
     builds = 0;
     onRequest = () => {};
@@ -223,5 +226,43 @@ describe("streamChatResponse - the request prefix of a turn", () => {
       "System v2",
       "System v2",
     ]);
+  });
+
+  // A slow MCP server finishes connecting after the turn's first request.
+  // Permissions don't change, but the tools offered do.
+  it("builds them again when an MCP server connects mid-turn", async () => {
+    onRequest = (call) => {
+      if (call === 2) {
+        mcpState.tools = [{ name: "github_search" }];
+      }
+    };
+    await turn("Fix the bug");
+
+    expect(requests.map((r) => r.system)).toEqual([
+      "System v1",
+      "System v1",
+      "System v2",
+      "System v2",
+    ]);
+    expect(JSON.stringify(requests[2].tools)).toContain("Read v2");
+  });
+
+  it("sends a compaction the turn's system message without reading the files again", async () => {
+    await streamChatResponse(
+      convertToUnifiedHistory([{ role: "user", content: "Summarize" }]),
+      model,
+      llmApi,
+      {
+        signal: { aborted: false },
+        abort: vi.fn(),
+      } as unknown as AbortController,
+      undefined,
+      true,
+      undefined,
+      "The turn's system message",
+    );
+
+    expect(requests[0].system).toBe("The turn's system message");
+    expect(services.systemMessage.getSystemMessage).not.toHaveBeenCalled();
   });
 });
