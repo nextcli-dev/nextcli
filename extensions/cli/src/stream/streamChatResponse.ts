@@ -49,12 +49,14 @@ import {
   recordStreamTelemetry,
   reportsUsage,
   trackFirstTokenTime,
+  updateFinalResponse,
   warnUnknownZeroPrice,
 } from "./streamChatResponse.helpers.js";
 import {
   getCompletionOptions,
   StreamCallbacks,
 } from "./streamChatResponse.types.js";
+import { settleSummary, type SummaryRequest } from "./summaryResponse.js";
 import {
   type CallEnd,
   continueAfterResponse,
@@ -63,20 +65,6 @@ import {
   TurnState,
 } from "./turnContinuation.js";
 import { turnPrefix } from "./turnPrefix.js";
-
-function updateFinalResponse(
-  content: string,
-  shouldContinue: boolean,
-  isHeadless: boolean,
-  currentFinalResponse: string,
-): string {
-  if (!shouldContinue) {
-    return content;
-  } else if (isHeadless && content) {
-    return content;
-  }
-  return currentFinalResponse;
-}
 
 function handleContentDisplay(
   content: string,
@@ -175,6 +163,8 @@ export async function processStreamingResponse(
   shouldContinue: boolean;
   usage?: any;
   reasoning?: Reasoning;
+  /** How the call ended: "length" when it ran out of output tokens */
+  finishReason?: string;
 }> {
   const {
     model,
@@ -398,6 +388,7 @@ export async function processStreamingResponse(
     shouldContinue: validToolCalls.length > 0,
     usage: fullUsage,
     reasoning: reasoning.result(),
+    finishReason: callEnd.finishReason,
   };
 }
 
@@ -414,8 +405,8 @@ export async function streamChatResponse(
   isCompacting = false,
   /** The permissions this session's tools run with; the main session's by default */
   getPermissions?: ToolPermissionsSource,
-  /** A compaction's: the turn's system message, which the summary was fit to */
-  turnSystemMessage?: string,
+  /** A compaction's: the turn's prefix, which it was fit to, and its run */
+  summary?: SummaryRequest,
 ) {
   logger.debug("streamChatResponse called", {
     model: model.model,
@@ -440,12 +431,12 @@ export async function streamChatResponse(
     !isCompacting,
   );
 
+  // A compaction's summary request carries the turn's prefix
   const prefix = turnPrefix({
     model,
     isHeadless,
     getPermissions,
-    isCompacting,
-    systemMessage: turnSystemMessage,
+    given: summary,
   });
 
   // Aborted on exit, so an interrupted turn never starts another tool (#12701)
@@ -462,15 +453,7 @@ export async function streamChatResponse(
       let wrapUp: LimitWrapUp | undefined;
       ({ wrapUp, chatHistory } = applyTurnLimit(budget, chatHistory));
 
-      const { systemMessage, tools: turnTools } = await prefix();
-
-      // A compaction is one call that only writes the summary. With tools,
-      // the summarizer went on reviewing in a nested loop that --max-turns
-      // and --max-cost never saw (AI review run 43308492603).
-      const onlyCall = !!wrapUp || isCompacting;
-
-      // A run's last call and a compaction get no tools
-      const tools = onlyCall ? [] : turnTools;
+      const { systemMessage, tools } = await prefix();
 
       // A compaction below leaves a history that ends with a user turn
       const compaction = {
@@ -482,6 +465,7 @@ export async function streamChatResponse(
         systemMessage,
         tools,
         abortController,
+        budget,
       };
 
       // Pre-API auto-compaction checkpoint (now includes tools). Not before
@@ -499,8 +483,8 @@ export async function streamChatResponse(
       });
 
       // Get response from LLM
-      const { content, toolCalls, shouldContinue, usage, reasoning } =
-        await budget.measure(() =>
+      const respond = (callTools: ChatCompletionTool[], thinkingOff = false) =>
+        budget.measure(() =>
           processStreamingResponse({
             isHeadless,
             chatHistory,
@@ -508,7 +492,7 @@ export async function streamChatResponse(
             llmApi,
             abortController,
             callbacks,
-            tools,
+            tools: callTools,
             systemMessage,
             // The last call may only spend what is left under --max-cost
             maxTokens: wrapUp
@@ -518,25 +502,48 @@ export async function streamChatResponse(
                   countTotalInputTokens({ chatHistory, systemMessage, model }),
                 )
               : undefined,
-            // The last call writes the answer and a compaction a summary: no
-            // tokens spent on thinking
-            thinkingOff: onlyCall,
+            thinkingOff,
             isCompacting,
           }),
         );
+      // A run's last call has no tools and no thinking: it is the last call
+      // the limits allow, so it must answer. A summary's first call keeps the
+      // turn's tools and, unless its budget doesn't fit the output cap, its
+      // thinking, so it reads the conversation from the provider's cache.
+      let response = await respond(
+        wrapUp ? [] : tools,
+        !!wrapUp || !!summary?.thinkingOff,
+      );
+
+      if (isCompacting) {
+        response = await settleSummary(response, {
+          summary,
+          budget,
+          model,
+          chatHistory,
+          systemMessage,
+          askAgain: () => respond([], true),
+          signal: abortController.signal,
+        });
+      }
+      const { content, toolCalls, shouldContinue, usage, reasoning } = response;
 
       if (abortController?.signal.aborted) {
         return finalResponse || content || fullResponse;
       }
 
-      // Tool calls in it are dropped, not run
+      // A compaction only writes the summary: tool calls in it are dropped,
+      // never run. When they ran, the summarizer went on reviewing in a
+      // nested loop that --max-turns and --max-cost never saw (AI review run
+      // 43308492603).
       if (isCompacting) {
         // A summary is stored by compactChatHistory's caller, after it passes
         // the next-request check; storing it here would write before that
         handleContentDisplay(content, callbacks, isHeadless);
-        return content || finalResponse || fullResponse;
+        return content;
       }
-      if (onlyCall) {
+      // A run's last call only writes the answer: its tool calls are dropped
+      if (wrapUp) {
         await saveFinalAnswer({
           chatHistory,
           content,

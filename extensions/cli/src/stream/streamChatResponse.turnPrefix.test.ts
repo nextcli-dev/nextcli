@@ -248,8 +248,11 @@ describe("streamChatResponse - the request prefix of a turn", () => {
     expect(JSON.stringify(requests[2].tools)).toContain("Read v2");
   });
 
-  it("sends a compaction the turn's system message without reading the files again", async () => {
-    await streamChatResponse(
+  it("sends a compaction the turn's prefix as it is, without reading the files again", async () => {
+    const turnTools = [
+      { type: "function" as const, function: { name: "Read" } },
+    ];
+    const summary = streamChatResponse(
       convertToUnifiedHistory([{ role: "user", content: "Summarize" }]),
       model,
       llmApi,
@@ -260,10 +263,22 @@ describe("streamChatResponse - the request prefix of a turn", () => {
       undefined,
       true,
       undefined,
-      "The turn's system message",
+      { systemMessage: "The turn's system message", tools: turnTools },
     );
 
-    expect(requests[0].system).toBe("The turn's system message");
+    // The fake model calls a tool even without tools: no summary to keep
+    await expect(summary).rejects.toThrow(/tool call/);
+    expect(requests[0]).toEqual({
+      system: "The turn's system message",
+      tools: turnTools,
+    });
     expect(services.systemMessage.getSystemMessage).not.toHaveBeenCalled();
+    expect(getRequestTools).not.toHaveBeenCalled();
+    // It answered with a tool call only: asked once more, without tools
+    expect(requests).toHaveLength(2);
+    expect(requests[1]).toEqual({
+      system: "The turn's system message",
+      tools: undefined,
+    });
   });
 });

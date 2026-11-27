@@ -69,6 +69,35 @@ const assistant = (content: string): ChatHistoryItem => ({
   message: { role: "assistant", content },
   contextItems: [],
 });
+const chunk = (content: string, finishReason: string | null = null) => ({
+  id: "1",
+  object: "chat.completion.chunk",
+  created: 0,
+  model: "gpt-4o",
+  choices: [{ index: 0, delta: { content }, finish_reason: finishReason }],
+});
+const toolCall = () => ({
+  id: "1",
+  object: "chat.completion.chunk",
+  created: 0,
+  model: "gpt-4o",
+  choices: [
+    {
+      index: 0,
+      delta: {
+        tool_calls: [
+          {
+            index: 0,
+            id: "call_1",
+            type: "function",
+            function: { name: "Read", arguments: '{"filepath":"a.ts"}' },
+          },
+        ],
+      },
+      finish_reason: "tool_calls",
+    },
+  ],
+});
 
 describe("the summary request compaction sends", () => {
   // 10K window, 1K output
@@ -266,6 +295,134 @@ describe("the summary request compaction sends", () => {
       // The summary stream wrote nothing to the live history either
       expect(services.chatHistory.addAssistantMessage).not.toHaveBeenCalled();
       expect(services.chatHistory.setHistory).not.toHaveBeenCalled();
+    });
+
+    // review of #249: a tool-use reply is a lead-in and a tool call; the
+    // lead-in must not replace the conversation
+    it("stores the summary of the second call, not the lead-in to a tool call", async () => {
+      vi.mocked(llmApi.chatCompletionStream).mockImplementation(
+        async function* (body: { tools?: unknown[] }) {
+          yield chunk(
+            body.tools ? "I'll read the rest of the diff" : "Summary",
+          );
+          if (body.tools) {
+            yield toolCall();
+          }
+        } as never,
+      );
+
+      const result = await compactChatHistory(
+        [user("the task"), assistant("done")],
+        bigReserve,
+        llmApi,
+        next,
+      );
+
+      const calls = vi.mocked(llmApi.chatCompletionStream).mock.calls;
+      expect(calls).toHaveLength(2);
+      expect(calls[0][0].tools).toEqual([tool]);
+      expect(calls[1][0].tools).toBeUndefined();
+      expect(result.compactionContent).toBe("Summary");
+    });
+
+    it("fails, and keeps the session, when the summary is empty again", async () => {
+      vi.mocked(llmApi.chatCompletionStream).mockImplementation(
+        async function* () {
+          yield chunk("");
+        } as never,
+      );
+
+      await expect(
+        compactChatHistory(
+          [user("the task"), assistant("done")],
+          bigReserve,
+          llmApi,
+          next,
+        ),
+      ).rejects.toThrow(
+        "The model returned an empty summary, so the conversation was left as it is.",
+      );
+      expect(llmApi.chatCompletionStream).toHaveBeenCalledTimes(2);
+      expect(services.chatHistory.setHistory).not.toHaveBeenCalled();
+    });
+
+    // Thinking spent the output limit before any text
+    it("says to raise maxTokens for an empty summary that was cut off", async () => {
+      vi.mocked(llmApi.chatCompletionStream).mockImplementation(
+        async function* () {
+          yield chunk("", "length");
+        } as never,
+      );
+
+      await expect(
+        compactChatHistory(
+          [user("the task"), assistant("done")],
+          bigReserve,
+          llmApi,
+          next,
+        ),
+      ).rejects.toThrow(/cut off at its output limit.*maxTokens/);
+    });
+
+    it("fails, and keeps the session, when the summary is cut off again", async () => {
+      vi.mocked(llmApi.chatCompletionStream).mockImplementation(
+        async function* () {
+          yield chunk("The work so far: ", "length");
+        } as never,
+      );
+
+      await expect(
+        compactChatHistory(
+          [user("the task"), assistant("done")],
+          bigReserve,
+          llmApi,
+          next,
+        ),
+      ).rejects.toThrow(/cut off at its output limit.*maxTokens/);
+      expect(llmApi.chatCompletionStream).toHaveBeenCalledTimes(2);
+      expect(services.chatHistory.setHistory).not.toHaveBeenCalled();
+    });
+
+    describe("on a model with a thinking budget", () => {
+      // The Anthropic adapter keeps budget_tokens 1,024 below max_tokens;
+      // the summary's cap here is under 4,000
+      const claude = (reasoningBudgetTokens: number) =>
+        ({
+          name: "claude",
+          provider: "anthropic",
+          model: "claude-sonnet-4-5",
+          defaultCompletionOptions: {
+            contextLength: 10_000,
+            maxTokens: 6_000,
+            reasoningBudgetTokens,
+          },
+        }) as ModelConfig;
+
+      it("keeps the turn's budget when it fits under the cap", async () => {
+        await compactChatHistory(
+          [user("the task"), assistant("done")],
+          claude(2_048),
+          llmApi,
+          next,
+        );
+
+        expect(sentRequest()).toMatchObject({ nextcli_thinking_budget: 2_048 });
+        expect(sentRequest()).not.toHaveProperty("nextcli_thinking");
+      });
+
+      // A clamped budget would miss the cache anyway and leave the summary
+      // about 1,000 tokens
+      it("goes without thinking when the budget doesn't fit", async () => {
+        await compactChatHistory(
+          [user("the task"), assistant("done")],
+          claude(3_000),
+          llmApi,
+          next,
+        );
+
+        expect(sentRequest()).not.toHaveProperty("nextcli_thinking_budget");
+        expect(sentRequest()).toMatchObject({ nextcli_thinking: "off" });
+      });
     });
 
     it("fails before any call when the next request leaves no room", async () => {

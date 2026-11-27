@@ -12,6 +12,7 @@ import {
   isCompactionAborted,
 } from "./compaction.js";
 import { PRUNED_HISTORY_NOTE_PREFIX } from "./fitHistory.js";
+import { AgentLoopBudget } from "./stream/agentLoopLimits.js";
 import { streamChatResponse } from "./stream/streamChatResponse.js";
 
 // Mock the streamChatResponse function
@@ -371,6 +372,35 @@ describe("compaction", () => {
         );
       });
 
+      // The summary request carries the turn's tools, so they take room
+      it("counts the turn's tools in the summary request's room", async () => {
+        currentSystemPrompt.text = "System prompt";
+        await compactChatHistory(history, smallModel, mockLlmApi, {
+          tools: [],
+        });
+        const withoutTools = sentHistoryLength();
+
+        const bigTool = {
+          type: "function" as const,
+          function: {
+            name: "Read",
+            description: " hello".repeat(4_000),
+            parameters: { type: "object" },
+          },
+        };
+        await compactChatHistory(history, smallModel, mockLlmApi, {
+          tools: [bigTool],
+        });
+
+        expect(sentHistoryLength()).toBeLessThan(withoutTools);
+        expect(
+          vi.mocked(streamChatResponse).mock.calls.at(-1)?.[7],
+        ).toMatchObject({
+          systemMessage: "System prompt",
+          tools: [bigTool],
+        });
+      });
+
       it("reserves the current system prompt when the caller passes no count", async () => {
         currentSystemPrompt.text = " hello".repeat(4_000);
 
@@ -551,7 +581,7 @@ describe("compaction", () => {
 
     // An agent that edited AGENTS.md mid-turn: the turn keeps the system
     // message it started with, and the summary was fit to that one
-    it("sends the summary request the system message it was fit to", async () => {
+    it("sends the summary request the system message and tools it was fit to", async () => {
       const mockStreamResponse = vi.mocked(streamChatResponse);
       mockStreamResponse.mockImplementation(
         async (history, model, api, controller, callbacks) => {
@@ -568,13 +598,31 @@ describe("compaction", () => {
         ]),
         mockModel,
         mockLlmApi,
-        { systemMessage: "The turn's system message" },
+        { systemMessage: "The turn's system message", tools: [] },
       );
 
-      expect(mockStreamResponse.mock.calls.at(-1)?.[7]).toBe(
-        "The turn's system message",
-      );
+      expect(mockStreamResponse.mock.calls.at(-1)?.[7]).toMatchObject({
+        systemMessage: "The turn's system message",
+        tools: [],
+      });
       currentSystemPrompt.text = "System prompt";
+    });
+
+    // The run that compacts: a second summary call must fit its limits
+    it("gives the summary request the compacting run's limits", async () => {
+      vi.mocked(streamChatResponse).mockImplementation(async () => "Summary");
+      const budget = new AgentLoopBudget();
+
+      await compactChatHistory(
+        convertToUnifiedHistory([{ role: "user", content: "Hello" }]),
+        mockModel,
+        mockLlmApi,
+        { budget },
+      );
+
+      expect(
+        vi.mocked(streamChatResponse).mock.calls.at(-1)?.[7]?.runBudget,
+      ).toBe(budget);
     });
 
     it("should handle callbacks correctly", async () => {
@@ -650,31 +698,6 @@ describe("compaction", () => {
       expect(result.compactedHistory[0].message.content).toContain(
         "Summary of system setup",
       );
-    });
-
-    it("fails and keeps the session when the summary is empty", async () => {
-      const mockStreamResponse = vi.mocked(streamChatResponse);
-      const onError = vi.fn();
-
-      mockStreamResponse.mockImplementation(
-        async (history, model, api, controller, callbacks) => {
-          callbacks?.onContent?.("");
-          callbacks?.onContentComplete?.("");
-          return "";
-        },
-      );
-
-      const history = convertToUnifiedHistory([
-        { role: "user", content: "Hello" },
-      ]);
-
-      // No result, so nothing replaces the session
-      await expect(
-        compactChatHistory(history, mockModel, mockLlmApi, {
-          callbacks: { onError },
-        }),
-      ).rejects.toThrow("empty summary");
-      expect(onError).toHaveBeenCalled();
     });
 
     it("throws instead of keeping a partial summary when aborted", async () => {

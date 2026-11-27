@@ -18,6 +18,8 @@ import { safeStderr } from "../init.js";
 import { formatError } from "../util/formatError.js";
 import { logger } from "../util/logger.js";
 
+import type { AgentLoopBudget } from "./agentLoopLimits.js";
+
 interface AutoCompactionCallbacks {
   // For streaming mode
   onSystemMessage?: (message: string) => void;
@@ -41,6 +43,8 @@ interface AutoCompactionOptions {
   abortController?: AbortController;
   /** What follows the summary in the next request, which it is sized to fit */
   followedBy?: ChatHistoryItem[];
+  /** The run's limits, which a second summary call must fit */
+  budget?: AgentLoopBudget;
 }
 
 /**
@@ -198,6 +202,7 @@ export async function handleAutoCompaction(
       tools,
       followedBy,
       abortController,
+      budget: options.budget,
       trigger: "auto",
     });
 

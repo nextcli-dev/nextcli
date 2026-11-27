@@ -8,6 +8,7 @@ import {
   fitHistory,
   REQUEST_SAFETY_BUFFER,
 } from "./fitHistory.js";
+import type { AgentLoopBudget } from "./stream/agentLoopLimits.js";
 import {
   requestTools,
   streamChatResponse,
@@ -60,6 +61,11 @@ export interface CompactionOptions {
   followedBy?: ChatHistoryItem[];
   /** What started it, for the trace; the /compact command by default */
   trigger?: "auto" | "manual";
+  /**
+   * The limits of the run that compacts, which a second summary call must
+   * fit. The compaction's own by default (the /compact command).
+   */
+  budget?: AgentLoopBudget;
 }
 
 // A summary shorter than this can't carry the work forward
@@ -78,7 +84,7 @@ interface NextRequest {
 }
 
 const COMPACTION_PROMPT =
-  "Please provide a concise summary of our conversation so far, capturing the key context, decisions made, and current state. Format this as a single comprehensive message that preserves all important information needed to continue our work. You do not need to recap the system message, as this will remain. Make sure it is clear what the current stream of work was at the very end prior to compaction so that you can continue exactly where you left off without missing any information.";
+  "Please provide a concise summary of our conversation so far, capturing the key context, decisions made, and current state. Format this as a single comprehensive message that preserves all important information needed to continue our work. You do not need to recap the system message, as this will remain. Make sure it is clear what the current stream of work was at the very end prior to compaction so that you can continue exactly where you left off without missing any information. Reply with the summary as text only, without calling any tools.";
 
 /** The system prompt for the current mode */
 export async function currentSystemMessage(): Promise<string> {
@@ -135,19 +141,36 @@ function noRoomForSummary(
   return `Can't compact: ${parts.join(", ")} leave ${tokens(Math.max(room, 0))} of the ${tokens(getModelContextLimit(model))} window for a summary, less than the ${tokens(MIN_SUMMARY_TOKENS)} one needs. The conversation was left as it is. Raise contextLength, lower maxTokens or turn off tools you don't need.`;
 }
 
-/** The model with its answer capped at maxTokens */
-function withAnswerCap(model: ModelConfig, maxTokens: number): ModelConfig {
+// The Anthropic adapter keeps budget_tokens this far below max_tokens
+// (MIN_THINKING_BUDGET in openai-adapters' anthropicControls)
+const THINKING_BUDGET_MARGIN = 1_024;
+
+/**
+ * The model with its answer capped at maxTokens. A thinking budget is kept
+ * only when the adapter would send it unchanged under the cap: a different
+ * budget misses the turn's cached messages, and a budget clamped to the cap
+ * leaves the summary no room. Otherwise the summary goes without thinking.
+ */
+function withAnswerCap(
+  model: ModelConfig,
+  maxTokens: number,
+): { model: ModelConfig; thinkingOff: boolean } {
   const { reasoningBudgetTokens, ...options } =
     model.defaultCompletionOptions ?? {};
+  const keepsBudget =
+    reasoningBudgetTokens === undefined ||
+    reasoningBudgetTokens + THINKING_BUDGET_MARGIN <= maxTokens;
   return {
-    ...model,
-    defaultCompletionOptions: {
-      ...options,
-      maxTokens,
-      // A thinking budget must stay below max_tokens
-      ...(reasoningBudgetTokens !== undefined &&
-        reasoningBudgetTokens < maxTokens && { reasoningBudgetTokens }),
+    model: {
+      ...model,
+      defaultCompletionOptions: {
+        ...options,
+        maxTokens,
+        ...(keepsBudget &&
+          reasoningBudgetTokens !== undefined && { reasoningBudgetTokens }),
+      },
     },
+    thinkingOff: !keepsBudget,
   };
 }
 
@@ -248,10 +271,10 @@ export async function compactChatHistory(
   if (room < MIN_SUMMARY_TOKENS) {
     fail(noRoomForSummary(model, next, room));
   }
-  const summaryModel =
+  const { model: summaryModel, thinkingOff } =
     room < getModelMaxTokens(model)
       ? withAnswerCap(model, Math.min(room, MAX_CAPPED_SUMMARY_TOKENS))
-      : model;
+      : { model, thinkingOff: false };
 
   // Create a prompt to summarize the conversation
   const compactionPrompt: ChatHistoryItem = {
@@ -262,13 +285,14 @@ export async function compactChatHistory(
     contextItems: [],
   };
 
-  // The same check the summary request passes (it has no tools). The
-  // instruction is counted but never kept as a turn.
+  // The same check the summary request passes, which carries the turn's
+  // tools. The instruction is counted but never kept as a turn.
   const validate = (history: ChatHistoryItem[]) =>
     validateContextLength({
       chatHistory: [...history, compactionPrompt],
       model: summaryModel,
       systemMessage,
+      tools: next.tools,
       safetyBuffer: REQUEST_SAFETY_BUFFER,
     });
   const fitted = fitHistory(
@@ -289,13 +313,12 @@ export async function compactChatHistory(
   }
   const historyForCompaction = [...fitted.history, compactionPrompt];
 
-  // Stream the compaction response (service drives updates; this collects content locally)
+  // Stream the compaction response (the service drives updates; the text it
+  // returns is the summary)
   const controller = abortController || new AbortController();
 
-  let compactionContent = "";
   const streamCallbacks: StreamCallbacks = {
     onContent: (content: string) => {
-      compactionContent += content;
       callbacks?.onStreamContent?.(content);
     },
     onContentComplete: () => {
@@ -304,9 +327,11 @@ export async function compactChatHistory(
   };
 
   try {
-    // With the system message it was fit to: this turn's, not one read
-    // again from files the agent may have edited since
-    await streamChatResponse(
+    // With the system message and tools it was fit to: this turn's, so it
+    // reads the conversation from the provider's cache, and not files the
+    // agent may have edited since. The summary is the text of the call it
+    // returns: a call whose answer it drops streamed text as well.
+    const compactionContent = await streamChatResponse(
       historyForCompaction,
       summaryModel,
       llmApi,
@@ -314,7 +339,12 @@ export async function compactChatHistory(
       streamCallbacks,
       true,
       undefined,
-      systemMessage,
+      {
+        systemMessage,
+        tools: next.tools,
+        thinkingOff,
+        runBudget: options?.budget,
+      },
     );
 
     // An aborted stream returns its partial text: never keep it
@@ -322,13 +352,6 @@ export async function compactChatHistory(
       const cancelled = new Error("Compaction cancelled");
       cancelled.name = "AbortError";
       throw cancelled;
-    }
-
-    // A stream that ends without text gives no summary
-    if (!compactionContent.trim()) {
-      throw new Error(
-        "The model returned an empty summary, so the conversation was left as it is.",
-      );
     }
 
     // The system prompt isn't part of the history (role:"system" items are
