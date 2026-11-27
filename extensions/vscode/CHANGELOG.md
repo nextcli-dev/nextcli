@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.6.28](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.27...vscode-v1.6.28) (2026-11-26)
+
+
+### Features
+
+* **cli:** SearchHistory and ReadHistory tools ([#237](https://github.com/nextcli-dev/nextcli/issues/237)) ([b3de4b9](https://github.com/nextcli-dev/nextcli/commit/b3de4b9d655880f8583ef10e1ec744e0650f7887))
+* **context:** append-only session journal ([#235](https://github.com/nextcli-dev/nextcli/issues/235)) ([f9f481c](https://github.com/nextcli-dev/nextcli/commit/f9f481c8e0ed5231019803c81f27fe353a9616b9))
+* **context:** full-text history index ([#236](https://github.com/nextcli-dev/nextcli/issues/236)) ([4c1ded0](https://github.com/nextcli-dev/nextcli/commit/4c1ded0ed22616055664de3f50ca43a49ea405b9))
+* **context:** partial matches and a session outline in history recall ([#241](https://github.com/nextcli-dev/nextcli/issues/241)) ([bb418ce](https://github.com/nextcli-dev/nextcli/commit/bb418ce23f3e2a4cf76cc146ce1d30f253e84f4f))
+* **vscode:** search_history and read_history tools ([#238](https://github.com/nextcli-dev/nextcli/issues/238)) ([46ca5af](https://github.com/nextcli-dev/nextcli/commit/46ca5af6a9836e404e9ef52ab2c4cb38cf826a51))
+
+
+### Bug Fixes
+
+* **cli,core:** print the TUI history after a compaction, and keep thinking out of summaries ([#230](https://github.com/nextcli-dev/nextcli/issues/230)) ([96cf793](https://github.com/nextcli-dev/nextcli/commit/96cf793fc750b7504d32ba642b793c83291cc643))
+* **cli:** write sessions to the right file, and print a compaction without clearing the screen ([#232](https://github.com/nextcli-dev/nextcli/issues/232)) ([19f9585](https://github.com/nextcli-dev/nextcli/commit/19f95852c6bd96ae0f7497c48cc34efccb04b1de))
+* **vscode:** stop blocking the extension host after each reply, and end tool calls a reload interrupted ([#242](https://github.com/nextcli-dev/nextcli/issues/242)) ([7500eea](https://github.com/nextcli-dev/nextcli/commit/7500eeab761a303c72de843d34312fca00c30dee))
+
 ## [1.6.27](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.26...vscode-v1.6.27) (2026-11-25)
 
 
