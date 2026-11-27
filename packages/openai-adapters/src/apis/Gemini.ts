@@ -44,11 +44,6 @@ import {
   RerankCreateParams,
 } from "./base.js";
 
-type UsageInfo = Pick<
-  CompletionUsage,
-  "total_tokens" | "completion_tokens" | "prompt_tokens"
->;
-
 interface GeminiToolCall
   extends OpenAI.Chat.Completions.ChatCompletionMessageFunctionToolCall {
   extra_content?: {
@@ -135,16 +130,40 @@ export function geminiChatCompletion(data: any, model: string): ChatCompletion {
     content,
     model,
     finish_reason: toolCalls.length > 0 ? "tool_calls" : "stop",
-    usage: usage && {
-      prompt_tokens: usage.promptTokenCount || 0,
-      completion_tokens: usage.candidatesTokenCount || 0,
-      total_tokens: usage.totalTokenCount || 0,
-    },
+    usage: usage && geminiUsage(usage),
   });
   if (toolCalls.length > 0) {
     completion.choices[0].message.tool_calls = toolCalls;
   }
   return completion;
+}
+
+/**
+ * Gemini's usage in OpenAI's shape. Its prompt count includes the cached
+ * tokens; the tool-use prompt is counted apart but billed as input, and
+ * thinking is counted apart from the answer but billed as output.
+ */
+function geminiUsage(meta: {
+  promptTokenCount?: number;
+  toolUsePromptTokenCount?: number;
+  cachedContentTokenCount?: number;
+  candidatesTokenCount?: number;
+  thoughtsTokenCount?: number;
+  totalTokenCount?: number;
+}): CompletionUsage {
+  const thoughts = meta.thoughtsTokenCount ?? 0;
+  return {
+    prompt_tokens:
+      (meta.promptTokenCount ?? 0) + (meta.toolUsePromptTokenCount ?? 0),
+    completion_tokens: (meta.candidatesTokenCount ?? 0) + thoughts,
+    total_tokens: meta.totalTokenCount ?? 0,
+    ...(meta.cachedContentTokenCount && {
+      prompt_tokens_details: { cached_tokens: meta.cachedContentTokenCount },
+    }),
+    ...(thoughts && {
+      completion_tokens_details: { reasoning_tokens: thoughts },
+    }),
+  };
 }
 
 export class GeminiApi implements BaseLlmApi {
@@ -378,7 +397,7 @@ export class GeminiApi implements BaseLlmApi {
     signal: AbortSignal,
   ): Promise<ChatCompletion> {
     let completion = "";
-    let usage: UsageInfo | undefined = undefined;
+    let usage: CompletionUsage | undefined = undefined;
     for await (const chunk of this.chatCompletionStream(
       {
         ...body,
@@ -418,15 +437,11 @@ export class GeminiApi implements BaseLlmApi {
     response: AsyncIterable<any>,
     model: string,
   ): AsyncGenerator<ChatCompletionChunk> {
-    let usage: UsageInfo | undefined = undefined;
+    let usage: CompletionUsage | undefined = undefined;
 
     for await (const chunk of response) {
       if (chunk.usageMetadata) {
-        usage = {
-          prompt_tokens: chunk.usageMetadata.promptTokenCount || 0,
-          completion_tokens: chunk.usageMetadata.candidatesTokenCount || 0,
-          total_tokens: chunk.usageMetadata.totalTokenCount || 0,
-        };
+        usage = geminiUsage(chunk.usageMetadata);
       }
 
       const contentParts = chunk?.candidates?.[0]?.content?.parts;

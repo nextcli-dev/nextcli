@@ -298,17 +298,21 @@ export interface ChatUsage {
     cache_write_tokens?: number;
   } | null;
   completion_tokens_details?: { reasoning_tokens?: number } | null;
+  /** DeepSeek's own API reports cache hits only here */
+  prompt_cache_hit_tokens?: number;
 }
 
 /** The usage a chat-completions response reports, in core's shape */
 export function toUsage(usage: ChatUsage): Usage {
+  const details = usage.prompt_tokens_details;
+  const cachedTokens = details?.cached_tokens ?? usage.prompt_cache_hit_tokens;
   return {
     promptTokens: usage.prompt_tokens ?? 0,
     completionTokens: usage.completion_tokens ?? 0,
-    ...(usage.prompt_tokens_details && {
+    ...((details || cachedTokens !== undefined) && {
       promptTokensDetails: {
-        cachedTokens: usage.prompt_tokens_details.cached_tokens,
-        cacheWriteTokens: usage.prompt_tokens_details.cache_write_tokens,
+        cachedTokens,
+        cacheWriteTokens: details?.cache_write_tokens,
       },
     }),
     ...(usage.completion_tokens_details && {

@@ -5,6 +5,8 @@ import { getAdjustedTokenCountFromModel } from "core/llm/getAdjustedTokenCount.j
 import { encode } from "gpt-tokenizer";
 import type { ChatCompletionTool } from "openai/resources/chat/completions.mjs";
 
+import type { ToolCall } from "../tools/types.js";
+
 import { logger } from "./logger.js";
 import { getModelControlsFor, getModelSettings } from "./modelSettings.js";
 
@@ -407,4 +409,26 @@ export function validateContextLength(params: ValidateContextLengthParams): {
     contextLimit,
     maxTokens: reservedForOutput,
   };
+}
+
+/**
+ * The output tokens of a response or attempt that reported no usage, from
+ * what it streamed: the answer, the reasoning (signatures and encrypted
+ * reasoning too, as countReasoningTokens counts them) and the tool calls'
+ * names and arguments. Adjusted for the model like the prompt count, so both
+ * sides of the price are estimated the same way.
+ */
+export function estimateOutputTokens(
+  model: ModelConfig,
+  response: {
+    content: string;
+    reasoning?: Reasoning;
+    toolCalls: Iterable<Pick<ToolCall, "name" | "argumentsStr">>;
+  },
+): number {
+  const calls = [...response.toolCalls].map((c) => c.name + c.argumentsStr);
+  const tokens =
+    countText([response.content, ...calls].join("\n")) +
+    (response.reasoning ? countReasoningTokens(response.reasoning) : 0);
+  return getAdjustedTokenCountFromModel(tokens, model.model ?? "");
 }

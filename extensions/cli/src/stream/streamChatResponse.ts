@@ -21,6 +21,7 @@ import {
 import { logger } from "../util/logger.js";
 import {
   countTotalInputTokens,
+  estimateOutputTokens,
   historySentToModel,
   validateContextLength,
 } from "../util/tokenizer.js";
@@ -47,6 +48,7 @@ import {
   finalAnswerMaxTokens,
   recordFailedCall,
   recordStreamTelemetry,
+  reportsUsage,
   trackFirstTokenTime,
   warnUnknownZeroPrice,
 } from "./streamChatResponse.helpers.js";
@@ -248,8 +250,6 @@ export async function processStreamingResponse(
   const toolCallsMap = new Map<string, ToolCall>();
   const indexToIdMap = new Map<number, string>(); // Track index to ID mapping
   let firstTokenTime: number | null = null;
-  let inputTokens = 0;
-  let outputTokens = 0;
   let fullUsage: any = null;
   const reasoning = new ReasoningAccumulator();
   const attempts = trackStreamAttempts({
@@ -279,9 +279,7 @@ export async function processStreamingResponse(
       logger.trace("Received chunk", { chunkCount, chunk });
 
       // Track token usage if available
-      if (chunk.usage) {
-        inputTokens = chunk.usage.prompt_tokens || 0;
-        outputTokens = chunk.usage.completion_tokens || 0;
+      if (reportsUsage(chunk.usage)) {
         fullUsage = chunk.usage; // Capture full usage including cache details
       }
 
@@ -316,8 +314,14 @@ export async function processStreamingResponse(
     const cost = recordStreamTelemetry({
       requestStartTime,
       responseEndTime: Date.now(),
-      inputTokens,
-      outputTokens,
+      // Used only without a usage chunk: the request as its fit check
+      // counted it and the streamed output, so the limits still see the call
+      inputTokens: validation.inputTokens ?? 0,
+      outputTokens: estimateOutputTokens(model, {
+        content: aiResponse,
+        reasoning: reasoning.result(),
+        toolCalls: toolCallsMap.values(),
+      }),
       model,
       tools,
       fullUsage,

@@ -1,49 +1,54 @@
 import type { ContextSnapshot } from "@nextcli/context";
-import { encode } from "gpt-tokenizer";
 import type { ChatCompletionChunk } from "openai/resources/chat/completions.mjs";
 
 import type { StreamAttemptHooks } from "../util/exponentialBackoff.js";
+import { estimateOutputTokens } from "../util/tokenizer.js";
 
 import { ReasoningAccumulator } from "./reasoning.js";
 import {
   describeError,
   hasGeneratedToken,
   recordStreamTelemetry,
+  reportsUsage,
 } from "./streamChatResponse.helpers.js";
 import { readCallEnd } from "./turnContinuation.js";
 
-/** Text the model generated in one chunk: answer, reasoning, tool arguments */
-function generatedText(chunk: ChatCompletionChunk): string {
-  const delta: any = chunk.choices?.[0]?.delta ?? {};
-  const toolArgs = (delta.tool_calls ?? [])
-    .map((call: any) => call.function?.arguments ?? "")
-    .join("");
-  return [
-    delta.content ?? "",
-    delta.reasoning_content ?? "",
-    delta.reasoning ?? "",
-    toolArgs,
-  ].join("");
-}
-
-/** What a discarded attempt produced before it failed */
-function summarizeAttempt(chunks: ChatCompletionChunk[]) {
+/**
+ * What a discarded attempt produced before it failed, and its output tokens
+ * when it reported no usage: the same estimate a finished call gets
+ */
+function summarizeAttempt(chunks: ChatCompletionChunk[], model: any) {
   const reasoning = new ReasoningAccumulator();
   const toolCalls: string[] = [];
-  let contentChars = 0;
+  const calls = new Map<number, { name: string; argumentsStr: string }>();
+  let content = "";
   for (const chunk of chunks) {
     const delta: any = chunk.choices?.[0]?.delta ?? {};
     reasoning.add(delta);
-    contentChars += delta.content?.length ?? 0;
+    content += delta.content ?? "";
     for (const call of delta.tool_calls ?? []) {
       if (call.function?.name) toolCalls.push(call.function.name);
+      const sofar = calls.get(call.index ?? 0) ?? {
+        name: "",
+        argumentsStr: "",
+      };
+      sofar.name += call.function?.name ?? "";
+      sofar.argumentsStr += call.function?.arguments ?? "";
+      calls.set(call.index ?? 0, sofar);
     }
   }
   return {
-    finishReason: chunks.reduce(readCallEnd, {}).finishReason,
-    contentChars,
-    reasoningChars: reasoning.chars(),
-    toolCalls,
+    call: {
+      finishReason: chunks.reduce(readCallEnd, {}).finishReason,
+      contentChars: content.length,
+      reasoningChars: reasoning.chars(),
+      toolCalls,
+    },
+    outputTokens: estimateOutputTokens(model, {
+      content,
+      reasoning: reasoning.result(),
+      toolCalls: calls.values(),
+    }),
   };
 }
 
@@ -91,20 +96,21 @@ export function trackStreamAttempts(options: {
       if (typeof error === "object" && error !== null) {
         recordedErrors.add(error);
       }
-      const usage = [...chunks].reverse().find((chunk) => chunk.usage)?.usage;
+      const usage = [...chunks]
+        .reverse()
+        .find((chunk) => reportsUsage(chunk.usage))?.usage;
+      const attempt = summarizeAttempt(chunks, options.model);
       recordStreamTelemetry({
         requestStartTime: options.requestStartTime,
         responseEndTime: Date.now(),
         inputTokens: usage?.prompt_tokens ?? options.estimateInputTokens(),
-        outputTokens:
-          usage?.completion_tokens ??
-          encode(chunks.map(generatedText).join("")).length,
+        outputTokens: usage?.completion_tokens ?? attempt.outputTokens,
         model: options.model,
         tools: options.tools,
         fullUsage: usage,
         context: options.context,
         call: {
-          ...summarizeAttempt(chunks),
+          ...attempt.call,
           ttftMs,
           discarded: true,
           aborted: options.abortSignal.aborted || undefined,

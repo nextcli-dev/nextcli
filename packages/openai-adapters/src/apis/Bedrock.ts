@@ -24,6 +24,7 @@ import {
   Completion,
   CompletionCreateParamsNonStreaming,
   CompletionCreateParamsStreaming,
+  CompletionUsage,
   CreateEmbeddingResponse,
   EmbeddingCreateParams,
   Model,
@@ -32,7 +33,13 @@ import {
 import { fromNodeProviderChain } from "@aws-sdk/credential-providers";
 import { fromStatic } from "@aws-sdk/token-providers";
 import { BedrockConfig } from "../types.js";
-import { chatChunk, chatChunkFromDelta, embedding, rerank } from "../util.js";
+import {
+  chatChunk,
+  chatChunkFromDelta,
+  embedding,
+  rerank,
+  usageChatChunk,
+} from "../util.js";
 import { safeParseArgs } from "../util/parseArgs.js";
 import { parseDataUrl } from "../util/url.js";
 import { anthropicControlParams } from "./anthropicControls.js";
@@ -455,6 +462,7 @@ export class BedrockApi implements BaseLlmApi {
     signal: AbortSignal,
   ): Promise<ChatCompletion> {
     let completion = "";
+    let usage: CompletionUsage | undefined;
     const toolCalls: ChatCompletionMessageToolCall[] = [];
 
     for await (const chunk of this.chatCompletionStream(
@@ -464,7 +472,11 @@ export class BedrockApi implements BaseLlmApi {
       },
       signal,
     )) {
-      if (chunk.choices[0].delta.content) {
+      // The last chunk holds only the usage, with no choices
+      if (chunk.usage) {
+        usage = chunk.usage;
+      }
+      if (chunk.choices[0]?.delta.content) {
         completion += chunk.choices[0].delta.content;
       }
       // TODO tool calls not supported
@@ -488,7 +500,7 @@ export class BedrockApi implements BaseLlmApi {
           },
         },
       ],
-      usage: undefined,
+      usage,
     };
   }
 
@@ -510,7 +522,32 @@ export class BedrockApi implements BaseLlmApi {
         throw new Error("No stream received from Bedrock API");
       }
 
+      let usage: CompletionUsage | undefined;
       for await (const chunk of response.stream) {
+        // The metadata event carries the usage. Like Anthropic, Bedrock
+        // counts cache reads and writes apart from inputTokens
+        if (chunk.metadata?.usage) {
+          const {
+            inputTokens,
+            outputTokens,
+            cacheReadInputTokens,
+            cacheWriteInputTokens,
+          } = chunk.metadata.usage;
+          const cacheRead = cacheReadInputTokens ?? 0;
+          const cacheWrite = cacheWriteInputTokens ?? 0;
+          const prompt = (inputTokens ?? 0) + cacheRead + cacheWrite;
+          usage = {
+            prompt_tokens: prompt,
+            completion_tokens: outputTokens ?? 0,
+            total_tokens: prompt + (outputTokens ?? 0),
+            prompt_tokens_details: {
+              cached_tokens: cacheRead,
+              cache_read_tokens: cacheRead,
+              cache_write_tokens: cacheWrite,
+            } as CompletionUsage["prompt_tokens_details"],
+          };
+        }
+
         if (chunk.contentBlockDelta?.delta) {
           const delta: any = chunk.contentBlockDelta.delta;
 
@@ -574,6 +611,9 @@ export class BedrockApi implements BaseLlmApi {
             });
           }
         }
+      }
+      if (usage) {
+        yield usageChatChunk({ model: body.model, usage });
       }
     } catch (error) {
       if (error instanceof Error) {

@@ -218,6 +218,27 @@ describe("usage on the OpenAI adapter", () => {
     expect(log.finishReason).toBe("length");
   });
 
+  test("reads DeepSeek's cache hits, which its own API reports apart", async () => {
+    const { log } = await streamWith([
+      chunk({ content: "The plan" }, "stop"),
+      {
+        ...usageChunk(300),
+        usage: {
+          prompt_tokens: 1_000,
+          completion_tokens: 300,
+          total_tokens: 1_300,
+          prompt_cache_hit_tokens: 800,
+          prompt_cache_miss_tokens: 200,
+        },
+      },
+    ]);
+    expect(log.usage).toEqual({
+      promptTokens: 1_000,
+      completionTokens: 300,
+      promptTokensDetails: { cachedTokens: 800, cacheWriteTokens: undefined },
+    });
+  });
+
   test("reports no usage when the provider sends none", async () => {
     const { log } = await streamWith([chunk({ content: "Hi" }, "stop")]);
     expect(log.usage).toBeUndefined();

@@ -527,6 +527,10 @@ function mapUsage(usage?: ResponseUsage | null): CompletionUsage | undefined {
     completion_tokens: usage.output_tokens,
     prompt_tokens: usage.input_tokens,
     total_tokens: usage.total_tokens,
+    // input_tokens includes them, as prompt_tokens does in Chat Completions
+    prompt_tokens_details: {
+      cached_tokens: usage.input_tokens_details?.cached_tokens ?? 0,
+    },
   };
 
   return mapped;

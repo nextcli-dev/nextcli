@@ -46,6 +46,13 @@ describe("recordStreamTelemetry cache reads", () => {
     expect(record).toHaveBeenCalledWith(8000, "cacheRead", "gpt-6.1-sol");
   });
 
+  it("bills DeepSeek's prompt_cache_hit_tokens at the cached rate too", () => {
+    expect(cost({ ...usage, prompt_cache_hit_tokens: 8000 })).toBeCloseTo(
+      cost({ ...usage, prompt_tokens_details: { cached_tokens: 8000 } }),
+      10,
+    );
+  });
+
   it("bills every prompt token at the input rate without cache details", () => {
     expect(cost(usage)).toBeGreaterThan(0.0148);
   });
