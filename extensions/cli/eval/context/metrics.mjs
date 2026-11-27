@@ -33,7 +33,9 @@ export function readTrace(dir, sessionId) {
 function usageOf(attrs) {
   const u = attrs.usage ?? {};
   const details = u.prompt_tokens_details;
-  // The same fields, in the same order, as the CLI's toUsage
+  // The CLI's toUsage fields first, then the provider's own field names
+  // (Anthropic's input_tokens and cache_*_input_tokens, Moonshot's
+  // cached_tokens) that a trace can also hold
   const cacheRead =
     details?.cache_read_tokens ??
     details?.cached_tokens ??
