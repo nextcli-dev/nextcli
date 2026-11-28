@@ -239,6 +239,28 @@ describe("usage on the OpenAI adapter", () => {
     });
   });
 
+  test("reads DashScope's cache writes, which it reports under Anthropic's name", async () => {
+    const { log } = await streamWith([
+      chunk({ content: "The plan" }, "stop"),
+      {
+        ...usageChunk(300),
+        usage: {
+          prompt_tokens: 7_000,
+          completion_tokens: 300,
+          total_tokens: 7_300,
+          prompt_tokens_details: {
+            cached_tokens: 6_000,
+            cache_creation_input_tokens: 900,
+          },
+        },
+      },
+    ]);
+    expect(log.usage?.promptTokensDetails).toEqual({
+      cachedTokens: 6_000,
+      cacheWriteTokens: 900,
+    });
+  });
+
   test("reports no usage when the provider sends none", async () => {
     const { log } = await streamWith([chunk({ content: "Hi" }, "stop")]);
     expect(log.usage).toBeUndefined();

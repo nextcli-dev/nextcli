@@ -296,6 +296,8 @@ export interface ChatUsage {
     cached_tokens?: number;
     /** Sent by the Anthropic adapter */
     cache_write_tokens?: number;
+    /** DashScope's explicit cache */
+    cache_creation_input_tokens?: number;
   } | null;
   completion_tokens_details?: { reasoning_tokens?: number } | null;
   /** DeepSeek's own API reports cache hits only here */
@@ -312,7 +314,8 @@ export function toUsage(usage: ChatUsage): Usage {
     ...((details || cachedTokens !== undefined) && {
       promptTokensDetails: {
         cachedTokens,
-        cacheWriteTokens: details?.cache_write_tokens,
+        cacheWriteTokens:
+          details?.cache_write_tokens ?? details?.cache_creation_input_tokens,
       },
     }),
     ...(usage.completion_tokens_details && {
