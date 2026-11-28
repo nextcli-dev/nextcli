@@ -65,7 +65,7 @@ For example, you can say "Create a rule for this", and a rule will be created fo
 Rules can be simple text, written in YAML configuration files, or as Markdown (`.md`) files. They can have the following properties:
 
 - `name` (**required** for YAML): A display name/title for the rule
-- `globs` (optional): When files are provided as context that match this glob pattern, the rule will be included. This can be either a single pattern (e.g., `"**/*.{ts,tsx}"`) or an array of patterns (e.g., `["src/**/*.ts", "tests/**/*.ts"]`).
+- `globs` (optional): When files are provided as context that match this glob pattern, the rule will be included. Once a file in a turn matches, including one a tool read, the rule stays included until your next message. This can be either a single pattern (e.g., `"**/*.{ts,tsx}"`) or an array of patterns (e.g., `["src/**/*.ts", "tests/**/*.ts"]`).
 - `regex` (optional): When files are provided as context and their content matches this regex pattern, the rule will be included. This can be either a single pattern (e.g., `"^import .* from '.*';$"`) or an array of patterns (e.g., `["^import .* from '.*';$", "^export .* from '.*';$"]`).
 - `description` (optional): A description for the rule. Agents may read this description when `alwaysApply` is false to determine whether the rule should be pulled into context.
 - `alwaysApply`: Determines whether the rule is always included. Behavior is described below:

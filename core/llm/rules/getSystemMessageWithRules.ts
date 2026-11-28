@@ -309,24 +309,30 @@ export const shouldApplyRule = (
   });
 };
 
+type RuleMessage = UserChatMessage | ToolResultChatMessage;
+type RuleMessages = RuleMessage | RuleMessage[] | undefined;
+
 /**
  * Filters rules that apply to the given message and/or context items
  *
- * @param userMessage - The user or tool message to check for file paths in code blocks
+ * @param userMessage - The user or tool messages to check for file paths in
+ * code blocks. Chat passes every one since the last user message, so the
+ * rules only grow during a turn and the system message stays cached.
  * @param rules - The list of rules to filter
  * @param contextItems - Context items to check for file paths
  * @returns List of applicable rules
  */
 export const getApplicableRules = (
-  userMessage: UserChatMessage | ToolResultChatMessage | undefined,
+  userMessage: RuleMessages,
   rules: RuleWithSource[],
   contextItems: ContextItemWithId[],
   rulePolicies: RulePolicies = {},
 ): RuleWithSource[] => {
-  // Get file paths from message and context for rule matching
-  const filePathsFromMessage = userMessage
-    ? extractPathsFromCodeBlocks(renderChatMessage(userMessage))
-    : [];
+  // Get file paths from the messages and context for rule matching
+  const messageContents = [userMessage ?? []].flat().map(renderChatMessage);
+  const filePathsFromMessage = messageContents.flatMap(
+    extractPathsFromCodeBlocks,
+  );
 
   // Extract file paths from context items
   const filePathsFromContextItems = contextItems
@@ -346,11 +352,10 @@ export const getApplicableRules = (
     }
   });
 
-  // Extract contents from code blocks in the message for paths that don't have content yet
-  if (userMessage) {
-    const messageContent = renderChatMessage(userMessage);
+  // Extract contents from code blocks in the messages for paths that don't have content yet
+  for (const messageContent of messageContents) {
     filePathsFromMessage.forEach((path) => {
-      // Only extract content if we don't already have it from context items
+      // Only extract content if we don't already have it
       if (!fileContents[path]) {
         const blockContent = extractContentFromCodeBlock(messageContent, path);
         if (blockContent) {
@@ -381,7 +386,7 @@ export const getSystemMessageWithRules = ({
   rulePolicies = {},
 }: {
   baseSystemMessage?: string;
-  userMessage: UserChatMessage | ToolResultChatMessage | undefined;
+  userMessage: RuleMessages;
   availableRules: RuleWithSource[];
   contextItems: ContextItemWithId[];
   rulePolicies?: RulePolicies;

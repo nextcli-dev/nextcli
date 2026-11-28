@@ -367,12 +367,20 @@ class Bedrock extends BaseLLM {
     );
     const controls = this.claudeControlParams(options);
 
+    // With caching on, this process's id goes at the start of every cached
+    // prefix (after the tools), so no other user of the account can hit its
+    // cache. It sits in the system prompt, which never moves: a message
+    // that carried it would change once it was no longer among the last two.
+    const system = enablePromptCaching
+      ? systemMessage + getSecureID()
+      : systemMessage;
+
     return {
       modelId: options.model,
-      system: systemMessage
+      system: system
         ? shouldCacheSystemMessage
-          ? [{ text: systemMessage }, { cachePoint: { type: "default" } }]
-          : [{ text: systemMessage }]
+          ? [{ text: system }, { cachePoint: { type: "default" } }]
+          : [{ text: system }]
         : undefined,
       toolConfig: toolConfig,
       messages: convertedMessages,
@@ -613,11 +621,6 @@ class Bedrock extends BaseLLM {
     for (let i = converted.length - 1; i >= 0; i--) {
       const message = converted[i];
       if (message.role === "user") {
-        message.content?.forEach((block) => {
-          if (block.text) {
-            block.text += getSecureID();
-          }
-        });
         message.content?.push({ cachePoint: { type: "default" } });
         numCached++;
       }

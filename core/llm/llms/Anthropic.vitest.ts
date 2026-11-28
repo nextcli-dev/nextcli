@@ -922,3 +922,68 @@ describe("Anthropic usage", () => {
     });
   });
 });
+
+describe("Anthropic prompt caching", () => {
+  const tools = ["Read", "Edit"].map((name) => ({
+    type: "function" as const,
+    function: {
+      name,
+      description: name,
+      parameters: { type: "object", properties: {} },
+    },
+  }));
+  const toolLoop = [
+    { role: "system" as const, content: "You are a coding agent." },
+    { role: "user" as const, content: "Fix the test" },
+    {
+      role: "assistant" as const,
+      content: "",
+      toolCalls: [
+        {
+          id: "toolu_1",
+          type: "function" as const,
+          function: { name: "Read", arguments: "{}" },
+        },
+      ],
+    },
+    { role: "tool" as const, content: "file a", toolCallId: "toolu_1" },
+  ];
+
+  async function sentBody(options: object) {
+    const anthropic = new Anthropic({
+      apiKey: "k",
+      model: "claude-sonnet-4-5",
+      apiBase: "https://api.anthropic.com/v1/",
+      ...options,
+    });
+    const mockFetch = setupMockFetch(undefined, []);
+    (anthropic as any).fetch = mockFetch;
+    for await (const _ of anthropic.streamChat(
+      toolLoop as any,
+      new AbortController().signal,
+      { tools } as any,
+    ));
+    return JSON.parse(mockFetch.mock.calls[0][1].body);
+  }
+
+  const markers = (body: any) =>
+    JSON.stringify(body).split('"cache_control"').length - 1;
+
+  test("marks the last tool and the tool result of a loop when caching is on", async () => {
+    const body = await sentBody({
+      cacheBehavior: { cacheSystemMessage: true, cacheConversation: true },
+    });
+    expect(body.tools[0].cache_control).toBeUndefined();
+    expect(body.tools[1].cache_control).toEqual({ type: "ephemeral" });
+    expect(body.messages.at(-1).content.at(-1)).toMatchObject({
+      type: "tool_result",
+      cache_control: { type: "ephemeral" },
+    });
+    // The API allows four
+    expect(markers(body)).toBeLessThanOrEqual(4);
+  });
+
+  test("marks nothing when caching is off", async () => {
+    expect(markers(await sentBody({}))).toBe(0);
+  });
+});

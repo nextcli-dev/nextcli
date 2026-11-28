@@ -19,7 +19,7 @@ import {
 } from "core/tools/constants";
 import { convertToolCallStatesToSystemCallsAndOutput } from "core/tools/systemMessageTools/convertSystemTools";
 import { SystemMessageToolsFramework } from "core/tools/systemMessageTools/types";
-import { findLast, findLastIndex } from "core/util/findLast";
+import { findLastIndex } from "core/util/findLast";
 import {
   normalizeToMessageParts,
   renderContextItems,
@@ -176,13 +176,10 @@ export function constructMessages(
     }
   }
 
-  // Some rules only apply to the last user or tool message
-  const lastUserOrToolMsg = findLast(
-    msgs,
-    (item) => item.message.role === "user" || item.message.role === "tool",
-  )?.message as UserChatMessage | ToolResultChatMessage;
-
-  // Some rules apply to all context items since the last user message, inclusiv
+  // Rules apply to every user and tool message, and every context item,
+  // since the last user message: a turn's rules only grow, so its system
+  // message changes only when a new rule applies, and stays cached between
+  // tool rounds
   const lastUserMsgIndex = findLastIndex(
     msgs,
     (item) => item.message.role === "user",
@@ -199,7 +196,9 @@ export function constructMessages(
   const { systemMessage, appliedRules, ruleParts } = getSystemMessageWithRules({
     baseSystemMessage,
     availableRules,
-    userMessage: lastUserOrToolMsg,
+    userMessage: itemsBackToLastUserMessage.map(
+      (item) => item.message as UserChatMessage | ToolResultChatMessage,
+    ),
     contextItems: rulesContextItems,
     rulePolicies,
   });
