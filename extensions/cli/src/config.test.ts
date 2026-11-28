@@ -109,6 +109,68 @@ describe("config", () => {
     });
   });
 
+  describe("Qwen prompt caching", () => {
+    const qwen = {
+      provider: "openai",
+      model: "qwen4-max-preview",
+      name: "Qwen",
+      apiKey: "k",
+      apiBase: "https://token-plan.maas.qwencloudapi.com/compatible-mode/v1",
+    } as ModelConfig;
+    const body = (model: ModelConfig) =>
+      JSON.stringify(
+        (
+          createLlmApi(model, mockAuthConfig) as unknown as {
+            modifyChatBody(body: ChatCompletionCreateParams): unknown;
+          }
+        ).modifyChatBody({
+          model: model.model,
+          messages: [
+            { role: "system", content: "You are a coding agent." },
+            { role: "user", content: "Fix the test." },
+          ],
+        }),
+      );
+
+    test("marks the request by default", () => {
+      expect(body(qwen)).toContain('"cache_control"');
+    });
+
+    test("is off when the model sets promptCaching: false", () => {
+      expect(
+        body({ ...qwen, defaultCompletionOptions: { promptCaching: false } }),
+      ).not.toContain('"cache_control"');
+    });
+  });
+
+  describe("OpenAI prompt cache key", () => {
+    const key = (apiBase: string) =>
+      (
+        createLlmApi(
+          {
+            provider: "openai",
+            model: "gpt-5.4-mini",
+            name: "GPT",
+            apiKey: "k",
+            apiBase,
+          } as ModelConfig,
+          mockAuthConfig,
+        ) as unknown as {
+          modifyChatBody(body: ChatCompletionCreateParams): {
+            prompt_cache_key?: string;
+          };
+        }
+      ).modifyChatBody({ model: "gpt-5.4-mini", messages: [] })
+        .prompt_cache_key;
+
+    test("is one per process, sent to api.openai.com only", () => {
+      const first = key("https://api.openai.com/v1/");
+      expect(first).toMatch(/^[0-9a-f-]{36}$/);
+      expect(key("https://api.openai.com/v1/")).toBe(first);
+      expect(key("https://api.deepseek.com/v1")).toBeUndefined();
+    });
+  });
+
   describe("withCliAttribution()", () => {
     const openrouter = {
       name: "OR",

@@ -633,7 +633,13 @@ export function toUsage(
     completionTokens: fullUsage.completion_tokens,
     promptTokensDetails:
       details || cachedTokens !== undefined
-        ? { cachedTokens, cacheWriteTokens: details?.cache_write_tokens }
+        ? {
+            cachedTokens,
+            // DashScope's explicit cache reports writes under Anthropic's name
+            cacheWriteTokens:
+              details?.cache_write_tokens ??
+              details?.cache_creation_input_tokens,
+          }
         : undefined,
   };
 }
@@ -717,9 +723,10 @@ export function recordStreamTelemetry(options: {
       model.model,
     );
   }
-  if (fullUsage?.prompt_tokens_details?.cache_write_tokens) {
+  const cacheWriteTokens = usage.promptTokensDetails?.cacheWriteTokens;
+  if (cacheWriteTokens) {
     telemetryService.recordTokenUsage(
-      fullUsage.prompt_tokens_details.cache_write_tokens,
+      cacheWriteTokens,
       "cacheCreation",
       model.model,
     );

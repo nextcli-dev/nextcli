@@ -57,3 +57,42 @@ describe("recordStreamTelemetry cache reads", () => {
     expect(cost(usage)).toBeGreaterThan(0.0148);
   });
 });
+
+describe("recordStreamTelemetry cache writes", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // A model the catalog prices with explicit cache writes, on its own host
+  const qwen = {
+    provider: "openai",
+    model: "qwen3.8-max",
+    apiBase: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+  };
+  const written = (details: Record<string, number>) =>
+    recordStreamTelemetry({
+      requestStartTime: 0,
+      responseEndTime: 1,
+      inputTokens: 0,
+      outputTokens: 0,
+      model: qwen,
+      fullUsage: {
+        prompt_tokens: 10_000,
+        completion_tokens: 100,
+        prompt_tokens_details: details,
+      },
+      call: {},
+    });
+
+  it("bills DashScope's cache_creation_input_tokens as cache writes", () => {
+    const dashScope = written({ cache_creation_input_tokens: 8000 });
+    expect(dashScope).toBeCloseTo(written({ cache_write_tokens: 8000 }), 10);
+    expect(dashScope).not.toBeCloseTo(written({}), 10);
+  });
+
+  it("counts DashScope's cache writes in telemetry", () => {
+    const record = vi.spyOn(telemetryService, "recordTokenUsage");
+    written({ cache_creation_input_tokens: 8000 });
+    expect(record).toHaveBeenCalledWith(8000, "cacheCreation", "qwen3.8-max");
+  });
+});

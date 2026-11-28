@@ -26,6 +26,10 @@ import {
 } from "./base.js";
 import { filterAnthropicSamplingParams } from "./AnthropicUtils.js";
 import {
+  addDashScopeCacheMarkers,
+  takesCacheMarkers,
+} from "./DashScopeCaching.js";
+import {
   createResponsesStreamState,
   fromResponsesChunk,
   isResponsesModel,
@@ -89,6 +93,13 @@ export class OpenAIApi implements BaseLlmApi {
       body.max_tokens = undefined;
     }
 
+    if (
+      this.config.cachingStrategy !== "none" &&
+      takesCacheMarkers(this.apiBase, body.model)
+    ) {
+      addDashScopeCacheMarkers(body);
+    }
+
     const sampling = chatSamplingParams(body.model, body);
     body.temperature = sampling.temperature;
     body.top_p = sampling.top_p;
@@ -96,6 +107,7 @@ export class OpenAIApi implements BaseLlmApi {
     // o-series models - only apply for official OpenAI API
     const isOfficialOpenAIAPI = this.apiBase === "https://api.openai.com/v1/";
     if (isOfficialOpenAIAPI) {
+      body.prompt_cache_key = this.promptCacheKey(body);
       if (body.model.startsWith("o") || body.model.includes("gpt-5")) {
         // a) use max_completion_tokens instead of max_tokens
         body.max_completion_tokens = body.max_tokens;
@@ -114,6 +126,13 @@ export class OpenAIApi implements BaseLlmApi {
       }
     }
     return body;
+  }
+
+  /** The request's own key, else the config's, for api.openai.com only */
+  private promptCacheKey(body: ChatCompletionCreateParams): string | undefined {
+    return this.apiBase === "https://api.openai.com/v1/"
+      ? (body.prompt_cache_key ?? this.config.promptCacheKey)
+      : body.prompt_cache_key;
   }
 
   protected shouldUseResponsesEndpoint(model: string): boolean {
@@ -287,6 +306,7 @@ export class OpenAIApi implements BaseLlmApi {
   ): Promise<Response> {
     const params = toResponsesParams({
       ...(body as ChatCompletionCreateParams),
+      prompt_cache_key: this.promptCacheKey(body),
       stream: false,
     });
     return (await this.openai.responses.create(params, {
@@ -300,6 +320,7 @@ export class OpenAIApi implements BaseLlmApi {
   ): AsyncGenerator<ChatCompletionChunk> {
     const params = toResponsesParams({
       ...(body as ChatCompletionCreateParams),
+      prompt_cache_key: this.promptCacheKey(body),
       stream: true,
     });
 
