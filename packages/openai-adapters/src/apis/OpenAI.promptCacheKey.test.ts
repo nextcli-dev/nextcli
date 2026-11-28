@@ -58,4 +58,24 @@ describe("OpenAI prompt_cache_key", () => {
 
     expect(create.mock.calls[0]![0]).not.toHaveProperty("prompt_cache_key");
   });
+
+  it("isn't added by the Responses helpers for other hosts", async () => {
+    const other = api("https://dashscope-intl.aliyuncs.com/compatible-mode/v1");
+    const stream = vi
+      .spyOn(other.openai.responses, "stream")
+      .mockReturnValue((async function* () {})());
+    const create = vi
+      .spyOn(other.openai.responses, "create")
+      .mockResolvedValue({ output: [] });
+    const signal = new AbortController().signal;
+
+    await drain(other.responsesStream(request("gpt-5.4-mini"), signal));
+    await other.responsesNonStream(
+      { ...request("gpt-5.4-mini"), stream: false },
+      signal,
+    );
+
+    expect(stream.mock.calls[0]![0]).not.toHaveProperty("prompt_cache_key");
+    expect(create.mock.calls[0]![0]).not.toHaveProperty("prompt_cache_key");
+  });
 });

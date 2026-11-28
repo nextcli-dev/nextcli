@@ -86,13 +86,13 @@ function removedAiSdkProvider(model: string): Error {
   return new Error(`provider "ai-sdk" was removed; use ${replacement}`);
 }
 
-/**
- * Creates an LLM API instance from a ModelConfig and auth configuration
- */
 // One per process: a run's requests share it, and parallel runs (CI checks
 // with the same system prompt) don't crowd one cache
 const PROMPT_CACHE_KEY = randomUUID();
 
+/**
+ * Creates an LLM API instance from a ModelConfig and auth configuration
+ */
 export function createLlmApi(
   model: ModelConfig,
   _authConfig: AuthConfig,
