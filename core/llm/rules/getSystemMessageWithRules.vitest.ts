@@ -477,3 +477,35 @@ describe("Content pattern matching", () => {
     ).toBe(false);
   });
 });
+
+describe("Rules from several messages", () => {
+  const testRule: RuleWithSource = {
+    name: "Test files",
+    rule: "Use vitest",
+    source: "rules-block",
+    globs: "**/*.test.ts",
+  };
+  const withCodeBlock = (path: string) =>
+    ({
+      role: "tool",
+      toolCallId: "t1",
+      content: `\`\`\`ts ${path}\nexpect(1).toBe(1);\n\`\`\``,
+    }) as const;
+  const plain = {
+    role: "tool",
+    toolCallId: "t2",
+    content: "No files",
+  } as const;
+
+  it("applies a rule a code block in any of the messages triggers", () => {
+    expect(
+      getApplicableRules(
+        [withCodeBlock("src/a.test.ts"), plain],
+        [testRule],
+        [],
+      ),
+    ).toEqual([testRule]);
+    // The single last message alone doesn't name the file
+    expect(getApplicableRules(plain, [testRule], [])).toEqual([]);
+  });
+});

@@ -544,8 +544,19 @@ class Anthropic extends BaseLLM {
       headers["anthropic-beta"] = betas;
     }
 
+    const args = this.convertArgs(options);
+    // The tools come first in the cached prefix: a marker on the last one
+    // keeps them cached when the system message changes between requests
+    const lastTool = args.tools?.at(-1);
+    if (lastTool && (shouldCacheSystemMessage || shouldCachePrompt)) {
+      args.tools![args.tools!.length - 1] = {
+        ...lastTool,
+        cache_control: { type: "ephemeral" },
+      };
+    }
+
     const body: MessageCreateParams = {
-      ...this.convertArgs(options),
+      ...args,
       messages: msgs,
       system: shouldCacheSystemMessage
         ? [

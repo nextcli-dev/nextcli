@@ -47,20 +47,23 @@ vi.mock("core/llm/rules/getSystemMessageWithRules", async (importOriginal) => {
     }: {
       baseSystemMessage: string;
       availableRules: RuleWithSource[];
-      userMessage?: UserChatMessage | ToolResultChatMessage;
+      userMessage?:
+        | UserChatMessage
+        | ToolResultChatMessage
+        | (UserChatMessage | ToolResultChatMessage)[];
       contextItems: ContextItemWithId[];
       rulePolicies?: Record<string, any>;
     }) => {
       // Filter rules based on our mock logic
       const appliedRules = availableRules.filter((rule) => {
         if (rule.rule === LAST_MESSAGE_RULE.rule) {
-          if (userMessage) {
-            return renderChatMessage(userMessage).includes(
-              LAST_MESSAGE_RULE.description!,
+          return [userMessage ?? []]
+            .flat()
+            .some((message) =>
+              renderChatMessage(message).includes(
+                LAST_MESSAGE_RULE.description!,
+              ),
             );
-          } else {
-            return false;
-          }
         }
         if (rule.rule === CONTEXT_RULE.rule) {
           return contextItems.some((item) =>
@@ -711,6 +714,53 @@ describe("constructMessages", () => {
     expect(messages[0].role).toBe("system");
     expect(messages[0].content).toContain("Base System Message");
     expect(messages[0].content).not.toContain(LAST_MESSAGE_RULE.rule);
+  });
+
+  test("keeps a rule a tool message triggered for the rest of the turn, so the system message stays the same", () => {
+    const toolRound = (id: string, output: string): ChatHistoryItem => ({
+      message: {
+        role: "assistant",
+        content: "",
+        toolCalls: [
+          {
+            id,
+            type: "function",
+            function: { name: "search", arguments: "{}" },
+          },
+        ],
+      } as AssistantChatMessage,
+      contextItems: [],
+      toolCallStates: [
+        {
+          toolCallId: id,
+          toolCall: {
+            id,
+            type: "function",
+            function: { name: "search", arguments: "{}" },
+          },
+          status: "done",
+          parsedArgs: {},
+          output: [createContextItem(id, output)],
+        },
+      ],
+    });
+    const turn: ChatHistoryItem[] = [
+      {
+        message: { role: "user", content: "Find it" } as UserChatMessage,
+        contextItems: [],
+      },
+      toolRound("tool-1", `Found ${LAST_MESSAGE_RULE.description} here`),
+    ];
+    const systemAfter = (history: ChatHistoryItem[]) =>
+      constructMessages(history, "Base System Message", mockRules, {})
+        .messages[0].content;
+
+    const firstRound = systemAfter(turn);
+    expect(firstRound).toContain(LAST_MESSAGE_RULE.rule);
+    // The next round's tool output doesn't name it
+    expect(systemAfter([...turn, toolRound("tool-2", "Nothing more")])).toBe(
+      firstRound,
+    );
   });
 
   // Tests for the specific block in lines 135-142 handling toolCallState.output

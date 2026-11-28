@@ -87,6 +87,14 @@ class TestBedrock extends Bedrock {
   }
 }
 
+/** Converse messages without their cache points */
+function withoutCachePoints(messages: any[]) {
+  return messages.map((message) => ({
+    ...message,
+    content: message.content.filter((block: any) => !block.cachePoint),
+  }));
+}
+
 describe("Bedrock", () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -572,9 +580,8 @@ describe("Bedrock", () => {
         true,
       );
 
-      // Verify that text content includes a cache ID suffix
-      const userMessageText = converted[0].content?.[0].text;
-      expect(userMessageText).toMatch(/First message.+/);
+      // The text stays as it was, so the message is the same in later requests
+      expect(converted[0].content?.[0].text).toBe("First message");
     });
 
     it("should add cache points when completionOptions.promptCaching is enabled", () => {
@@ -615,9 +622,59 @@ describe("Bedrock", () => {
         true,
       );
 
-      // Verify that text content includes a cache ID suffix
-      const userMessageText = converted[0].content?.[0].text;
-      expect(userMessageText).toMatch(/First message.+/);
+      // The text stays as it was, so the message is the same in later requests
+      expect(converted[0].content?.[0].text).toBe("First message");
+    });
+
+    it("keeps every earlier message the same as the conversation grows, and puts the cache id in the system prompt", () => {
+      const bedrock = new TestBedrock({
+        apiKey: "test-key",
+        model: "anthropic.claude-3-sonnet-20240229-v1:0",
+        region: "us-east-1",
+        completionOptions: {
+          model: "anthropic.claude-3-sonnet-20240229-v1:0",
+          promptCaching: true,
+        },
+      } as any);
+      const history: ChatMessage[] = [
+        { role: "system", content: "You are a helpful assistant" },
+        { role: "user", content: "Message 1" } as UserChatMessage,
+      ];
+      const requests = [];
+      for (let turn = 2; turn <= 4; turn++) {
+        requests.push(
+          bedrock["_generateConverseInput"]([...history], {
+            model: "anthropic.claude-3-sonnet-20240229-v1:0",
+          }),
+        );
+        history.push({ role: "assistant", content: `Reply ${turn - 1}` }, {
+          role: "user",
+          content: `Message ${turn}`,
+        } as UserChatMessage);
+      }
+      for (let index = 1; index < requests.length; index++) {
+        const before = withoutCachePoints(requests[index - 1].messages);
+        const after = withoutCachePoints(requests[index].messages);
+        expect(after.slice(0, before.length)).toEqual(before);
+      }
+      expect(requests[0].system[0].text).toMatch(
+        /^You are a helpful assistant<!-- SID: .+ -->$/,
+      );
+
+      const noCaching = new TestBedrock({
+        apiKey: "test-key",
+        model: "anthropic.claude-3-sonnet-20240229-v1:0",
+        region: "us-east-1",
+      });
+      noCaching.cacheBehavior = {
+        cacheConversation: false,
+        cacheSystemMessage: false,
+      };
+      expect(
+        noCaching["_generateConverseInput"](history, {
+          model: "anthropic.claude-3-sonnet-20240229-v1:0",
+        }).system,
+      ).toEqual([{ text: "You are a helpful assistant" }]);
     });
 
     it("should not add cache points when both caching options are disabled", () => {
