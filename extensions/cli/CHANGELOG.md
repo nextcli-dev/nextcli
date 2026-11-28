@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.22.0](https://github.com/nextcli-dev/nextcli/compare/cli-v0.21.0...cli-v0.22.0) (2026-11-28)
+
+
+### Features
+
+* **cli:** cache hits per run, and prefix breaks in the trace ([#250](https://github.com/nextcli-dev/nextcli/issues/250)) ([a40f734](https://github.com/nextcli-dev/nextcli/commit/a40f734b1ed0f353de210de890efc474e7de8dbf))
+* **openai-adapters:** explicit prompt cache for Qwen hosts, and a cache key for OpenAI ([#252](https://github.com/nextcli-dev/nextcli/issues/252)) ([e6067ac](https://github.com/nextcli-dev/nextcli/commit/e6067acf2596f7bbdcc2e4c5ca0e39fea87577ae))
+
+
+### Bug Fixes
+
+* **cli:** keep the cached prefix on the compaction summary call ([#249](https://github.com/nextcli-dev/nextcli/issues/249)) ([9129e5a](https://github.com/nextcli-dev/nextcli/commit/9129e5ac75a96feb4fc4d7e79d99b53ac2d3e44c))
+* **cli:** keep the request prefix stable within a user turn ([#248](https://github.com/nextcli-dev/nextcli/issues/248)) ([6a250c9](https://github.com/nextcli-dev/nextcli/commit/6a250c9d19e457ff0a0da244a557ffebbe9baa18))
+* **core:** send reasoning text back on every turn, so follow-ups keep the prompt cache ([#251](https://github.com/nextcli-dev/nextcli/issues/251)) ([c9993d9](https://github.com/nextcli-dev/nextcli/commit/c9993d90d790f9851c3b77aad4f4b667bec082d9))
+* **openai-adapters,cli:** count cached, thinking and Bedrock tokens, and never price a call at zero ([#247](https://github.com/nextcli-dev/nextcli/issues/247)) ([e31c3d3](https://github.com/nextcli-dev/nextcli/commit/e31c3d36b0fc3a2c3a647f190bdb7ffb3fbf9f34))
+* **openai-adapters:** cache the conversation in tool loops ([#244](https://github.com/nextcli-dev/nextcli/issues/244)) ([5c062ed](https://github.com/nextcli-dev/nextcli/commit/5c062edfee2e0e760f0d64392edea3ae82c67f1b))
+
 ## [0.21.0](https://github.com/nextcli-dev/nextcli/compare/cli-v0.20.0...cli-v0.21.0) (2026-11-26)
 
 
