@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.6.29](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.28...vscode-v1.6.29) (2026-11-28)
+
+
+### Features
+
+* **openai-adapters:** explicit prompt cache for Qwen hosts, and a cache key for OpenAI ([#252](https://github.com/nextcli-dev/nextcli/issues/252)) ([e6067ac](https://github.com/nextcli-dev/nextcli/commit/e6067acf2596f7bbdcc2e4c5ca0e39fea87577ae))
+
+
+### Bug Fixes
+
+* **core:** send reasoning text back on every turn, so follow-ups keep the prompt cache ([#251](https://github.com/nextcli-dev/nextcli/issues/251)) ([c9993d9](https://github.com/nextcli-dev/nextcli/commit/c9993d90d790f9851c3b77aad4f4b667bec082d9))
+* **openai-adapters,cli:** count cached, thinking and Bedrock tokens, and never price a call at zero ([#247](https://github.com/nextcli-dev/nextcli/issues/247)) ([e31c3d3](https://github.com/nextcli-dev/nextcli/commit/e31c3d36b0fc3a2c3a647f190bdb7ffb3fbf9f34))
+* **openai-adapters:** cache the conversation in tool loops ([#244](https://github.com/nextcli-dev/nextcli/issues/244)) ([5c062ed](https://github.com/nextcli-dev/nextcli/commit/5c062edfee2e0e760f0d64392edea3ae82c67f1b))
+
 ## [1.6.28](https://github.com/nextcli-dev/nextcli/compare/vscode-v1.6.27...vscode-v1.6.28) (2026-11-27)
 
 
